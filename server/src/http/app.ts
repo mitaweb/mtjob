@@ -1,0 +1,48 @@
+import express, { type ErrorRequestHandler } from 'express';
+import cors from 'cors';
+import { ZodError } from 'zod';
+import { ApiError } from '../util/errors.js';
+import { authRouter } from '../modules/auth.routes.js';
+import { tasksRouter } from '../modules/tasks.routes.js';
+import { scoresRouter } from '../modules/scores.routes.js';
+import { attendanceRouter } from '../modules/attendance.routes.js';
+import { requestsRouter } from '../modules/requests.routes.js';
+import { payrollRouter } from '../modules/payroll.routes.js';
+import { notificationsRouter } from '../modules/notifications.routes.js';
+import { adminRouter } from '../modules/admin.routes.js';
+import { chatRouter } from '../modules/chat.routes.js';
+import { oauthRouter } from '../modules/oauth.routes.js';
+
+export function createApp() {
+  const app = express();
+  app.use(cors());
+  app.use(express.json({ limit: '5mb' }));
+
+  app.get('/api/health', (_req, res) => {
+    res.json({ ok: true, ts: Date.now() });
+  });
+
+  app.use('/api/auth', authRouter);
+  app.use('/api/chat', chatRouter);
+  app.use('/api/tasks', tasksRouter);
+  app.use('/api/scores', scoresRouter);
+  app.use('/api/attendance', attendanceRouter);
+  app.use('/api/requests', requestsRouter);
+  app.use('/api/payroll', payrollRouter);
+  app.use('/api/notifications', notificationsRouter);
+  app.use('/api/admin', adminRouter);
+  app.use('/api/oauth2', oauthRouter);
+
+  const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+    if (err instanceof ZodError) {
+      res.status(400).json({ error: 'Dữ liệu không hợp lệ', details: err.issues });
+      return;
+    }
+    const status = err instanceof ApiError ? err.status : 500;
+    if (status >= 500) console.error('[API error]', err);
+    res.status(status).json({ error: (err as Error)?.message || 'Lỗi máy chủ' });
+  };
+  app.use(errorHandler);
+
+  return app;
+}

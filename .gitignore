@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+.pnp/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+*.local
+credentials.json
+service-account*.json
+gcp-*.json
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Uploads / temp
+uploads/
+tmp/
+
+# Claude local settings
+.claude/settings.local.json
