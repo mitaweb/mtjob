@@ -152,7 +152,7 @@ export const CONFIG_SEED: Array<[string, string]> = [
   ['bonusThreshold', '6000'],
   ['bonusStep', '1000'],
   ['bonusAmount', '800000'],
-  ['bhxhMode', 'direct'],
+  ['bhxhMode', 'percent'],
   ['tz', 'Asia/Ho_Chi_Minh'],
   ['taskSheetUrl', 'https://docs.google.com/spreadsheets/d/1C0-uJxZwzaBWWDqSbwPhJI0YJEPBxbOwTOBflATMcJc/edit?gid=0#gid=0'],
 ];

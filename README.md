@@ -66,9 +66,9 @@ npm run dev --prefix web        # PWA http://localhost:5173 (proxy /api -> 8080)
 - **Điểm task**: bảng danh mục cố định (`task_catalog`); bot tự gán điểm khi ghi nhận.
 - **Thưởng**: `floor((điểm_tháng − 6000) / 1000) × 800.000đ` (chỉ phần vượt 6000).
 - **Ca làm**: sáng 08:30–12:00, chiều 13:30–17:00; mỗi ca = 0.5 công; checkout ~12:00 = nửa ngày.
-- **Lương thực lãnh** = `round(Mức lương / ngày_công_chuẩn × ngày_làm_thực_tế) − BHXH`
-  (ngày công chuẩn = T2–T6 trừ lễ; **online có tính công, nghỉ phép không**; **giám đốc không tính payroll**).
-  Đổi cách trừ BHXH sang `10.5% × cơ sở` bằng config `bhxhMode = percent`.
+- **Lương thực lãnh** = `round(Mức lương / ngày_công_chuẩn × ngày_làm_thực_tế) − 10,5% × mức_đóng_BHXH`
+  (ngày công chuẩn = T2–T6 trừ lễ; **online có tính công, nghỉ phép không**; **giám đốc không tính payroll**;
+  lương chặn sàn 0đ). Đổi sang trừ thẳng giá trị cột BHXH bằng config `bhxhMode = direct`.
 - **Đơn online / nghỉ phép**: duyệt **2 cấp** (leader → giám đốc); online duyệt xong tự ghi công.
 
 ## Kiểm thử

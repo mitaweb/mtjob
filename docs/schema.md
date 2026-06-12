@@ -34,5 +34,5 @@ Ngày/giờ lưu dạng text ISO (`YYYY-MM-DD`, ISO datetime) — so sánh theo 
 | dailyReportTime | 18:00 | Giờ gửi báo cáo ngày (chế độ node-cron) |
 | monthlyReportDay | 1 | Ngày gửi tổng kết tháng |
 | bonusThreshold / bonusStep / bonusAmount | 6000 / 1000 / 800000 | Công thức thưởng |
-| bhxhMode | direct | `direct` = trừ thẳng cột BHXH; `percent` = 10.5% × cơ sở |
+| bhxhMode | percent | `percent` = trừ 10,5% × mức đóng BHXH (cột BHXH); `direct` = trừ thẳng giá trị cột |
 | tz | Asia/Ho_Chi_Minh | Múi giờ |

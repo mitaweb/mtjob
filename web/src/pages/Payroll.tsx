@@ -33,13 +33,13 @@ export default function Payroll() {
         <div className="card space-y-2">
           <Row label="Ngày công thực tế" value={`${line.actualDays} / ${line.standardDays} ngày`} />
           <Row label="Mức lương" value={vnd(line.grossSalary)} />
-          <Row label="Trừ BHXH" value={`- ${vnd(line.bhxh)}`} />
+          <Row label="Trừ BHXH (10,5% mức đóng)" value={`- ${vnd(line.bhxh)}`} />
           <div className="border-t pt-2 flex justify-between text-lg font-bold">
             <span>Lương thực lãnh</span>
             <span className="text-emerald-600">{vnd(line.netSalary)}</span>
           </div>
           <p className="text-xs text-slate-400">
-            Công thức: Mức lương ÷ ngày công chuẩn × ngày làm thực tế − BHXH.
+            Công thức: Mức lương ÷ ngày công chuẩn × ngày làm thực tế − 10,5% × mức đóng BHXH.
           </p>
         </div>
       ) : (

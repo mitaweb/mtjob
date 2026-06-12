@@ -28,12 +28,13 @@ describe('computeNetSalary', () => {
     expect(r.netSalary).toBe(8_000_000);
   });
 
-  it('subtracts BHXH directly (default mode)', () => {
+  it('direct mode subtracts the BHXH amount as-is', () => {
     const r = computeNetSalary({
       grossSalary: 8_000_000,
       standardDays: 22,
       actualDays: 22,
       bhxh: 5_400_000,
+      bhxhMode: 'direct',
     });
     expect(r.bhxhDeduction).toBe(5_400_000);
     expect(r.netSalary).toBe(2_600_000);

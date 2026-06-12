@@ -97,7 +97,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   bonusThreshold: 6000,
   bonusStep: 1000,
   bonusAmount: 800000,
-  bhxhMode: 'direct',
+  bhxhMode: 'percent', // 10.5% x mức đóng BHXH (cột BHXH trong sheet nhân sự)
   tz: 'Asia/Ho_Chi_Minh',
   taskSheetUrl: '',
 };
