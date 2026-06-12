@@ -17,7 +17,17 @@ export interface MemberScore {
   todayPoints: number;
   monthPoints: number;
   bonus: number;
+  workMinutesToday: number;
   rank?: number;
+}
+
+export interface DoingTask {
+  id: string;
+  taskCode: string;
+  taskName: string;
+  points: number;
+  startedAt: string;
+  elapsedMinutes: number;
 }
 
 export interface PayrollLine {

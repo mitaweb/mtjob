@@ -40,11 +40,16 @@ CREATE TABLE IF NOT EXISTS tasks (
   task_code    text NOT NULL,
   task_name    text DEFAULT '',
   points       integer NOT NULL DEFAULT 0,
-  completed_at text NOT NULL,
+  started_at   text DEFAULT '',
+  completed_at text NOT NULL DEFAULT '',
+  status       text DEFAULT 'done',
   source       text DEFAULT 'app',
   note         text DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS tasks_member_idx ON tasks (member_id);
+-- Migration cho DB đã tạo trước khi có luồng bắt đầu/hoàn thành:
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS started_at text DEFAULT '';
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS status text DEFAULT 'done';
 
 CREATE TABLE IF NOT EXISTS attendance (
   date             text NOT NULL,

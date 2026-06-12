@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import { vnd } from '../lib/format';
+import { vnd, fmtMin } from '../lib/format';
 import type { CatalogItem, MemberScore } from '../lib/types';
 
 interface Task {
@@ -47,7 +47,7 @@ export default function Scores() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="card text-center">
           <div className="text-2xl font-bold">{score?.todayPoints ?? 0}</div>
           <div className="text-xs text-slate-500">Điểm hôm nay</div>
@@ -59,6 +59,10 @@ export default function Scores() {
         <div className="card text-center">
           <div className="text-2xl font-bold text-emerald-600">{vnd(score?.bonus ?? 0)}</div>
           <div className="text-xs text-slate-500">Thưởng hiện tại</div>
+        </div>
+        <div className="card text-center">
+          <div className="text-2xl font-bold text-brand-600">{fmtMin(score?.workMinutesToday ?? 0)}</div>
+          <div className="text-xs text-slate-500">⏱ Giờ làm hôm nay</div>
         </div>
       </div>
 

@@ -70,3 +70,9 @@ export function fmtHm(iso: string): string {
 export function fmtDate(iso: string): string {
   return dayjs(iso).tz(TZ).format('DD/MM/YYYY');
 }
+
+/** Epoch-ms bounds [00:00, 24:00) of a YYYY-MM-DD day in app TZ. */
+export function dayBoundsMs(dayIso: string): { startMs: number; endMs: number } {
+  const start = dayjs.tz(dayIso, TZ).startOf('day');
+  return { startMs: start.valueOf(), endMs: start.add(1, 'day').valueOf() };
+}

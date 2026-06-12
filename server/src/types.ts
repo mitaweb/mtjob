@@ -35,6 +35,8 @@ export interface TaskCatalogItem {
   note?: string;
 }
 
+export type TaskStatus = 'doing' | 'done';
+
 export interface TaskRow {
   id: string;
   createdAt: string;
@@ -44,7 +46,9 @@ export interface TaskRow {
   taskCode: string;
   taskName: string;
   points: number;
-  completedAt: string;
+  startedAt: string; // '' nếu ghi nhận trực tiếp (không qua bước bắt đầu)
+  completedAt: string; // '' khi đang làm
+  status: TaskStatus;
   source: string;
   note?: string;
 }

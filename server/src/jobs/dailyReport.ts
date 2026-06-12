@@ -4,6 +4,7 @@ import { memberScore, ranking } from '../modules/scores.service.js';
 import { notify } from '../modules/notifications.service.js';
 import { birthdaysInMonth } from '../lib/people.js';
 import { formatVnd } from '../lib/money.js';
+import { formatMinutes } from '../lib/worktime.js';
 import { nowTz } from '../lib/datetime.js';
 
 /** Daily personal + leader + director reports (birthdays + bonus included). */
@@ -28,7 +29,7 @@ export async function runDailyReports(): Promise<void> {
     await notify(m.id, {
       type: 'daily',
       title: `Báo cáo điểm ngày ${dd}`,
-      body: `Hôm nay: +${s.todayPoints}đ. Lũy kế tháng: ${s.monthPoints}đ.${bonusLine}${birthdayLine}`,
+      body: `Hôm nay: +${s.todayPoints}đ · ⏱ ${formatMinutes(s.workMinutesToday)} làm việc. Lũy kế tháng: ${s.monthPoints}đ.${bonusLine}${birthdayLine}`,
       url: '/scores',
     });
   }

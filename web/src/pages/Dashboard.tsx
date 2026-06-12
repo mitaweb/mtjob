@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { vnd } from '../lib/format';
+import { vnd, fmtMin } from '../lib/format';
 import type { MemberScore, PayrollLine } from '../lib/types';
 
 export default function Dashboard() {
@@ -59,6 +59,7 @@ export default function Dashboard() {
               <th>Team</th>
               <th>Điểm</th>
               <th>Thưởng</th>
+              <th>⏱ Hôm nay</th>
             </tr>
           </thead>
           <tbody>
@@ -69,6 +70,7 @@ export default function Dashboard() {
                 <td>{s.teamId}</td>
                 <td className="font-medium">{s.monthPoints}</td>
                 <td className="text-emerald-600">{vnd(s.bonus)}</td>
+                <td>{fmtMin(s.workMinutesToday)}</td>
               </tr>
             ))}
           </tbody>
