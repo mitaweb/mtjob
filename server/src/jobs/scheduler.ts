@@ -3,7 +3,7 @@ import { getConfig } from '../config.js';
 import { runDailyReports } from './dailyReport.js';
 import { runMonthlyReport } from './monthlyReport.js';
 
-const TZ = process.env.TZ || 'Asia/Ho_Chi_Minh';
+const TZ = process.env.APP_TZ || 'Asia/Ho_Chi_Minh';
 
 /** Register the daily + monthly cron jobs using times from the Config tab. */
 export function registerCronJobs(): void {

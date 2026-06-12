@@ -7,7 +7,9 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 dayjs.extend(customParseFormat);
 
-export const TZ = process.env.TZ || 'Asia/Ho_Chi_Minh';
+// Business timezone. Deliberately NOT process.env.TZ: serverless hosts set
+// system values like ':UTC' (AWS Lambda) which are not valid IANA zones.
+export const TZ = process.env.APP_TZ || 'Asia/Ho_Chi_Minh';
 export { dayjs };
 
 /** Current moment in the app timezone. */
