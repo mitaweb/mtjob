@@ -11,6 +11,10 @@ export default {
           700: '#1b46a0',
         },
       },
+      fontFamily: {
+        brand: ['Montserrat', 'Arial', 'sans-serif'],
+        'brand-serif': ['"Playfair Display"', 'Georgia', 'serif'],
+      },
     },
   },
   plugins: [],

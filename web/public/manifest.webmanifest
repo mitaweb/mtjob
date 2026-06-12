@@ -1,7 +1,7 @@
 {
-  "name": "MTJOB — Quản lý công việc & chấm công",
-  "short_name": "MTJOB",
-  "description": "Ghi nhận task, chấm công GPS, trợ lý AI cho agency marketing.",
+  "name": "MT DIGITAL — MTJOB",
+  "short_name": "MT DIGITAL",
+  "description": "Ghi nhận task, chấm công GPS, trợ lý AI — MT DIGITAL, Marketing trọn gói cho doanh nghiệp.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

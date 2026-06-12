@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import Brand from '../components/Brand';
 
 export default function Login() {
   const { login, user } = useAuth();
@@ -30,8 +31,8 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center p-4">
       <form onSubmit={submit} className="card w-full max-w-sm space-y-4">
         <div className="text-center">
-          <div className="text-3xl font-extrabold text-brand-600">MTJOB</div>
-          <p className="text-slate-500 text-sm mt-1">Quản lý công việc & chấm công</p>
+          <Brand className="py-2" />
+          <p className="text-slate-400 text-xs mt-2">MTJOB — Quản lý công việc & chấm công</p>
         </div>
         <div>
           <label className="label">Tên đăng nhập</label>

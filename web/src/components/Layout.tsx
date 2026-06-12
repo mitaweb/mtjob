@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import Brand from './Brand';
 import type { Role } from '../lib/types';
 
 interface NavItem {
@@ -30,7 +31,8 @@ export default function Layout() {
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-10 bg-brand-600 text-white">
         <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
-          <div className="font-bold text-lg tracking-tight">MTJOB</div>
+          <Brand variant="light" compact />
+
           <button
             onClick={() => navigate('/profile')}
             className="text-sm bg-white/15 hover:bg-white/25 rounded-lg px-3 py-1.5"
