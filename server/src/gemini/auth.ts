@@ -7,10 +7,9 @@ const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 
 // Scope required to call the Gemini (Generative Language) API with OAuth.
-const SCOPES = [
-  'https://www.googleapis.com/auth/generative-language.retriever',
-  'https://www.googleapis.com/auth/cloud-platform',
-];
+// CHỈ xin generative-language.retriever: thêm cloud-platform sẽ làm app chưa
+// xác minh bị Google CHẶN CỨNG ("Ứng dụng này đã bị chặn") thay vì chỉ cảnh báo.
+const SCOPES = ['https://www.googleapis.com/auth/generative-language.retriever'];
 
 function clientId(): string {
   return process.env.GOOGLE_OAUTH_CLIENT_ID || '';

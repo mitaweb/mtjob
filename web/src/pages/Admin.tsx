@@ -7,6 +7,7 @@ export default function Admin() {
   const [msg, setMsg] = useState('');
   const [pwd, setPwd] = useState<Record<string, string>>({});
   const [aiOn, setAiOn] = useState<boolean | null>(null);
+  const [authUrl, setAuthUrl] = useState('');
 
   async function loadMembers() {
     const r = await api<{ members: User[] }>('/admin/members');
@@ -41,13 +42,21 @@ export default function Admin() {
   }
 
   async function geminiLogin() {
+    // Mở tab trống NGAY trong cú click (tránh popup-blocker), điền URL sau khi API trả về.
+    const w = window.open('about:blank', '_blank');
     try {
       const r = await api<{ url: string }>('/admin/google/auth-url');
-      window.open(r.url, '_blank');
-      setMsg(
-        'Đã mở trang đăng nhập Google ở tab mới. Sau khi đồng ý, trang callback sẽ hiển thị GEMINI_OAUTH_REFRESH_TOKEN — copy giá trị đó vào biến môi trường (Vercel/server) rồi redeploy.',
-      );
+      setAuthUrl(r.url);
+      if (w && !w.closed) {
+        w.location.href = r.url;
+        setMsg(
+          'Đã mở trang đăng nhập Google ở tab mới. Sau khi đồng ý, trang callback sẽ hiển thị GEMINI_OAUTH_REFRESH_TOKEN — copy giá trị đó vào biến môi trường (Vercel/server) rồi redeploy.',
+        );
+      } else {
+        setMsg('Trình duyệt chặn tab mới — bấm vào nút "Mở trang đăng nhập Google" bên dưới nhé.');
+      }
     } catch (e) {
+      if (w && !w.closed) w.close();
       setMsg((e as Error).message);
     }
   }
@@ -107,9 +116,16 @@ export default function Admin() {
               Hoặc đăng nhập Google (OAuth) nếu đã cấu hình OAuth Client:
             </p>
           </div>
-          <button className="btn-ghost" onClick={geminiLogin}>
-            🔑 Đăng nhập Google
-          </button>
+          <div className="flex flex-col gap-2">
+            <button className="btn-ghost" onClick={geminiLogin}>
+              🔑 Đăng nhập Google
+            </button>
+            {authUrl && (
+              <a className="btn-primary" href={authUrl} target="_blank" rel="noreferrer">
+                👉 Mở trang đăng nhập Google
+              </a>
+            )}
+          </div>
         </div>
       </div>
 
