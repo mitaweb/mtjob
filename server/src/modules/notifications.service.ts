@@ -1,4 +1,4 @@
-import { addNotification, getSubscriptions } from './notifications.repo.js';
+import { addNotification, getSubscriptions, deleteSubscription } from './notifications.repo.js';
 import { sendPush } from '../push/webpush.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
@@ -24,12 +24,14 @@ export async function notify(memberId: string, n: NotifyInput): Promise<void> {
   });
   const subs = await getSubscriptions(memberId);
   await Promise.all(
-    subs.map((s) =>
-      sendPush(
+    subs.map(async (s) => {
+      const r = await sendPush(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
         { title: n.title, body: n.body, url: n.url, tag: n.type },
-      ),
-    ),
+      );
+      // Trình duyệt đã huỷ đăng ký → dọn luôn cho gọn DB.
+      if (r.gone) await deleteSubscription(s.endpoint).catch(() => undefined);
+    }),
   );
 }
 

@@ -3,8 +3,11 @@ import { savePayrollSnapshot } from '../modules/payroll.service.js';
 import { q } from '../db/client.js';
 import { notify } from '../modules/notifications.service.js';
 import { getActiveMembers, getDirectors } from '../modules/members.repo.js';
+import { pruneNotificationsBefore } from '../modules/notifications.repo.js';
 import { formatVnd } from '../lib/money.js';
 import { nowTz } from '../lib/datetime.js';
+
+const NOTIFICATION_RETENTION_DAYS = 90;
 
 const MEDAL = ['🥇', '🥈', '🥉'];
 
@@ -60,7 +63,12 @@ export async function runMonthlyReport(): Promise<void> {
     }
   }
 
-  // 5) Director: full công/lương table.
+  // 5) Retention: prune notifications older than 90 days so the DB stays tiny.
+  const cutoff = nowTz().subtract(NOTIFICATION_RETENTION_DAYS, 'day').toISOString();
+  const pruned = await pruneNotificationsBefore(cutoff).catch(() => 0);
+  if (pruned > 0) console.log(`[monthly] đã dọn ${pruned} thông báo cũ (>${NOTIFICATION_RETENTION_DAYS} ngày)`);
+
+  // 6) Director: full công/lương table.
   const dirBody =
     payroll.map((p) => `${p.fullName}: ${p.actualDays}/${p.standardDays} ngày → ${formatVnd(p.netSalary)}`).join('\n') ||
     '—';

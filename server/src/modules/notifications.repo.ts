@@ -67,6 +67,17 @@ export async function getSubscriptions(memberId?: string): Promise<PushSubscript
   }));
 }
 
+/** Remove a dead push subscription (endpoint returned 404/410). */
+export async function deleteSubscription(endpoint: string): Promise<void> {
+  await q('DELETE FROM push_subscriptions WHERE endpoint = $1', [endpoint]);
+}
+
+/** Prune notifications created before `cutoffIso`. Returns the number deleted. */
+export async function pruneNotificationsBefore(cutoffIso: string): Promise<number> {
+  const rows = await q('DELETE FROM notifications WHERE created_at < $1 RETURNING notif_id', [cutoffIso]);
+  return rows.length;
+}
+
 export async function saveSubscription(sub: PushSubscriptionRow): Promise<void> {
   // Endpoint is unique per browser/device → upsert on it.
   await q(
