@@ -38,6 +38,7 @@ adminRouter.get(
 const memberSchema = z.object({
   id: z.string().optional(),
   fullName: z.string().min(1),
+  username: z.string().optional().default(''),
   email: z.string().email(),
   role: z.enum(['member', 'leader', 'director', 'admin']),
   teamId: z.string().optional().default(''),
@@ -57,6 +58,7 @@ adminRouter.post(
     const existing = b.id ? await findById(b.id) : undefined;
     const id = existing?.id || b.id || newId('M-');
     const passwordHash = b.password ? await hashPassword(b.password) : existing?.passwordHash || '';
+    const { vnUsername } = await import('../lib/people.js');
     await upsertMember({
       id,
       fullName: b.fullName,
@@ -67,6 +69,7 @@ adminRouter.post(
       salary: b.salary,
       bhxh: b.bhxh,
       joinDate: b.joinDate || null,
+      username: b.username || existing?.username || vnUsername(b.fullName),
       email: b.email,
       passwordHash,
       active: b.active,

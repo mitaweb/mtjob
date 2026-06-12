@@ -5,7 +5,7 @@ import { useAuth } from '../lib/auth';
 export default function Login() {
   const { login, user } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -17,7 +17,7 @@ export default function Login() {
     setBusy(true);
     setErr('');
     try {
-      await login(email.trim(), password);
+      await login(username.trim(), password);
       navigate('/chat');
     } catch (e) {
       setErr((e as Error).message);
@@ -34,8 +34,16 @@ export default function Login() {
           <p className="text-slate-500 text-sm mt-1">Quản lý công việc & chấm công</p>
         </div>
         <div>
-          <label className="label">Email</label>
-          <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <label className="label">Tên đăng nhập</label>
+          <input
+            className="input"
+            type="text"
+            autoComplete="username"
+            placeholder="vd: luongha"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+          />
         </div>
         <div>
           <label className="label">Mật khẩu</label>

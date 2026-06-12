@@ -80,6 +80,22 @@ export function parseHrRow(row: Array<string | number | null | undefined>): HrPe
   };
 }
 
+/**
+ * Username từ họ tên: từ ĐẦU + từ CUỐI, bỏ dấu, viết liền thường.
+ * "Lương Thị Thu Hà" → "luongha"; "Hồ Minh Tâm" → "hotam"; "Thu Thanh" → "thuthanh".
+ */
+export function vnUsername(fullName: string): string {
+  const words = removeAccents(fullName)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length === 0) return 'user';
+  if (words.length === 1) return words[0]!;
+  return words[0]! + words[words.length - 1]!;
+}
+
 export interface BirthdayPerson {
   fullName: string;
   dob: string | null;

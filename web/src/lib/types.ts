@@ -3,6 +3,7 @@ export type Role = 'member' | 'leader' | 'director' | 'admin';
 export interface User {
   id: string;
   fullName: string;
+  username: string;
   email: string;
   role: Role;
   teamId: string;

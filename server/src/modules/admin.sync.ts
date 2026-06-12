@@ -4,7 +4,7 @@
 import { getAllMembers, upsertMember } from './members.repo.js';
 import { upsertTeam } from './teams.repo.js';
 import { upsertCatalogItem } from './catalog.repo.js';
-import { parseHrRow, removeAccents, type HrPerson } from '../lib/people.js';
+import { parseHrRow, removeAccents, vnUsername, type HrPerson } from '../lib/people.js';
 import { newId } from '../util/id.js';
 import { ApiError } from '../util/errors.js';
 
@@ -23,10 +23,11 @@ export interface SyncResult {
   people: Array<{ fullName: string; team: string; role: string; email: string }>;
 }
 
-/** Upsert parsed HR people into members + teams. Keeps existing email/password (matched by full name). */
+/** Upsert parsed HR people into members + teams. Keeps existing username/email/password (matched by full name). */
 export async function upsertHrPeople(people: HrPerson[]): Promise<SyncResult> {
   const existing = await getAllMembers();
   const byName = new Map(existing.map((m) => [m.fullName.trim().toLowerCase(), m]));
+  const takenUsernames = new Set(existing.map((m) => m.username.toLowerCase()).filter(Boolean));
 
   const teamLeaders = new Map<string, string>();
   const teamSeen = new Set<string>();
@@ -36,6 +37,14 @@ export async function upsertHrPeople(people: HrPerson[]): Promise<SyncResult> {
     const prior = byName.get(p.fullName.trim().toLowerCase());
     const id = prior?.id || newId('M-');
     const email = prior?.email || slugEmail(p.fullName);
+    let username = prior?.username || '';
+    if (!username) {
+      const base = vnUsername(p.fullName);
+      username = base;
+      let i = 2;
+      while (takenUsernames.has(username.toLowerCase())) username = base + i++;
+      takenUsernames.add(username.toLowerCase());
+    }
 
     await upsertMember({
       id,
@@ -47,6 +56,7 @@ export async function upsertHrPeople(people: HrPerson[]): Promise<SyncResult> {
       salary: p.salary,
       bhxh: p.bhxh,
       joinDate: p.joinDate,
+      username,
       email,
       passwordHash: prior?.passwordHash || '',
       active: true,

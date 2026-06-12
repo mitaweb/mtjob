@@ -14,6 +14,7 @@ function rowToMember(r: any): Member {
     salary: Number(r.salary || 0) || 0,
     bhxh: Number(r.bhxh || 0) || 0,
     joinDate: r.join_date || null,
+    username: r.username || '',
     email: r.email || '',
     passwordHash: r.password_hash || '',
     active: !!r.active,
@@ -42,6 +43,14 @@ export async function findByEmail(email: string): Promise<Member | undefined> {
   return rows.length ? rowToMember(rows[0]) : undefined;
 }
 
+/** Tra cứu theo tên đăng nhập; nhập email cũ vẫn nhận (tương thích ngược). */
+export async function findByLogin(login: string): Promise<Member | undefined> {
+  const v = login.trim();
+  const rows = await q('SELECT * FROM members WHERE lower(username) = lower($1) LIMIT 1', [v]);
+  if (rows.length) return rowToMember(rows[0]);
+  return findByEmail(v);
+}
+
 export async function findById(id: string): Promise<Member | undefined> {
   const rows = await q('SELECT * FROM members WHERE member_id = $1 LIMIT 1', [id]);
   return rows.length ? rowToMember(rows[0]) : undefined;
@@ -59,8 +68,8 @@ export async function getDirectors(): Promise<Member[]> {
 
 export async function upsertMember(m: Member): Promise<void> {
   await q(
-    `INSERT INTO members (member_id, full_name, dob, position, team_id, role, salary, bhxh, join_date, email, password_hash, active)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+    `INSERT INTO members (member_id, full_name, dob, position, team_id, role, salary, bhxh, join_date, username, email, password_hash, active)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      ON CONFLICT (member_id) DO UPDATE SET
        full_name = EXCLUDED.full_name,
        dob = EXCLUDED.dob,
@@ -70,12 +79,13 @@ export async function upsertMember(m: Member): Promise<void> {
        salary = EXCLUDED.salary,
        bhxh = EXCLUDED.bhxh,
        join_date = EXCLUDED.join_date,
+       username = EXCLUDED.username,
        email = EXCLUDED.email,
        password_hash = EXCLUDED.password_hash,
        active = EXCLUDED.active`,
     [
       m.id, m.fullName, m.dob || '', m.position, m.teamId, m.role,
-      m.salary, m.bhxh, m.joinDate || '', m.email, m.passwordHash, m.active,
+      m.salary, m.bhxh, m.joinDate || '', m.username || '', m.email, m.passwordHash, m.active,
     ],
   );
 }

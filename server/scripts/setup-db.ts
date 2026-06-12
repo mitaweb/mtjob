@@ -56,11 +56,12 @@ async function main(): Promise<void> {
       salary: 0,
       bhxh: 0,
       joinDate: null,
+      username: 'admin',
       email,
       passwordHash: await hashPassword(password),
       active: true,
     });
-    console.log(`  - Tạo admin: ${email} / ${password}  (ĐỔI MẬT KHẨU sau khi đăng nhập!)`);
+    console.log(`  - Tạo admin: username admin / ${password}  (ĐỔI MẬT KHẨU sau khi đăng nhập!)`);
   }
 
   console.log('✅ Thiết lập hoàn tất.');

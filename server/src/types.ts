@@ -16,6 +16,7 @@ export interface Member {
   salary: number;
   bhxh: number;
   joinDate: string | null; // YYYY-MM-DD
+  username: string; // tên đăng nhập (vd luongha)
   email: string;
   passwordHash: string;
   active: boolean;

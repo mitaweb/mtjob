@@ -39,7 +39,8 @@ npm install --prefix web
 
 # 3) Khởi tạo CSDL: bảng + seed (config, danh mục task, ngày lễ, 13 thành viên, admin)
 npm run setup-db --prefix server
-#    -> admin mặc định: admin@mtjob.local / Admin@2026  (ĐỔI NGAY sau khi đăng nhập)
+#    -> đăng nhập bằng USERNAME: admin / Admin@2026  (ĐỔI NGAY sau khi đăng nhập)
+#    -> thành viên: username = từ đầu + từ cuối của tên, vd Lương Thị Thu Hà -> luongha
 
 # 4) Chạy
 npm run dev --prefix server     # API http://localhost:8080

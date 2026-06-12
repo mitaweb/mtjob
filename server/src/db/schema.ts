@@ -12,10 +12,14 @@ CREATE TABLE IF NOT EXISTS members (
   salary        integer DEFAULT 0,
   bhxh          integer DEFAULT 0,
   join_date     text DEFAULT '',
+  username      text DEFAULT '',
   email         text DEFAULT '',
   password_hash text DEFAULT '',
   active        boolean DEFAULT true
 );
+-- Migration cho DB tạo trước khi có đăng nhập bằng username:
+ALTER TABLE members ADD COLUMN IF NOT EXISTS username text DEFAULT '';
+CREATE UNIQUE INDEX IF NOT EXISTS members_username_uq ON members (lower(username)) WHERE username <> '';
 
 CREATE TABLE IF NOT EXISTS teams (
   team_id          text PRIMARY KEY,

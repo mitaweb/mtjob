@@ -5,7 +5,21 @@ import {
   parseHrRow,
   birthdaysInMonth,
   removeAccents,
+  vnUsername,
 } from './people.js';
+
+describe('vnUsername', () => {
+  it('ghép từ đầu + từ cuối, bỏ dấu', () => {
+    expect(vnUsername('Lương Thị Thu Hà')).toBe('luongha');
+    expect(vnUsername('Hồ Minh Tâm')).toBe('hotam');
+    expect(vnUsername('Lê Đặng Quỳnh Như')).toBe('lenhu');
+    expect(vnUsername('Võ Thị Kiều Oanh')).toBe('vooanh');
+  });
+  it('tên 2 chữ và 1 chữ', () => {
+    expect(vnUsername('Thu Thanh')).toBe('thuthanh');
+    expect(vnUsername('Tâm')).toBe('tam');
+  });
+});
 
 describe('removeAccents', () => {
   it('strips Vietnamese accents and d-stroke', () => {

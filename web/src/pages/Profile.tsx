@@ -12,6 +12,7 @@ export default function Profile() {
         <h1 className="text-lg font-bold mb-2">Hồ sơ</h1>
         <dl className="text-sm space-y-1">
           <Row k="Họ tên" v={user?.fullName} />
+          <Row k="Tên đăng nhập" v={user?.username} />
           <Row k="Email" v={user?.email} />
           <Row k="Chức vụ" v={user?.position} />
           <Row k="Team" v={user?.teamId} />
