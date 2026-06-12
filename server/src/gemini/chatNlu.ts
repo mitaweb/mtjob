@@ -40,11 +40,20 @@ export function heuristic(message: string, catalog: TaskCatalogItem[]): ChatExtr
   return { intent: 'help' };
 }
 
-export async function interpret(message: string, catalog: TaskCatalogItem[]): Promise<ChatExtraction> {
+export async function interpret(
+  message: string,
+  catalog: TaskCatalogItem[],
+  teamId = '',
+): Promise<ChatExtraction> {
+  // Catalog đã được caller sắp task của team lên đầu → heuristic tự ưu tiên team.
   if (!(await geminiAvailable())) return heuristic(message, catalog);
   const codes = catalog.map((c) => `- ${c.code}: ${c.name} (${c.points}đ)`).join('\n');
+  const teamLine = teamId
+    ? `Nhân sự thuộc team ${teamId} — khi câu nói khớp nhiều task, ƯU TIÊN task của team đó (các task được liệt kê ĐẦU danh sách).`
+    : '';
   const prompt = [
     'Bạn là trợ lý ghi nhận công việc cho một agency marketing. Trả lời JSON đúng schema.',
+    teamLine,
     '',
     'Danh mục loại task (taskCode: tên):',
     codes,

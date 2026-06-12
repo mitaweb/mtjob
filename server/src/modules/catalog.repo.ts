@@ -27,6 +27,20 @@ export async function findCatalogItem(code: string): Promise<TaskCatalogItem | u
   return rows.length ? rowToItem(rows[0]) : undefined;
 }
 
+// Mã task có prefix theo team (ADS01, CON03, SEO12...) — dùng để ưu tiên task của team mình.
+const TEAM_PREFIX: Record<string, string> = { Ads: 'ADS', Content: 'CON', SEO: 'SEO' };
+
+export function teamPrefix(teamId: string): string {
+  return TEAM_PREFIX[teamId] || '';
+}
+
+/** Sắp task của team thành viên lên đầu (ổn định trong từng nhóm). */
+export function sortCatalogForTeam<T extends { code: string }>(items: T[], teamId: string): T[] {
+  const p = teamPrefix(teamId);
+  if (!p) return items;
+  return [...items].sort((a, b) => Number(b.code.startsWith(p)) - Number(a.code.startsWith(p)));
+}
+
 export async function upsertCatalogItem(i: TaskCatalogItem): Promise<void> {
   await q(
     `INSERT INTO task_catalog (task_code, task_name, points, active, note)

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { vnd, fmtMin } from '../lib/format';
-import type { CatalogItem, MemberScore } from '../lib/types';
+import type { MemberScore } from '../lib/types';
 
 interface Task {
   id: string;
@@ -13,37 +13,20 @@ interface Task {
 export default function Scores() {
   const [score, setScore] = useState<MemberScore | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [sheetUrl, setSheetUrl] = useState('');
-  const [code, setCode] = useState('');
   const [msg, setMsg] = useState('');
 
-  async function load() {
-    setScore(await api<MemberScore>('/scores/me'));
-    const t = await api<{ tasks: Task[] }>('/tasks/me?range=month');
-    setTasks(t.tasks);
-  }
   useEffect(() => {
-    load().catch((e) => setMsg((e as Error).message));
-    api<{ catalog: CatalogItem[]; sheetUrl?: string }>('/tasks/catalog')
-      .then((r) => {
-        setCatalog(r.catalog);
-        setSheetUrl(r.sheetUrl || '');
-      })
+    api<MemberScore>('/scores/me')
+      .then(setScore)
+      .catch((e) => setMsg((e as Error).message));
+    api<{ tasks: Task[] }>('/tasks/me?range=month')
+      .then((r) => setTasks(r.tasks))
+      .catch(() => {});
+    api<{ sheetUrl?: string }>('/tasks/catalog')
+      .then((r) => setSheetUrl(r.sheetUrl || ''))
       .catch(() => {});
   }, []);
-
-  async function logTask() {
-    if (!code) return;
-    try {
-      await api('/tasks', { body: { taskCode: code } });
-      setCode('');
-      setMsg('Đã ghi nhận task ✅');
-      await load();
-    } catch (e) {
-      setMsg((e as Error).message);
-    }
-  }
 
   return (
     <div className="space-y-4">
@@ -66,9 +49,11 @@ export default function Scores() {
         </div>
       </div>
 
+      {msg && <div className="text-sm text-slate-600">{msg}</div>}
+
       <div className="card">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="font-semibold">Ghi nhận task nhanh</h2>
+          <h2 className="font-semibold">Task tháng này ({tasks.length})</h2>
           {sheetUrl && (
             <a
               href={sheetUrl}
@@ -80,24 +65,6 @@ export default function Scores() {
             </a>
           )}
         </div>
-        <div className="flex gap-2">
-          <select className="input" value={code} onChange={(e) => setCode(e.target.value)}>
-            <option value="">— Chọn loại task —</option>
-            {catalog.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.name} (+{c.points}đ)
-              </option>
-            ))}
-          </select>
-          <button className="btn-primary" onClick={logTask}>
-            Ghi nhận
-          </button>
-        </div>
-        {msg && <div className="mt-2 text-sm text-slate-600">{msg}</div>}
-      </div>
-
-      <div className="card">
-        <h2 className="font-semibold mb-2">Task tháng này ({tasks.length})</h2>
         <ul className="divide-y">
           {tasks.map((t) => (
             <li key={t.id} className="py-2 flex justify-between text-sm">
@@ -105,7 +72,11 @@ export default function Scores() {
               <span className="font-medium text-brand-600">+{t.points}đ</span>
             </li>
           ))}
-          {tasks.length === 0 && <li className="py-2 text-sm text-slate-500">Chưa có task nào.</li>}
+          {tasks.length === 0 && (
+            <li className="py-2 text-sm text-slate-500">
+              Chưa có task nào — qua tab Trợ lý nhắn bot để bắt đầu/ghi nhận task nhé.
+            </li>
+          )}
         </ul>
       </div>
     </div>

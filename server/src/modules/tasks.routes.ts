@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../util/errors.js';
 import { requireAuth } from '../auth/middleware.js';
-import { getActiveCatalog } from './catalog.repo.js';
+import { getActiveCatalog, sortCatalogForTeam } from './catalog.repo.js';
+import { findById } from './members.repo.js';
 import { getAllTasks, getDoingTasks } from './tasks.repo.js';
 import { logTask, startTask, completeTask } from './tasks.service.js';
 import { inRange } from '../lib/scores.js';
@@ -14,9 +15,11 @@ tasksRouter.use(requireAuth);
 
 tasksRouter.get(
   '/catalog',
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
     const cfg = await getConfig();
-    res.json({ catalog: await getActiveCatalog(), sheetUrl: cfg.taskSheetUrl });
+    const me = await findById(req.user!.sub);
+    const catalog = sortCatalogForTeam(await getActiveCatalog(), me?.teamId || '');
+    res.json({ catalog, sheetUrl: cfg.taskSheetUrl });
   }),
 );
 

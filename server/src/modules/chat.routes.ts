@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { asyncHandler } from '../util/errors.js';
 import { requireAuth } from '../auth/middleware.js';
 import { interpret } from '../gemini/chatNlu.js';
-import { getActiveCatalog, findCatalogItem } from './catalog.repo.js';
+import { getActiveCatalog, findCatalogItem, sortCatalogForTeam } from './catalog.repo.js';
+import { findById } from './members.repo.js';
 import { logTask, startTask } from './tasks.service.js';
 import { memberScore } from './scores.service.js';
 import { formatVnd } from '../lib/money.js';
@@ -43,8 +44,10 @@ chatRouter.post(
       return;
     }
 
-    const catalog = await getActiveCatalog();
-    const x = await interpret(b.message, catalog);
+    // Ưu tiên task thuộc team của nhân sự (Ads/Content/SEO) khi gợi ý.
+    const me = await findById(memberId);
+    const catalog = sortCatalogForTeam(await getActiveCatalog(), me?.teamId || '');
+    const x = await interpret(b.message, catalog, me?.teamId || '');
 
     // 2) Bắt đầu task → thẻ xác nhận bắt đầu.
     if (x.intent === 'start_task' && x.taskCode) {
