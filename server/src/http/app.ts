@@ -12,6 +12,7 @@ import { notificationsRouter } from '../modules/notifications.routes.js';
 import { adminRouter } from '../modules/admin.routes.js';
 import { chatRouter } from '../modules/chat.routes.js';
 import { oauthRouter } from '../modules/oauth.routes.js';
+import { jobsRouter } from '../modules/jobs.routes.js';
 
 export function createApp() {
   const app = express();
@@ -32,6 +33,7 @@ export function createApp() {
   app.use('/api/notifications', notificationsRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/oauth2', oauthRouter);
+  app.use('/api/jobs', jobsRouter);
 
   const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     if (err instanceof ZodError) {

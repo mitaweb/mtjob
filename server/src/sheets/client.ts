@@ -7,15 +7,28 @@ const SCOPES = [
   'https://www.googleapis.com/auth/drive',
 ];
 
+// Service-account credentials: prefer GOOGLE_SERVICE_ACCOUNT_JSON (raw JSON or
+// base64 — required on serverless hosts like Vercel where there is no key file),
+// fall back to a key file path in GOOGLE_APPLICATION_CREDENTIALS.
+function credentialsFromEnv(): Record<string, unknown> | undefined {
+  const raw = (process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '').trim();
+  if (!raw) return undefined;
+  const text = raw.startsWith('{') ? raw : Buffer.from(raw, 'base64').toString('utf8');
+  return JSON.parse(text) as Record<string, unknown>;
+}
+
 // Typed loosely: googleapis' GoogleAuth generic doesn't line up cleanly with the
 // service client `auth` option across versions, so we keep this as `any`.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _auth: any;
 function getAuth() {
   if (!_auth) {
+    const credentials = credentialsFromEnv();
     _auth = new google.auth.GoogleAuth({
       scopes: SCOPES,
-      keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS || undefined,
+      ...(credentials
+        ? { credentials }
+        : { keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS || undefined }),
     });
   }
   return _auth;

@@ -86,4 +86,5 @@ npm run typecheck --prefix server
 npm run build --prefix web
 ```
 
-Triển khai production: **`docs/deploy-vps.md`**. Cấu trúc dữ liệu: **`docs/schema.md`**.
+Triển khai production: **`docs/deploy-vercel.md`** (Vercel qua GitHub — khuyến nghị) hoặc **`docs/deploy-vps.md`** (VPS).
+Cấu trúc dữ liệu: **`docs/schema.md`**.
