@@ -34,7 +34,6 @@ export default function Requests() {
   const [tab, setTab] = useState<'online' | 'leave'>('online');
   const [date, setDate] = useState('');
   const [scope, setScope] = useState('full');
-  const [leaveType, setLeaveType] = useState('Nghỉ phép năm');
   const [reason, setReason] = useState('');
   const [list, setList] = useState<Req[]>([]);
   const [msg, setMsg] = useState('');
@@ -56,7 +55,7 @@ export default function Requests() {
       if (tab === 'online') {
         await api('/requests/online', { body: { dates: [date], scope, reason } });
       } else {
-        await api('/requests/leave', { body: { dates: [date], type: leaveType, reason } });
+        await api('/requests/leave', { body: { dates: [date], reason } });
       }
       setMsg('Đã gửi đơn, chờ leader/giám đốc duyệt ✅');
       setReason('');
@@ -83,7 +82,7 @@ export default function Requests() {
             <label className="label">Ngày</label>
             <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
-          {tab === 'online' ? (
+          {tab === 'online' && (
             <div>
               <label className="label">Buổi</label>
               <select className="input" value={scope} onChange={(e) => setScope(e.target.value)}>
@@ -91,11 +90,6 @@ export default function Requests() {
                 <option value="half_am">Nửa ngày (sáng)</option>
                 <option value="half_pm">Nửa ngày (chiều)</option>
               </select>
-            </div>
-          ) : (
-            <div>
-              <label className="label">Loại nghỉ</label>
-              <input className="input" value={leaveType} onChange={(e) => setLeaveType(e.target.value)} />
             </div>
           )}
         </div>

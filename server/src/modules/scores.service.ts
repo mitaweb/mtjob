@@ -61,7 +61,7 @@ export async function memberScore(memberId: string, year?: number, month?: numbe
   };
 }
 
-/** Ranked month scores for everyone (or a single team). */
+/** Ranked month scores — CHỈ nhân viên (admin/leader/giám đốc không vào bảng xếp hạng). */
 export async function ranking(year?: number, month?: number, teamId?: string): Promise<RankedMemberScore[]> {
   const now = nowTz();
   const y = year ?? now.year();
@@ -70,7 +70,7 @@ export async function ranking(year?: number, month?: number, teamId?: string): P
   const today = todayIso();
   const tasks = await getAllTasks();
   const doneTasks = tasks.filter((t) => t.status !== 'doing');
-  let members = await getActiveMembers();
+  let members = (await getActiveMembers()).filter((x) => x.role === 'member');
   if (teamId) members = members.filter((x) => x.teamId === teamId);
 
   const cfg = await bonusCfg();

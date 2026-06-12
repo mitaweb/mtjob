@@ -1,4 +1,4 @@
-import { ranking } from '../modules/scores.service.js';
+import { ranking, memberScore } from '../modules/scores.service.js';
 import { savePayrollSnapshot } from '../modules/payroll.service.js';
 import { q } from '../db/client.js';
 import { notify } from '../modules/notifications.service.js';
@@ -35,13 +35,15 @@ export async function runMonthlyReport(): Promise<void> {
   const payroll = await savePayrollSnapshot(year, month);
   const payByMember = new Map(payroll.map((p) => [p.memberId, p]));
 
-  // 3) Personal monthly notification: ranking + bonus + công + lương.
+  // 3) Personal monthly notification: điểm + thưởng cho TẤT CẢ (kể cả leader/GĐ
+  //    — họ không vào bảng xếp hạng nhưng vẫn có điểm/thưởng cá nhân).
   const members = await getActiveMembers();
   for (const m of members) {
+    const s = await memberScore(m.id, year, month);
     const r = ranked.find((x) => x.memberId === m.id);
     const p = payByMember.get(m.id);
-    const parts = [`Tổng điểm tháng ${month}/${year}: ${r?.monthPoints || 0}đ (hạng ${r?.rank || '-'}).`];
-    if (r && r.bonus > 0) parts.push(`💰 Thưởng: ${formatVnd(r.bonus)}.`);
+    const parts = [`Tổng điểm tháng ${month}/${year}: ${s.monthPoints}đ${r ? ` (hạng ${r.rank})` : ''}.`];
+    if (s.bonus > 0) parts.push(`💰 Thưởng: ${formatVnd(s.bonus)}.`);
     if (p) parts.push(`🗓️ Công làm: ${p.actualDays}/${p.standardDays} ngày. Lương thực lãnh: ${formatVnd(p.netSalary)}.`);
     await notify(m.id, {
       type: 'monthly',

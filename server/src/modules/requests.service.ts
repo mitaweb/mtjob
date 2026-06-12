@@ -117,7 +117,7 @@ async function recordLeave(req: RequestRow): Promise<void> {
       dayFraction: 0,
       mode: 'leave',
       status: 'leave',
-      note: `Nghỉ phép${req.type ? ` (${req.type})` : ''} — đơn ${req.id}`,
+      note: `Nghỉ phép — đơn ${req.id}`,
     });
   }
 }

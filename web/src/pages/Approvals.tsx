@@ -41,7 +41,10 @@ export default function Approvals() {
       {list.map((r) => (
         <div key={r.id} className="card">
           <div className="font-medium">
-            {r.name} — {r.kind === 'online' ? `Làm online (${r.scope})` : `Nghỉ phép (${r.type})`}
+            {r.name} —{' '}
+            {r.kind === 'online'
+              ? `Làm online (${r.scope === 'full' ? 'cả ngày' : r.scope === 'half_am' ? 'sáng' : 'chiều'})`
+              : 'Nghỉ phép'}
           </div>
           <div className="text-sm text-slate-500">
             {r.dates.join(', ')}
