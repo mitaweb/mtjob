@@ -21,10 +21,10 @@ function rowToMember(r: any): Member {
   };
 }
 
-export type PublicMember = Omit<Member, 'passwordHash'>;
+export type PublicMember = Omit<Member, 'passwordHash' | 'email'>;
 
 export function publicMember(m: Member): PublicMember {
-  const { passwordHash: _omit, ...rest } = m;
+  const { passwordHash: _omit, email: _omit2, ...rest } = m;
   return rest;
 }
 
@@ -43,12 +43,10 @@ export async function findByEmail(email: string): Promise<Member | undefined> {
   return rows.length ? rowToMember(rows[0]) : undefined;
 }
 
-/** Tra cứu theo tên đăng nhập; nhập email cũ vẫn nhận (tương thích ngược). */
+/** Tra cứu theo tên đăng nhập (chỉ username — email đã bỏ hoàn toàn). */
 export async function findByLogin(login: string): Promise<Member | undefined> {
-  const v = login.trim();
-  const rows = await q('SELECT * FROM members WHERE lower(username) = lower($1) LIMIT 1', [v]);
-  if (rows.length) return rowToMember(rows[0]);
-  return findByEmail(v);
+  const rows = await q('SELECT * FROM members WHERE lower(username) = lower($1) LIMIT 1', [login.trim()]);
+  return rows.length ? rowToMember(rows[0]) : undefined;
 }
 
 export async function findById(id: string): Promise<Member | undefined> {

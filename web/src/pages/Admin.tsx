@@ -174,7 +174,7 @@ export default function Admin() {
             {members.map((m) => (
               <tr key={m.id} className="border-t">
                 <td className="py-1">{m.fullName}</td>
-                <td className="font-mono text-xs font-semibold text-brand-700">{m.username || m.email}</td>
+                <td className="font-mono text-xs font-semibold text-brand-700">{m.username}</td>
                 <td>{m.teamId}</td>
                 <td>{m.role}</td>
                 <td>

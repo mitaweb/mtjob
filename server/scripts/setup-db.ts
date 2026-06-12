@@ -4,7 +4,7 @@ import { DDL, CONFIG_SEED, TASK_CATALOG_SEED, HOLIDAYS_2026_SEED } from '../src/
 import { HR_SEED_ROWS } from '../src/db/seedMembers.js';
 import { parseHrRow, type HrPerson } from '../src/lib/people.js';
 import { upsertHrPeople, syncMembersFromSource } from '../src/modules/admin.sync.js';
-import { findByEmail, upsertMember } from '../src/modules/members.repo.js';
+import { findByLogin, upsertMember } from '../src/modules/members.repo.js';
 import { hashPassword } from '../src/auth/password.js';
 import { newId } from '../src/util/id.js';
 
@@ -41,10 +41,9 @@ async function main(): Promise<void> {
   }
 
   // Admin account.
-  const email = process.env.ADMIN_EMAIL || 'admin@mtjob.local';
   const password = process.env.ADMIN_PASSWORD || 'Admin@2026';
-  if (await findByEmail(email)) {
-    console.log(`  - Admin (${email}) đã tồn tại.`);
+  if (await findByLogin('admin')) {
+    console.log('  - Admin (username admin) đã tồn tại.');
   } else {
     await upsertMember({
       id: newId('M-'),
@@ -57,7 +56,7 @@ async function main(): Promise<void> {
       bhxh: 0,
       joinDate: null,
       username: 'admin',
-      email,
+      email: '',
       passwordHash: await hashPassword(password),
       active: true,
     });

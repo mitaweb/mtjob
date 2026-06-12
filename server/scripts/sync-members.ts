@@ -7,7 +7,7 @@ async function main(): Promise<void> {
   const r = await syncMembersFromSource();
   console.log(`✅ Đã import ${r.imported} thành viên. Teams: ${r.teams.join(', ') || '(none)'}`);
   for (const p of r.people) {
-    console.log(`  - ${p.fullName} | team=${p.team || '-'} | role=${p.role} | ${p.email}`);
+    console.log(`  - ${p.fullName} | team=${p.team || '-'} | role=${p.role} | ${p.username}`);
   }
   console.log('\nLưu ý: đặt mật khẩu cho từng thành viên trong màn Quản trị trước khi họ đăng nhập.');
   await closePool();

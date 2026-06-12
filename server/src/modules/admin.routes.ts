@@ -39,7 +39,6 @@ const memberSchema = z.object({
   id: z.string().optional(),
   fullName: z.string().min(1),
   username: z.string().optional().default(''),
-  email: z.string().email(),
   role: z.enum(['member', 'leader', 'director', 'admin']),
   teamId: z.string().optional().default(''),
   dob: z.string().optional().default(''),
@@ -70,7 +69,7 @@ adminRouter.post(
       bhxh: b.bhxh,
       joinDate: b.joinDate || null,
       username: b.username || existing?.username || vnUsername(b.fullName),
-      email: b.email,
+      email: existing?.email || '',
       passwordHash,
       active: b.active,
     });

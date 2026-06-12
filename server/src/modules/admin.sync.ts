@@ -4,23 +4,14 @@
 import { getAllMembers, upsertMember } from './members.repo.js';
 import { upsertTeam } from './teams.repo.js';
 import { upsertCatalogItem } from './catalog.repo.js';
-import { parseHrRow, removeAccents, vnUsername, type HrPerson } from '../lib/people.js';
+import { parseHrRow, vnUsername, type HrPerson } from '../lib/people.js';
 import { newId } from '../util/id.js';
 import { ApiError } from '../util/errors.js';
-
-function slugEmail(fullName: string): string {
-  const slug = removeAccents(fullName)
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '.')
-    .replace(/^\.|\.$/g, '');
-  return `${slug || 'user'}@mtjob.local`;
-}
 
 export interface SyncResult {
   imported: number;
   teams: string[];
-  people: Array<{ fullName: string; team: string; role: string; email: string }>;
+  people: Array<{ fullName: string; team: string; role: string; username: string }>;
 }
 
 /** Upsert parsed HR people into members + teams. Keeps existing username/email/password (matched by full name). */
@@ -36,7 +27,6 @@ export async function upsertHrPeople(people: HrPerson[]): Promise<SyncResult> {
   for (const p of people) {
     const prior = byName.get(p.fullName.trim().toLowerCase());
     const id = prior?.id || newId('M-');
-    const email = prior?.email || slugEmail(p.fullName);
     let username = prior?.username || '';
     if (!username) {
       const base = vnUsername(p.fullName);
@@ -57,7 +47,7 @@ export async function upsertHrPeople(people: HrPerson[]): Promise<SyncResult> {
       bhxh: p.bhxh,
       joinDate: p.joinDate,
       username,
-      email,
+      email: prior?.email || '',
       passwordHash: prior?.passwordHash || '',
       active: true,
     });
@@ -66,7 +56,7 @@ export async function upsertHrPeople(people: HrPerson[]): Promise<SyncResult> {
       teamSeen.add(p.team);
       if (p.isLeader) teamLeaders.set(p.team, id);
     }
-    out.push({ fullName: p.fullName, team: p.team, role: p.role, email });
+    out.push({ fullName: p.fullName, team: p.team, role: p.role, username });
   }
 
   for (const team of teamSeen) {
