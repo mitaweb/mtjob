@@ -37,10 +37,18 @@ export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Pro
   });
 
   const text = await res.text();
-  const data = text ? JSON.parse(text) : {};
+  let data: { error?: string } = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      // Server trả về trang lỗi dạng text/HTML (vd Vercel "A server error has occurred")
+      throw new Error(`Máy chủ gặp lỗi (${res.status}). Chi tiết: ${text.slice(0, 140)}`);
+    }
+  }
   if (!res.ok) {
     if (res.status === 401) setToken(null);
-    throw new Error((data && data.error) || `Lỗi ${res.status}`);
+    throw new Error(data.error || `Lỗi ${res.status}`);
   }
   return data as T;
 }

@@ -19,8 +19,20 @@ export function createApp() {
   app.use(cors());
   app.use(express.json({ limit: '5mb' }));
 
+  // Health + config diagnostics (booleans only — never leak secret values).
   app.get('/api/health', (_req, res) => {
-    res.json({ ok: true, ts: Date.now() });
+    res.json({
+      ok: true,
+      ts: Date.now(),
+      env: {
+        sheetDbId: !!process.env.SHEET_DB_ID,
+        googleCreds: !!(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS),
+        jwtSecret: !!process.env.JWT_SECRET,
+        vapid: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
+        cronSecret: !!process.env.CRON_SECRET,
+        gemini: !!(process.env.GEMINI_API_KEY || process.env.GEMINI_OAUTH_REFRESH_TOKEN || process.env.GEMINI_BASE_URL),
+      },
+    });
   });
 
   app.use('/api/auth', authRouter);
