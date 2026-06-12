@@ -14,13 +14,18 @@ export default function Dashboard() {
 
   useEffect(() => {
     const scoreUrl = isDirector ? '/scores/all' : '/scores/team';
-    const payUrl = isDirector ? '/payroll/all' : '/payroll/team';
     api<{ members: MemberScore[] }>(scoreUrl)
       .then((r) => setScores(r.members))
       .catch((e) => setMsg((e as Error).message));
-    api<{ lines: PayrollLine[] }>(payUrl)
-      .then((r) => setPayroll(r.lines))
-      .catch(() => {});
+    // Lương là dữ liệu nhạy cảm: chỉ giám đốc/admin xem bảng lương chung;
+    // leader/thành viên xem lương của mình ở tab "Lương".
+    if (isDirector) {
+      api<{ lines: PayrollLine[] }>('/payroll/all')
+        .then((r) => setPayroll(r.lines))
+        .catch(() => {});
+    } else {
+      setPayroll([]);
+    }
   }, [isDirector]);
 
   const chartData = scores.map((s) => ({ name: s.fullName.split(' ').slice(-1)[0], points: s.monthPoints }));

@@ -23,9 +23,10 @@ payrollRouter.get(
   }),
 );
 
+// Lương là dữ liệu nhạy cảm: chỉ giám đốc/admin xem được bảng lương người khác.
 payrollRouter.get(
   '/team',
-  requireRole('leader', 'director', 'admin'),
+  requireRole('director', 'admin'),
   asyncHandler(async (req, res) => {
     const { year, month } = ym(req);
     const me = await findById(req.user!.sub);

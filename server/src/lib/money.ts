@@ -44,7 +44,7 @@ export interface NetSalaryResult {
  * Net take-home salary:
  *   prorated  = round(grossSalary / standardDays * actualDays)
  *   deduction = bhxhMode==='percent' ? round(bhxh * 10.5%) : round(bhxh)
- *   net       = prorated - deduction
+ *   net       = max(0, prorated - deduction)   // không hiển thị lương âm khi công quá ít
  */
 export function computeNetSalary(i: NetSalaryInput): NetSalaryResult {
   const gross = Number(i.grossSalary) || 0;
@@ -61,7 +61,7 @@ export function computeNetSalary(i: NetSalaryInput): NetSalaryResult {
     actualDays: actual,
     proratedSalary: prorated,
     bhxhDeduction,
-    netSalary: prorated - bhxhDeduction,
+    netSalary: Math.max(0, prorated - bhxhDeduction),
   };
 }
 

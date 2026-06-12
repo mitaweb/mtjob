@@ -137,6 +137,12 @@ adminRouter.post(
 adminRouter.get(
   '/google/auth-url',
   asyncHandler(async (_req, res) => {
+    if (!process.env.GOOGLE_OAUTH_CLIENT_ID || !process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
+      throw new ApiError(
+        400,
+        'Chưa cấu hình GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET. Cách nhanh hơn: lấy API key tại aistudio.google.com/apikey rồi thêm biến GEMINI_API_KEY.',
+      );
+    }
     const { getAuthUrl } = await import('../gemini/auth.js');
     res.json({ url: getAuthUrl() });
   }),

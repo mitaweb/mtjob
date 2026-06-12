@@ -61,6 +61,16 @@ describe('computeNetSalary', () => {
     expect(r.proratedSalary).toBe(0);
     expect(r.netSalary).toBe(0);
   });
+
+  it('floors net salary at 0 when days worked are too few to cover BHXH', () => {
+    const r = computeNetSalary({
+      grossSalary: 8_000_000,
+      standardDays: 22,
+      actualDays: 0,
+      bhxh: 5_400_000,
+    });
+    expect(r.netSalary).toBe(0); // không âm -5.4tr
+  });
 });
 
 describe('formatVnd', () => {
