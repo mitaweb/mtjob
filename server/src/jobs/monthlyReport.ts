@@ -1,6 +1,6 @@
 import { ranking } from '../modules/scores.service.js';
 import { savePayrollSnapshot } from '../modules/payroll.service.js';
-import { appendObjects } from '../sheets/repo.js';
+import { q } from '../db/client.js';
 import { notify } from '../modules/notifications.service.js';
 import { getActiveMembers, getDirectors } from '../modules/members.repo.js';
 import { formatVnd } from '../lib/money.js';
@@ -16,17 +16,15 @@ export async function runMonthlyReport(): Promise<void> {
 
   // 1) Ranking snapshot.
   const ranked = await ranking(year, month);
-  await appendObjects(
-    'MonthlyScores',
-    ranked.map((r) => ({
-      Year: year,
-      Month: month,
-      MemberID: r.memberId,
-      TotalPoints: r.monthPoints,
-      Rank: r.rank,
-      BonusVND: r.bonus,
-    })),
-  );
+  for (const r of ranked) {
+    await q(
+      `INSERT INTO monthly_scores (year, month, member_id, total_points, rank, bonus_vnd)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (year, month, member_id) DO UPDATE SET
+         total_points = EXCLUDED.total_points, rank = EXCLUDED.rank, bonus_vnd = EXCLUDED.bonus_vnd`,
+      [year, month, r.memberId, r.monthPoints, r.rank, r.bonus],
+    );
+  }
   const top3 = ranked.filter((r) => r.rank <= 3 && r.monthPoints > 0);
   const top3Line = top3.map((r) => `${MEDAL[r.rank - 1] || ''} #${r.rank} ${r.fullName} — ${r.monthPoints}đ`).join('\n');
 

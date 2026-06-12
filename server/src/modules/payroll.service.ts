@@ -2,7 +2,7 @@ import { getActiveMembers, findById } from './members.repo.js';
 import { getAllAttendance } from './attendance.repo.js';
 import { getHolidaySet } from './holidays.repo.js';
 import { getConfig } from '../config.js';
-import { appendObjects } from '../sheets/repo.js';
+import { q } from '../db/client.js';
 import { standardWorkingDays } from '../lib/workdays.js';
 import { computeNetSalary } from '../lib/money.js';
 import { inRange } from '../lib/scores.js';
@@ -76,21 +76,21 @@ export async function payrollForMember(
   return lines.find((l) => l.memberId === memberId) ?? null;
 }
 
-/** Compute + persist a monthly snapshot into the Payroll tab (used by the monthly job). */
+/** Compute + persist a monthly snapshot into the payroll table (used by the monthly job). */
 export async function savePayrollSnapshot(year: number, month: number): Promise<PayrollLine[]> {
   const lines = await payrollForMonth(year, month);
-  await appendObjects(
-    'Payroll',
-    lines.map((l) => ({
-      Year: l.year,
-      Month: l.month,
-      MemberID: l.memberId,
-      StandardDays: l.standardDays,
-      ActualDays: l.actualDays,
-      GrossSalary: l.grossSalary,
-      BHXH: l.bhxh,
-      NetSalary: l.netSalary,
-    })),
-  );
+  for (const l of lines) {
+    await q(
+      `INSERT INTO payroll (year, month, member_id, standard_days, actual_days, gross_salary, bhxh, net_salary)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (year, month, member_id) DO UPDATE SET
+         standard_days = EXCLUDED.standard_days,
+         actual_days = EXCLUDED.actual_days,
+         gross_salary = EXCLUDED.gross_salary,
+         bhxh = EXCLUDED.bhxh,
+         net_salary = EXCLUDED.net_salary`,
+      [l.year, l.month, l.memberId, l.standardDays, l.actualDays, l.grossSalary, l.bhxh, l.netSalary],
+    );
+  }
   return lines;
 }

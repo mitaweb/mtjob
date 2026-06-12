@@ -1,20 +1,11 @@
-import { sheetsClient } from '../sheets/client.js';
-import { upsertByKey } from '../sheets/repo.js';
-import { getAllMembers } from './members.repo.js';
+// Member sync: parse HR people (from the public CSV of the source sheet, or a
+// seed snapshot) and upsert members + teams/leaders. No Google credentials needed —
+// the source sheet just has to be shared "anyone with the link – viewer".
+import { getAllMembers, upsertMember } from './members.repo.js';
+import { upsertTeam } from './teams.repo.js';
 import { parseHrRow, removeAccents, type HrPerson } from '../lib/people.js';
 import { newId } from '../util/id.js';
 import { ApiError } from '../util/errors.js';
-
-function looksLikeHeader(row: Array<string | number | null | undefined>): boolean {
-  const j = (row || []).map((c) => String(c ?? '')).join('|').toLowerCase();
-  return (
-    j.includes('họ tên') ||
-    j.includes('ho ten') ||
-    j.includes('mức lương') ||
-    j.includes('chức vụ') ||
-    j.includes('bhxh')
-  );
-}
 
 function slugEmail(fullName: string): string {
   const slug = removeAccents(fullName)
@@ -31,32 +22,12 @@ export interface SyncResult {
   people: Array<{ fullName: string; team: string; role: string; email: string }>;
 }
 
-/**
- * Read the HR source sheet (6 fixed columns, no header) and upsert into Members.
- * Team/Role/Leader are derived from the Chức vụ column; existing email/password are kept.
- */
-export async function syncMembersFromSource(): Promise<SyncResult> {
-  const sourceId = process.env.SHEET_HR_SOURCE_ID;
-  if (!sourceId) throw new ApiError(400, 'SHEET_HR_SOURCE_ID chưa được cấu hình');
-
-  const res = await sheetsClient().spreadsheets.values.get({
-    spreadsheetId: sourceId,
-    range: 'A1:F1000',
-  });
-  const values = (res.data.values as Array<Array<string | number>>) ?? [];
-  if (values.length === 0) throw new ApiError(400, 'Sheet nhân sự nguồn trống hoặc không đọc được');
-
-  const startIdx = looksLikeHeader(values[0] ?? []) ? 1 : 0;
-  const people: HrPerson[] = [];
-  for (let i = startIdx; i < values.length; i++) {
-    const p = parseHrRow(values[i] ?? []);
-    if (p) people.push(p);
-  }
-
+/** Upsert parsed HR people into members + teams. Keeps existing email/password (matched by full name). */
+export async function upsertHrPeople(people: HrPerson[]): Promise<SyncResult> {
   const existing = await getAllMembers();
   const byName = new Map(existing.map((m) => [m.fullName.trim().toLowerCase(), m]));
 
-  const teamLeaders = new Map<string, string>(); // team -> leader memberId
+  const teamLeaders = new Map<string, string>();
   const teamSeen = new Set<string>();
   const out: SyncResult['people'] = [];
 
@@ -65,19 +36,19 @@ export async function syncMembersFromSource(): Promise<SyncResult> {
     const id = prior?.id || newId('M-');
     const email = prior?.email || slugEmail(p.fullName);
 
-    await upsertByKey('Members', 'MemberID', {
-      MemberID: id,
-      FullName: p.fullName,
-      DOB: p.dob || '',
-      Position: p.position,
-      TeamID: p.team,
-      Role: p.role,
-      Salary: p.salary,
-      BHXH: p.bhxh,
-      JoinDate: p.joinDate || '',
-      Email: email,
-      PasswordHash: prior?.passwordHash || '',
-      Active: 'TRUE',
+    await upsertMember({
+      id,
+      fullName: p.fullName,
+      dob: p.dob,
+      position: p.position,
+      teamId: p.team,
+      role: p.role,
+      salary: p.salary,
+      bhxh: p.bhxh,
+      joinDate: p.joinDate,
+      email,
+      passwordHash: prior?.passwordHash || '',
+      active: true,
     });
 
     if (p.team) {
@@ -87,14 +58,80 @@ export async function syncMembersFromSource(): Promise<SyncResult> {
     out.push({ fullName: p.fullName, team: p.team, role: p.role, email });
   }
 
-  // Upsert teams (with their leader, if any was found).
   for (const team of teamSeen) {
-    await upsertByKey('Teams', 'TeamID', {
-      TeamID: team,
-      TeamName: team,
-      LeaderMemberID: teamLeaders.get(team) || '',
-    });
+    await upsertTeam({ id: team, name: team, leaderMemberId: teamLeaders.get(team) || '' });
   }
 
   return { imported: people.length, teams: [...teamSeen], people: out };
+}
+
+/** Tiny CSV parser (handles quoted fields). */
+export function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let cur: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else inQuotes = false;
+      } else field += c;
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ',') {
+      cur.push(field);
+      field = '';
+    } else if (c === '\n') {
+      cur.push(field.replace(/\r$/, ''));
+      rows.push(cur);
+      cur = [];
+      field = '';
+    } else {
+      field += c;
+    }
+  }
+  if (field !== '' || cur.length) {
+    cur.push(field.replace(/\r$/, ''));
+    rows.push(cur);
+  }
+  return rows.filter((r) => r.some((c) => c.trim() !== ''));
+}
+
+function looksLikeHeader(row: string[]): boolean {
+  const j = row.join('|').toLowerCase();
+  return j.includes('họ tên') || j.includes('ho ten') || j.includes('chức vụ') || j.includes('bhxh');
+}
+
+/** Read the HR source sheet via its public CSV export and upsert members. */
+export async function syncMembersFromSource(): Promise<SyncResult> {
+  const id = process.env.SHEET_HR_SOURCE_ID;
+  const gid = process.env.SHEET_HR_SOURCE_GID || '0';
+  if (!id) throw new ApiError(400, 'SHEET_HR_SOURCE_ID chưa được cấu hình');
+
+  const url = `https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gid}`;
+  const res = await fetch(url, { redirect: 'follow' });
+  if (!res.ok) {
+    throw new ApiError(
+      502,
+      `Không đọc được sheet nhân sự (HTTP ${res.status}). Hãy mở share sheet ở chế độ "Anyone with the link – Viewer", hoặc quản lý thành viên trong màn Quản trị.`,
+    );
+  }
+  const text = await res.text();
+  if (/<html/i.test(text.slice(0, 300))) {
+    throw new ApiError(502, 'Sheet nhân sự chưa share công khai — không tải được CSV.');
+  }
+
+  const rows = parseCsv(text);
+  if (rows.length === 0) throw new ApiError(400, 'Sheet nhân sự trống');
+  const start = looksLikeHeader(rows[0] ?? []) ? 1 : 0;
+  const people: HrPerson[] = [];
+  for (let i = start; i < rows.length; i++) {
+    const p = parseHrRow(rows[i] ?? []);
+    if (p) people.push(p);
+  }
+  return upsertHrPeople(people);
 }

@@ -1,64 +1,72 @@
-import { readObjects, upsertByKeys } from '../sheets/repo.js';
-import { inRange } from '../lib/scores.js';
+import { q } from '../db/client.js';
 import type { AttendanceRow, AttendanceMode } from '../types.js';
 
-export function rowToAttendance(r: Record<string, string>): AttendanceRow {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToAttendance(r: any): AttendanceRow {
   return {
-    date: r['Date'] || '',
-    memberId: r['MemberID'] || '',
-    name: r['Name'] || '',
-    morningInAt: r['MorningInAt'] || '',
-    morningOutAt: r['MorningOutAt'] || '',
-    afternoonInAt: r['AfternoonInAt'] || '',
-    afternoonOutAt: r['AfternoonOutAt'] || '',
-    lat: r['Lat'] ? Number(r['Lat']) : undefined,
-    lng: r['Lng'] ? Number(r['Lng']) : undefined,
-    distM: r['DistM'] ? Number(r['DistM']) : undefined,
-    dayFraction: Number(r['DayFraction'] || 0) || 0,
-    mode: (r['Mode'] || 'office') as AttendanceMode,
-    status: r['Status'] || '',
-    note: r['Note'] || '',
+    date: r.date || '',
+    memberId: r.member_id || '',
+    name: r.name || '',
+    morningInAt: r.morning_in_at || '',
+    morningOutAt: r.morning_out_at || '',
+    afternoonInAt: r.afternoon_in_at || '',
+    afternoonOutAt: r.afternoon_out_at || '',
+    lat: r.lat == null ? undefined : Number(r.lat),
+    lng: r.lng == null ? undefined : Number(r.lng),
+    distM: r.dist_m == null ? undefined : Number(r.dist_m),
+    dayFraction: Number(r.day_fraction || 0) || 0,
+    mode: (r.mode || 'office') as AttendanceMode,
+    status: r.status || '',
+    note: r.note || '',
   };
 }
 
-export async function getAllAttendance(opts?: { fresh?: boolean }): Promise<AttendanceRow[]> {
-  const rows = await readObjects('Attendance', opts);
-  return rows.filter((r) => (r['Date'] || '').trim() && (r['MemberID'] || '').trim()).map(rowToAttendance);
+export async function getAllAttendance(): Promise<AttendanceRow[]> {
+  const rows = await q('SELECT * FROM attendance');
+  return rows.map(rowToAttendance);
 }
 
 export async function getMemberDate(memberId: string, date: string): Promise<AttendanceRow | undefined> {
-  return (await getAllAttendance()).find((a) => a.memberId === memberId && a.date === date);
+  const rows = await q('SELECT * FROM attendance WHERE member_id = $1 AND date = $2 LIMIT 1', [memberId, date]);
+  return rows.length ? rowToAttendance(rows[0]) : undefined;
 }
 
 export async function getForMemberRange(memberId: string, start: string, end: string): Promise<AttendanceRow[]> {
-  return (await getAllAttendance())
-    .filter((a) => a.memberId === memberId && inRange(a.date, start, end))
-    .sort((a, b) => (a.date < b.date ? 1 : -1));
+  const rows = await q(
+    'SELECT * FROM attendance WHERE member_id = $1 AND date BETWEEN $2 AND $3 ORDER BY date DESC',
+    [memberId, start, end],
+  );
+  return rows.map(rowToAttendance);
 }
 
 export async function getForDate(date: string): Promise<AttendanceRow[]> {
-  return (await getAllAttendance()).filter((a) => a.date === date);
+  const rows = await q('SELECT * FROM attendance WHERE date = $1 ORDER BY name', [date]);
+  return rows.map(rowToAttendance);
 }
 
 export async function saveAttendance(a: AttendanceRow): Promise<void> {
-  await upsertByKeys(
-    'Attendance',
-    { Date: a.date, MemberID: a.memberId },
-    {
-      Date: a.date,
-      MemberID: a.memberId,
-      Name: a.name,
-      MorningInAt: a.morningInAt || '',
-      MorningOutAt: a.morningOutAt || '',
-      AfternoonInAt: a.afternoonInAt || '',
-      AfternoonOutAt: a.afternoonOutAt || '',
-      Lat: a.lat ?? '',
-      Lng: a.lng ?? '',
-      DistM: a.distM ?? '',
-      DayFraction: a.dayFraction,
-      Mode: a.mode,
-      Status: a.status,
-      Note: a.note || '',
-    },
+  await q(
+    `INSERT INTO attendance (date, member_id, name, morning_in_at, morning_out_at, afternoon_in_at, afternoon_out_at,
+                             lat, lng, dist_m, day_fraction, mode, status, note)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+     ON CONFLICT (date, member_id) DO UPDATE SET
+       name = EXCLUDED.name,
+       morning_in_at = EXCLUDED.morning_in_at,
+       morning_out_at = EXCLUDED.morning_out_at,
+       afternoon_in_at = EXCLUDED.afternoon_in_at,
+       afternoon_out_at = EXCLUDED.afternoon_out_at,
+       lat = EXCLUDED.lat,
+       lng = EXCLUDED.lng,
+       dist_m = EXCLUDED.dist_m,
+       day_fraction = EXCLUDED.day_fraction,
+       mode = EXCLUDED.mode,
+       status = EXCLUDED.status,
+       note = EXCLUDED.note`,
+    [
+      a.date, a.memberId, a.name,
+      a.morningInAt || '', a.morningOutAt || '', a.afternoonInAt || '', a.afternoonOutAt || '',
+      a.lat ?? null, a.lng ?? null, a.distM ?? null,
+      a.dayFraction, a.mode, a.status, a.note || '',
+    ],
   );
 }

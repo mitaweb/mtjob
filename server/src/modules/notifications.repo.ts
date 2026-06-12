@@ -1,4 +1,4 @@
-import { readObjects, appendObject, updateWhere, upsertByKey } from '../sheets/repo.js';
+import { q } from '../db/client.js';
 
 export interface NotificationRow {
   id: string;
@@ -21,62 +21,60 @@ export interface PushSubscriptionRow {
 }
 
 export async function addNotification(n: NotificationRow): Promise<void> {
-  await appendObject('Notifications', {
-    NotifID: n.id,
-    MemberID: n.memberId,
-    Type: n.type,
-    Title: n.title,
-    Body: n.body,
-    CreatedAt: n.createdAt,
-    ReadAt: n.readAt || '',
-  });
+  await q(
+    `INSERT INTO notifications (notif_id, member_id, type, title, body, created_at, read_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [n.id, n.memberId, n.type, n.title, n.body, n.createdAt, n.readAt || ''],
+  );
 }
 
 export async function getNotifications(memberId: string, limit = 50): Promise<NotificationRow[]> {
-  const rows = await readObjects('Notifications');
-  return rows
-    .filter((r) => r['MemberID'] === memberId && (r['NotifID'] || '').trim())
-    .map((r) => ({
-      id: r['NotifID'] || '',
-      memberId: r['MemberID'] || '',
-      type: r['Type'] || '',
-      title: r['Title'] || '',
-      body: r['Body'] || '',
-      createdAt: r['CreatedAt'] || '',
-      readAt: r['ReadAt'] || '',
-    }))
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-    .slice(0, limit);
+  const rows = await q(
+    'SELECT * FROM notifications WHERE member_id = $1 ORDER BY created_at DESC LIMIT $2',
+    [memberId, limit],
+  );
+  return rows.map((r) => ({
+    id: r.notif_id || '',
+    memberId: r.member_id || '',
+    type: r.type || '',
+    title: r.title || '',
+    body: r.body || '',
+    createdAt: r.created_at || '',
+    readAt: r.read_at || '',
+  }));
 }
 
 export async function markRead(notifId: string): Promise<boolean> {
-  return updateWhere('Notifications', 'NotifID', notifId, { ReadAt: new Date().toISOString() });
+  const rows = await q(
+    'UPDATE notifications SET read_at = $1 WHERE notif_id = $2 RETURNING notif_id',
+    [new Date().toISOString(), notifId],
+  );
+  return rows.length > 0;
 }
 
 export async function getSubscriptions(memberId?: string): Promise<PushSubscriptionRow[]> {
-  const rows = await readObjects('PushSubscriptions');
-  return rows
-    .filter((r) => (r['Endpoint'] || '').trim() && (!memberId || r['MemberID'] === memberId))
-    .map((r) => ({
-      subId: r['SubID'] || '',
-      memberId: r['MemberID'] || '',
-      endpoint: r['Endpoint'] || '',
-      p256dh: r['P256dh'] || '',
-      auth: r['Auth'] || '',
-      ua: r['UA'] || '',
-      createdAt: r['CreatedAt'] || '',
-    }));
+  const rows = memberId
+    ? await q('SELECT * FROM push_subscriptions WHERE member_id = $1', [memberId])
+    : await q('SELECT * FROM push_subscriptions');
+  return rows.map((r) => ({
+    subId: r.sub_id || '',
+    memberId: r.member_id || '',
+    endpoint: r.endpoint || '',
+    p256dh: r.p256dh || '',
+    auth: r.auth || '',
+    ua: r.ua || '',
+    createdAt: r.created_at || '',
+  }));
 }
 
 export async function saveSubscription(sub: PushSubscriptionRow): Promise<void> {
   // Endpoint is unique per browser/device → upsert on it.
-  await upsertByKey('PushSubscriptions', 'Endpoint', {
-    SubID: sub.subId,
-    MemberID: sub.memberId,
-    Endpoint: sub.endpoint,
-    P256dh: sub.p256dh,
-    Auth: sub.auth,
-    UA: sub.ua,
-    CreatedAt: sub.createdAt,
-  });
+  await q(
+    `INSERT INTO push_subscriptions (endpoint, sub_id, member_id, p256dh, auth, ua, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
+     ON CONFLICT (endpoint) DO UPDATE SET
+       member_id = EXCLUDED.member_id, p256dh = EXCLUDED.p256dh,
+       auth = EXCLUDED.auth, ua = EXCLUDED.ua`,
+    [sub.endpoint, sub.subId, sub.memberId, sub.p256dh, sub.auth, sub.ua, sub.createdAt],
+  );
 }

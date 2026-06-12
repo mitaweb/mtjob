@@ -1,21 +1,22 @@
-// Data access for Members (read side). Writes happen via admin sync / scripts.
-import { readObjects } from '../sheets/repo.js';
+// Data access for members (Postgres).
+import { q } from '../db/client.js';
 import type { Member, Role, Team } from '../types.js';
 
-export function rowToMember(r: Record<string, string>): Member {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToMember(r: any): Member {
   return {
-    id: r['MemberID'] || '',
-    fullName: r['FullName'] || '',
-    dob: r['DOB'] || null,
-    position: r['Position'] || '',
-    teamId: (r['TeamID'] || '') as Team,
-    role: ((r['Role'] || 'member') as Role),
-    salary: Number(r['Salary'] || 0) || 0,
-    bhxh: Number(r['BHXH'] || 0) || 0,
-    joinDate: r['JoinDate'] || null,
-    email: r['Email'] || '',
-    passwordHash: r['PasswordHash'] || '',
-    active: /^(true|1|x|yes|co|có)$/i.test((r['Active'] || '').trim()),
+    id: r.member_id || '',
+    fullName: r.full_name || '',
+    dob: r.dob || null,
+    position: r.position || '',
+    teamId: (r.team_id || '') as Team,
+    role: (r.role || 'member') as Role,
+    salary: Number(r.salary || 0) || 0,
+    bhxh: Number(r.bhxh || 0) || 0,
+    joinDate: r.join_date || null,
+    email: r.email || '',
+    passwordHash: r.password_hash || '',
+    active: !!r.active,
   };
 }
 
@@ -26,28 +27,55 @@ export function publicMember(m: Member): PublicMember {
   return rest;
 }
 
-export async function getAllMembers(opts?: { fresh?: boolean }): Promise<Member[]> {
-  const rows = await readObjects('Members', opts);
-  return rows.filter((r) => (r['MemberID'] || '').trim()).map(rowToMember);
+export async function getAllMembers(): Promise<Member[]> {
+  const rows = await q('SELECT * FROM members ORDER BY full_name');
+  return rows.map(rowToMember);
 }
 
 export async function getActiveMembers(): Promise<Member[]> {
-  return (await getAllMembers()).filter((m) => m.active);
+  const rows = await q('SELECT * FROM members WHERE active = true ORDER BY full_name');
+  return rows.map(rowToMember);
 }
 
 export async function findByEmail(email: string): Promise<Member | undefined> {
-  const e = email.trim().toLowerCase();
-  return (await getAllMembers()).find((m) => m.email.trim().toLowerCase() === e);
+  const rows = await q('SELECT * FROM members WHERE lower(email) = lower($1) LIMIT 1', [email.trim()]);
+  return rows.length ? rowToMember(rows[0]) : undefined;
 }
 
 export async function findById(id: string): Promise<Member | undefined> {
-  return (await getAllMembers()).find((m) => m.id === id);
+  const rows = await q('SELECT * FROM members WHERE member_id = $1 LIMIT 1', [id]);
+  return rows.length ? rowToMember(rows[0]) : undefined;
 }
 
 export async function membersInTeam(teamId: string): Promise<Member[]> {
-  return (await getActiveMembers()).filter((m) => m.teamId === teamId);
+  const rows = await q('SELECT * FROM members WHERE active = true AND team_id = $1 ORDER BY full_name', [teamId]);
+  return rows.map(rowToMember);
 }
 
 export async function getDirectors(): Promise<Member[]> {
-  return (await getActiveMembers()).filter((m) => m.role === 'director');
+  const rows = await q("SELECT * FROM members WHERE active = true AND role = 'director'");
+  return rows.map(rowToMember);
+}
+
+export async function upsertMember(m: Member): Promise<void> {
+  await q(
+    `INSERT INTO members (member_id, full_name, dob, position, team_id, role, salary, bhxh, join_date, email, password_hash, active)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+     ON CONFLICT (member_id) DO UPDATE SET
+       full_name = EXCLUDED.full_name,
+       dob = EXCLUDED.dob,
+       position = EXCLUDED.position,
+       team_id = EXCLUDED.team_id,
+       role = EXCLUDED.role,
+       salary = EXCLUDED.salary,
+       bhxh = EXCLUDED.bhxh,
+       join_date = EXCLUDED.join_date,
+       email = EXCLUDED.email,
+       password_hash = EXCLUDED.password_hash,
+       active = EXCLUDED.active`,
+    [
+      m.id, m.fullName, m.dob || '', m.position, m.teamId, m.role,
+      m.salary, m.bhxh, m.joinDate || '', m.email, m.passwordHash, m.active,
+    ],
+  );
 }

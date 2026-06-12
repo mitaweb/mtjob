@@ -1,11 +1,7 @@
-import { readObjects, appendObject, updateWhere } from '../sheets/repo.js';
+import { q } from '../db/client.js';
 import type { RequestScope, RequestStatus } from '../types.js';
 
 export type RequestKind = 'online' | 'leave';
-const TAB: Record<RequestKind, 'OnlineRequests' | 'LeaveRequests'> = {
-  online: 'OnlineRequests',
-  leave: 'LeaveRequests',
-};
 
 export interface RequestRow {
   kind: RequestKind;
@@ -26,80 +22,106 @@ export interface RequestRow {
   createdAt: string;
 }
 
-function rowToReq(kind: RequestKind, r: Record<string, string>): RequestRow {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToReq(r: any): RequestRow {
   return {
-    kind,
-    id: r['ReqID'] || '',
-    memberId: r['MemberID'] || '',
-    name: r['Name'] || '',
-    dates: (r['Dates'] || '').split(',').map((s) => s.trim()).filter(Boolean),
-    scope: (r['Scope'] || undefined) as RequestScope | undefined,
-    type: r['Type'] || undefined,
-    reason: r['Reason'] || '',
-    leaderStatus: (r['LeaderStatus'] || 'pending') as RequestStatus,
-    leaderBy: r['LeaderBy'] || '',
-    leaderAt: r['LeaderAt'] || '',
-    directorStatus: (r['DirectorStatus'] || 'pending') as RequestStatus,
-    directorBy: r['DirectorBy'] || '',
-    directorAt: r['DirectorAt'] || '',
-    finalStatus: (r['FinalStatus'] || 'pending') as RequestStatus,
-    createdAt: r['CreatedAt'] || '',
+    kind: (r.kind || 'online') as RequestKind,
+    id: r.req_id || '',
+    memberId: r.member_id || '',
+    name: r.name || '',
+    dates: String(r.dates || '').split(',').map((s: string) => s.trim()).filter(Boolean),
+    scope: (r.scope || undefined) as RequestScope | undefined,
+    type: r.type || undefined,
+    reason: r.reason || '',
+    leaderStatus: (r.leader_status || 'pending') as RequestStatus,
+    leaderBy: r.leader_by || '',
+    leaderAt: r.leader_at || '',
+    directorStatus: (r.director_status || 'pending') as RequestStatus,
+    directorBy: r.director_by || '',
+    directorAt: r.director_at || '',
+    finalStatus: (r.final_status || 'pending') as RequestStatus,
+    createdAt: r.created_at || '',
   };
 }
 
 export async function getRequests(kind: RequestKind): Promise<RequestRow[]> {
-  const rows = await readObjects(TAB[kind]);
-  return rows.filter((r) => (r['ReqID'] || '').trim()).map((r) => rowToReq(kind, r));
+  const rows = await q('SELECT * FROM requests WHERE kind = $1 ORDER BY created_at DESC', [kind]);
+  return rows.map(rowToReq);
 }
 
 export async function getAllRequests(): Promise<RequestRow[]> {
-  const [online, leave] = await Promise.all([getRequests('online'), getRequests('leave')]);
-  return [...online, ...leave].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const rows = await q('SELECT * FROM requests ORDER BY created_at DESC');
+  return rows.map(rowToReq);
 }
 
 export async function findRequest(kind: RequestKind, id: string): Promise<RequestRow | undefined> {
-  return (await getRequests(kind)).find((r) => r.id === id);
+  const rows = await q('SELECT * FROM requests WHERE kind = $1 AND req_id = $2 LIMIT 1', [kind, id]);
+  return rows.length ? rowToReq(rows[0]) : undefined;
 }
 
 export async function addRequest(row: RequestRow): Promise<void> {
-  await appendObject(TAB[row.kind], {
-    ReqID: row.id,
-    MemberID: row.memberId,
-    Name: row.name,
-    Dates: row.dates.join(','),
-    Scope: row.scope || '',
-    Type: row.type || '',
-    Reason: row.reason,
-    LeaderStatus: row.leaderStatus,
-    LeaderBy: row.leaderBy,
-    LeaderAt: row.leaderAt,
-    DirectorStatus: row.directorStatus,
-    DirectorBy: row.directorBy,
-    DirectorAt: row.directorAt,
-    FinalStatus: row.finalStatus,
-    CreatedAt: row.createdAt,
-  });
+  await q(
+    `INSERT INTO requests (req_id, kind, member_id, name, dates, scope, type, reason,
+                           leader_status, leader_by, leader_at,
+                           director_status, director_by, director_at, final_status, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+    [
+      row.id, row.kind, row.memberId, row.name, row.dates.join(','),
+      row.scope || '', row.type || '', row.reason,
+      row.leaderStatus, row.leaderBy, row.leaderAt,
+      row.directorStatus, row.directorBy, row.directorAt, row.finalStatus, row.createdAt,
+    ],
+  );
 }
+
+// Patch keys keep the legacy sheet-style names used by requests.service.
+const PATCH_COLS: Record<string, string> = {
+  LeaderStatus: 'leader_status',
+  LeaderBy: 'leader_by',
+  LeaderAt: 'leader_at',
+  DirectorStatus: 'director_status',
+  DirectorBy: 'director_by',
+  DirectorAt: 'director_at',
+  FinalStatus: 'final_status',
+};
 
 export async function updateRequest(
   kind: RequestKind,
   id: string,
   patch: Record<string, unknown>,
 ): Promise<boolean> {
-  return updateWhere(TAB[kind], 'ReqID', id, patch);
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  for (const [k, v] of Object.entries(patch)) {
+    const col = PATCH_COLS[k];
+    if (!col) continue;
+    params.push(v == null ? '' : String(v));
+    sets.push(`${col} = $${params.length}`);
+  }
+  if (sets.length === 0) return false;
+  params.push(kind, id);
+  const rows = await q(
+    `UPDATE requests SET ${sets.join(', ')} WHERE kind = $${params.length - 1} AND req_id = $${params.length} RETURNING req_id`,
+    params,
+  );
+  return rows.length > 0;
 }
 
 /** Returns the approved-online scope covering `date` for a member, else null. */
 export async function approvedOnlineScope(memberId: string, date: string): Promise<RequestScope | null> {
-  const reqs = await getRequests('online');
-  const hit = reqs.find(
-    (r) => r.memberId === memberId && r.finalStatus === 'approved' && r.dates.includes(date),
+  const rows = await q(
+    "SELECT * FROM requests WHERE kind = 'online' AND member_id = $1 AND final_status = 'approved'",
+    [memberId],
   );
+  const hit = rows.map(rowToReq).find((r) => r.dates.includes(date));
   return hit?.scope ?? null;
 }
 
 /** Returns true if an approved leave covers `date`. */
 export async function hasApprovedLeave(memberId: string, date: string): Promise<boolean> {
-  const reqs = await getRequests('leave');
-  return reqs.some((r) => r.memberId === memberId && r.finalStatus === 'approved' && r.dates.includes(date));
+  const rows = await q(
+    "SELECT * FROM requests WHERE kind = 'leave' AND member_id = $1 AND final_status = 'approved'",
+    [memberId],
+  );
+  return rows.map(rowToReq).some((r) => r.dates.includes(date));
 }

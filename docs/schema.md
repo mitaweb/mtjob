@@ -1,37 +1,37 @@
-# Cấu trúc dữ liệu (các tab Google Sheet)
+# Cấu trúc dữ liệu (Postgres)
 
-Nguồn chân lý: `server/src/sheets/schema.ts` (script `setup-sheet` tạo đúng theo đây).
+Nguồn chân lý: `server/src/db/schema.ts` (script `setup-db` tạo đúng theo đây).
+Ngày/giờ lưu dạng text ISO (`YYYY-MM-DD`, ISO datetime) — so sánh theo thứ tự từ điển.
 
-| Tab | Cột |
+| Bảng | Cột chính |
 |---|---|
-| `Members` | MemberID, FullName, DOB, Position, TeamID, Role, Salary, BHXH, JoinDate, Email, PasswordHash, Active |
-| `Teams` | TeamID, TeamName, LeaderMemberID |
-| `TaskCatalog` | TaskCode, TaskName, Points, Active, Note |
-| `Tasks` | TaskID, CreatedAt, MemberID, MemberName, TeamID, TaskCode, TaskName, Points, CompletedAt, Source, Note |
-| `Attendance` | Date, MemberID, Name, MorningInAt, MorningOutAt, AfternoonInAt, AfternoonOutAt, Lat, Lng, DistM, DayFraction, Mode, Status, Note |
-| `OnlineRequests` | ReqID, MemberID, Name, Dates, Scope, Reason, LeaderStatus, LeaderBy, LeaderAt, DirectorStatus, DirectorBy, DirectorAt, FinalStatus, CreatedAt |
-| `LeaveRequests` | ReqID, MemberID, Name, Dates, Type, Reason, LeaderStatus, LeaderBy, LeaderAt, DirectorStatus, DirectorBy, DirectorAt, FinalStatus, CreatedAt |
-| `Holidays` | Date, Name, Year |
-| `Config` | Key, Value |
-| `PushSubscriptions` | SubID, MemberID, Endpoint, P256dh, Auth, UA, CreatedAt |
-| `Notifications` | NotifID, MemberID, Type, Title, Body, CreatedAt, ReadAt |
-| `MonthlyScores` | Year, Month, MemberID, TotalPoints, Rank, BonusVND |
-| `Payroll` | Year, Month, MemberID, StandardDays, ActualDays, GrossSalary, BHXH, NetSalary |
+| `members` | member_id (PK), full_name, dob, position, team_id, role, salary, bhxh, join_date, email, password_hash, active |
+| `teams` | team_id (PK), team_name, leader_member_id |
+| `task_catalog` | task_code (PK), task_name, points, active, note |
+| `tasks` | task_id (PK), created_at, member_id, member_name, team_id, task_code, task_name, points, completed_at, source, note |
+| `attendance` | (date, member_id) PK, name, morning_in_at/out, afternoon_in_at/out, lat, lng, dist_m, day_fraction, mode, status, note |
+| `requests` | req_id (PK), kind (online/leave), member_id, name, dates, scope, type, reason, leader_*/director_* status-by-at, final_status, created_at |
+| `holidays` | date (PK), name, year |
+| `config` | key (PK), value |
+| `push_subscriptions` | endpoint (PK), sub_id, member_id, p256dh, auth, ua, created_at |
+| `notifications` | notif_id (PK), member_id, type, title, body, created_at, read_at |
+| `monthly_scores` | (year, month, member_id) PK, total_points, rank, bonus_vnd |
+| `payroll` | (year, month, member_id) PK, standard_days, actual_days, gross_salary, bhxh, net_salary |
 
-## Khoá & quy ước
-- `Members`: khoá `MemberID`. `Active` = `TRUE/FALSE`. `Role` ∈ member/leader/director/admin.
-- `Attendance`: khoá ghép (`Date` + `MemberID`). `DayFraction` ∈ {0, 0.5, 1}. `Mode` ∈ office/online/leave/holiday.
-- `Tasks`: ghi nối (append). Điểm lấy từ `TaskCatalog` theo `TaskCode`.
+## Quy ước
+- `members.role` ∈ member / leader / director / admin. `attendance.day_fraction` ∈ {0, 0.5, 1}.
+- `attendance.mode` ∈ office / online / leave / holiday. `requests.final_status` ∈ pending / approved / rejected.
+- `tasks` ghi nối (append); điểm lấy từ `task_catalog` theo `task_code`.
 
-## Config (Key/Value)
+## Config (key/value)
 | Key | Mặc định | Ý nghĩa |
 |---|---|---|
 | companyLat / companyLng | 10.762622 / 106.660172 | Toạ độ công ty (đổi theo thực tế) |
 | checkinRadiusM | 150 | Bán kính cho phép chấm công (m) |
 | morningStart / morningEnd | 08:30 / 12:00 | Ca sáng |
 | afternoonStart / afternoonEnd | 13:30 / 17:00 | Ca chiều |
-| dailyReportTime | 18:00 | Giờ gửi báo cáo ngày |
-| monthlyReportDay | 1 | Ngày gửi tổng kết tháng (08:30) |
+| dailyReportTime | 18:00 | Giờ gửi báo cáo ngày (chế độ node-cron) |
+| monthlyReportDay | 1 | Ngày gửi tổng kết tháng |
 | bonusThreshold / bonusStep / bonusAmount | 6000 / 1000 / 800000 | Công thức thưởng |
 | bhxhMode | direct | `direct` = trừ thẳng cột BHXH; `percent` = 10.5% × cơ sở |
 | tz | Asia/Ho_Chi_Minh | Múi giờ |

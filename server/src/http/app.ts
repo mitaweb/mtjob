@@ -25,8 +25,7 @@ export function createApp() {
       ok: true,
       ts: Date.now(),
       env: {
-        sheetDbId: !!process.env.SHEET_DB_ID,
-        googleCreds: !!(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS),
+        databaseUrl: !!(process.env.DATABASE_URL || process.env.POSTGRES_URL),
         jwtSecret: !!process.env.JWT_SECRET,
         vapid: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
         cronSecret: !!process.env.CRON_SECRET,

@@ -15,13 +15,11 @@ npm install --prefix server
 npm install --prefix web
 
 # Bí mật
-cp .env.example server/.env        # điền SHEET_DB_ID, GEMINI_API_KEY, VAPID, ...
-# đặt service-account.json vào server/ (chmod 600), trỏ GOOGLE_APPLICATION_CREDENTIALS
+cp .env.example server/.env        # điền DATABASE_URL (Postgres), VAPID, JWT_SECRET...
 
-# Khởi tạo dữ liệu (1 lần)
-npm run setup-sheet --prefix server
-npm run sync-members --prefix server
-npm run gemini-auth --prefix server        # OAuth Gemini -> dán GEMINI_OAUTH_REFRESH_TOKEN vào .env
+# Khởi tạo dữ liệu (1 lần): bảng + seed + thành viên + admin
+npm run setup-db --prefix server
+# (tuỳ chọn) bật AI: GEMINI_API_KEY, hoặc npm run gemini-auth --prefix server (OAuth)
 ```
 
 ## 3. Build frontend
