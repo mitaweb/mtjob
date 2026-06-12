@@ -81,6 +81,7 @@ export interface AppConfig {
   bonusAmount: number;
   bhxhMode: 'direct' | 'percent';
   tz: string;
+  taskSheetUrl: string;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -98,4 +99,5 @@ export const DEFAULT_CONFIG: AppConfig = {
   bonusAmount: 800000,
   bhxhMode: 'direct',
   tz: 'Asia/Ho_Chi_Minh',
+  taskSheetUrl: '',
 };

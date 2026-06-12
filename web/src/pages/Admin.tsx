@@ -26,6 +26,16 @@ export default function Admin() {
     }
   }
 
+  async function syncCatalog() {
+    setMsg('Đang đồng bộ bảng điểm…');
+    try {
+      const r = await api<{ updated: number; tabs: string[] }>('/admin/sync-catalog', { method: 'POST' });
+      setMsg(`Đã cập nhật ${r.updated} đầu việc từ: ${r.tabs.join(', ')}`);
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+  }
+
   async function setPassword(id: string) {
     const password = pwd[id];
     if (!password || password.length < 6) {
@@ -43,14 +53,21 @@ export default function Admin() {
 
   return (
     <div className="space-y-4">
-      <div className="card flex items-center justify-between">
+      <div className="card flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-lg font-bold">Quản trị</h1>
-          <p className="text-sm text-slate-500">Đồng bộ nhân sự từ Google Sheet nguồn (Họ tên · Chức vụ · Lương · BHXH · Ngày vào · Năm sinh).</p>
+          <p className="text-sm text-slate-500">
+            Đồng bộ từ Google Sheet (cần share công khai): nhân sự (Họ tên · Chức vụ · Lương · BHXH…) và bảng điểm task (điểm = cột EXPERT).
+          </p>
         </div>
-        <button className="btn-primary" onClick={sync}>
-          Đồng bộ nhân sự
-        </button>
+        <div className="flex gap-2">
+          <button className="btn-primary" onClick={sync}>
+            Đồng bộ nhân sự
+          </button>
+          <button className="btn-ghost" onClick={syncCatalog}>
+            Đồng bộ bảng điểm
+          </button>
+        </div>
       </div>
       {msg && <div className="text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2">{msg}</div>}
 

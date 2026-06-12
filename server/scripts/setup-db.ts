@@ -16,10 +16,10 @@ async function main(): Promise<void> {
   for (const [key, value] of CONFIG_SEED) {
     await q('INSERT INTO config (key, value) VALUES ($1,$2) ON CONFLICT (key) DO NOTHING', [key, value]);
   }
-  for (const [code, name, points] of TASK_CATALOG_SEED) {
+  for (const [code, name, points, note] of TASK_CATALOG_SEED) {
     await q(
-      'INSERT INTO task_catalog (task_code, task_name, points, active) VALUES ($1,$2,$3,true) ON CONFLICT (task_code) DO NOTHING',
-      [code, name, points],
+      'INSERT INTO task_catalog (task_code, task_name, points, active, note) VALUES ($1,$2,$3,true,$4) ON CONFLICT (task_code) DO NOTHING',
+      [code, name, points, note || ''],
     );
   }
   for (const [date, name] of HOLIDAYS_2026_SEED) {

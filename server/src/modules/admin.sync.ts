@@ -3,6 +3,7 @@
 // the source sheet just has to be shared "anyone with the link – viewer".
 import { getAllMembers, upsertMember } from './members.repo.js';
 import { upsertTeam } from './teams.repo.js';
+import { upsertCatalogItem } from './catalog.repo.js';
 import { parseHrRow, removeAccents, type HrPerson } from '../lib/people.js';
 import { newId } from '../util/id.js';
 import { ApiError } from '../util/errors.js';
@@ -134,4 +135,61 @@ export async function syncMembersFromSource(): Promise<SyncResult> {
     if (p) people.push(p);
   }
   return upsertHrPeople(people);
+}
+
+export interface CatalogSyncResult {
+  updated: number;
+  tabs: string[];
+}
+
+/**
+ * Sync the task catalog from the points sheet (public CSV per tab).
+ * Each row: STT | Tên việc | EXPERT | MID | BEGINNER | Ghi chú — points = EXPERT.
+ * Tabs are configured as SHEET_TASKS_SOURCE_GIDS="gid:PREFIX,..." (e.g. "0:ADS,123:CON").
+ * Codes = PREFIX + STT (2 digits) so re-syncs update in place.
+ */
+export async function syncCatalogFromSource(): Promise<CatalogSyncResult> {
+  const id = process.env.SHEET_TASKS_SOURCE_ID;
+  if (!id) throw new ApiError(400, 'SHEET_TASKS_SOURCE_ID chưa được cấu hình');
+  const spec = process.env.SHEET_TASKS_SOURCE_GIDS || '0:ADS';
+
+  const pairs = spec
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((p) => {
+      const [gid, prefix] = p.split(':');
+      return { gid: (gid || '0').trim(), prefix: (prefix || 'TSK').trim().toUpperCase() };
+    });
+
+  let updated = 0;
+  const tabs: string[] = [];
+  for (const { gid, prefix } of pairs) {
+    const url = `https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gid}`;
+    const res = await fetch(url, { redirect: 'follow' });
+    if (!res.ok) {
+      throw new ApiError(502, `Không đọc được tab gid=${gid} (HTTP ${res.status}) — sheet điểm cần share "Anyone with the link – Viewer".`);
+    }
+    const text = await res.text();
+    if (/<html/i.test(text.slice(0, 300))) {
+      throw new ApiError(502, `Tab gid=${gid}: sheet điểm chưa share công khai.`);
+    }
+    for (const r of parseCsv(text)) {
+      const stt = Number(String(r[0] ?? '').trim());
+      const name = String(r[1] ?? '').trim();
+      const points = Number(String(r[2] ?? '').trim());
+      // Header/empty rows have a non-numeric STT or EXPERT column — skip them.
+      if (!Number.isFinite(stt) || stt <= 0 || !name || !Number.isFinite(points) || points <= 0) continue;
+      await upsertCatalogItem({
+        code: `${prefix}${String(stt).padStart(2, '0')}`,
+        name,
+        points,
+        active: true,
+        note: String(r[5] ?? '').trim(),
+      });
+      updated++;
+    }
+    tabs.push(`${prefix} (gid=${gid})`);
+  }
+  return { updated, tabs };
 }

@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "setup-db": "tsx scripts/setup-db.ts",
     "sync-members": "tsx scripts/sync-members.ts",
+    "sync-catalog": "tsx scripts/sync-catalog.ts",
     "gemini-auth": "tsx scripts/gemini-auth.ts",
     "job:daily": "tsx src/jobs/runDaily.ts",
     "job:monthly": "tsx src/jobs/runMonthly.ts"

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler, ApiError } from '../util/errors.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
-import { syncMembersFromSource } from './admin.sync.js';
+import { syncMembersFromSource, syncCatalogFromSource } from './admin.sync.js';
 import { getAllMembers, findById, publicMember, upsertMember } from './members.repo.js';
 import { upsertCatalogItem } from './catalog.repo.js';
 import { upsertHoliday } from './holidays.repo.js';
@@ -18,6 +18,13 @@ adminRouter.post(
   '/sync-members',
   asyncHandler(async (_req, res) => {
     res.json(await syncMembersFromSource());
+  }),
+);
+
+adminRouter.post(
+  '/sync-catalog',
+  asyncHandler(async (_req, res) => {
+    res.json(await syncCatalogFromSource());
   }),
 );
 

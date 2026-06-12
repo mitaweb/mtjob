@@ -14,6 +14,7 @@ export default function Scores() {
   const [score, setScore] = useState<MemberScore | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  const [sheetUrl, setSheetUrl] = useState('');
   const [code, setCode] = useState('');
   const [msg, setMsg] = useState('');
 
@@ -24,8 +25,11 @@ export default function Scores() {
   }
   useEffect(() => {
     load().catch((e) => setMsg((e as Error).message));
-    api<{ catalog: CatalogItem[] }>('/tasks/catalog')
-      .then((r) => setCatalog(r.catalog))
+    api<{ catalog: CatalogItem[]; sheetUrl?: string }>('/tasks/catalog')
+      .then((r) => {
+        setCatalog(r.catalog);
+        setSheetUrl(r.sheetUrl || '');
+      })
       .catch(() => {});
   }, []);
 
@@ -59,7 +63,19 @@ export default function Scores() {
       </div>
 
       <div className="card">
-        <h2 className="font-semibold mb-2">Ghi nhận task nhanh</h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="font-semibold">Ghi nhận task nhanh</h2>
+          {sheetUrl && (
+            <a
+              href={sheetUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm text-brand-600 underline whitespace-nowrap"
+            >
+              📄 Bảng điểm gốc ↗
+            </a>
+          )}
+        </div>
         <div className="flex gap-2">
           <select className="input" value={code} onChange={(e) => setCode(e.target.value)}>
             <option value="">— Chọn loại task —</option>

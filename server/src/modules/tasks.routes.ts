@@ -7,6 +7,7 @@ import { getAllTasks } from './tasks.repo.js';
 import { logTask } from './tasks.service.js';
 import { inRange } from '../lib/scores.js';
 import { nowTz, monthRange, todayIso } from '../lib/datetime.js';
+import { getConfig } from '../config.js';
 
 export const tasksRouter = Router();
 tasksRouter.use(requireAuth);
@@ -14,7 +15,8 @@ tasksRouter.use(requireAuth);
 tasksRouter.get(
   '/catalog',
   asyncHandler(async (_req, res) => {
-    res.json({ catalog: await getActiveCatalog() });
+    const cfg = await getConfig();
+    res.json({ catalog: await getActiveCatalog(), sheetUrl: cfg.taskSheetUrl });
   }),
 );
 
