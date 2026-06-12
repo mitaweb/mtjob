@@ -20,7 +20,9 @@ export function createApp() {
   app.use(express.json({ limit: '5mb' }));
 
   // Health + config diagnostics (booleans only — never leak secret values).
-  app.get('/api/health', (_req, res) => {
+  app.get('/api/health', async (_req, res) => {
+    const { geminiAvailable } = await import('../gemini/client.js');
+    const gemini = await geminiAvailable().catch(() => false);
     res.json({
       ok: true,
       ts: Date.now(),
@@ -29,7 +31,7 @@ export function createApp() {
         jwtSecret: !!process.env.JWT_SECRET,
         vapid: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
         cronSecret: !!process.env.CRON_SECRET,
-        gemini: !!(process.env.GEMINI_API_KEY || process.env.GEMINI_OAUTH_REFRESH_TOKEN || process.env.GEMINI_BASE_URL),
+        gemini,
       },
     });
   });

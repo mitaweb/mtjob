@@ -8,6 +8,7 @@ export default function Admin() {
   const [pwd, setPwd] = useState<Record<string, string>>({});
   const [aiOn, setAiOn] = useState<boolean | null>(null);
   const [authUrl, setAuthUrl] = useState('');
+  const [apiKey, setApiKey] = useState('');
 
   async function loadMembers() {
     const r = await api<{ members: User[] }>('/admin/members');
@@ -36,6 +37,23 @@ export default function Admin() {
     try {
       const r = await api<{ updated: number; tabs: string[] }>('/admin/sync-catalog', { method: 'POST' });
       setMsg(`Đã cập nhật ${r.updated} đầu việc từ: ${r.tabs.join(', ')}`);
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+  }
+
+  async function saveApiKey() {
+    const value = apiKey.trim();
+    if (!value.startsWith('AIza') || value.length < 30) {
+      setMsg('Key không hợp lệ — API key Gemini bắt đầu bằng "AIza...".');
+      return;
+    }
+    try {
+      await api('/admin/config', { body: { key: 'geminiApiKey', value } });
+      setApiKey('');
+      setMsg('Đã lưu API key ✅ — trợ lý AI bật ngay, không cần redeploy.');
+      const h = await api<{ env: { gemini: boolean } }>('/health');
+      setAiOn(!!h.env.gemini);
     } catch (e) {
       setMsg((e as Error).message);
     }
@@ -108,12 +126,11 @@ export default function Admin() {
               )}
             </h2>
             <p className="text-sm text-slate-500 mt-1">
-              Cách nhanh nhất: lấy API key tại{' '}
+              Lấy API key tại{' '}
               <a className="text-brand-600 underline" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
                 aistudio.google.com/apikey
               </a>{' '}
-              → thêm biến <code className="bg-slate-100 px-1 rounded">GEMINI_API_KEY</code> trên Vercel → Redeploy.
-              Hoặc đăng nhập Google (OAuth) nếu đã cấu hình OAuth Client:
+              rồi dán vào ô dưới — <b>hiệu lực ngay, không cần redeploy</b>. (Hoặc đăng nhập Google nếu đã cấu hình OAuth Client.)
             </p>
           </div>
           <div className="flex flex-col gap-2">
@@ -126,6 +143,18 @@ export default function Admin() {
               </a>
             )}
           </div>
+        </div>
+        <div className="mt-3 flex gap-2">
+          <input
+            className="input"
+            type="password"
+            placeholder="Dán API key (AIza...)"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+          />
+          <button className="btn-primary whitespace-nowrap" onClick={saveApiKey}>
+            Lưu key
+          </button>
         </div>
       </div>
 

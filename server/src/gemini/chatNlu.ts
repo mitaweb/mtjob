@@ -37,7 +37,7 @@ export function heuristic(message: string, catalog: TaskCatalogItem[]): ChatExtr
 }
 
 export async function interpret(message: string, catalog: TaskCatalogItem[]): Promise<ChatExtraction> {
-  if (!geminiAvailable()) return heuristic(message, catalog);
+  if (!(await geminiAvailable())) return heuristic(message, catalog);
   const codes = catalog.map((c) => `- ${c.code}: ${c.name} (${c.points}đ)`).join('\n');
   const prompt = [
     'Bạn là trợ lý ghi nhận công việc cho một agency marketing. Trả lời JSON đúng schema.',

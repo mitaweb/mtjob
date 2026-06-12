@@ -1,6 +1,7 @@
 // Calls the Gemini (Generative Language) REST API for structured JSON output.
-// Auth precedence: OAuth (Bearer access token) → API key (?key=).
+// Auth precedence: OAuth (Bearer) → API key (config DB → env) → local proxy (GEMINI_BASE_URL).
 import { oauthConfigured, getAccessToken } from './auth.js';
+import { getConfig } from '../config.js';
 
 // Base URL — override with GEMINI_BASE_URL to route through a local AI proxy
 // (e.g. cliproxyapi) that speaks the Gemini REST format.
@@ -12,8 +13,20 @@ export function geminiModel(): string {
   return process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 }
 
-export function geminiAvailable(): boolean {
-  return oauthConfigured() || !!process.env.GEMINI_API_KEY || !!process.env.GEMINI_BASE_URL;
+/** API key: ưu tiên key admin dán trong UI (config DB), sau đó tới env. */
+async function configuredApiKey(): Promise<string> {
+  try {
+    const cfg = await getConfig();
+    if (cfg.geminiApiKey) return cfg.geminiApiKey.trim();
+  } catch {
+    // DB chưa sẵn sàng — rơi về env.
+  }
+  return (process.env.GEMINI_API_KEY || '').trim();
+}
+
+export async function geminiAvailable(): Promise<boolean> {
+  if (oauthConfigured() || !!process.env.GEMINI_BASE_URL) return true;
+  return !!(await configuredApiKey());
 }
 
 /** Ask Gemini for a JSON object matching `schema` (responseSchema). */
@@ -28,12 +41,15 @@ export async function generateJson(prompt: string, schema: unknown): Promise<any
 
   if (oauthConfigured()) {
     headers['Authorization'] = `Bearer ${await getAccessToken()}`;
-  } else if (process.env.GEMINI_API_KEY) {
-    url += `?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`;
-  } else if (process.env.GEMINI_BASE_URL) {
-    // Local proxy (vd cliproxyapi) tự lo xác thực — không cần key.
   } else {
-    throw new Error('Gemini chưa cấu hình (cần OAuth, GEMINI_API_KEY, hoặc GEMINI_BASE_URL).');
+    const key = await configuredApiKey();
+    if (key) {
+      url += `?key=${encodeURIComponent(key)}`;
+    } else if (process.env.GEMINI_BASE_URL) {
+      // Proxy cục bộ (vd cliproxyapi) tự lo xác thực — không cần key.
+    } else {
+      throw new Error('Gemini chưa cấu hình (dán API key trong Quản trị, hoặc OAuth/GEMINI_BASE_URL).');
+    }
   }
 
   const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });

@@ -82,6 +82,7 @@ export interface AppConfig {
   bhxhMode: 'direct' | 'percent';
   tz: string;
   taskSheetUrl: string;
+  geminiApiKey: string; // lưu trong config DB để admin dán key ngay trên UI
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -100,4 +101,5 @@ export const DEFAULT_CONFIG: AppConfig = {
   bhxhMode: 'percent', // 10.5% x mức đóng BHXH (cột BHXH trong sheet nhân sự)
   tz: 'Asia/Ho_Chi_Minh',
   taskSheetUrl: '',
+  geminiApiKey: '',
 };
