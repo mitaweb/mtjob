@@ -145,6 +145,32 @@ CREATE TABLE IF NOT EXISTS payroll (
   net_salary    integer DEFAULT 0,
   PRIMARY KEY (year, month, member_id)
 );
+
+-- Tài chính: các bên (công nợ phải thu) + khoản thu/chi theo tháng.
+CREATE TABLE IF NOT EXISTS parties (
+  party_id          text PRIMARY KEY,
+  name              text NOT NULL,
+  start_date        text DEFAULT '',
+  due_day           integer DEFAULT 1,   -- ngày thu hàng tháng (1-31; >daysInMonth = cuối tháng)
+  receivable        integer DEFAULT 0,   -- số tiền phải thu mỗi kỳ
+  notify_member_ids text DEFAULT '',     -- csv member_id nhận nhắc thu
+  note              text DEFAULT '',
+  active            boolean DEFAULT true,
+  created_at        text DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS finance_entries (
+  entry_id   text PRIMARY KEY,
+  month      text NOT NULL,             -- YYYY-MM (kỳ kết số)
+  kind       text NOT NULL,             -- 'thu' | 'chi'
+  name       text NOT NULL,
+  amount     integer NOT NULL DEFAULT 0,
+  date       text DEFAULT '',           -- ngày thu/chi
+  recurring  boolean DEFAULT false,     -- lặp hàng tháng (để nhắc)
+  party_id   text DEFAULT '',
+  created_at text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS finance_entries_month_idx ON finance_entries (month);
 `;
 
 /** Seed rows for the config table (key/value). */

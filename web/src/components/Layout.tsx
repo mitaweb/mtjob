@@ -17,6 +17,7 @@ const NAV: NavItem[] = [
   { to: '/scores', label: 'Điểm', icon: '⭐', roles: ['member', 'leader', 'admin'] },
   { to: '/payroll', label: 'Lương', icon: '💵', roles: ['member', 'leader'] },
   { to: '/payroll-admin', label: 'Bảng lương', icon: '💰', roles: ['director', 'admin'] },
+  { to: '/finance', label: 'Tài chính', icon: '🧾', roles: ['director', 'admin', 'accountant'] },
   { to: '/requests', label: 'Đơn từ', icon: '📝' },
   { to: '/approvals', label: 'Duyệt đơn', icon: '✅', roles: ['leader', 'director', 'admin'] },
   { to: '/dashboard', label: 'Tổng quan', icon: '📊', roles: ['leader', 'director', 'admin'] },

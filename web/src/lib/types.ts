@@ -1,4 +1,27 @@
-export type Role = 'member' | 'leader' | 'director' | 'admin';
+export type Role = 'member' | 'leader' | 'director' | 'admin' | 'accountant';
+
+export interface Party {
+  id: string;
+  name: string;
+  startDate: string;
+  dueDay: number;
+  receivable: number;
+  notifyMemberIds: string[];
+  note: string;
+  active: boolean;
+  nextDue?: string;
+}
+
+export interface FinanceEntry {
+  id: string;
+  month: string;
+  kind: 'thu' | 'chi';
+  name: string;
+  amount: number;
+  date: string;
+  recurring: boolean;
+  partyId: string;
+}
 
 export interface User {
   id: string;

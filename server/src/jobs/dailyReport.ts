@@ -2,10 +2,39 @@ import { getActiveMembers, getDirectors } from '../modules/members.repo.js';
 import { getTeams } from '../modules/teams.repo.js';
 import { memberScore, ranking } from '../modules/scores.service.js';
 import { notify } from '../modules/notifications.service.js';
+import { getParties } from '../modules/finance.repo.js';
 import { birthdaysInMonth } from '../lib/people.js';
 import { formatVnd } from '../lib/money.js';
 import { formatMinutes } from '../lib/worktime.js';
-import { nowTz } from '../lib/datetime.js';
+import { nextDueDateIso, daysUntil } from '../lib/finance.js';
+import { nowTz, todayIso, fmtDate } from '../lib/datetime.js';
+
+const DUE_REMINDER_DAYS = 5;
+
+/** Nhắc thu tiền: 5 ngày trước hạn thu của từng bên → gửi cho người được chọn (mặc định giám đốc). */
+export async function runFinanceReminders(): Promise<void> {
+  const today = todayIso();
+  const parties = (await getParties()).filter((p) => p.active && p.receivable > 0);
+  if (parties.length === 0) return;
+  let directorIds: string[] | null = null;
+  for (const p of parties) {
+    const due = nextDueDateIso(p.dueDay, today);
+    if (daysUntil(due, today) !== DUE_REMINDER_DAYS) continue;
+    let recipients = p.notifyMemberIds;
+    if (recipients.length === 0) {
+      if (!directorIds) directorIds = (await getDirectors()).map((d) => d.id);
+      recipients = directorIds;
+    }
+    for (const id of recipients) {
+      await notify(id, {
+        type: 'finance_due',
+        title: 'Sắp tới hạn thu tiền 💰',
+        body: `${p.name}: ${formatVnd(p.receivable)} — hạn ${fmtDate(due)} (còn ${DUE_REMINDER_DAYS} ngày).`,
+        url: '/finance',
+      });
+    }
+  }
+}
 
 /** Daily personal + leader + director reports (birthdays + bonus included). */
 export async function runDailyReports(): Promise<void> {
@@ -63,4 +92,7 @@ export async function runDailyReports(): Promise<void> {
       url: '/dashboard',
     });
   }
+
+  // Nhắc thu tiền các bên sắp tới hạn.
+  await runFinanceReminders().catch((e) => console.error('[finance reminders]', e));
 }

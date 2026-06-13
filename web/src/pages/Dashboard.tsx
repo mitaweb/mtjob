@@ -3,13 +3,12 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recha
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { vnd, fmtMin } from '../lib/format';
-import type { MemberScore, PayrollLine } from '../lib/types';
+import type { MemberScore } from '../lib/types';
 
 export default function Dashboard() {
   const { user } = useAuth();
   const isDirector = user?.role === 'director' || user?.role === 'admin';
   const [scores, setScores] = useState<MemberScore[]>([]);
-  const [payroll, setPayroll] = useState<PayrollLine[]>([]);
   const [msg, setMsg] = useState('');
 
   useEffect(() => {
@@ -17,15 +16,6 @@ export default function Dashboard() {
     api<{ members: MemberScore[] }>(scoreUrl)
       .then((r) => setScores(r.members))
       .catch((e) => setMsg((e as Error).message));
-    // Lương là dữ liệu nhạy cảm: chỉ giám đốc/admin xem bảng lương chung;
-    // leader/thành viên xem lương của mình ở tab "Lương".
-    if (isDirector) {
-      api<{ lines: PayrollLine[] }>('/payroll/all')
-        .then((r) => setPayroll(r.lines))
-        .catch(() => {});
-    } else {
-      setPayroll([]);
-    }
   }, [isDirector]);
 
   const chartData = scores.map((s) => ({ name: s.fullName.split(' ').slice(-1)[0], points: s.monthPoints }));
@@ -76,32 +66,6 @@ export default function Dashboard() {
           </tbody>
         </table>
       </div>
-
-      {payroll.length > 0 && (
-        <div className="card overflow-x-auto">
-          <h2 className="font-semibold mb-2">Công & lương (kỳ hiện tại)</h2>
-          <table className="w-full text-sm">
-            <thead className="text-left text-slate-500">
-              <tr>
-                <th className="py-1">Họ tên</th>
-                <th>Công</th>
-                <th>Lương thực lãnh</th>
-              </tr>
-            </thead>
-            <tbody>
-              {payroll.map((p) => (
-                <tr key={p.memberId} className="border-t">
-                  <td className="py-1">{p.fullName}</td>
-                  <td>
-                    {p.actualDays}/{p.standardDays}
-                  </td>
-                  <td className="font-medium">{vnd(p.netSalary)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   );
 }
