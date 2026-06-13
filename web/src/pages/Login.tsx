@@ -19,7 +19,7 @@ export default function Login() {
     setErr('');
     try {
       await login(username.trim(), password);
-      navigate('/chat');
+      navigate('/');
     } catch (e) {
       setErr((e as Error).message);
     } finally {

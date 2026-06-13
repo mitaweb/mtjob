@@ -16,12 +16,22 @@ import Admin from './pages/Admin';
 import Inbox from './pages/Inbox';
 import Profile from './pages/Profile';
 
+/** Trang mặc định theo vai trò: giám đốc/admin -> Tổng quan, còn lại -> Trợ lý. */
+function homeFor(role?: Role): string {
+  return role === 'director' || role === 'admin' ? '/dashboard' : '/chat';
+}
+
 function Protected({ children, roles }: { children: ReactElement; roles?: Role[] }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="p-10 text-center text-slate-500">Đang tải…</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (roles && !roles.includes(user.role)) return <Navigate to="/chat" replace />;
+  if (roles && !roles.includes(user.role)) return <Navigate to={homeFor(user.role)} replace />;
   return children;
+}
+
+function Home() {
+  const { user } = useAuth();
+  return <Navigate to={homeFor(user?.role)} replace />;
 }
 
 export default function App() {
@@ -35,7 +45,7 @@ export default function App() {
           </Protected>
         }
       >
-        <Route path="/" element={<Navigate to="/chat" replace />} />
+        <Route path="/" element={<Home />} />
         <Route path="/chat" element={<Chat />} />
         <Route path="/attendance" element={<Attendance />} />
         <Route path="/scores" element={<Scores />} />

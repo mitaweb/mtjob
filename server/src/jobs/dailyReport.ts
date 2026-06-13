@@ -22,8 +22,9 @@ export async function runDailyReports(): Promise<void> {
     ? `\n🎂 Sinh nhật tháng này: ${birthdays.map((b) => b.fullName).join(', ')}. Chúc mừng sinh nhật! 🎉`
     : '';
 
-  // Personal report.
+  // Personal report (giám đốc không làm task → không gửi báo cáo điểm cá nhân).
   for (const m of members) {
+    if (m.role === 'director') continue;
     const s = await memberScore(m.id);
     const bonusLine = s.bonus > 0 ? `\n💰 Thưởng hiện tại: ${formatVnd(s.bonus)}.` : '';
     await notify(m.id, {

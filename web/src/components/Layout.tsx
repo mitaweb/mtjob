@@ -10,10 +10,11 @@ interface NavItem {
   roles?: Role[];
 }
 
+// Giám đốc không làm task → ẩn Trợ lý / Chấm công / Điểm.
 const NAV: NavItem[] = [
-  { to: '/chat', label: 'Trợ lý', icon: '💬' },
-  { to: '/attendance', label: 'Chấm công', icon: '📍' },
-  { to: '/scores', label: 'Điểm', icon: '⭐' },
+  { to: '/chat', label: 'Trợ lý', icon: '💬', roles: ['member', 'leader', 'admin'] },
+  { to: '/attendance', label: 'Chấm công', icon: '📍', roles: ['member', 'leader', 'admin'] },
+  { to: '/scores', label: 'Điểm', icon: '⭐', roles: ['member', 'leader', 'admin'] },
   { to: '/payroll', label: 'Lương', icon: '💵', roles: ['member', 'leader'] },
   { to: '/payroll-admin', label: 'Bảng lương', icon: '💰', roles: ['director', 'admin'] },
   { to: '/requests', label: 'Đơn từ', icon: '📝' },

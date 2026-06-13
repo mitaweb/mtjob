@@ -39,6 +39,7 @@ export async function runMonthlyReport(): Promise<void> {
   //    — họ không vào bảng xếp hạng nhưng vẫn có điểm/thưởng cá nhân).
   const members = await getActiveMembers();
   for (const m of members) {
+    if (m.role === 'director') continue; // giám đốc không có điểm/lương cá nhân
     const s = await memberScore(m.id, year, month);
     const r = ranked.find((x) => x.memberId === m.id);
     const p = payByMember.get(m.id);
