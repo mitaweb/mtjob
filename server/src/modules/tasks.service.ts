@@ -1,10 +1,29 @@
 import { addTask, completeTaskRow } from './tasks.repo.js';
 import { findById } from './members.repo.js';
 import { findCatalogItem } from './catalog.repo.js';
+import { teamLeaderId } from './teams.repo.js';
+import { notify } from './notifications.service.js';
 import { ApiError } from '../util/errors.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
 import type { TaskRow } from '../types.js';
+
+/** Báo cho leader của team khi một thành viên hoàn thành task. Không làm hỏng luồng chính nếu lỗi. */
+async function notifyLeaderOnComplete(task: TaskRow): Promise<void> {
+  try {
+    if (!task.teamId) return;
+    const leaderId = await teamLeaderId(task.teamId);
+    if (!leaderId || leaderId === task.memberId) return; // leader tự làm thì không tự báo
+    await notify(leaderId, {
+      type: 'task_done',
+      title: 'Thành viên hoàn thành task ✅',
+      body: `${task.memberName} đã hoàn thành "${task.taskName}" (+${task.points}đ).`,
+      url: '/dashboard',
+    });
+  } catch (e) {
+    console.warn('[task] không gửi được thông báo cho leader:', (e as Error).message);
+  }
+}
 
 export interface LogTaskInput {
   memberId: string;
@@ -41,6 +60,7 @@ export async function logTask(input: LogTaskInput): Promise<{ task: TaskRow; poi
     note: input.note || '',
   };
   await addTask(task);
+  await notifyLeaderOnComplete(task);
   return { task, points: item.points };
 }
 
@@ -82,5 +102,6 @@ export async function completeTask(
   const now = nowTz().toISOString();
   const task = await completeTaskRow(taskId, memberId, now);
   if (!task) throw new ApiError(404, 'Không tìm thấy task đang làm (có thể đã hoàn thành rồi)');
+  await notifyLeaderOnComplete(task);
   return { task, points: task.points };
 }
