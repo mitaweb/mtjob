@@ -64,6 +64,10 @@ export async function getDirectors(): Promise<Member[]> {
   return rows.map(rowToMember);
 }
 
+export async function deleteMember(id: string): Promise<void> {
+  await q('DELETE FROM members WHERE member_id = $1', [id]);
+}
+
 export async function upsertMember(m: Member): Promise<void> {
   await q(
     `INSERT INTO members (member_id, full_name, dob, position, team_id, role, salary, bhxh, join_date, username, email, password_hash, active)

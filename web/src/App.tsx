@@ -8,6 +8,7 @@ import Chat from './pages/Chat';
 import Attendance from './pages/Attendance';
 import Scores from './pages/Scores';
 import Payroll from './pages/Payroll';
+import AdminPayroll from './pages/AdminPayroll';
 import Requests from './pages/Requests';
 import Approvals from './pages/Approvals';
 import Dashboard from './pages/Dashboard';
@@ -39,6 +40,14 @@ export default function App() {
         <Route path="/attendance" element={<Attendance />} />
         <Route path="/scores" element={<Scores />} />
         <Route path="/payroll" element={<Payroll />} />
+        <Route
+          path="/payroll-admin"
+          element={
+            <Protected roles={['director', 'admin']}>
+              <AdminPayroll />
+            </Protected>
+          }
+        />
         <Route path="/requests" element={<Requests />} />
         <Route path="/inbox" element={<Inbox />} />
         <Route path="/profile" element={<Profile />} />
