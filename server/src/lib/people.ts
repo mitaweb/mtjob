@@ -28,6 +28,7 @@ export function parsePosition(positionRaw: string): ParsedPosition {
   let role: Role = 'member';
   if (noAccent.includes('giam doc')) role = 'director';
   else if (noAccent.includes('ke toan')) role = 'accountant';
+  else if (/\b(sale|account)\b/.test(noAccent)) role = 'sale';
 
   const leaderKeyword = noAccent.includes('leader') || noAccent.includes('truong');
   if (role === 'member' && leaderKeyword) role = 'leader';

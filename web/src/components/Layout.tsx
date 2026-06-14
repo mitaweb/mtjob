@@ -19,6 +19,7 @@ const NAV: NavItem[] = [
   { to: '/payroll', label: 'Lương', icon: '💵', roles: ['member', 'leader'] },
   { to: '/payroll-admin', label: 'Bảng lương', icon: '💰', roles: ['director', 'admin'] },
   { to: '/finance', label: 'Tài chính', icon: '🧾', roles: ['director', 'admin', 'accountant'] },
+  { to: '/crm', label: 'Khách hàng', icon: '🧑‍💼', roles: ['sale', 'director', 'admin'] },
   { to: '/requests', label: 'Đơn từ', icon: '📝' },
   { to: '/approvals', label: 'Duyệt đơn', icon: '✅', roles: ['leader', 'director', 'admin'] },
   { to: '/dashboard', label: 'Tổng quan', icon: '📊', roles: ['leader', 'director', 'admin'] },
@@ -32,6 +33,7 @@ const ROLE_LABEL: Record<string, string> = {
   director: 'Giám đốc',
   admin: 'Quản trị',
   accountant: 'Kế toán',
+  sale: 'Account',
 };
 
 export default function Layout() {

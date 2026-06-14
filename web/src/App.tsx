@@ -10,6 +10,7 @@ import Scores from './pages/Scores';
 import Payroll from './pages/Payroll';
 import AdminPayroll from './pages/AdminPayroll';
 import Finance from './pages/Finance';
+import CRM from './pages/CRM';
 import Requests from './pages/Requests';
 import Approvals from './pages/Approvals';
 import Dashboard from './pages/Dashboard';
@@ -20,6 +21,7 @@ import Profile from './pages/Profile';
 /** Trang mặc định theo vai trò: giám đốc/admin -> Tổng quan, còn lại -> Trợ lý. */
 function homeFor(role?: Role): string {
   if (role === 'accountant') return '/finance';
+  if (role === 'sale') return '/crm';
   return role === 'director' || role === 'admin' ? '/dashboard' : '/chat';
 }
 
@@ -65,6 +67,14 @@ export default function App() {
           element={
             <Protected roles={['director', 'admin', 'accountant']}>
               <Finance />
+            </Protected>
+          }
+        />
+        <Route
+          path="/crm"
+          element={
+            <Protected roles={['sale', 'director', 'admin']}>
+              <CRM />
             </Protected>
           }
         />

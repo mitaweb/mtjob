@@ -1,4 +1,25 @@
-export type Role = 'member' | 'leader' | 'director' | 'admin' | 'accountant';
+export type Role = 'member' | 'leader' | 'director' | 'admin' | 'accountant' | 'sale';
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  status: string;
+  note: string;
+  info: string;
+  assignedTo: string;
+  createdAt: string;
+}
+
+export interface Appointment {
+  id: string;
+  customerId: string;
+  customerName: string;
+  at: string;
+  note: string;
+  ownerId: string;
+  done: boolean;
+}
 
 export interface Party {
   id: string;

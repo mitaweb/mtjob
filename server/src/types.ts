@@ -1,6 +1,6 @@
 // Shared domain types for MTJOB.
 
-export type Role = 'member' | 'leader' | 'director' | 'admin' | 'accountant';
+export type Role = 'member' | 'leader' | 'director' | 'admin' | 'accountant' | 'sale';
 export type Team = 'Ads' | 'SEO' | 'Content' | '';
 export type AttendanceMode = 'office' | 'online' | 'leave' | 'holiday';
 export type RequestStatus = 'pending' | 'approved' | 'rejected';

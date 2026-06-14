@@ -41,6 +41,11 @@ describe('parsePosition', () => {
   it('parses the director (no team)', () => {
     expect(parsePosition('Giám đốc')).toEqual({ team: '', role: 'director', isLeader: false });
   });
+  it('parses accountant and sale/account', () => {
+    expect(parsePosition('Kế toán')).toEqual({ team: '', role: 'accountant', isLeader: false });
+    expect(parsePosition('Sale')).toEqual({ team: '', role: 'sale', isLeader: false });
+    expect(parsePosition('Account')).toEqual({ team: '', role: 'sale', isLeader: false });
+  });
 });
 
 describe('parseMoney', () => {

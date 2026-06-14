@@ -14,6 +14,7 @@ import { chatRouter } from '../modules/chat.routes.js';
 import { oauthRouter } from '../modules/oauth.routes.js';
 import { jobsRouter } from '../modules/jobs.routes.js';
 import { financeRouter } from '../modules/finance.routes.js';
+import { crmRouter } from '../modules/crm.routes.js';
 
 export function createApp() {
   const app = express();
@@ -47,6 +48,7 @@ export function createApp() {
   app.use('/api/notifications', notificationsRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/finance', financeRouter);
+  app.use('/api/crm', crmRouter);
   app.use('/api/oauth2', oauthRouter);
   app.use('/api/jobs', jobsRouter);
 

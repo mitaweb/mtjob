@@ -171,6 +171,30 @@ CREATE TABLE IF NOT EXISTS finance_entries (
   created_at text DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS finance_entries_month_idx ON finance_entries (month);
+
+-- CRM: khách hàng + lịch hẹn.
+CREATE TABLE IF NOT EXISTS customers (
+  customer_id text PRIMARY KEY,
+  name        text NOT NULL,
+  phone       text DEFAULT '',
+  status      text DEFAULT 'Mới',
+  note        text DEFAULT '',
+  info        text DEFAULT '',
+  assigned_to text DEFAULT '',           -- member_id phụ trách (sale/account)
+  created_at  text DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS appointments (
+  appt_id       text PRIMARY KEY,
+  customer_id   text NOT NULL,
+  customer_name text DEFAULT '',
+  at            text NOT NULL,           -- ISO datetime hẹn
+  note          text DEFAULT '',
+  owner_id      text DEFAULT '',         -- người nhận nhắc
+  done          boolean DEFAULT false,
+  created_at    text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS appointments_at_idx ON appointments (at);
 `;
 
 /** Seed rows for the config table (key/value). */

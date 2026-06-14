@@ -3,11 +3,12 @@ import { getTeams } from '../modules/teams.repo.js';
 import { memberScore, ranking } from '../modules/scores.service.js';
 import { notify } from '../modules/notifications.service.js';
 import { getParties } from '../modules/finance.repo.js';
+import { getUpcoming } from '../modules/crm.repo.js';
 import { birthdaysInMonth } from '../lib/people.js';
 import { formatVnd } from '../lib/money.js';
 import { formatMinutes } from '../lib/worktime.js';
 import { nextDueDateIso, daysUntil } from '../lib/finance.js';
-import { nowTz, todayIso, fmtDate } from '../lib/datetime.js';
+import { nowTz, todayIso, fmtDate, fmtHm } from '../lib/datetime.js';
 
 const DUE_REMINDER_DAYS = 5;
 
@@ -33,6 +34,21 @@ export async function runFinanceReminders(): Promise<void> {
         url: '/finance',
       });
     }
+  }
+}
+
+/** Nhắc lịch hẹn khách hàng của NGÀY MAI → gửi cho người phụ trách. */
+export async function runAppointmentReminders(): Promise<void> {
+  const start = nowTz().add(1, 'day').startOf('day').toISOString();
+  const end = nowTz().add(1, 'day').endOf('day').toISOString();
+  for (const a of await getUpcoming(start, end)) {
+    if (!a.ownerId) continue;
+    await notify(a.ownerId, {
+      type: 'appointment',
+      title: 'Nhắc lịch hẹn khách 📅',
+      body: `Mai ${fmtHm(a.at)} có hẹn với ${a.customerName}${a.note ? ` — ${a.note}` : ''}.`,
+      url: '/crm',
+    });
   }
 }
 
@@ -93,6 +109,7 @@ export async function runDailyReports(): Promise<void> {
     });
   }
 
-  // Nhắc thu tiền các bên sắp tới hạn.
+  // Nhắc thu tiền các bên sắp tới hạn + nhắc lịch hẹn khách ngày mai.
   await runFinanceReminders().catch((e) => console.error('[finance reminders]', e));
+  await runAppointmentReminders().catch((e) => console.error('[appointment reminders]', e));
 }
