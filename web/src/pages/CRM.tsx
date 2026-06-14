@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import AsyncButton from '../components/AsyncButton';
 import type { Customer, Appointment } from '../lib/types';
 
 interface Mem {
@@ -230,9 +231,9 @@ export default function CRM() {
               </div>
             </div>
             <div className="flex gap-2 mt-3">
-              <button className="btn-primary" onClick={saveCustomer}>
+              <AsyncButton className="btn-primary" onClick={saveCustomer} busyLabel="Đang lưu…">
                 {edit.id ? 'Lưu thay đổi' : 'Tạo khách'}
-              </button>
+              </AsyncButton>
               {edit.id && (
                 <button className="btn-ghost text-rose-600" onClick={() => delCustomer(edit.id!)}>
                   Xóa khách
@@ -264,9 +265,9 @@ export default function CRM() {
                     <input type="datetime-local" className="input py-1" value={apForm.at} onChange={(e) => setApForm({ ...apForm, at: e.target.value })} />
                   </label>
                   <input className="input py-1" placeholder="Ghi chú hẹn" value={apForm.note} onChange={(e) => setApForm({ ...apForm, note: e.target.value })} />
-                  <button className="btn-primary" onClick={addAppt}>
+                  <AsyncButton className="btn-primary" onClick={addAppt} busyLabel="Đang lưu…">
                     ＋ Thêm hẹn
-                  </button>
+                  </AsyncButton>
                 </div>
               </div>
             )}

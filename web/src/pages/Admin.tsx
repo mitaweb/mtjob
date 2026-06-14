@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import AsyncButton from '../components/AsyncButton';
 import type { User } from '../lib/types';
 
 export default function Admin() {
@@ -104,12 +105,12 @@ export default function Admin() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button className="btn-primary" onClick={sync}>
+          <AsyncButton className="btn-primary" onClick={sync} busyLabel="Đang đồng bộ…">
             Đồng bộ nhân sự
-          </button>
-          <button className="btn-ghost" onClick={syncCatalog}>
+          </AsyncButton>
+          <AsyncButton className="btn-ghost" onClick={syncCatalog} busyLabel="Đang đồng bộ…">
             Đồng bộ bảng điểm
-          </button>
+          </AsyncButton>
         </div>
       </div>
       {msg && <div className="text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2">{msg}</div>}
@@ -152,9 +153,9 @@ export default function Admin() {
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
           />
-          <button className="btn-primary whitespace-nowrap" onClick={saveApiKey}>
+          <AsyncButton className="btn-primary whitespace-nowrap" onClick={saveApiKey} busyLabel="Đang lưu…">
             Lưu key
-          </button>
+          </AsyncButton>
         </div>
       </div>
 
@@ -185,9 +186,9 @@ export default function Admin() {
                       value={pwd[m.id] || ''}
                       onChange={(e) => setPwd((p) => ({ ...p, [m.id]: e.target.value }))}
                     />
-                    <button className="btn-ghost text-xs px-2 py-1" onClick={() => setPassword(m.id)}>
+                    <AsyncButton className="btn-ghost text-xs px-2 py-1" onClick={() => setPassword(m.id)} busyLabel="…">
                       Lưu
-                    </button>
+                    </AsyncButton>
                   </div>
                 </td>
               </tr>

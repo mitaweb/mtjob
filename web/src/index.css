@@ -34,6 +34,19 @@ body {
   @apply block text-sm font-medium text-slate-600 mb-1.5;
 }
 
+/* Thanh loading chạy trên đỉnh */
+@keyframes loadingbar {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(420%);
+  }
+}
+.loadingbar {
+  animation: loadingbar 1.1s ease-in-out infinite;
+}
+
 /* Thanh cuộn mảnh, hiện đại */
 ::-webkit-scrollbar {
   width: 8px;

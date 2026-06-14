@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import AsyncButton from '../components/AsyncButton';
 
 interface Req {
   kind: string;
@@ -97,9 +98,9 @@ export default function Requests() {
           <label className="label">Lý do</label>
           <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} />
         </div>
-        <button className="btn-primary mt-3" onClick={submit}>
+        <AsyncButton className="btn-primary mt-3" onClick={submit}>
           Gửi đơn
-        </button>
+        </AsyncButton>
         {msg && <div className="mt-2 text-sm text-slate-600">{msg}</div>}
       </div>
 

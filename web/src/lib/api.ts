@@ -18,6 +18,20 @@ export interface ApiOptions {
   form?: FormData;
 }
 
+// ── Theo dõi số request đang chạy để hiện loading toàn cục ──
+let pending = 0;
+type LoadingListener = (n: number) => void;
+const loadingListeners = new Set<LoadingListener>();
+function setPending(n: number) {
+  pending = Math.max(0, n);
+  loadingListeners.forEach((l) => l(pending));
+}
+export function onLoading(l: LoadingListener): () => void {
+  loadingListeners.add(l);
+  l(pending);
+  return () => loadingListeners.delete(l);
+}
+
 export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Promise<T> {
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -30,11 +44,17 @@ export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Pro
     body = JSON.stringify(opts.body);
   }
 
-  const res = await fetch(`${BASE}/api${path}`, {
-    method: opts.method || (body ? 'POST' : 'GET'),
-    headers,
-    body,
-  });
+  setPending(pending + 1);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/api${path}`, {
+      method: opts.method || (body ? 'POST' : 'GET'),
+      headers,
+      body,
+    });
+  } finally {
+    setPending(pending - 1);
+  }
 
   const text = await res.text();
   let data: { error?: string } = {};

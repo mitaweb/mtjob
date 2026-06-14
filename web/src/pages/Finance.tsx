@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import AsyncButton from '../components/AsyncButton';
 import { useAuth } from '../lib/auth';
 import { vnd, currentYm } from '../lib/format';
 import type { Party, FinanceEntry } from '../lib/types';
@@ -201,9 +202,9 @@ export default function Finance() {
               </div>
             </div>
             <div className="flex gap-2">
-              <button className="btn-primary" onClick={saveParty}>
+              <AsyncButton className="btn-primary" onClick={saveParty} busyLabel="Đang lưu…">
                 {pForm.id ? 'Lưu' : 'Thêm bên'}
-              </button>
+              </AsyncButton>
               {pForm.id && (
                 <button className="btn-ghost" onClick={() => setPForm(emptyParty())}>
                   Hủy
@@ -270,9 +271,9 @@ export default function Finance() {
               <input type="checkbox" checked={eForm.recurring} onChange={(e) => setEForm({ ...eForm, recurring: e.target.checked })} />
               Hàng tháng
             </label>
-            <button className="btn-primary sm:col-span-6" onClick={saveEntry}>
+            <AsyncButton className="btn-primary sm:col-span-6" onClick={saveEntry} busyLabel="Đang lưu…">
               ➕ Thêm khoản
-            </button>
+            </AsyncButton>
           </div>
         )}
       </div>

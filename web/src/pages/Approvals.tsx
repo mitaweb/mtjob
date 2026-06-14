@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import AsyncButton from '../components/AsyncButton';
 
 interface Req {
   kind: 'online' | 'leave';
@@ -51,12 +52,12 @@ export default function Approvals() {
             {r.reason ? ` · ${r.reason}` : ''}
           </div>
           <div className="flex gap-2 mt-2">
-            <button className="btn-primary" onClick={() => decide(r, 'approve')}>
+            <AsyncButton className="btn-primary" onClick={() => decide(r, 'approve')} busyLabel="Đang duyệt…">
               Duyệt
-            </button>
-            <button className="btn-ghost" onClick={() => decide(r, 'reject')}>
+            </AsyncButton>
+            <AsyncButton className="btn-ghost" onClick={() => decide(r, 'reject')} busyLabel="Đang xử lý…">
               Từ chối
-            </button>
+            </AsyncButton>
           </div>
         </div>
       ))}

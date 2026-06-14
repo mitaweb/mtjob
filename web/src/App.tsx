@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './lib/auth';
 import type { Role } from './lib/types';
 import Layout from './components/Layout';
+import GlobalLoading from './components/GlobalLoading';
 import Login from './pages/Login';
 import Chat from './pages/Chat';
 import Attendance from './pages/Attendance';
@@ -40,8 +41,10 @@ function Home() {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
+    <>
+      <GlobalLoading />
+      <Routes>
+        <Route path="/login" element={<Login />} />
       <Route
         element={
           <Protected>
@@ -106,7 +109,8 @@ export default function App() {
           }
         />
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   );
 }
