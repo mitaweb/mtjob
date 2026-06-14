@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import Brand from './Brand';
@@ -25,48 +26,115 @@ const NAV: NavItem[] = [
   { to: '/inbox', label: 'Thông báo', icon: '🔔' },
 ];
 
+const ROLE_LABEL: Record<string, string> = {
+  member: 'Nhân viên',
+  leader: 'Trưởng nhóm',
+  director: 'Giám đốc',
+  admin: 'Quản trị',
+  accountant: 'Kế toán',
+};
+
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
   const items = NAV.filter((n) => !n.roles || (user && n.roles.includes(user.role)));
+  const initial = (user?.fullName || '?').trim().charAt(0).toUpperCase();
+
+  const sidebar = (
+    <div className="flex h-full flex-col bg-white">
+      <div className="px-5 py-5">
+        <Brand variant="dark" compact />
+      </div>
+      <nav className="flex-1 overflow-y-auto px-3 pb-3 space-y-1">
+        {items.map((n) => (
+          <NavLink
+            key={n.to}
+            to={n.to}
+            onClick={() => setOpen(false)}
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                isActive
+                  ? 'bg-brand-600 text-white shadow-sm shadow-brand-600/30'
+                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+              }`
+            }
+          >
+            <span className="text-lg leading-none">{n.icon}</span>
+            <span>{n.label}</span>
+          </NavLink>
+        ))}
+      </nav>
+      <div className="border-t border-slate-100 p-3">
+        <button
+          onClick={() => {
+            setOpen(false);
+            navigate('/profile');
+          }}
+          className="w-full flex items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-slate-100"
+        >
+          <div className="h-9 w-9 shrink-0 rounded-full bg-brand-600 text-white grid place-items-center text-sm font-semibold">
+            {initial}
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-slate-700 truncate">{user?.fullName}</div>
+            <div className="text-xs text-slate-400">{ROLE_LABEL[user?.role || ''] || user?.role}</div>
+          </div>
+        </button>
+        <button
+          onClick={logout}
+          className="mt-1 w-full rounded-xl px-3 py-2 text-left text-sm text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition"
+        >
+          ⎋ Đăng xuất
+        </button>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="sticky top-0 z-10 bg-brand-600 text-white">
-        <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
-          <Brand variant="light" compact />
+    <div className="min-h-screen">
+      {/* Sidebar cố định (desktop) */}
+      <aside className="hidden lg:block fixed inset-y-0 left-0 w-64 border-r border-slate-100">{sidebar}</aside>
 
-          <button
-            onClick={() => navigate('/profile')}
-            className="text-sm bg-white/15 hover:bg-white/25 rounded-lg px-3 py-1.5"
-          >
-            {user?.fullName} ({user?.role})
-          </button>
-        </div>
-        <nav className="mx-auto max-w-5xl px-2 pb-2 flex gap-1 overflow-x-auto">
-          {items.map((n) => (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              className={({ isActive }) =>
-                `whitespace-nowrap rounded-lg px-3 py-1.5 text-sm ${
-                  isActive ? 'bg-white text-brand-700 font-semibold' : 'text-white/90 hover:bg-white/15'
-                }`
-              }
+      {/* Drawer (mobile) */}
+      {open && <div className="fixed inset-0 z-40 bg-slate-900/40 lg:hidden" onClick={() => setOpen(false)} />}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-64 border-r border-slate-100 shadow-card transition-transform duration-200 lg:hidden ${
+          open ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {sidebar}
+      </aside>
+
+      {/* Khu vực chính */}
+      <div className="lg:pl-64 flex min-h-screen flex-col">
+        <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/80 backdrop-blur">
+          <div className="flex h-14 items-center gap-2 px-4">
+            <button
+              className="lg:hidden grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"
+              onClick={() => setOpen(true)}
+              aria-label="Mở menu"
             >
-              <span className="mr-1">{n.icon}</span>
-              {n.label}
-            </NavLink>
-          ))}
-          <button onClick={logout} className="ml-auto whitespace-nowrap rounded-lg px-3 py-1.5 text-sm hover:bg-white/15">
-            ⎋ Thoát
-          </button>
-        </nav>
-      </header>
+              ☰
+            </button>
+            <div className="lg:hidden">
+              <Brand variant="dark" compact />
+            </div>
+            <div className="ml-auto flex items-center gap-1">
+              <NavLink to="/inbox" className="grid h-9 w-9 place-items-center rounded-lg hover:bg-slate-100" aria-label="Thông báo">
+                🔔
+              </NavLink>
+              <NavLink to="/profile" className="grid h-9 w-9 place-items-center rounded-full bg-brand-600 text-sm font-semibold text-white">
+                {initial}
+              </NavLink>
+            </div>
+          </div>
+        </header>
 
-      <main className="flex-1 mx-auto w-full max-w-5xl px-4 py-5">
-        <Outlet />
-      </main>
+        <main className="mx-auto w-full max-w-6xl flex-1 p-4 sm:p-6">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

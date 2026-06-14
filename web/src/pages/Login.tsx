@@ -28,8 +28,8 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <form onSubmit={submit} className="card w-full max-w-sm space-y-4">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-brand-50 via-white to-slate-100">
+      <form onSubmit={submit} className="card shadow-card w-full max-w-sm space-y-4">
         <div className="text-center">
           <Brand className="py-2" />
           <p className="text-slate-400 text-xs mt-2">MTJOB — Quản lý công việc & chấm công</p>
