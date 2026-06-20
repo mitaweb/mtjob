@@ -64,16 +64,23 @@ export function isLate(
 }
 
 /**
- * Day credit from shift check-ins: each attended shift = 0.5, capped at 1.0.
- * A shift counts as attended when it has a (truthy) check-in timestamp.
+ * Day credit from a day's check-ins/outs: each attended half = 0.5, capped at 1.0.
+ * Morning is attended when there's a morning check-in. Afternoon is attended when
+ * there's ANY afternoon timestamp — a check-in OR a check-out — so the common flow
+ * of "chấm giờ vào buổi sáng, chấm giờ ra buổi chiều" (no separate afternoon
+ * check-in) still credits a full day.
+ *   morning in + afternoon out (whole day) -> 1.0
  *   morning only (checkout at noon) -> 0.5
- *   both shifts -> 1.0
  *   afternoon only -> 0.5
  */
-export function dayFractionFromShifts(m: { morningIn?: unknown; afternoonIn?: unknown }): number {
+export function dayFractionFromShifts(m: {
+  morningIn?: unknown;
+  afternoonIn?: unknown;
+  afternoonOut?: unknown;
+}): number {
   let f = 0;
   if (m.morningIn) f += 0.5;
-  if (m.afternoonIn) f += 0.5;
+  if (m.afternoonIn || m.afternoonOut) f += 0.5;
   return Math.min(1, f);
 }
 

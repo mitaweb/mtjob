@@ -209,8 +209,11 @@ adminRouter.post(
     const toIso = (t: string) => (t ? dayjs.tz(`${b.date} ${t}`, 'YYYY-MM-DD HH:mm', TZ).toISOString() : '');
     const morningInAt = toIso(b.morningIn);
     const afternoonInAt = toIso(b.afternoonIn);
+    const afternoonOutAt = toIso(b.afternoonOut);
     const fraction =
-      b.dayFraction != null ? b.dayFraction : dayFractionFromShifts({ morningIn: morningInAt, afternoonIn: afternoonInAt });
+      b.dayFraction != null
+        ? b.dayFraction
+        : dayFractionFromShifts({ morningIn: morningInAt, afternoonIn: afternoonInAt, afternoonOut: afternoonOutAt });
     const status = b.mode === 'leave' ? 'leave' : fraction >= 1 ? 'present' : fraction > 0 ? 'half' : 'absent';
     await saveAttendance({
       date: b.date,
@@ -219,7 +222,7 @@ adminRouter.post(
       morningInAt,
       morningOutAt: toIso(b.morningOut),
       afternoonInAt,
-      afternoonOutAt: toIso(b.afternoonOut),
+      afternoonOutAt,
       dayFraction: fraction,
       mode: b.mode,
       status,

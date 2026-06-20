@@ -63,11 +63,17 @@ describe('dayFractionFromShifts', () => {
   it('morning only (noon checkout) = 0.5', () => {
     expect(dayFractionFromShifts({ morningIn: '2026-06-04T08:30:00' })).toBe(0.5);
   });
+  it('morning in + afternoon out (cả ngày) = 1.0', () => {
+    expect(dayFractionFromShifts({ morningIn: 'x', afternoonOut: 'z' })).toBe(1);
+  });
   it('both shifts = 1.0', () => {
     expect(dayFractionFromShifts({ morningIn: 'x', afternoonIn: 'y' })).toBe(1);
   });
   it('afternoon only = 0.5', () => {
     expect(dayFractionFromShifts({ afternoonIn: 'y' })).toBe(0.5);
+  });
+  it('afternoon checkout only = 0.5', () => {
+    expect(dayFractionFromShifts({ afternoonOut: 'z' })).toBe(0.5);
   });
   it('nothing = 0', () => {
     expect(dayFractionFromShifts({})).toBe(0);
