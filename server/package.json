@@ -15,10 +15,12 @@
     "sync-catalog": "tsx scripts/sync-catalog.ts",
     "gemini-auth": "tsx scripts/gemini-auth.ts",
     "backfill-dayfraction": "tsx scripts/backfill-dayfraction.ts",
+    "migrate-customer-notes": "tsx scripts/migrate-customer-notes.ts",
     "job:daily": "tsx src/jobs/runDaily.ts",
     "job:monthly": "tsx src/jobs/runMonthly.ts"
   },
   "dependencies": {
+    "@vercel/blob": "^0.27.3",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dayjs": "^1.11.13",

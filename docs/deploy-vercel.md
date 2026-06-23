@@ -22,6 +22,13 @@ Mỗi lần push lên `main` → Vercel tự build & deploy.
 Project → tab **Storage** → **Create Database** → **Neon (Postgres)** → Connect.
 `DATABASE_URL` được tự thêm vào Environment Variables. Copy connection string đó về `server/.env` ở máy local (cần cho bước 4).
 
+### 3b. Tạo Blob store (cho "Lưu ý khách hàng" — ảnh/PDF)
+Project → tab **Storage** → **Create** → **Blob** → Connect vào project.
+Vercel tự thêm `BLOB_READ_WRITE_TOKEN` vào Environment Variables (mọi môi trường).
+Video chỉ dán link nên không tốn Blob; chỉ ảnh + PDF được tải lên (tối đa 20MB/tệp).
+
+> Muốn test upload ở máy local: `vercel env pull server/.env` để kéo `BLOB_READ_WRITE_TOKEN` về.
+
 ### 3. Environment Variables (Settings → Environment Variables)
 
 | Biến | Giá trị |
@@ -30,6 +37,7 @@ Project → tab **Storage** → **Create Database** → **Neon (Postgres)** → 
 | `JWT_SECRET` | chuỗi ngẫu nhiên dài |
 | `CRON_SECRET` | chuỗi ngẫu nhiên — Vercel tự gắn vào header khi gọi cron |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | từ `npx web-push generate-vapid-keys` |
+| `BLOB_READ_WRITE_TOKEN` | tự có khi tạo Blob store (xem bước 3b) — dùng cho "Lưu ý khách hàng" (ảnh/PDF) |
 | *(AI — tuỳ chọn)* `GEMINI_API_KEY` | key AI Studio (cách đơn giản nhất trên Vercel) |
 | *(AI — OAuth)* `GOOGLE_OAUTH_CLIENT_ID/SECRET`, `GEMINI_OAUTH_REFRESH_TOKEN`, `GOOGLE_OAUTH_REDIRECT` | redirect = `https://<domain>/api/oauth2/callback` |
 | *(tuỳ chọn)* `SHEET_HR_SOURCE_ID` / `SHEET_HR_SOURCE_GID` | cho nút "Đồng bộ nhân sự" (sheet phải share công khai) |

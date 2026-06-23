@@ -17,6 +17,9 @@ Ngày/giờ lưu dạng text ISO (`YYYY-MM-DD`, ISO datetime) — so sánh theo 
 | `notifications` | notif_id (PK), member_id, type, title, body, created_at, read_at |
 | `monthly_scores` | (year, month, member_id) PK, total_points, rank, bonus_vnd |
 | `payroll` | (year, month, member_id) PK, standard_days, actual_days, gross_salary, bhxh, net_salary |
+| `customers` | customer_id (PK), name, phone, status, note, info, assigned_to, created_at |
+| `appointments` | appt_id (PK), customer_id, customer_name, at, note, owner_id, done, created_at |
+| `customer_notes` | note_id (PK), customer, content, color, attachments (JSON), created_by, created_name, created_at, updated_at |
 
 ## Quy ước
 - `members.role` ∈ member / leader / director / admin. `attendance.day_fraction` ∈ {0, 0.5, 1}.

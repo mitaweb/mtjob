@@ -195,6 +195,20 @@ CREATE TABLE IF NOT EXISTS appointments (
   created_at    text DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS appointments_at_idx ON appointments (at);
+
+-- Lưu ý khách hàng: bảng note dán tường, mỗi note = 1 khách hàng. Mọi thành viên dùng chung.
+CREATE TABLE IF NOT EXISTS customer_notes (
+  note_id      text PRIMARY KEY,
+  customer     text NOT NULL DEFAULT '',   -- tên khách hàng
+  content      text DEFAULT '',            -- nội dung chữ
+  color        text DEFAULT '',            -- màu sticky note
+  attachments  text DEFAULT '[]',          -- JSON: [{kind:'image'|'pdf'|'video', url, name}]
+  created_by   text DEFAULT '',            -- member_id người tạo
+  created_name text DEFAULT '',            -- tên hiển thị người tạo
+  created_at   text DEFAULT '',
+  updated_at   text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS customer_notes_updated_idx ON customer_notes (updated_at);
 `;
 
 /** Seed rows for the config table (key/value). */

@@ -12,6 +12,7 @@ import Payroll from './pages/Payroll';
 import AdminPayroll from './pages/AdminPayroll';
 import Finance from './pages/Finance';
 import CRM from './pages/CRM';
+import CustomerNotes from './pages/CustomerNotes';
 import Requests from './pages/Requests';
 import Approvals from './pages/Approvals';
 import Dashboard from './pages/Dashboard';
@@ -81,6 +82,7 @@ export default function App() {
             </Protected>
           }
         />
+        <Route path="/customer-notes" element={<CustomerNotes />} />
         <Route path="/requests" element={<Requests />} />
         <Route path="/inbox" element={<Inbox />} />
         <Route path="/profile" element={<Profile />} />
