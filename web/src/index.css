@@ -34,6 +34,29 @@ body {
   @apply block text-sm font-medium text-slate-600 mb-1.5;
 }
 
+/* Nội dung lưu ý khách hàng (soạn như Word: chữ + ảnh + link chèn inline) */
+.note-rich {
+  @apply text-sm text-slate-700;
+  word-break: break-word;
+}
+.note-rich img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+  margin: 6px 0;
+  display: block;
+}
+.note-rich a {
+  @apply text-brand-700 underline;
+}
+.note-rich p {
+  margin: 4px 0;
+}
+.note-editor:empty::before {
+  content: attr(data-placeholder);
+  @apply text-slate-400;
+}
+
 /* Thanh loading chạy trên đỉnh */
 @keyframes loadingbar {
   0% {

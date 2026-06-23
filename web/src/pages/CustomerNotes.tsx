@@ -1,19 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { upload } from '@vercel/blob/client';
+import DOMPurify from 'dompurify';
 import { api, getToken } from '../lib/api';
 
-type AttachmentKind = 'image' | 'pdf' | 'video';
-interface Attachment {
-  kind: AttachmentKind;
-  url: string;
-  name: string;
-}
 interface Note {
   id: string;
   customer: string;
-  content: string;
+  content: string; // HTML soạn inline (chữ + ảnh + link)
   color: string;
-  attachments: Attachment[];
   createdBy: string;
   createdName: string;
   createdAt: string;
@@ -30,17 +24,19 @@ const COLORS: { key: string; label: string; card: string; dot: string }[] = [
 const cardCls = (key: string) => (COLORS.find((c) => c.key === key) || COLORS[0]).card;
 
 function emptyNote(): Note {
-  return {
-    id: '',
-    customer: '',
-    content: '',
-    color: 'yellow',
-    attachments: [],
-    createdBy: '',
-    createdName: '',
-    createdAt: '',
-    updatedAt: '',
-  };
+  return { id: '', customer: '', content: '', color: 'yellow', createdBy: '', createdName: '', createdAt: '', updatedAt: '' };
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Cho phép render chữ + ảnh + link; loại bỏ script/style nguy hiểm.
+function clean(html: string): string {
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'div', 'span', 'b', 'strong', 'i', 'em', 'u', 'ul', 'ol', 'li', 'img', 'a'],
+    ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt'],
+  });
 }
 
 export default function CustomerNotes() {
@@ -49,6 +45,8 @@ export default function CustomerNotes() {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [video, setVideo] = useState('');
+  const editorRef = useRef<HTMLDivElement>(null);
+  const savedRange = useRef<Range | null>(null);
 
   async function load() {
     const r = await api<{ notes: Note[] }>('/customer-notes');
@@ -58,23 +56,82 @@ export default function CustomerNotes() {
     load().catch((e) => setErr((e as Error).message));
   }, []);
 
+  // Nạp nội dung HTML vào vùng soạn khi mở 1 note.
+  useEffect(() => {
+    if (edit && editorRef.current) editorRef.current.innerHTML = edit.content || '';
+  }, [edit?.id, edit !== null]);
+
+  function openEditor(n: Note) {
+    setErr('');
+    setVideo('');
+    savedRange.current = null;
+    setEdit(n);
+  }
+
+  function saveSelection() {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
+      savedRange.current = sel.getRangeAt(0).cloneRange();
+    }
+  }
+
+  function insertHtml(html: string) {
+    const el = editorRef.current;
+    if (!el) return;
+    el.focus();
+    const sel = window.getSelection();
+    if (savedRange.current && sel) {
+      sel.removeAllRanges();
+      sel.addRange(savedRange.current);
+    }
+    // execCommand vẫn được mọi trình duyệt hỗ trợ cho contentEditable.
+    document.execCommand('insertHTML', false, html);
+    savedRange.current = null;
+  }
+
+  async function onFiles(files: FileList | null) {
+    if (!files || !files.length) return;
+    setBusy(true);
+    setErr('');
+    try {
+      for (const f of Array.from(files)) {
+        const blob = await upload(f.name, f, {
+          access: 'public',
+          handleUploadUrl: '/api/customer-notes/upload',
+          clientPayload: getToken() || '',
+        });
+        if (f.type === 'application/pdf') {
+          insertHtml(`<a href="${escapeHtml(blob.url)}" target="_blank" rel="noreferrer">📄 ${escapeHtml(f.name)}</a>&nbsp;`);
+        } else {
+          insertHtml(`<img src="${escapeHtml(blob.url)}" alt="${escapeHtml(f.name)}" />`);
+        }
+      }
+    } catch (e) {
+      setErr('Tải tệp thất bại: ' + (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function addVideo() {
+    const url = video.trim();
+    if (!url) return;
+    insertHtml(`<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">🎬 ${escapeHtml(url)}</a>&nbsp;`);
+    setVideo('');
+  }
+
   async function save() {
     if (!edit) return;
     if (!edit.customer.trim()) {
       setErr('Vui lòng nhập tên khách hàng');
       return;
     }
+    const content = clean(editorRef.current?.innerHTML || '');
     setBusy(true);
     setErr('');
     try {
       await api('/customer-notes', {
-        body: {
-          id: edit.id || undefined,
-          customer: edit.customer.trim(),
-          content: edit.content,
-          color: edit.color,
-          attachments: edit.attachments,
-        },
+        body: { id: edit.id || undefined, customer: edit.customer.trim(), content, color: edit.color },
       });
       setEdit(null);
       await load();
@@ -104,54 +161,15 @@ export default function CustomerNotes() {
     }
   }
 
-  async function onFiles(files: FileList | null) {
-    if (!files || !files.length || !edit) return;
-    setBusy(true);
-    setErr('');
-    try {
-      const added: Attachment[] = [];
-      for (const f of Array.from(files)) {
-        const blob = await upload(f.name, f, {
-          access: 'public',
-          handleUploadUrl: '/api/customer-notes/upload',
-          clientPayload: getToken() || '',
-        });
-        const kind: AttachmentKind = f.type === 'application/pdf' ? 'pdf' : 'image';
-        added.push({ kind, url: blob.url, name: f.name });
-      }
-      setEdit({ ...edit, attachments: [...edit.attachments, ...added] });
-    } catch (e) {
-      setErr('Tải tệp thất bại: ' + (e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function addVideo() {
-    const url = video.trim();
-    if (!url || !edit) return;
-    setEdit({ ...edit, attachments: [...edit.attachments, { kind: 'video', url, name: url }] });
-    setVideo('');
-  }
-
-  function removeAtt(i: number) {
-    if (!edit) return;
-    setEdit({ ...edit, attachments: edit.attachments.filter((_, idx) => idx !== i) });
-  }
-
   return (
     <div>
       <div className="mb-5 flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-800">📌 Lưu ý khách hàng</h1>
-          <p className="text-sm text-slate-500">Mỗi note là một khách hàng — ghi chú, ảnh, PDF, link video.</p>
+          <p className="text-sm text-slate-500">Mỗi note là một khách hàng — soạn chữ, chèn ảnh/PDF/link video ngay trong nội dung.</p>
         </div>
         <button
-          onClick={() => {
-            setErr('');
-            setVideo('');
-            setEdit(emptyNote());
-          }}
+          onClick={() => openEditor(emptyNote())}
           className="shrink-0 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-brand-600/30 hover:bg-brand-700"
         >
           + Thêm khách hàng
@@ -166,49 +184,28 @@ export default function CustomerNotes() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {notes.map((n) => {
-            const imgs = n.attachments.filter((a) => a.kind === 'image');
-            const pdfs = n.attachments.filter((a) => a.kind === 'pdf');
-            const vids = n.attachments.filter((a) => a.kind === 'video');
-            return (
-              <button
-                key={n.id}
-                onClick={() => {
-                  setErr('');
-                  setVideo('');
-                  setEdit({ ...n });
-                }}
-                className={`flex flex-col rounded-2xl border p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lg ${cardCls(n.color)}`}
-              >
-                <div className="mb-1 font-bold text-slate-800">{n.customer || '(Chưa đặt tên)'}</div>
-                {n.content && <div className="whitespace-pre-wrap text-sm text-slate-600 line-clamp-5">{n.content}</div>}
-                {imgs.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {imgs.slice(0, 3).map((a, i) => (
-                      <img key={i} src={a.url} alt={a.name} className="h-14 w-14 rounded-lg object-cover" />
-                    ))}
-                    {imgs.length > 3 && (
-                      <span className="grid h-14 w-14 place-items-center rounded-lg bg-white/60 text-xs text-slate-500">
-                        +{imgs.length - 3}
-                      </span>
-                    )}
-                  </div>
-                )}
-                {(pdfs.length > 0 || vids.length > 0) && (
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
-                    {pdfs.length > 0 && <span>📄 {pdfs.length} PDF</span>}
-                    {vids.length > 0 && <span>🎬 {vids.length} video</span>}
-                  </div>
-                )}
-                <div className="mt-3 text-xs text-slate-400">— {n.createdName || 'Ẩn danh'}</div>
-              </button>
-            );
-          })}
+          {notes.map((n) => (
+            <button
+              key={n.id}
+              onClick={() => openEditor({ ...n })}
+              className={`flex flex-col rounded-2xl border p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lg ${cardCls(n.color)}`}
+            >
+              <div className="mb-1.5 font-bold text-slate-800">{n.customer || '(Chưa đặt tên)'}</div>
+              <div
+                className="note-rich max-h-48 overflow-hidden"
+                dangerouslySetInnerHTML={{ __html: clean(n.content) || '<span class="text-slate-400">(trống)</span>' }}
+              />
+              <div className="mt-3 text-xs text-slate-400">— {n.createdName || 'Ẩn danh'}</div>
+            </button>
+          ))}
         </div>
       )}
 
       {edit && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 sm:items-center sm:p-4" onClick={() => !busy && setEdit(null)}>
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 sm:items-center sm:p-4"
+          onClick={() => !busy && setEdit(null)}
+        >
           <div
             className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
@@ -231,46 +228,10 @@ export default function CustomerNotes() {
             />
 
             <label className="mb-1 block text-sm font-medium text-slate-600">Nội dung lưu ý</label>
-            <textarea
-              value={edit.content}
-              onChange={(e) => setEdit({ ...edit, content: e.target.value })}
-              rows={4}
-              placeholder="Khách hàng lưu ý điều gì…"
-              className="mb-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none"
-            />
-
-            <label className="mb-1 block text-sm font-medium text-slate-600">Màu note</label>
-            <div className="mb-4 flex gap-2">
-              {COLORS.map((c) => (
-                <button
-                  key={c.key}
-                  onClick={() => setEdit({ ...edit, color: c.key })}
-                  className={`h-7 w-7 rounded-full ${c.dot} ${edit.color === c.key ? 'ring-2 ring-slate-700 ring-offset-2' : ''}`}
-                  aria-label={c.label}
-                />
-              ))}
-            </div>
-
-            <label className="mb-1 block text-sm font-medium text-slate-600">Đính kèm</label>
-            {edit.attachments.length > 0 && (
-              <div className="mb-3 space-y-1.5">
-                {edit.attachments.map((a, i) => (
-                  <div key={i} className="flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5 text-sm">
-                    <span>{a.kind === 'image' ? '🖼️' : a.kind === 'pdf' ? '📄' : '🎬'}</span>
-                    <a href={a.url} target="_blank" rel="noreferrer" className="flex-1 truncate text-brand-700 hover:underline">
-                      {a.name || a.url}
-                    </a>
-                    <button onClick={() => removeAtt(i)} className="text-slate-400 hover:text-rose-600" aria-label="Bỏ">
-                      ✕
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="mb-2 flex flex-wrap gap-2">
-              <label className="cursor-pointer rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
-                + Ảnh / PDF
+            {/* Thanh công cụ chèn — chèn vào đúng vị trí con trỏ trong nội dung */}
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <label className="cursor-pointer rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
+                🖼️ Ảnh / PDF
                 <input
                   type="file"
                   accept="image/*,application/pdf"
@@ -283,20 +244,44 @@ export default function CustomerNotes() {
                   }}
                 />
               </label>
+              <div className="flex flex-1 min-w-[180px] gap-1.5">
+                <input
+                  value={video}
+                  onChange={(e) => setVideo(e.target.value)}
+                  placeholder="Dán link video rồi bấm 🎬"
+                  className="flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:border-brand-500 focus:outline-none"
+                />
+                <button
+                  onClick={addVideo}
+                  type="button"
+                  className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  🎬
+                </button>
+              </div>
             </div>
+            <div
+              ref={editorRef}
+              contentEditable
+              suppressContentEditableWarning
+              onKeyUp={saveSelection}
+              onMouseUp={saveSelection}
+              onBlur={saveSelection}
+              data-placeholder="Gõ nội dung, chèn ảnh/PDF/link video vào đây…"
+              className="note-rich note-editor mb-4 min-h-[160px] w-full rounded-xl border border-slate-200 px-3 py-2.5 focus:border-brand-500 focus:outline-none"
+            />
+
+            <label className="mb-1 block text-sm font-medium text-slate-600">Màu note</label>
             <div className="mb-4 flex gap-2">
-              <input
-                value={video}
-                onChange={(e) => setVideo(e.target.value)}
-                placeholder="Dán link video (YouTube/Drive…)"
-                className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-              />
-              <button
-                onClick={addVideo}
-                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-              >
-                + Link
-              </button>
+              {COLORS.map((c) => (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={() => setEdit({ ...edit, color: c.key })}
+                  className={`h-7 w-7 rounded-full ${c.dot} ${edit.color === c.key ? 'ring-2 ring-slate-700 ring-offset-2' : ''}`}
+                  aria-label={c.label}
+                />
+              ))}
             </div>
 
             <div className="flex items-center justify-between gap-2">

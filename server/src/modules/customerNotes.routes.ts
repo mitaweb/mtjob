@@ -96,13 +96,23 @@ customerNotesRouter.post(
   }),
 );
 
+// Lấy các URL ảnh/PDF đã upload lên Vercel Blob có trong note (cả nội dung HTML
+// lẫn mảng attachments cũ) để dọn khi xóa. Bỏ qua link video (không phải Blob).
+function blobUrlsOf(note: { content?: string; attachments?: { url: string }[] } | undefined): string[] {
+  if (!note) return [];
+  const found = new Set<string>();
+  const re = /https?:\/\/[^\s"'<>]+\.blob\.vercel-storage\.com[^\s"'<>]*/g;
+  for (const m of (note.content || '').match(re) || []) found.add(m);
+  for (const a of note.attachments || []) if (/\.blob\.vercel-storage\.com/.test(a.url)) found.add(a.url);
+  return [...found];
+}
+
 customerNotesRouter.delete(
   '/:id',
   asyncHandler(async (req, res) => {
     const note = await findNote(String(req.params.id));
     await deleteNote(String(req.params.id));
-    // Best-effort dọn ảnh/PDF trên Blob (bỏ qua link video).
-    const urls = (note?.attachments || []).filter((a) => a.kind !== 'video').map((a) => a.url);
+    const urls = blobUrlsOf(note);
     if (urls.length) {
       try {
         await del(urls);
