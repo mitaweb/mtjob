@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { upload } from '@vercel/blob/client';
 import DOMPurify from 'dompurify';
 import { api, getToken } from '../lib/api';
@@ -31,12 +31,34 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// Cho phép render chữ + ảnh + link; loại bỏ script/style nguy hiểm.
+// Cho phép render chữ + ảnh + link + định dạng (đậm/màu/căn lề qua style); loại script nguy hiểm.
 function clean(html: string): string {
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'br', 'div', 'span', 'b', 'strong', 'i', 'em', 'u', 'ul', 'ol', 'li', 'img', 'a'],
-    ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt'],
+    ALLOWED_TAGS: ['p', 'br', 'div', 'span', 'b', 'strong', 'i', 'em', 'u', 'ul', 'ol', 'li', 'img', 'a', 'font'],
+    ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'style', 'color'],
   });
+}
+
+// Màu chữ nhanh trên thanh công cụ (đen / đỏ / cam / lá / xanh / tím).
+const TEXT_COLORS = ['#0f172a', '#dc2626', '#ea580c', '#16a34a', '#2563eb', '#7c3aed'];
+
+// Nút công cụ — onMouseDown preventDefault để không mất vùng chọn trong ô soạn.
+function ToolBtn({ title, onClick, children }: { title: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      className="flex h-7 min-w-[28px] items-center justify-center rounded-lg px-1.5 text-sm leading-none text-slate-600 hover:bg-slate-200"
+    >
+      {children}
+    </button>
+  );
+}
+
+function Sep() {
+  return <span className="mx-0.5 h-5 w-px bg-slate-200" />;
 }
 
 export default function CustomerNotes() {
@@ -44,7 +66,6 @@ export default function CustomerNotes() {
   const [edit, setEdit] = useState<Note | null>(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  const [video, setVideo] = useState('');
   const editorRef = useRef<HTMLDivElement>(null);
   const savedRange = useRef<Range | null>(null);
 
@@ -63,7 +84,6 @@ export default function CustomerNotes() {
 
   function openEditor(n: Note) {
     setErr('');
-    setVideo('');
     savedRange.current = null;
     setEdit(n);
   }
@@ -87,6 +107,21 @@ export default function CustomerNotes() {
     // execCommand vẫn được mọi trình duyệt hỗ trợ cho contentEditable.
     document.execCommand('insertHTML', false, html);
     savedRange.current = null;
+  }
+
+  // Lệnh định dạng (đậm/nghiêng/căn lề/màu chữ…) cho vùng đang chọn trong ô soạn.
+  function exec(cmd: string, value?: string) {
+    const el = editorRef.current;
+    if (!el) return;
+    el.focus();
+    try {
+      // styleWithCSS: dùng style inline (text-align / color) thay vì thẻ <font> cũ.
+      document.execCommand('styleWithCSS', false, 'true');
+    } catch {
+      /* vài trình duyệt không hỗ trợ — bỏ qua */
+    }
+    document.execCommand(cmd, false, value);
+    saveSelection();
   }
 
   async function onFiles(files: FileList | null) {
@@ -114,10 +149,9 @@ export default function CustomerNotes() {
   }
 
   function addVideo() {
-    const url = video.trim();
+    const url = (window.prompt('Dán link video (YouTube / Drive / Facebook):') || '').trim();
     if (!url) return;
     insertHtml(`<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">🎬 ${escapeHtml(url)}</a>&nbsp;`);
-    setVideo('');
   }
 
   async function save() {
@@ -228,10 +262,46 @@ export default function CustomerNotes() {
             />
 
             <label className="mb-1 block text-sm font-medium text-slate-600">Nội dung lưu ý</label>
-            {/* Thanh công cụ chèn — chèn vào đúng vị trí con trỏ trong nội dung */}
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              <label className="cursor-pointer rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
-                🖼️ Ảnh / PDF
+            {/* Thanh công cụ soạn thảo — định dạng chữ + chèn ảnh/PDF/video tại vị trí con trỏ */}
+            <div className="mb-2 flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1.5">
+              <ToolBtn title="Đậm" onClick={() => exec('bold')}>
+                <span className="font-bold">B</span>
+              </ToolBtn>
+              <ToolBtn title="Nghiêng" onClick={() => exec('italic')}>
+                <span className="font-serif italic">I</span>
+              </ToolBtn>
+              <ToolBtn title="Gạch chân" onClick={() => exec('underline')}>
+                <span className="underline">U</span>
+              </ToolBtn>
+              <Sep />
+              <ToolBtn title="Căn trái" onClick={() => exec('justifyLeft')}>
+                ⬅
+              </ToolBtn>
+              <ToolBtn title="Căn giữa" onClick={() => exec('justifyCenter')}>
+                ↔
+              </ToolBtn>
+              <ToolBtn title="Căn phải" onClick={() => exec('justifyRight')}>
+                ➡
+              </ToolBtn>
+              <Sep />
+              {TEXT_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  title="Màu chữ"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => exec('foreColor', c)}
+                  className="h-6 w-6 rounded-full ring-1 ring-slate-200"
+                  style={{ background: c }}
+                  aria-label={`Màu ${c}`}
+                />
+              ))}
+              <Sep />
+              <label
+                title="Chèn ảnh / PDF"
+                className="flex h-7 cursor-pointer items-center justify-center rounded-lg px-2 text-sm leading-none text-slate-600 hover:bg-slate-200"
+              >
+                🖼️
                 <input
                   type="file"
                   accept="image/*,application/pdf"
@@ -244,21 +314,9 @@ export default function CustomerNotes() {
                   }}
                 />
               </label>
-              <div className="flex flex-1 min-w-[180px] gap-1.5">
-                <input
-                  value={video}
-                  onChange={(e) => setVideo(e.target.value)}
-                  placeholder="Dán link video rồi bấm 🎬"
-                  className="flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:border-brand-500 focus:outline-none"
-                />
-                <button
-                  onClick={addVideo}
-                  type="button"
-                  className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
-                >
-                  🎬
-                </button>
-              </div>
+              <ToolBtn title="Chèn link video" onClick={addVideo}>
+                🎬
+              </ToolBtn>
             </div>
             <div
               ref={editorRef}
