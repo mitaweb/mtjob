@@ -30,6 +30,7 @@ customerNotesRouter.post(
     const json = await handleUpload({
       body,
       request: req,
+      token: process.env.mt_READ_WRITE_TOKEN,
       onBeforeGenerateToken: async (_pathname, clientPayload) => {
         try {
           verifyToken(String(clientPayload || ''));
@@ -115,7 +116,7 @@ customerNotesRouter.delete(
     const urls = blobUrlsOf(note);
     if (urls.length) {
       try {
-        await del(urls);
+        await del(urls, { token: process.env.mt_READ_WRITE_TOKEN });
       } catch {
         // Không chặn xóa note nếu dọn blob lỗi.
       }
