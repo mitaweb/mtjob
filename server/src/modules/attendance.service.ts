@@ -108,6 +108,7 @@ export async function checkOut(memberId: string, lat: number, lng: number): Prom
   if (shift === 'afternoon') row.afternoonOutAt = iso;
   if (lat) row.lat = lat;
   if (lng) row.lng = lng;
+  row.distM = Math.round(dist);
   row.dayFraction = dayFractionFromShifts({ morningIn: row.morningInAt, afternoonIn: row.afternoonInAt, afternoonOut: row.afternoonOutAt });
   row.status = computeStatus(row.dayFraction, /^late/.test(row.status));
   await saveAttendance(row);
