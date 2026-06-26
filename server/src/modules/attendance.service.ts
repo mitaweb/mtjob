@@ -93,8 +93,16 @@ export async function checkOut(memberId: string, lat: number, lng: number): Prom
   const shift = classifyShift(minute, shifts);
   const dist = haversineMeters(lat, lng, cfg.companyLat, cfg.companyLng);
 
+  const online = await approvedOnlineScope(memberId, date);
+  if (!online && !withinRadius(dist, cfg.checkinRadiusM)) {
+    throw new ApiError(
+      400,
+      `Bạn đang cách công ty khoảng ${Math.round(dist)}m (cho phép tối đa ${cfg.checkinRadiusM}m). Chưa thể chấm giờ ra.`,
+    );
+  }
+
   const existing = await getMemberDate(memberId, date);
-  const row = existing ?? baseRow(member, date, 'office');
+  const row = existing ?? baseRow(member, date, online ? 'online' : 'office');
   const iso = nowTz().toISOString();
   if (shift === 'morning') row.morningOutAt = iso;
   if (shift === 'afternoon') row.afternoonOutAt = iso;
