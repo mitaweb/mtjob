@@ -16,6 +16,8 @@
     "gemini-auth": "tsx scripts/gemini-auth.ts",
     "backfill-dayfraction": "tsx scripts/backfill-dayfraction.ts",
     "audit-attendance": "tsx scripts/audit-attendance.ts",
+    "audit-requests": "tsx scripts/audit-requests.ts",
+    "reconcile-online-attendance": "tsx scripts/reconcile-online-attendance.ts",
     "migrate-customer-notes": "tsx scripts/migrate-customer-notes.ts",
     "job:daily": "tsx src/jobs/runDaily.ts",
     "job:monthly": "tsx src/jobs/runMonthly.ts"

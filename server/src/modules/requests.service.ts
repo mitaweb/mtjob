@@ -8,12 +8,12 @@ import {
 } from './requests.repo.js';
 import { findById, getDirectors } from './members.repo.js';
 import { teamLeaderId } from './teams.repo.js';
-import { saveAttendance } from './attendance.repo.js';
+import { saveAttendance, getMemberDate } from './attendance.repo.js';
 import { notify } from './notifications.service.js';
-import { fractionForScope } from '../lib/attendance.js';
+import { dayFractionFromShifts } from '../lib/attendance.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
-import type { Member, RequestScope, RequestStatus } from '../types.js';
+import type { AttendanceRow, Member, RequestScope, RequestStatus } from '../types.js';
 
 const kindVi = (k: RequestKind) => (k === 'online' ? 'làm online' : 'nghỉ phép');
 
@@ -89,19 +89,39 @@ export async function submitRequest(i: SubmitInput): Promise<RequestRow> {
 async function recordOnlineAttendance(req: RequestRow): Promise<void> {
   const member = await findById(req.memberId);
   if (!member) return;
-  const fraction = fractionForScope(req.scope || 'full');
+  // Scope phủ buổi nào: full = cả 2; half_am = sáng; half_pm = chiều.
+  const scope = req.scope || 'full';
+  const coversMorning = scope !== 'half_pm';
+  const coversAfternoon = scope !== 'half_am';
+
   for (const date of req.dates) {
-    await saveAttendance({
+    // GỘP vào dòng sẵn có thay vì ghi đè: chỉ THÊM buổi online phủ, không xoá
+    // buổi đã chấm (tránh đơn nửa ngày đè mất đơn/giờ cả ngày). Công chỉ tăng/giữ.
+    const existing = await getMemberDate(member.id, date);
+    const row: AttendanceRow = existing ?? {
       date,
       memberId: member.id,
       name: member.fullName,
-      morningInAt: req.scope === 'half_pm' ? '' : 'online',
-      afternoonInAt: req.scope === 'half_am' ? '' : 'online',
-      dayFraction: fraction,
+      morningInAt: '',
+      morningOutAt: '',
+      afternoonInAt: '',
+      afternoonOutAt: '',
+      dayFraction: 0,
       mode: 'online',
-      status: fraction >= 1 ? 'present' : 'half',
-      note: `Làm online (đơn ${req.id})`,
+      status: 'absent',
+    };
+    row.name = member.fullName;
+    if (coversMorning && !row.morningInAt) row.morningInAt = 'online';
+    if (coversAfternoon && !row.afternoonInAt) row.afternoonInAt = 'online';
+    row.dayFraction = dayFractionFromShifts({
+      morningIn: row.morningInAt,
+      afternoonIn: row.afternoonInAt,
+      afternoonOut: row.afternoonOutAt,
     });
+    row.mode = 'online';
+    row.status = row.dayFraction >= 1 ? 'present' : 'half';
+    row.note = `Làm online (đơn ${req.id})`;
+    await saveAttendance(row);
   }
 }
 
