@@ -1,6 +1,8 @@
 import { getActiveMembers, getDirectors } from '../modules/members.repo.js';
 import { getTeams } from '../modules/teams.repo.js';
+import { getAllTasks } from '../modules/tasks.repo.js';
 import { memberScore, ranking } from '../modules/scores.service.js';
+import type { TaskRow } from '../types.js';
 import { notify } from '../modules/notifications.service.js';
 import { getParties } from '../modules/finance.repo.js';
 import { getUpcoming } from '../modules/crm.repo.js';
@@ -11,6 +13,28 @@ import { nextDueDateIso, daysUntil } from '../lib/finance.js';
 import { nowTz, todayIso, fmtDate, fmtHm } from '../lib/datetime.js';
 
 const DUE_REMINDER_DAYS = 5;
+
+// Tối đa số việc liệt kê chi tiết trong báo cáo ngày (tránh body quá dài).
+const MAX_TASKS_IN_REPORT = 15;
+
+/** Các việc 1 thành viên ĐÃ HOÀN THÀNH trong ngày `todayIso` (bỏ việc đang làm). */
+function tasksDoneToday(tasks: TaskRow[], memberId: string, todayIso: string): TaskRow[] {
+  return tasks.filter(
+    (t) =>
+      t.memberId === memberId &&
+      t.status !== 'doing' &&
+      (t.completedAt || t.createdAt || '').slice(0, 10) === todayIso,
+  );
+}
+
+/** Dòng liệt kê việc hoàn thành hôm nay cho báo cáo cá nhân. */
+function doneTasksLine(done: TaskRow[]): string {
+  if (done.length === 0) return '\n\n✅ Hôm nay chưa ghi nhận việc hoàn thành.';
+  const shown = done.slice(0, MAX_TASKS_IN_REPORT);
+  const lines = shown.map((t) => `• ${t.taskName} (+${t.points}đ)`).join('\n');
+  const more = done.length > shown.length ? `\n… và ${done.length - shown.length} việc khác.` : '';
+  return `\n\n✅ Việc hoàn thành hôm nay (${done.length}):\n${lines}${more}`;
+}
 
 /** Nhắc thu tiền: 5 ngày trước hạn thu của từng bên → gửi cho người được chọn (mặc định giám đốc). */
 export async function runFinanceReminders(): Promise<void> {
@@ -58,6 +82,8 @@ export async function runDailyReports(): Promise<void> {
   const dd = now.format('DD/MM');
   const month = now.month() + 1;
 
+  const today = todayIso();
+  const allTasks = await getAllTasks();
   const members = await getActiveMembers();
   const birthdays = birthdaysInMonth(
     members.map((m) => ({ fullName: m.fullName, dob: m.dob })),
@@ -72,10 +98,11 @@ export async function runDailyReports(): Promise<void> {
     if (m.role === 'director') continue;
     const s = await memberScore(m.id);
     const bonusLine = s.bonus > 0 ? `\n💰 Thưởng hiện tại: ${formatVnd(s.bonus)}.` : '';
+    const tasksLine = doneTasksLine(tasksDoneToday(allTasks, m.id, today));
     await notify(m.id, {
       type: 'daily',
       title: `Báo cáo điểm ngày ${dd}`,
-      body: `Hôm nay: +${s.todayPoints}đ · ⏱ ${formatMinutes(s.workMinutesToday)} làm việc. Lũy kế tháng: ${s.monthPoints}đ.${bonusLine}${birthdayLine}`,
+      body: `Hôm nay: +${s.todayPoints}đ · ⏱ ${formatMinutes(s.workMinutesToday)} làm việc. Lũy kế tháng: ${s.monthPoints}đ.${bonusLine}${tasksLine}${birthdayLine}`,
       url: '/scores',
     });
   }
