@@ -11,22 +11,32 @@ import { ApiError } from '../util/errors.js';
 export interface SyncResult {
   imported: number;
   teams: string[];
+  deactivated: string[]; // người không còn trong sheet → bị ẩn (active=false)
   people: Array<{ fullName: string; team: string; role: string; username: string }>;
 }
 
+export interface UpsertOpts {
+  /** Ẩn (active=false) các thành viên KHÔNG còn trong sheet — dùng khi đồng bộ thật. */
+  deactivateMissing?: boolean;
+  /** Các member_id không bao giờ bị ẩn (vd người đang bấm đồng bộ). */
+  protectIds?: Set<string>;
+}
+
 /** Upsert parsed HR people into members + teams. Keeps existing username/email/password (matched by full name). */
-export async function upsertHrPeople(people: HrPerson[]): Promise<SyncResult> {
+export async function upsertHrPeople(people: HrPerson[], opts: UpsertOpts = {}): Promise<SyncResult> {
   const existing = await getAllMembers();
   const byName = new Map(existing.map((m) => [m.fullName.trim().toLowerCase(), m]));
   const takenUsernames = new Set(existing.map((m) => m.username.toLowerCase()).filter(Boolean));
 
   const teamLeaders = new Map<string, string>();
   const teamSeen = new Set<string>();
+  const syncedIds = new Set<string>();
   const out: SyncResult['people'] = [];
 
   for (const p of people) {
     const prior = byName.get(p.fullName.trim().toLowerCase());
     const id = prior?.id || newId('M-');
+    syncedIds.add(id);
     let username = prior?.username || '';
     if (!username) {
       const base = vnUsername(p.fullName);
@@ -63,7 +73,20 @@ export async function upsertHrPeople(people: HrPerson[]): Promise<SyncResult> {
     await upsertTeam({ id: team, name: team, leaderMemberId: teamLeaders.get(team) || '' });
   }
 
-  return { imported: people.length, teams: [...teamSeen], people: out };
+  // Người đã nghỉ: còn trong DB (đang active) nhưng KHÔNG còn trong sheet → ẩn đi.
+  // Không đụng tài khoản admin (vd super-admin không nằm trong sheet) và người đang bấm đồng bộ.
+  const deactivated: string[] = [];
+  if (opts.deactivateMissing) {
+    for (const m of existing) {
+      if (syncedIds.has(m.id) || !m.active) continue;
+      if (m.role === 'admin') continue;
+      if (opts.protectIds?.has(m.id)) continue;
+      await upsertMember({ ...m, active: false });
+      deactivated.push(m.fullName);
+    }
+  }
+
+  return { imported: people.length, teams: [...teamSeen], deactivated, people: out };
 }
 
 /** Tiny CSV parser (handles quoted fields). */
@@ -107,8 +130,9 @@ function looksLikeHeader(row: string[]): boolean {
   return j.includes('họ tên') || j.includes('ho ten') || j.includes('chức vụ') || j.includes('bhxh');
 }
 
-/** Read the HR source sheet via its public CSV export and upsert members. */
-export async function syncMembersFromSource(): Promise<SyncResult> {
+/** Read the HR source sheet via its public CSV export and upsert members.
+ *  `selfId`: member đang bấm đồng bộ — không bao giờ bị ẩn (tránh tự khoá mình). */
+export async function syncMembersFromSource(selfId?: string): Promise<SyncResult> {
   const id = process.env.SHEET_HR_SOURCE_ID;
   const gid = process.env.SHEET_HR_SOURCE_GID || '0';
   if (!id) throw new ApiError(400, 'SHEET_HR_SOURCE_ID chưa được cấu hình');
@@ -134,7 +158,10 @@ export async function syncMembersFromSource(): Promise<SyncResult> {
     const p = parseHrRow(rows[i] ?? []);
     if (p) people.push(p);
   }
-  return upsertHrPeople(people);
+  return upsertHrPeople(people, {
+    deactivateMissing: true,
+    protectIds: selfId ? new Set([selfId]) : undefined,
+  });
 }
 
 export interface CatalogSyncResult {

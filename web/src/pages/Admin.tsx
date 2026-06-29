@@ -3,8 +3,10 @@ import { api } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
 import type { User } from '../lib/types';
 
+type AdminMember = User & { active: boolean };
+
 export default function Admin() {
-  const [members, setMembers] = useState<User[]>([]);
+  const [members, setMembers] = useState<AdminMember[]>([]);
   const [msg, setMsg] = useState('');
   const [pwd, setPwd] = useState<Record<string, string>>({});
   const [aiOn, setAiOn] = useState<boolean | null>(null);
@@ -13,7 +15,7 @@ export default function Admin() {
   const [syncInfo, setSyncInfo] = useState<{ hrSheetUrl: string; taskSheetUrl: string }>({ hrSheetUrl: '', taskSheetUrl: '' });
 
   async function loadMembers() {
-    const r = await api<{ members: User[] }>('/admin/members');
+    const r = await api<{ members: AdminMember[] }>('/admin/members');
     setMembers(r.members);
   }
   useEffect(() => {
@@ -29,8 +31,13 @@ export default function Admin() {
   async function sync() {
     setMsg('Đang đồng bộ…');
     try {
-      const r = await api<{ imported: number; teams: string[] }>('/admin/sync-members', { method: 'POST' });
-      setMsg(`Đã đồng bộ ${r.imported} thành viên. Teams: ${r.teams.join(', ')}`);
+      const r = await api<{ imported: number; teams: string[]; deactivated: string[] }>('/admin/sync-members', {
+        method: 'POST',
+      });
+      const off = r.deactivated?.length
+        ? ` Ẩn ${r.deactivated.length} người đã nghỉ: ${r.deactivated.join(', ')}.`
+        : '';
+      setMsg(`Đã đồng bộ ${r.imported} thành viên. Teams: ${r.teams.join(', ')}.${off}`);
       await loadMembers();
     } catch (e) {
       setMsg((e as Error).message);
@@ -186,7 +193,7 @@ export default function Admin() {
       </div>
 
       <div className="card overflow-x-auto">
-        <h2 className="font-semibold mb-2">Thành viên ({members.length})</h2>
+        <h2 className="font-semibold mb-2">Thành viên ({members.filter((m) => m.active).length})</h2>
         <table className="w-full text-sm">
           <thead className="text-left text-slate-500">
             <tr>
@@ -198,7 +205,7 @@ export default function Admin() {
             </tr>
           </thead>
           <tbody>
-            {members.map((m) => (
+            {members.filter((m) => m.active).map((m) => (
               <tr key={m.id} className="border-t">
                 <td className="py-1">{m.fullName}</td>
                 <td className="font-mono text-xs font-semibold text-brand-700">{m.username}</td>
@@ -221,6 +228,12 @@ export default function Admin() {
             ))}
           </tbody>
         </table>
+        {members.some((m) => !m.active) && (
+          <p className="mt-3 text-xs text-slate-400">
+            Đã nghỉ (ẩn): {members.filter((m) => !m.active).map((m) => m.fullName).join(', ')}. Thêm lại vào Google Sheet
+            rồi đồng bộ để khôi phục.
+          </p>
+        )}
       </div>
     </div>
   );

@@ -20,8 +20,8 @@ adminRouter.use(requireAuth, requireRole('admin', 'director'));
 
 adminRouter.post(
   '/sync-members',
-  asyncHandler(async (_req, res) => {
-    res.json(await syncMembersFromSource());
+  asyncHandler(async (req, res) => {
+    res.json(await syncMembersFromSource(req.user!.sub));
   }),
 );
 
