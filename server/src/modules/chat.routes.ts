@@ -4,8 +4,8 @@ import { asyncHandler } from '../util/errors.js';
 import { requireAuth } from '../auth/middleware.js';
 import { interpret } from '../gemini/chatNlu.js';
 import { getActiveCatalog, findCatalogItem, sortCatalogForTeam } from './catalog.repo.js';
-import { findById } from './members.repo.js';
-import { logTask, startTask } from './tasks.service.js';
+import { findById, findByLogin } from './members.repo.js';
+import { logTask, startTask, assignTask, canAssign } from './tasks.service.js';
 import { memberScore } from './scores.service.js';
 import { formatVnd } from '../lib/money.js';
 import { formatMinutes } from '../lib/worktime.js';
@@ -18,7 +18,17 @@ const bodySchema = z.object({
   message: z.string().optional().default(''),
   confirmTaskCode: z.string().optional(),
   confirmStartTaskCode: z.string().optional(),
+  confirmAssign: z.boolean().optional(),
+  assigneeId: z.string().optional(),
+  assignTaskName: z.string().optional(),
 });
+
+const ASSIGN_ROLES = new Set(['leader', 'director', 'admin']);
+
+/** Lấy các tên đăng nhập được @tag trong câu (token sau @, không dấu cách). */
+function parseMentions(message: string): string[] {
+  return [...message.matchAll(/@([a-zA-Z0-9_.]+)/g)].map((m) => m[1]!.toLowerCase());
+}
 
 chatRouter.post(
   '/',
@@ -44,9 +54,53 @@ chatRouter.post(
       return;
     }
 
+    // 1c) Xác nhận GIAO VIỆC cho thành viên (leader/giám đốc).
+    if (b.confirmAssign && b.assigneeId && b.assignTaskName) {
+      const { task } = await assignTask({
+        assignerId: memberId,
+        assigneeId: b.assigneeId,
+        taskName: b.assignTaskName,
+      });
+      res.json({
+        reply: `📌 Đã giao "${task.taskName}" cho ${task.memberName}. Họ sẽ thấy ở mục "Cần làm", chọn loại việc rồi bắt đầu.`,
+        action: 'task_assigned',
+        task,
+      });
+      return;
+    }
+
     // Ưu tiên task thuộc team của nhân sự (Ads/Content/SEO) khi gợi ý.
     const me = await findById(memberId);
-    const catalog = sortCatalogForTeam(await getActiveCatalog(), me?.teamId || '');
+    const fullCatalog = await getActiveCatalog();
+    const catalog = sortCatalogForTeam(fullCatalog, me?.teamId || '');
+
+    // 1d) GIAO VIỆC qua @tag: leader/giám đốc gõ "@username + mô tả việc".
+    // Việc giao là mô tả tự do; người nhận sẽ tự chọn loại task (Ads/Content/SEO) khi Bắt đầu.
+    const mentions = parseMentions(b.message);
+    if (me && ASSIGN_ROLES.has(me.role) && mentions.length > 0) {
+      const assignee = await findByLogin(mentions[0]!);
+      if (!assignee || !assignee.active) {
+        res.json({ reply: `Không tìm thấy người dùng @${mentions[0]}. Gõ @ rồi chọn tên trong danh sách nhé.`, action: 'help' });
+        return;
+      }
+      if (!canAssign(me, assignee)) {
+        res.json({ reply: `Bạn không có quyền giao việc cho ${assignee.fullName}.`, action: 'help' });
+        return;
+      }
+      const taskText = b.message.replace(/@[a-zA-Z0-9_.]+/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!taskText) {
+        res.json({ reply: `Nhập nội dung việc cần giao cho ${assignee.fullName}, vd "@${assignee.username} viết bài SEO sản phẩm A".`, action: 'help' });
+        return;
+      }
+      res.json({
+        reply: `Giao việc "${taskText}" cho ${assignee.fullName}? Bấm xác nhận để giao.`,
+        action: 'confirm_assign',
+        suggestion: { taskName: taskText },
+        assignee: { id: assignee.id, fullName: assignee.fullName },
+      });
+      return;
+    }
+
     const x = await interpret(b.message, catalog, me?.teamId || '');
 
     // 2) Bắt đầu task → thẻ xác nhận bắt đầu.

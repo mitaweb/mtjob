@@ -24,7 +24,8 @@ Ngày/giờ lưu dạng text ISO (`YYYY-MM-DD`, ISO datetime) — so sánh theo 
 ## Quy ước
 - `members.role` ∈ member / leader / director / admin. `attendance.day_fraction` ∈ {0, 0.5, 1}.
 - `attendance.mode` ∈ office / online / leave / holiday. `requests.final_status` ∈ pending / approved / rejected.
-- `tasks` ghi nối (append); điểm lấy từ `task_catalog` theo `task_code`.
+- `tasks` ghi nối (append); điểm lấy từ `task_catalog` theo `task_code`. `tasks.status` ∈ todo / doing / done.
+- **Giao việc:** leader/giám đốc @tag trong Chat → tạo task `todo` (mô tả tự do, chưa điểm). Người nhận bấm "Bắt đầu" tự chọn loại việc (catalog Ads/Content/SEO) → `doing` + gán điểm; chỉ task `done` mới tính điểm.
 - **Retention:** job đầu tháng tự xoá `notifications` cũ hơn 90 ngày + subscription push chết (404/410) bị xoá ngay khi gửi — DB giữ ổn định ~vài chục MB nhiều năm (dư trong 500MB free của Neon).
 
 ## Config (key/value)

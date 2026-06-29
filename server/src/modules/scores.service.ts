@@ -43,7 +43,7 @@ export async function memberScore(memberId: string, year?: number, month?: numbe
   const today = todayIso();
   const tasks = await getAllTasks();
   // Điểm chỉ tính task đã hoàn thành; giờ làm tính cả task đang chạy.
-  const doneTasks = tasks.filter((t) => t.status !== 'doing');
+  const doneTasks = tasks.filter((t) => t.status === 'done');
   const member = await findById(memberId);
   const monthPoints = sumPointsForMember(doneTasks, memberId, start, end);
   const todayPoints = sumPointsForMember(doneTasks, memberId, today, today);
@@ -69,7 +69,7 @@ export async function ranking(year?: number, month?: number, teamId?: string): P
   const { start, end } = monthRange(y, m);
   const today = todayIso();
   const tasks = await getAllTasks();
-  const doneTasks = tasks.filter((t) => t.status !== 'doing');
+  const doneTasks = tasks.filter((t) => t.status === 'done');
   let members = (await getActiveMembers()).filter((x) => x.role === 'member');
   if (teamId) members = members.filter((x) => x.teamId === teamId);
 

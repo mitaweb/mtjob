@@ -36,7 +36,7 @@ export interface TaskCatalogItem {
   note?: string;
 }
 
-export type TaskStatus = 'doing' | 'done';
+export type TaskStatus = 'todo' | 'doing' | 'done';
 
 export interface TaskRow {
   id: string;

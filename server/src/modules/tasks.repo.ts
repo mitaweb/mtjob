@@ -46,6 +46,35 @@ export async function getDoingTasks(memberId: string): Promise<TaskRow[]> {
   return rows.map(rowToTask);
 }
 
+/** Các task ĐƯỢC GIAO chưa bắt đầu (cần làm) của một thành viên. */
+export async function getTodoTasks(memberId: string): Promise<TaskRow[]> {
+  const rows = await q(
+    "SELECT * FROM tasks WHERE member_id = $1 AND status = 'todo' ORDER BY created_at",
+    [memberId],
+  );
+  return rows.map(rowToTask);
+}
+
+/**
+ * Bắt đầu 1 task được giao (todo → doing): chốt giờ bắt đầu và gán loại task
+ * (catalog) do NGƯỜI NHẬN tự chọn theo hệ thống Ads/Content/SEO → quyết định điểm.
+ */
+export async function startTodoTask(
+  taskId: string,
+  memberId: string,
+  startedAt: string,
+  taskCode: string,
+  points: number,
+): Promise<TaskRow | null> {
+  const rows = await q(
+    `UPDATE tasks SET started_at = $1, status = 'doing', task_code = $2, points = $3
+     WHERE task_id = $4 AND member_id = $5 AND status = 'todo'
+     RETURNING *`,
+    [startedAt, taskCode, points, taskId, memberId],
+  );
+  return rows.length ? rowToTask(rows[0]) : null;
+}
+
 /** Hoàn thành 1 task đang làm (đúng chủ sở hữu). Trả về task sau cập nhật, hoặc null nếu không có. */
 export async function completeTaskRow(
   taskId: string,

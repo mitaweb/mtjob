@@ -74,6 +74,22 @@ export interface DoingTask {
   elapsedMinutes: number;
 }
 
+export interface TodoTask {
+  id: string;
+  taskCode: string;
+  taskName: string;
+  points: number;
+  createdAt: string;
+  assignedBy: string;
+}
+
+export interface Assignee {
+  id: string;
+  fullName: string;
+  username: string;
+  teamId: string;
+}
+
 export interface PayrollLine {
   memberId: string;
   fullName: string;

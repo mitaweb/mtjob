@@ -3,9 +3,9 @@ import { z } from 'zod';
 import { asyncHandler } from '../util/errors.js';
 import { requireAuth } from '../auth/middleware.js';
 import { getActiveCatalog, sortCatalogForTeam } from './catalog.repo.js';
-import { findById } from './members.repo.js';
-import { getAllTasks, getDoingTasks } from './tasks.repo.js';
-import { logTask, startTask, completeTask } from './tasks.service.js';
+import { findById, getActiveMembers, membersInTeam } from './members.repo.js';
+import { getAllTasks, getDoingTasks, getTodoTasks } from './tasks.repo.js';
+import { logTask, startTask, completeTask, startAssignedTask, canAssign } from './tasks.service.js';
 import { inRange } from '../lib/scores.js';
 import { nowTz, monthRange, todayIso } from '../lib/datetime.js';
 import { getConfig } from '../config.js';
@@ -36,7 +36,7 @@ tasksRouter.get(
       .filter(
         (t) =>
           t.memberId === req.user!.sub &&
-          t.status !== 'doing' &&
+          t.status === 'done' &&
           inRange(t.completedAt || t.createdAt, start, end),
       )
       .sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1));
@@ -60,6 +60,54 @@ tasksRouter.get(
         elapsedMinutes: Math.max(0, Math.round((now - Date.parse(t.startedAt)) / 60000)) || 0,
       })),
     });
+  }),
+);
+
+/** Việc được giao chưa bắt đầu (cần làm) — hiện dưới ô chat. */
+tasksRouter.get(
+  '/todo',
+  asyncHandler(async (req, res) => {
+    const todo = await getTodoTasks(req.user!.sub);
+    res.json({
+      tasks: todo.map((t) => ({
+        id: t.id,
+        taskCode: t.taskCode,
+        taskName: t.taskName,
+        points: t.points,
+        createdAt: t.createdAt,
+        assignedBy: t.note || '',
+      })),
+    });
+  }),
+);
+
+/** Danh sách người mà mình được phép giao việc (leader: trong team; giám đốc/admin: tất cả). */
+tasksRouter.get(
+  '/assignees',
+  asyncHandler(async (req, res) => {
+    const me = await findById(req.user!.sub);
+    if (!me) {
+      res.json({ assignees: [] });
+      return;
+    }
+    let people = me.role === 'leader' ? await membersInTeam(me.teamId) : await getActiveMembers();
+    if (me.role !== 'director' && me.role !== 'admin' && me.role !== 'leader') people = [];
+    res.json({
+      assignees: people
+        .filter((p) => p.id !== me.id && canAssign(me, p))
+        .map((p) => ({ id: p.id, fullName: p.fullName, username: p.username, teamId: p.teamId })),
+    });
+  }),
+);
+
+/** Bắt đầu một việc ĐƯỢC GIAO (todo → doing); người nhận tự chọn loại task. */
+const startAssignedSchema = z.object({ taskCode: z.string().min(1) });
+tasksRouter.post(
+  '/:id/start',
+  asyncHandler(async (req, res) => {
+    const { taskCode } = startAssignedSchema.parse(req.body);
+    const { task } = await startAssignedTask(req.user!.sub, String(req.params.id), taskCode);
+    res.json({ ok: true, task });
   }),
 );
 

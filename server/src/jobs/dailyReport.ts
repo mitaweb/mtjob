@@ -22,7 +22,7 @@ function tasksDoneToday(tasks: TaskRow[], memberId: string, todayIso: string): T
   return tasks.filter(
     (t) =>
       t.memberId === memberId &&
-      t.status !== 'doing' &&
+      t.status === 'done' &&
       (t.completedAt || t.createdAt || '').slice(0, 10) === todayIso,
   );
 }
