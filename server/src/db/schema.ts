@@ -220,7 +220,7 @@ export const CONFIG_SEED: Array<[string, string]> = [
   ['morningEnd', '12:00'],
   ['afternoonStart', '13:30'],
   ['afternoonEnd', '17:00'],
-  ['dailyReportTime', '18:00'],
+  ['dailyReportTime', '17:15'],
   ['monthlyReportDay', '1'],
   ['bonusThreshold', '6000'],
   ['bonusStep', '1000'],

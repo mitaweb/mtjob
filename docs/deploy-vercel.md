@@ -57,7 +57,7 @@ Tạo bảng + seed config/danh mục task/ngày lễ/**13 thành viên** + admi
 ### 5. Kiểm tra
 - `https://<domain>/api/health` → JSON `{ok:true, env:{databaseUrl:true, ...}}`.
 - Đăng nhập admin → Quản trị → đặt mật khẩu thành viên.
-- **Settings → Cron Jobs**: 2 job `0 11 * * *` (= 18:00 VN) và `30 1 1 * *` (= 08:30 VN ngày 1).
+- **Settings → Cron Jobs**: 2 job `15 10 * * *` (= 17:15 VN) và `30 1 1 * *` (= 08:30 VN ngày 1).
 - Test cron tay: `curl -H "Authorization: Bearer <CRON_SECRET>" https://<domain>/api/jobs/daily`
 
 ## Giới hạn cần biết (gói Hobby)

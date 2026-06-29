@@ -34,7 +34,7 @@ Ngày/giờ lưu dạng text ISO (`YYYY-MM-DD`, ISO datetime) — so sánh theo 
 | checkinRadiusM | 150 | Bán kính cho phép chấm công (m) |
 | morningStart / morningEnd | 08:30 / 12:00 | Ca sáng |
 | afternoonStart / afternoonEnd | 13:30 / 17:00 | Ca chiều |
-| dailyReportTime | 18:00 | Giờ gửi báo cáo ngày (chế độ node-cron) |
+| dailyReportTime | 17:15 | Giờ gửi báo cáo ngày (chế độ node-cron) |
 | monthlyReportDay | 1 | Ngày gửi tổng kết tháng |
 | bonusThreshold / bonusStep / bonusAmount | 6000 / 1000 / 800000 | Công thức thưởng |
 | bhxhMode | percent | `percent` = trừ 10,5% × mức đóng BHXH (cột BHXH); `direct` = trừ thẳng giá trị cột |
