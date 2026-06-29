@@ -6,6 +6,7 @@ import { interpret } from '../gemini/chatNlu.js';
 import { getActiveCatalog, findCatalogItem, sortCatalogForTeam } from './catalog.repo.js';
 import { findById, findByLogin } from './members.repo.js';
 import { logTask, startTask, assignTask, canAssign } from './tasks.service.js';
+import { answerDataQuestion } from './assistant.service.js';
 import { memberScore } from './scores.service.js';
 import { formatVnd } from '../lib/money.js';
 import { formatMinutes } from '../lib/worktime.js';
@@ -98,6 +99,13 @@ chatRouter.post(
         suggestion: { taskName: taskText },
         assignee: { id: assignee.id, fullName: assignee.fullName },
       });
+      return;
+    }
+
+    // 1e) Giám đốc/Admin (không @tag ai) → hỏi-đáp dữ liệu hệ thống bằng AI.
+    if (me && (me.role === 'director' || me.role === 'admin') && b.message.trim()) {
+      const answer = await answerDataQuestion(b.message);
+      res.json({ reply: answer, action: 'data_answer' });
       return;
     }
 

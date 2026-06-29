@@ -11,9 +11,9 @@ interface NavItem {
   roles?: Role[];
 }
 
-// Giám đốc không làm task → ẩn Trợ lý / Chấm công / Điểm.
+// Giám đốc không làm task → ẩn Chấm công / Điểm; nhưng VẪN có Trợ lý để giao việc + hỏi dữ liệu.
 const NAV: NavItem[] = [
-  { to: '/chat', label: 'Trợ lý', icon: '💬', roles: ['member', 'leader', 'admin'] },
+  { to: '/chat', label: 'Trợ lý', icon: '💬' },
   { to: '/attendance', label: 'Chấm công', icon: '📍', roles: ['member', 'leader', 'admin'] },
   { to: '/scores', label: 'Điểm', icon: '⭐', roles: ['member', 'leader', 'admin'] },
   { to: '/payroll', label: 'Lương', icon: '💵', roles: ['member', 'leader'] },

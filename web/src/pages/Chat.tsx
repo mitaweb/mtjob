@@ -23,19 +23,21 @@ interface Msg {
 }
 
 const ASSIGN_ROLES = ['leader', 'director', 'admin'];
+const DATA_ROLES = ['director', 'admin'];
+
+function greeting(role?: string): string {
+  if (role && DATA_ROLES.includes(role))
+    return 'Chào sếp! 📌 Giao việc: gõ @tên người + mô tả việc (vd "@nam lên ads cho SP A"). 📊 Hỏi dữ liệu: "hôm nay ai chưa chấm công", "ai điểm cao nhất tháng này", "đơn nào đang chờ duyệt", "tổng phải thu bao nhiêu".';
+  if (role === 'leader')
+    return 'Chào bạn! 📌 Giao việc: gõ @tên người + mô tả việc. ▶️ Hoặc bắt đầu/ghi nhận task, xem điểm/giờ làm.';
+  return 'Chào bạn! Mình có thể: ▶️ bắt đầu task ("bắt đầu lên ads"), ✅ ghi nhận task đã xong ("đã đăng bài page"), hoặc xem điểm/giờ làm. Bạn cần gì?';
+}
 
 export default function Chat() {
   const { user } = useAuth();
   const canAssign = !!user && ASSIGN_ROLES.includes(user.role);
 
-  const [msgs, setMsgs] = useState<Msg[]>([
-    {
-      role: 'bot',
-      text: canAssign
-        ? 'Chào bạn! Mình có thể: ▶️ bắt đầu task, ✅ ghi nhận task đã xong, xem điểm/giờ làm. 📌 Giao việc: gõ @tên người + mô tả việc (vd "@nam lên ads cho sản phẩm A").'
-        : 'Chào bạn! Mình có thể: ▶️ bắt đầu task ("bắt đầu lên ads"), ✅ ghi nhận task đã xong ("đã đăng bài page"), hoặc xem điểm/giờ làm. Bạn cần gì?',
-    },
-  ]);
+  const [msgs, setMsgs] = useState<Msg[]>([{ role: 'bot', text: greeting(user?.role) }]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [doing, setDoing] = useState<DoingTask[]>([]);

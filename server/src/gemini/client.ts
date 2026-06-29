@@ -29,13 +29,8 @@ export async function geminiAvailable(): Promise<boolean> {
   return !!(await configuredApiKey());
 }
 
-/** Ask Gemini for a JSON object matching `schema` (responseSchema). */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function generateJson(prompt: string, schema: unknown): Promise<any> {
-  const body = {
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: { responseMimeType: 'application/json', responseSchema: schema },
-  };
+/** Gọi Gemini generateContent với body cho sẵn, trả về phần text của câu trả lời. */
+async function callGemini(body: unknown): Promise<string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   let url = `${baseUrl()}/models/${geminiModel()}:generateContent`;
 
@@ -56,6 +51,21 @@ export async function generateJson(prompt: string, schema: unknown): Promise<any
   if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = (await res.json()) as any;
-  const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
-  return JSON.parse(text);
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+}
+
+/** Ask Gemini for a JSON object matching `schema` (responseSchema). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function generateJson(prompt: string, schema: unknown): Promise<any> {
+  const text = await callGemini({
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: { responseMimeType: 'application/json', responseSchema: schema },
+  });
+  return JSON.parse(text || '{}');
+}
+
+/** Ask Gemini for a free-form text answer (tiếng Việt). */
+export async function generateText(prompt: string): Promise<string> {
+  const text = await callGemini({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
+  return text.trim();
 }
