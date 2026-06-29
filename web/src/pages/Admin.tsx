@@ -10,6 +10,7 @@ export default function Admin() {
   const [aiOn, setAiOn] = useState<boolean | null>(null);
   const [authUrl, setAuthUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const [syncInfo, setSyncInfo] = useState<{ hrSheetUrl: string; taskSheetUrl: string }>({ hrSheetUrl: '', taskSheetUrl: '' });
 
   async function loadMembers() {
     const r = await api<{ members: User[] }>('/admin/members');
@@ -20,6 +21,9 @@ export default function Admin() {
     api<{ env: { gemini: boolean } }>('/health')
       .then((r) => setAiOn(!!r.env.gemini))
       .catch(() => setAiOn(null));
+    api<{ hrSheetUrl: string; taskSheetUrl: string }>('/admin/sync-info')
+      .then(setSyncInfo)
+      .catch(() => undefined);
   }, []);
 
   async function sync() {
@@ -103,6 +107,28 @@ export default function Admin() {
           <p className="text-sm text-slate-500">
             Đồng bộ từ Google Sheet (cần share công khai): nhân sự (Họ tên · Chức vụ · Lương · BHXH…) và bảng điểm task (điểm = cột EXPERT).
           </p>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            {syncInfo.hrSheetUrl && (
+              <a
+                href={syncInfo.hrSheetUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-brand-700 underline hover:text-brand-800"
+              >
+                📝 Mở Sheet nhân sự để chỉnh sửa
+              </a>
+            )}
+            {syncInfo.taskSheetUrl && (
+              <a
+                href={syncInfo.taskSheetUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-brand-700 underline hover:text-brand-800"
+              >
+                📊 Mở Sheet bảng điểm
+              </a>
+            )}
+          </div>
         </div>
         <div className="flex gap-2">
           <AsyncButton className="btn-primary" onClick={sync} busyLabel="Đang đồng bộ…">

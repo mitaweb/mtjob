@@ -10,7 +10,7 @@ import { upsertTeam } from './teams.repo.js';
 import { getForMemberRange, saveAttendance } from './attendance.repo.js';
 import { payrollForMonth } from './payroll.service.js';
 import { hashPassword } from '../auth/password.js';
-import { setConfigValue } from '../config.js';
+import { setConfigValue, getConfig } from '../config.js';
 import { newId } from '../util/id.js';
 import { nowTz, monthRange, fmtHm, dayjs, TZ } from '../lib/datetime.js';
 import { dayFractionFromShifts } from '../lib/attendance.js';
@@ -29,6 +29,20 @@ adminRouter.post(
   '/sync-catalog',
   asyncHandler(async (_req, res) => {
     res.json(await syncCatalogFromSource());
+  }),
+);
+
+// Link Google Sheet nguồn để admin mở chỉnh sửa trực tiếp (dựng từ ID trong env).
+adminRouter.get(
+  '/sync-info',
+  asyncHandler(async (_req, res) => {
+    const cfg = await getConfig();
+    const hrId = process.env.SHEET_HR_SOURCE_ID || '';
+    const hrGid = process.env.SHEET_HR_SOURCE_GID || '0';
+    res.json({
+      hrSheetUrl: hrId ? `https://docs.google.com/spreadsheets/d/${hrId}/edit#gid=${hrGid}` : '',
+      taskSheetUrl: cfg.taskSheetUrl || '',
+    });
   }),
 );
 
