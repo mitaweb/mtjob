@@ -10,6 +10,8 @@ interface PayRow {
   bhxh: number;
   standardDays: number;
   actualDays: number;
+  proratedSalary: number;
+  bhxhDeduction: number;
   netSalary: number;
 }
 interface AttnRow {
@@ -49,9 +51,10 @@ export default function AdminPayroll() {
     return `year=${y}&month=${Number(m)}`;
   }
 
-  async function loadPayroll() {
+  async function loadPayroll(): Promise<PayRow[]> {
     const r = await api<{ rows: PayRow[] }>(`/admin/payroll?${qs()}`);
     setRows(r.rows);
+    return r.rows;
   }
   useEffect(() => {
     loadPayroll().catch((e) => setMsg((e as Error).message));
@@ -89,7 +92,10 @@ export default function AdminPayroll() {
       // reload danh sách ngày + bảng lương (công/net đổi theo)
       const r = await api<{ records: AttnRow[] }>(`/admin/attendance?memberId=${editing.memberId}&${qs()}`);
       setRecords(r.records);
-      await loadPayroll();
+      const fresh = await loadPayroll();
+      // Cập nhật lại khối chi tiết lương trong modal theo công mới.
+      const updated = fresh.find((x) => x.memberId === editing.memberId);
+      if (updated) setEditing(updated);
       setForm(blankAttn());
       setMsg('Đã lưu chấm công ✅');
     } catch (e) {
@@ -128,7 +134,14 @@ export default function AdminPayroll() {
           <tbody>
             {rows.map((r) => (
               <tr key={r.memberId} className="border-t">
-                <td className="py-2">{r.fullName}</td>
+                <td className="py-2">
+                  <button
+                    className="font-medium text-brand-700 underline-offset-2 hover:underline"
+                    onClick={() => openEditor(r)}
+                  >
+                    {r.fullName}
+                  </button>
+                </td>
                 <td>{r.teamId}</td>
                 <td className="text-right">{vnd(r.salary)}</td>
                 <td className="text-center">
@@ -137,7 +150,7 @@ export default function AdminPayroll() {
                 <td className="text-right font-medium text-emerald-600">{vnd(r.netSalary)}</td>
                 <td className="text-right">
                   <button className="btn-ghost text-xs px-2 py-1" onClick={() => openEditor(r)}>
-                    Sửa công
+                    Chi tiết
                   </button>
                 </td>
               </tr>
@@ -160,10 +173,43 @@ export default function AdminPayroll() {
         >
           <div className="card w-full max-w-2xl my-8" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-2">
-              <h2 className="font-semibold">Sửa công — {editing.fullName} ({ym})</h2>
+              <h2 className="font-semibold">
+                {editing.fullName} {editing.teamId ? `· ${editing.teamId}` : ''} ({ym})
+              </h2>
               <button className="btn-ghost px-2 py-1 text-sm" onClick={() => setEditing(null)}>
                 ✕ Đóng
               </button>
+            </div>
+
+            {/* Chi tiết lương tháng — tự cập nhật khi sửa công bên dưới */}
+            <div className="mb-3 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
+                <div>
+                  <div className="text-xs text-slate-500">Mức lương</div>
+                  <div className="font-medium">{vnd(editing.salary)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500">Công thực tế / chuẩn</div>
+                  <div className="font-medium">
+                    {editing.actualDays}/{editing.standardDays} ngày
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500">Lương theo công</div>
+                  <div className="font-medium">{vnd(editing.proratedSalary)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500">Trừ BHXH</div>
+                  <div className="font-medium text-rose-600">−{vnd(editing.bhxhDeduction)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500">Thực lãnh</div>
+                  <div className="font-semibold text-emerald-600">{vnd(editing.netSalary)}</div>
+                </div>
+              </div>
+              <p className="mt-1.5 text-xs text-slate-400">
+                Lương theo công = mức lương ÷ công chuẩn × công thực tế. Sửa giờ vào/ra bên dưới, số liệu tự tính lại.
+              </p>
             </div>
 
             {/* Form sửa/thêm 1 ngày */}

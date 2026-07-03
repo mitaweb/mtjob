@@ -174,6 +174,8 @@ adminRouter.get(
         bhxh: m?.bhxh ?? 0, // mức đóng BHXH (base)
         standardDays: l.standardDays,
         actualDays: l.actualDays,
+        proratedSalary: l.proratedSalary, // lương theo công (trước trừ BHXH)
+        bhxhDeduction: l.bhxh, // khoản trừ BHXH thực tế
         netSalary: l.netSalary,
       };
     });

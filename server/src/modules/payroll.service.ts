@@ -18,6 +18,7 @@ export interface PayrollLine {
   standardDays: number;
   actualDays: number;
   grossSalary: number;
+  proratedSalary: number; // lương theo công = gross/std*actual (trước khi trừ BHXH)
   bhxh: number;
   netSalary: number;
 }
@@ -59,6 +60,7 @@ export async function payrollForMonth(year: number, month: number): Promise<Payr
         standardDays: std,
         actualDays,
         grossSalary: m.salary,
+        proratedSalary: r.proratedSalary,
         bhxh: r.bhxhDeduction,
         netSalary: r.netSalary,
       };
