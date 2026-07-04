@@ -262,10 +262,7 @@ export default function CustomerNotes() {
                 className="note-rich max-h-48 overflow-hidden"
                 dangerouslySetInnerHTML={{ __html: clean(n.content) || '<span class="text-slate-400">(trống)</span>' }}
               />
-              <div className="mt-3 text-xs text-slate-400">
-                — {n.createdName || 'Ẩn danh'}
-                {n.updatedName && n.updatedName !== n.createdName ? ` · sửa: ${n.updatedName}` : ''}
-              </div>
+              <div className="mt-3 text-xs text-slate-400">— {n.createdName || 'Ẩn danh'}</div>
             </button>
           ))}
         </div>
