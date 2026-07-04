@@ -12,7 +12,20 @@ interface Note {
   createdName: string;
   createdAt: string;
   updatedAt: string;
+  updatedName?: string;
 }
+
+interface HistEntry {
+  id: string;
+  customer: string;
+  content: string;
+  color: string;
+  savedAt: string;
+  savedName: string;
+}
+
+const fmtTime = (iso: string) =>
+  iso ? new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
 
 const COLORS: { key: string; label: string; card: string; dot: string }[] = [
   { key: 'yellow', label: 'Vàng', card: 'bg-amber-50 border-amber-200', dot: 'bg-amber-300' },
@@ -66,6 +79,7 @@ export default function CustomerNotes() {
   const [edit, setEdit] = useState<Note | null>(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [history, setHistory] = useState<HistEntry[] | null>(null); // null = đang đóng
   const editorRef = useRef<HTMLDivElement>(null);
   const savedRange = useRef<Range | null>(null);
 
@@ -85,7 +99,26 @@ export default function CustomerNotes() {
   function openEditor(n: Note) {
     setErr('');
     savedRange.current = null;
+    setHistory(null);
     setEdit(n);
+  }
+
+  async function openHistory() {
+    if (!edit?.id) return;
+    try {
+      const r = await api<{ history: HistEntry[] }>(`/customer-notes/${edit.id}/history`);
+      setHistory(r.history);
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  }
+
+  // Khôi phục: nạp bản cũ vào ô soạn — bấm Lưu để chốt (bản hiện tại lại được lưu vào lịch sử).
+  function restore(h: HistEntry) {
+    if (!edit) return;
+    setEdit({ ...edit, customer: h.customer, color: h.color || edit.color });
+    if (editorRef.current) editorRef.current.innerHTML = clean(h.content);
+    setHistory(null);
   }
 
   function saveSelection() {
@@ -229,7 +262,10 @@ export default function CustomerNotes() {
                 className="note-rich max-h-48 overflow-hidden"
                 dangerouslySetInnerHTML={{ __html: clean(n.content) || '<span class="text-slate-400">(trống)</span>' }}
               />
-              <div className="mt-3 text-xs text-slate-400">— {n.createdName || 'Ẩn danh'}</div>
+              <div className="mt-3 text-xs text-slate-400">
+                — {n.createdName || 'Ẩn danh'}
+                {n.updatedName && n.updatedName !== n.createdName ? ` · sửa: ${n.updatedName}` : ''}
+              </div>
             </button>
           ))}
         </div>
@@ -344,13 +380,22 @@ export default function CustomerNotes() {
 
             <div className="flex items-center justify-between gap-2">
               {edit.id ? (
-                <button
-                  onClick={remove}
-                  disabled={busy}
-                  className="rounded-xl px-3 py-2.5 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
-                >
-                  Xóa
-                </button>
+                <div className="flex gap-1">
+                  <button
+                    onClick={remove}
+                    disabled={busy}
+                    className="rounded-xl px-3 py-2.5 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                  >
+                    Xóa
+                  </button>
+                  <button
+                    onClick={openHistory}
+                    disabled={busy}
+                    className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+                  >
+                    🕘 Lịch sử
+                  </button>
+                </div>
               ) : (
                 <span />
               )}
@@ -371,6 +416,57 @@ export default function CustomerNotes() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lịch sử các lần sửa — nằm trên modal soạn */}
+      {edit && history !== null && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/50 p-0 sm:items-center sm:p-4"
+          onClick={() => setHistory(null)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-800">🕘 Lịch sử — {edit.customer || '(chưa đặt tên)'}</h2>
+              <button onClick={() => setHistory(null)} className="text-slate-400 hover:text-slate-600" aria-label="Đóng">
+                ✕
+              </button>
+            </div>
+            {history.length === 0 ? (
+              <p className="py-4 text-sm text-slate-500">
+                Chưa có bản cũ nào — lịch sử được ghi lại từ mỗi lần bấm Lưu (sau khi tính năng này bật).
+              </p>
+            ) : (
+              <ul className="divide-y overflow-y-auto">
+                {history.map((h) => (
+                  <li key={h.id} className="py-3">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <div className="text-xs text-slate-500">
+                        {fmtTime(h.savedAt)} · {h.savedName || 'Ẩn danh'}
+                        {h.customer !== edit.customer ? ` · KH: ${h.customer}` : ''}
+                      </div>
+                      <button
+                        onClick={() => restore(h)}
+                        className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50"
+                      >
+                        ↩️ Khôi phục
+                      </button>
+                    </div>
+                    <div
+                      className="note-rich max-h-32 overflow-hidden rounded-lg bg-slate-50 px-2.5 py-1.5"
+                      dangerouslySetInnerHTML={{ __html: clean(h.content) || '<span class="text-slate-400">(trống)</span>' }}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-2 text-xs text-slate-400">
+              Khôi phục sẽ nạp bản cũ vào ô soạn — bấm Lưu để chốt. Bản hiện tại vẫn được giữ trong lịch sử.
+            </p>
           </div>
         </div>
       )}

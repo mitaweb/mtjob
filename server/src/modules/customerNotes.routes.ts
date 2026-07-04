@@ -5,7 +5,16 @@ import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 import { asyncHandler, ApiError } from '../util/errors.js';
 import { requireAuth } from '../auth/middleware.js';
 import { verifyToken } from '../auth/jwt.js';
-import { getNotes, findNote, upsertNote, deleteNote, type CustomerNote } from './customerNotes.repo.js';
+import {
+  getNotes,
+  findNote,
+  upsertNote,
+  deleteNote,
+  addHistory,
+  getHistory,
+  deleteHistory,
+  type CustomerNote,
+} from './customerNotes.repo.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
 
@@ -81,6 +90,20 @@ customerNotesRouter.post(
     const b = noteSchema.parse(req.body);
     const existing = b.id ? await findNote(b.id) : undefined;
     const now = nowTz().toISOString();
+
+    // Lưu đè note cũ → chụp bản cũ vào lịch sử (chỉ khi nội dung thực sự đổi).
+    if (existing && (existing.content !== b.content || existing.customer !== b.customer || existing.color !== b.color)) {
+      await addHistory({
+        id: newId('CNH-'),
+        noteId: existing.id,
+        customer: existing.customer,
+        content: existing.content,
+        color: existing.color,
+        savedAt: existing.updatedAt || existing.createdAt,
+        savedName: existing.updatedName || existing.createdName,
+      });
+    }
+
     const note: CustomerNote = {
       id: existing?.id || b.id || newId('CN-'),
       customer: b.customer,
@@ -91,9 +114,19 @@ customerNotesRouter.post(
       createdName: existing?.createdName || req.user!.name,
       createdAt: existing?.createdAt || now,
       updatedAt: now,
+      updatedBy: req.user!.sub,
+      updatedName: req.user!.name,
     };
     await upsertNote(note);
     res.json({ ok: true, id: note.id });
+  }),
+);
+
+// Lịch sử các lần sửa của 1 note (mới nhất trước).
+customerNotesRouter.get(
+  '/:id/history',
+  asyncHandler(async (req, res) => {
+    res.json({ history: await getHistory(String(req.params.id)) });
   }),
 );
 
@@ -111,12 +144,17 @@ function blobUrlsOf(note: { content?: string; attachments?: { url: string }[] } 
 customerNotesRouter.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    const note = await findNote(String(req.params.id));
-    await deleteNote(String(req.params.id));
-    const urls = blobUrlsOf(note);
-    if (urls.length) {
+    const id = String(req.params.id);
+    const note = await findNote(id);
+    // Gom blob từ cả bản hiện tại lẫn các bản lịch sử trước khi xóa.
+    const history = await getHistory(id);
+    await deleteNote(id);
+    await deleteHistory(id);
+    const urls = new Set<string>(blobUrlsOf(note));
+    for (const h of history) for (const u of blobUrlsOf({ content: h.content })) urls.add(u);
+    if (urls.size) {
       try {
-        await del(urls, { token: process.env.mt_READ_WRITE_TOKEN });
+        await del([...urls], { token: process.env.mt_READ_WRITE_TOKEN });
       } catch {
         // Không chặn xóa note nếu dọn blob lỗi.
       }

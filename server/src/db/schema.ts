@@ -206,9 +206,23 @@ CREATE TABLE IF NOT EXISTS customer_notes (
   created_by   text DEFAULT '',            -- member_id người tạo
   created_name text DEFAULT '',            -- tên hiển thị người tạo
   created_at   text DEFAULT '',
-  updated_at   text DEFAULT ''
+  updated_at   text DEFAULT '',
+  updated_by   text DEFAULT '',            -- member_id người sửa gần nhất
+  updated_name text DEFAULT ''             -- tên người sửa gần nhất
 );
 CREATE INDEX IF NOT EXISTS customer_notes_updated_idx ON customer_notes (updated_at);
+
+-- Lịch sử lưu ý KH: mỗi lần lưu đè, bản CŨ được chụp lại vào đây (xem/khôi phục).
+CREATE TABLE IF NOT EXISTS customer_note_history (
+  hist_id    text PRIMARY KEY,
+  note_id    text NOT NULL,
+  customer   text DEFAULT '',
+  content    text DEFAULT '',
+  color      text DEFAULT '',
+  saved_at   text DEFAULT '',   -- thời điểm bản này được lưu (updated_at cũ)
+  saved_name text DEFAULT ''    -- người đã lưu bản này
+);
+CREATE INDEX IF NOT EXISTS customer_note_history_note_idx ON customer_note_history (note_id, saved_at);
 `;
 
 /** Seed rows for the config table (key/value). */
