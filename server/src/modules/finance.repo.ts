@@ -85,6 +85,18 @@ export async function addEntry(e: FinanceEntry): Promise<void> {
   );
 }
 
+/** Thêm hoặc cập nhật 1 khoản thu/chi theo entry_id (dùng cho khoản tự sinh như lương). */
+export async function upsertEntry(e: FinanceEntry): Promise<void> {
+  await q(
+    `INSERT INTO finance_entries (entry_id, month, kind, name, amount, date, recurring, party_id, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+     ON CONFLICT (entry_id) DO UPDATE SET
+       month = EXCLUDED.month, kind = EXCLUDED.kind, name = EXCLUDED.name, amount = EXCLUDED.amount,
+       date = EXCLUDED.date, recurring = EXCLUDED.recurring, party_id = EXCLUDED.party_id`,
+    [e.id, e.month, e.kind, e.name, e.amount, e.date || '', e.recurring, e.partyId || '', new Date().toISOString()],
+  );
+}
+
 export async function deleteEntry(id: string): Promise<void> {
   await q('DELETE FROM finance_entries WHERE entry_id = $1', [id]);
 }

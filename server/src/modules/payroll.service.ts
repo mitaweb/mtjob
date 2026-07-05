@@ -7,7 +7,18 @@ import { standardWorkingDays } from '../lib/workdays.js';
 import { computeNetSalary } from '../lib/money.js';
 import { inRange } from '../lib/scores.js';
 import { monthRange } from '../lib/datetime.js';
+import { upsertEntry, deleteEntry } from './finance.repo.js';
 import type { AttendanceRow } from '../types.js';
+
+/** Tháng kế tiếp (lương tháng M được trả vào tháng M+1). */
+function nextYm(year: number, month: number): { year: number; month: number } {
+  return month >= 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
+}
+
+/** entry_id cố định của khoản chi lương 1 tháng — để upsert/xoá không nhân bản. */
+function payrollEntryId(year: number, month: number): string {
+  return `PAY-${year}-${String(month).padStart(2, '0')}`;
+}
 
 export interface PayrollLine {
   memberId: string;
@@ -128,17 +139,32 @@ export async function getPayrollSnapshot(year: number, month: number): Promise<P
   }));
 }
 
-/** Chốt lương tháng: chụp snapshot + ghi khoá. */
+/** Chốt lương tháng: chụp snapshot + ghi khoá + đẩy tổng lương vào Chi của tháng SAU. */
 export async function lockPayrollMonth(year: number, month: number, byName: string, atIso: string): Promise<void> {
-  await savePayrollSnapshot(year, month);
+  const lines = await savePayrollSnapshot(year, month);
   await q(
     `INSERT INTO payroll_locks (year, month, locked_at, locked_by) VALUES ($1,$2,$3,$4)
      ON CONFLICT (year, month) DO UPDATE SET locked_at = EXCLUDED.locked_at, locked_by = EXCLUDED.locked_by`,
     [year, month, atIso, byName],
   );
+
+  // Lương tháng M trả vào tháng M+1 → tự ghi 1 khoản CHI ở tháng sau (tổng thực lãnh).
+  const total = lines.reduce((s, l) => s + (Number(l.netSalary) || 0), 0);
+  const nxt = nextYm(year, month);
+  await upsertEntry({
+    id: payrollEntryId(year, month),
+    month: `${nxt.year}-${String(nxt.month).padStart(2, '0')}`,
+    kind: 'chi',
+    name: `Lương tháng ${month}/${year}`,
+    amount: total,
+    date: '',
+    recurring: false,
+    partyId: '',
+  });
 }
 
-/** Mở lại tháng đã chốt (cho phép sửa + tính lại). */
+/** Mở lại tháng đã chốt (cho phép sửa + tính lại) + gỡ khoản chi lương tự sinh. */
 export async function unlockPayrollMonth(year: number, month: number): Promise<void> {
   await q('DELETE FROM payroll_locks WHERE year = $1 AND month = $2', [year, month]);
+  await deleteEntry(payrollEntryId(year, month));
 }
