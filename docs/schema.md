@@ -16,7 +16,8 @@ Ngày/giờ lưu dạng text ISO (`YYYY-MM-DD`, ISO datetime) — so sánh theo 
 | `push_subscriptions` | endpoint (PK), sub_id, member_id, p256dh, auth, ua, created_at |
 | `notifications` | notif_id (PK), member_id, type, title, body, created_at, read_at |
 | `monthly_scores` | (year, month, member_id) PK, total_points, rank, bonus_vnd |
-| `payroll` | (year, month, member_id) PK, standard_days, actual_days, gross_salary, bhxh, net_salary |
+| `payroll` | (year, month, member_id) PK, full_name, team_id, standard_days, actual_days, gross_salary, prorated_salary, bhxh, net_salary — snapshot đóng băng khi chốt |
+| `payroll_locks` | (year, month) PK, locked_at, locked_by — có dòng = tháng đã CHỐT lương |
 | `customers` | customer_id (PK), name, phone, status, note, info, assigned_to, created_at |
 | `appointments` | appt_id (PK), customer_id, customer_name, at, note, owner_id, done, created_at |
 | `customer_notes` | note_id (PK), customer, content, color, attachments (JSON), created_by, created_name, created_at, updated_at, updated_by, updated_name |

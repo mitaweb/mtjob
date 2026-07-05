@@ -138,12 +138,24 @@ CREATE TABLE IF NOT EXISTS payroll (
   year          integer NOT NULL,
   month         integer NOT NULL,
   member_id     text NOT NULL,
+  full_name     text DEFAULT '',       -- chụp lại lúc chốt (giữ cả khi nhân sự nghỉ)
+  team_id       text DEFAULT '',
   standard_days real DEFAULT 0,
   actual_days   real DEFAULT 0,
-  gross_salary  integer DEFAULT 0,
-  bhxh          integer DEFAULT 0,
+  gross_salary  integer DEFAULT 0,     -- mức lương (base) lúc chốt
+  prorated_salary integer DEFAULT 0,   -- lương theo công
+  bhxh          integer DEFAULT 0,     -- khoản trừ BHXH
   net_salary    integer DEFAULT 0,
   PRIMARY KEY (year, month, member_id)
+);
+
+-- Khoá chốt lương theo tháng: có dòng = tháng đã CHỐT (đóng băng snapshot payroll).
+CREATE TABLE IF NOT EXISTS payroll_locks (
+  year      integer NOT NULL,
+  month     integer NOT NULL,
+  locked_at text DEFAULT '',
+  locked_by text DEFAULT '',
+  PRIMARY KEY (year, month)
 );
 
 -- Tài chính: các bên (công nợ phải thu) + khoản thu/chi theo tháng.

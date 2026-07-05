@@ -8,7 +8,13 @@ import { upsertCatalogItem } from './catalog.repo.js';
 import { upsertHoliday } from './holidays.repo.js';
 import { upsertTeam } from './teams.repo.js';
 import { getForMemberRange, saveAttendance } from './attendance.repo.js';
-import { payrollForMonth } from './payroll.service.js';
+import {
+  payrollForMonth,
+  isMonthLocked,
+  getPayrollSnapshot,
+  lockPayrollMonth,
+  unlockPayrollMonth,
+} from './payroll.service.js';
 import { hashPassword } from '../auth/password.js';
 import { setConfigValue, getConfig } from '../config.js';
 import { newId } from '../util/id.js';
@@ -162,7 +168,9 @@ adminRouter.get(
   '/payroll',
   asyncHandler(async (req, res) => {
     const { year, month } = ymOf(req);
-    const lines = await payrollForMonth(year, month);
+    const locked = await isMonthLocked(year, month);
+    // Đã chốt → đọc snapshot đóng băng (gồm cả nhân sự đã nghỉ); chưa chốt → tính live.
+    const lines = locked ? await getPayrollSnapshot(year, month) : await payrollForMonth(year, month);
     const byId = new Map((await getActiveMembers()).map((m) => [m.id, m]));
     const rows = lines.map((l) => {
       const m = byId.get(l.memberId);
@@ -170,8 +178,8 @@ adminRouter.get(
         memberId: l.memberId,
         fullName: l.fullName,
         teamId: l.teamId,
-        salary: m?.salary ?? l.grossSalary, // Mức lương (base)
-        bhxh: m?.bhxh ?? 0, // mức đóng BHXH (base)
+        salary: l.grossSalary, // Mức lương (base) — snapshot đóng băng khi đã chốt
+        bhxh: m?.bhxh ?? 0, // mức đóng BHXH (base, không hiển thị)
         standardDays: l.standardDays,
         actualDays: l.actualDays,
         proratedSalary: l.proratedSalary, // lương theo công (trước trừ BHXH)
@@ -179,7 +187,29 @@ adminRouter.get(
         netSalary: l.netSalary,
       };
     });
-    res.json({ year, month, rows });
+    res.json({ year, month, locked, rows });
+  }),
+);
+
+const lockSchema = z.object({ year: z.number().int(), month: z.number().int().min(1).max(12) });
+
+// Chốt lương tháng (đóng băng snapshot).
+adminRouter.post(
+  '/payroll/lock',
+  asyncHandler(async (req, res) => {
+    const { year, month } = lockSchema.parse(req.body);
+    await lockPayrollMonth(year, month, req.user!.name, nowTz().toISOString());
+    res.json({ ok: true, locked: true });
+  }),
+);
+
+// Mở lại tháng đã chốt để sửa.
+adminRouter.post(
+  '/payroll/unlock',
+  asyncHandler(async (req, res) => {
+    const { year, month } = lockSchema.parse(req.body);
+    await unlockPayrollMonth(year, month);
+    res.json({ ok: true, locked: false });
   }),
 );
 
@@ -222,6 +252,10 @@ adminRouter.post(
     const b = attnSchema.parse(req.body);
     const member = await findById(b.memberId);
     if (!member) throw new ApiError(404, 'Không tìm thấy thành viên');
+    const [yy, mm] = [Number(b.date.slice(0, 4)), Number(b.date.slice(5, 7))];
+    if (await isMonthLocked(yy, mm)) {
+      throw new ApiError(400, `Lương tháng ${mm}/${yy} đã chốt. Bấm "Mở lại" ở Bảng lương nếu cần sửa.`);
+    }
     const toIso = (t: string) => (t ? dayjs.tz(`${b.date} ${t}`, 'YYYY-MM-DD HH:mm', TZ).toISOString() : '');
     const morningInAt = toIso(b.morningIn);
     const afternoonInAt = toIso(b.afternoonIn);

@@ -38,7 +38,13 @@ export default function AdminPayroll() {
   const init = currentYm();
   const [ym, setYm] = useState(`${init.year}-${String(init.month).padStart(2, '0')}`);
   const [rows, setRows] = useState<PayRow[]>([]);
+  const [locked, setLocked] = useState(false);
   const [msg, setMsg] = useState('');
+
+  function ymNums() {
+    const [y, m] = ym.split('-');
+    return { year: Number(y), month: Number(m) };
+  }
 
   // Attendance editor state
   const [editing, setEditing] = useState<PayRow | null>(null);
@@ -52,9 +58,37 @@ export default function AdminPayroll() {
   }
 
   async function loadPayroll(): Promise<PayRow[]> {
-    const r = await api<{ rows: PayRow[] }>(`/admin/payroll?${qs()}`);
+    const r = await api<{ rows: PayRow[]; locked: boolean }>(`/admin/payroll?${qs()}`);
     setRows(r.rows);
+    setLocked(!!r.locked);
     return r.rows;
+  }
+
+  async function lockMonth() {
+    if (
+      !confirm(
+        'Chốt lương tháng này? Số liệu sẽ được đóng băng — nhân sự nghỉ sau vẫn giữ nguyên, sửa mức lương/công về sau không làm đổi tháng này. Vẫn có thể "Mở lại" nếu cần.',
+      )
+    )
+      return;
+    try {
+      await api('/admin/payroll/lock', { body: ymNums() });
+      await loadPayroll();
+      setMsg('Đã chốt lương tháng này 🔒');
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+  }
+
+  async function unlockMonth() {
+    if (!confirm('Mở lại tháng đã chốt để sửa? Số liệu sẽ tính lại theo dữ liệu hiện tại.')) return;
+    try {
+      await api('/admin/payroll/unlock', { body: ymNums() });
+      await loadPayroll();
+      setMsg('Đã mở lại tháng — có thể sửa công.');
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
   }
   useEffect(() => {
     loadPayroll().catch((e) => setMsg((e as Error).message));
@@ -109,12 +143,30 @@ export default function AdminPayroll() {
     <div className="space-y-4">
       <div className="card flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-lg font-bold">Bảng lương & công</h1>
+          <h1 className="flex items-center gap-2 text-lg font-bold">
+            Bảng lương & công
+            {locked && (
+              <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs font-medium text-white">🔒 Đã chốt</span>
+            )}
+          </h1>
           <p className="text-sm text-slate-500">
-            Mức lương lấy từ Google Sheet (tự tính, không sửa ở đây). Cần chỉnh công thì bấm “Sửa công” để sửa giờ vào/ra.
+            {locked
+              ? 'Tháng đã chốt — số liệu đóng băng, không đổi khi sửa lương/công hay nhân sự nghỉ. Bấm “Mở lại” nếu cần sửa.'
+              : 'Mức lương lấy từ Google Sheet (tự tính). Bấm tên để xem chi tiết & sửa công. Xong thì “Chốt lương” để đóng băng tháng.'}
           </p>
         </div>
-        <input type="month" className="input max-w-[10rem]" value={ym} onChange={(e) => setYm(e.target.value)} />
+        <div className="flex items-center gap-2">
+          <input type="month" className="input max-w-[10rem]" value={ym} onChange={(e) => setYm(e.target.value)} />
+          {locked ? (
+            <button className="btn-ghost whitespace-nowrap" onClick={unlockMonth}>
+              Mở lại
+            </button>
+          ) : (
+            <button className="btn-primary whitespace-nowrap" onClick={lockMonth} disabled={rows.length === 0}>
+              🔒 Chốt lương
+            </button>
+          )}
+        </div>
       </div>
 
       {msg && <div className="text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2">{msg}</div>}
@@ -212,7 +264,14 @@ export default function AdminPayroll() {
               </p>
             </div>
 
-            {/* Form sửa/thêm 1 ngày */}
+            {locked && (
+              <div className="mb-3 rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-600">
+                🔒 Tháng đã chốt — chỉ xem. Bấm “Mở lại” ở trên nếu cần sửa công.
+              </div>
+            )}
+
+            {/* Form sửa/thêm 1 ngày (ẩn khi tháng đã chốt) */}
+            {!locked && (
             <div className="bg-slate-50 rounded-xl p-3 space-y-2">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 <label className="text-xs text-slate-500">
@@ -257,6 +316,7 @@ export default function AdminPayroll() {
                 {savingAttn ? 'Đang lưu…' : 'Lưu ngày này'}
               </button>
             </div>
+            )}
 
             {/* Danh sách ngày trong tháng */}
             <div className="overflow-x-auto mt-3">
@@ -280,9 +340,11 @@ export default function AdminPayroll() {
                       <td className="text-center">{a.dayFraction}</td>
                       <td>{a.mode}</td>
                       <td className="text-right">
-                        <button className="text-brand-600 underline text-xs" onClick={() => setForm({ ...a })}>
-                          sửa
-                        </button>
+                        {!locked && (
+                          <button className="text-brand-600 underline text-xs" onClick={() => setForm({ ...a })}>
+                            sửa
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
