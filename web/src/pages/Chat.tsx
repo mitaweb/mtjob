@@ -8,6 +8,7 @@ interface Suggestion {
   taskCode?: string;
   taskName: string;
   points?: number;
+  note?: string; // mô tả cụ thể (vd "X Salon")
 }
 interface ChatResponse {
   reply: string;
@@ -130,12 +131,12 @@ export default function Chat() {
 
   async function confirmTask(s: Suggestion) {
     setMsgs((m) => [...m, { role: 'user', text: `✔️ Xác nhận hoàn thành: ${s.taskName}` }]);
-    await send('', { confirmTaskCode: s.taskCode });
+    await send('', { confirmTaskCode: s.taskCode, note: s.note });
   }
 
   async function confirmStart(s: Suggestion) {
     setMsgs((m) => [...m, { role: 'user', text: `▶️ Bắt đầu: ${s.taskName}` }]);
-    await send('', { confirmStartTaskCode: s.taskCode });
+    await send('', { confirmStartTaskCode: s.taskCode, note: s.note });
   }
 
   async function confirmAssign(s: Suggestion, assignee: { id: string; fullName: string }) {

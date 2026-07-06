@@ -2,6 +2,7 @@ import { getActiveMembers, getDirectors } from '../modules/members.repo.js';
 import { getTeams } from '../modules/teams.repo.js';
 import { getAllTasks } from '../modules/tasks.repo.js';
 import { memberScore, ranking } from '../modules/scores.service.js';
+import { taskTitle } from '../lib/tasks.js';
 import type { TaskRow } from '../types.js';
 import { notify } from '../modules/notifications.service.js';
 import { getParties } from '../modules/finance.repo.js';
@@ -31,7 +32,7 @@ function tasksDoneToday(tasks: TaskRow[], memberId: string, todayIso: string): T
 function doneTasksLine(done: TaskRow[]): string {
   if (done.length === 0) return '\n\n✅ Hôm nay chưa ghi nhận việc hoàn thành.';
   const shown = done.slice(0, MAX_TASKS_IN_REPORT);
-  const lines = shown.map((t) => `• ${t.taskName} (+${t.points}đ)`).join('\n');
+  const lines = shown.map((t) => `• ${taskTitle(t)} (+${t.points}đ)`).join('\n');
   const more = done.length > shown.length ? `\n… và ${done.length - shown.length} việc khác.` : '';
   return `\n\n✅ Việc hoàn thành hôm nay (${done.length}):\n${lines}${more}`;
 }

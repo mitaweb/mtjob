@@ -61,8 +61,10 @@ export async function interpret(
     `Tin nhắn của nhân sự: "${message}"`,
     '',
     'Phân loại intent:',
-    '- start_task: báo BẮT ĐẦU/đang bắt tay vào làm 1 task (vd "bắt đầu lên ads", "giờ em làm video") → chọn taskCode khớp nhất; note = mô tả ngắn.',
-    '- log_task: báo ĐÃ HOÀN THÀNH 1 task (vd "đã đăng bài page", "xong video quảng cáo") → chọn taskCode khớp nhất; note = mô tả ngắn.',
+    '- start_task: báo BẮT ĐẦU/đang bắt tay vào làm 1 task (vd "bắt đầu lên ads", "giờ em làm video") → chọn taskCode khớp nhất.',
+    '- log_task: báo ĐÃ HOÀN THÀNH 1 task (vd "đã đăng bài page", "xong video quảng cáo") → chọn taskCode khớp nhất.',
+    '  note = phần MÔ TẢ CỤ THỂ kèm theo (tên khách hàng / dự án / nội dung), KHÔNG lặp lại loại việc.',
+    '  Vd "đăng post X Salon" → taskCode = (đăng post), note = "X Salon". Không có mô tả riêng thì để note rỗng.',
     '- query_stats: hỏi điểm/thứ hạng/thưởng/lương/giờ làm của bản thân.',
     '- help: còn lại. reply = câu trả lời ngắn gọn, thân thiện (tiếng Việt).',
   ].join('\n');

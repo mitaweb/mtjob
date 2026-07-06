@@ -7,6 +7,7 @@ import { getActiveCatalog, findCatalogItem, sortCatalogForTeam } from './catalog
 import { findById, findByLogin } from './members.repo.js';
 import { logTask, startTask, assignTask, canAssign } from './tasks.service.js';
 import { answerDataQuestion } from './assistant.service.js';
+import { taskTitle } from '../lib/tasks.js';
 import { memberScore } from './scores.service.js';
 import { formatVnd } from '../lib/money.js';
 import { formatMinutes } from '../lib/worktime.js';
@@ -19,6 +20,7 @@ const bodySchema = z.object({
   message: z.string().optional().default(''),
   confirmTaskCode: z.string().optional(),
   confirmStartTaskCode: z.string().optional(),
+  note: z.string().optional(), // mô tả cụ thể của việc (vd "X Salon") — hiện ở báo cáo
   confirmAssign: z.boolean().optional(),
   assigneeId: z.string().optional(),
   assignTaskName: z.string().optional(),
@@ -39,16 +41,16 @@ chatRouter.post(
 
     // 1a) Người dùng xác nhận HOÀN THÀNH NGAY một task được gợi ý.
     if (b.confirmTaskCode) {
-      const { task, points } = await logTask({ memberId, taskCode: b.confirmTaskCode, source: 'chat' });
-      res.json({ reply: `Đã ghi nhận "${task.taskName}" (+${points}đ). 💪`, action: 'task_logged', task });
+      const { task, points } = await logTask({ memberId, taskCode: b.confirmTaskCode, note: b.note, source: 'chat' });
+      res.json({ reply: `Đã ghi nhận "${taskTitle(task)}" (+${points}đ). 💪`, action: 'task_logged', task });
       return;
     }
 
     // 1b) Người dùng xác nhận BẮT ĐẦU một task.
     if (b.confirmStartTaskCode) {
-      const { task } = await startTask({ memberId, taskCode: b.confirmStartTaskCode, source: 'chat' });
+      const { task } = await startTask({ memberId, taskCode: b.confirmStartTaskCode, note: b.note, source: 'chat' });
       res.json({
-        reply: `▶️ Đã bắt đầu "${task.taskName}" lúc ${fmtHm(task.startedAt)}. Xong việc bấm nút "⏳ Đang làm" bên dưới để hoàn thành & nhận +${task.points}đ nhé.`,
+        reply: `▶️ Đã bắt đầu "${taskTitle(task)}" lúc ${fmtHm(task.startedAt)}. Xong việc bấm nút "⏳ Đang làm" bên dưới để hoàn thành & nhận +${task.points}đ nhé.`,
         action: 'task_started',
         task,
       });
@@ -118,7 +120,7 @@ chatRouter.post(
         res.json({
           reply: `Bắt đầu làm "${item.name}" từ bây giờ? (+${item.points}đ khi hoàn thành)`,
           action: 'confirm_start',
-          suggestion: { taskCode: item.code, taskName: item.name, points: item.points },
+          suggestion: { taskCode: item.code, taskName: item.name, points: item.points, note: x.note || '' },
         });
         return;
       }
@@ -131,7 +133,7 @@ chatRouter.post(
         res.json({
           reply: `Bạn vừa hoàn thành "${item.name}" (+${item.points}đ)? Bấm xác nhận để ghi nhận nhé.`,
           action: 'confirm_task',
-          suggestion: { taskCode: item.code, taskName: item.name, points: item.points },
+          suggestion: { taskCode: item.code, taskName: item.name, points: item.points, note: x.note || '' },
         });
         return;
       }
