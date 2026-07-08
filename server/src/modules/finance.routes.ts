@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { asyncHandler } from '../util/errors.js';
+import { asyncHandler, ApiError } from '../util/errors.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
 import {
   getParties,
@@ -8,6 +8,7 @@ import {
   deleteParty,
   getEntries,
   addEntry,
+  upsertEntry,
   deleteEntry,
   type Party,
 } from './finance.repo.js';
@@ -79,6 +80,43 @@ financeRouter.delete(
   asyncHandler(async (req, res) => {
     await deleteParty(String(req.params.id));
     res.json({ ok: true });
+  }),
+);
+
+// Đánh dấu ĐÃ THU công nợ của 1 bên trong tháng → tự tạo/gỡ 1 khoản Thu (income).
+// Mã cố định RECV-<bên>-<tháng> để tick/bỏ tick không nhân bản.
+const collectSchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/),
+  collected: z.boolean(),
+});
+function receivableEntryId(partyId: string, month: string): string {
+  return `RECV-${partyId}-${month}`;
+}
+financeRouter.post(
+  '/parties/:id/collect',
+  canEdit,
+  asyncHandler(async (req, res) => {
+    const id = String(req.params.id);
+    const { month, collected } = collectSchema.parse(req.body);
+    const entryId = receivableEntryId(id, month);
+    if (!collected) {
+      await deleteEntry(entryId);
+      res.json({ ok: true, collected: false });
+      return;
+    }
+    const party = (await getParties()).find((p) => p.id === id);
+    if (!party) throw new ApiError(404, 'Không tìm thấy bên');
+    await upsertEntry({
+      id: entryId,
+      month,
+      kind: 'thu',
+      name: `${party.name} (thu công nợ)`,
+      amount: party.receivable,
+      date: todayIso(),
+      recurring: false,
+      partyId: id,
+    });
+    res.json({ ok: true, collected: true });
   }),
 );
 

@@ -88,6 +88,19 @@ export default function Finance() {
     await api(`/finance/parties/${id}`, { method: 'DELETE' }).catch(() => {});
     await loadAll();
   }
+  // Đã thu công nợ tháng này? (có khoản Thu mã RECV-<bên>-<tháng>)
+  function isCollected(id: string): boolean {
+    return (sum?.entries || []).some((e) => e.id === `RECV-${id}-${ym}`);
+  }
+  async function toggleCollect(id: string) {
+    try {
+      await api(`/finance/parties/${id}/collect`, { body: { month: ym, collected: !isCollected(id) } });
+      setMsg(isCollected(id) ? 'Đã bỏ đánh dấu thu.' : 'Đã ghi nhận thu công nợ ✅');
+      await loadAll();
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+  }
   async function saveEntry() {
     if (!eForm.name) return setMsg('Nhập tên khoản.');
     try {
@@ -154,6 +167,16 @@ export default function Finance() {
                   </td>
                   {canEdit && (
                     <td className="text-right whitespace-nowrap">
+                      <button
+                        className={`mr-2 rounded-lg border px-2 py-0.5 text-xs font-medium ${
+                          isCollected(p.id)
+                            ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                            : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+                        }`}
+                        onClick={() => toggleCollect(p.id)}
+                      >
+                        {isCollected(p.id) ? '✓ Đã thu' : 'Đã thu'}
+                      </button>
                       <button className="text-brand-600 underline text-xs mr-2" onClick={() => setPForm({ ...p })}>
                         sửa
                       </button>
