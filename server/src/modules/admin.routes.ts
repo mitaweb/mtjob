@@ -121,6 +121,15 @@ adminRouter.post(
   }),
 );
 
+/** Thông tin cấu hình Trợ lý AI cho UI Quản trị (không trả về key). */
+adminRouter.get(
+  '/ai-info',
+  asyncHandler(async (_req, res) => {
+    const cfg = await getConfig({ fresh: true });
+    res.json({ model: cfg.geminiModel || '' });
+  }),
+);
+
 adminRouter.post(
   '/catalog',
   asyncHandler(async (req, res) => {

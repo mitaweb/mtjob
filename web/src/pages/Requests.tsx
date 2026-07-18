@@ -28,7 +28,7 @@ function stageOf(r: Req): { label: string; badge: string; border: string } {
     return { label: '✅ Đã duyệt', badge: 'bg-emerald-100 text-emerald-700', border: 'border-emerald-400' };
   if (r.leaderStatus === 'approved')
     return { label: '🟡 Chờ giám đốc', badge: 'bg-amber-100 text-amber-700', border: 'border-amber-400' };
-  return { label: '🔴 Chờ leader', badge: 'bg-red-100 text-red-700', border: 'border-red-400' };
+  return { label: '🔴 Chờ leader', badge: 'bg-rose-100 text-rose-700', border: 'border-rose-400' };
 }
 
 export default function Requests() {

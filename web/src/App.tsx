@@ -1,24 +1,36 @@
-import type { ReactElement } from 'react';
+import { lazy, Suspense, type ReactElement } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './lib/auth';
 import type { Role } from './lib/types';
 import Layout from './components/Layout';
 import GlobalLoading from './components/GlobalLoading';
-import Login from './pages/Login';
-import Chat from './pages/Chat';
-import Attendance from './pages/Attendance';
-import Scores from './pages/Scores';
-import Payroll from './pages/Payroll';
-import AdminPayroll from './pages/AdminPayroll';
-import Finance from './pages/Finance';
-import CRM from './pages/CRM';
-import CustomerNotes from './pages/CustomerNotes';
-import Requests from './pages/Requests';
-import Approvals from './pages/Approvals';
-import Dashboard from './pages/Dashboard';
-import Admin from './pages/Admin';
-import Inbox from './pages/Inbox';
-import Profile from './pages/Profile';
+import { ToastProvider } from './components/Toaster';
+
+// Tách bundle theo trang: mỗi trang tải khi cần (recharts chỉ tải khi mở Dashboard).
+const Login = lazy(() => import('./pages/Login'));
+const Chat = lazy(() => import('./pages/Chat'));
+const Attendance = lazy(() => import('./pages/Attendance'));
+const Scores = lazy(() => import('./pages/Scores'));
+const Payroll = lazy(() => import('./pages/Payroll'));
+const AdminPayroll = lazy(() => import('./pages/AdminPayroll'));
+const Finance = lazy(() => import('./pages/Finance'));
+const CRM = lazy(() => import('./pages/CRM'));
+const CustomerNotes = lazy(() => import('./pages/CustomerNotes'));
+const Requests = lazy(() => import('./pages/Requests'));
+const Approvals = lazy(() => import('./pages/Approvals'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Admin = lazy(() => import('./pages/Admin'));
+const Inbox = lazy(() => import('./pages/Inbox'));
+const Profile = lazy(() => import('./pages/Profile'));
+
+/** Fallback khi đang tải chunk trang: thanh chạy trên đỉnh (cùng style GlobalLoading). */
+function RouteFallback() {
+  return (
+    <div className="fixed inset-x-0 top-0 z-[100] h-0.5 overflow-hidden bg-brand-100">
+      <div className="loadingbar h-full w-1/3 bg-brand-600" />
+    </div>
+  );
+}
 
 /** Trang mặc định theo vai trò: giám đốc/admin -> Tổng quan, còn lại -> Trợ lý. */
 function homeFor(role?: Role): string {
@@ -42,8 +54,9 @@ function Home() {
 
 export default function App() {
   return (
-    <>
+    <ToastProvider>
       <GlobalLoading />
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/login" element={<Login />} />
       <Route
@@ -113,6 +126,7 @@ export default function App() {
       </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </>
+      </Suspense>
+    </ToastProvider>
   );
 }

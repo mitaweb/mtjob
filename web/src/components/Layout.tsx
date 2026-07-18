@@ -1,5 +1,21 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import {
+  Bell,
+  Banknote,
+  CalendarCheck,
+  CheckSquare,
+  FileText,
+  Landmark,
+  LayoutDashboard,
+  MessageCircle,
+  Settings,
+  Star,
+  StickyNote,
+  Users,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import Brand from './Brand';
 import type { Role } from '../lib/types';
@@ -7,25 +23,25 @@ import type { Role } from '../lib/types';
 interface NavItem {
   to: string;
   label: string;
-  icon: string;
+  icon: LucideIcon;
   roles?: Role[];
 }
 
 // Giám đốc không làm task → ẩn Chấm công / Điểm; nhưng VẪN có Trợ lý để giao việc + hỏi dữ liệu.
 const NAV: NavItem[] = [
-  { to: '/chat', label: 'Trợ lý', icon: '💬' },
-  { to: '/attendance', label: 'Chấm công', icon: '📍', roles: ['member', 'leader', 'admin'] },
-  { to: '/scores', label: 'Điểm', icon: '⭐', roles: ['member', 'leader', 'admin'] },
-  { to: '/payroll', label: 'Lương', icon: '💵', roles: ['member', 'leader'] },
-  { to: '/payroll-admin', label: 'Bảng lương', icon: '💰', roles: ['director', 'admin'] },
-  { to: '/finance', label: 'Tài chính', icon: '🧾', roles: ['director', 'admin', 'accountant'] },
-  { to: '/crm', label: 'Khách hàng', icon: '🧑‍💼', roles: ['sale', 'director', 'admin'] },
-  { to: '/customer-notes', label: 'Lưu ý KH', icon: '📌' },
-  { to: '/requests', label: 'Đơn từ', icon: '📝' },
-  { to: '/approvals', label: 'Duyệt đơn', icon: '✅', roles: ['leader', 'director', 'admin'] },
-  { to: '/dashboard', label: 'Tổng quan', icon: '📊', roles: ['leader', 'director', 'admin'] },
-  { to: '/admin', label: 'Quản trị', icon: '⚙️', roles: ['admin', 'director'] },
-  { to: '/inbox', label: 'Thông báo', icon: '🔔' },
+  { to: '/chat', label: 'Trợ lý', icon: MessageCircle },
+  { to: '/attendance', label: 'Chấm công', icon: CalendarCheck, roles: ['member', 'leader', 'admin'] },
+  { to: '/scores', label: 'Điểm', icon: Star, roles: ['member', 'leader', 'admin'] },
+  { to: '/payroll', label: 'Lương', icon: Wallet, roles: ['member', 'leader'] },
+  { to: '/payroll-admin', label: 'Bảng lương', icon: Banknote, roles: ['director', 'admin'] },
+  { to: '/finance', label: 'Tài chính', icon: Landmark, roles: ['director', 'admin', 'accountant'] },
+  { to: '/crm', label: 'Khách hàng', icon: Users, roles: ['sale', 'director', 'admin'] },
+  { to: '/customer-notes', label: 'Lưu ý KH', icon: StickyNote },
+  { to: '/requests', label: 'Đơn từ', icon: FileText },
+  { to: '/approvals', label: 'Duyệt đơn', icon: CheckSquare, roles: ['leader', 'director', 'admin'] },
+  { to: '/dashboard', label: 'Tổng quan', icon: LayoutDashboard, roles: ['leader', 'director', 'admin'] },
+  { to: '/admin', label: 'Quản trị', icon: Settings, roles: ['admin', 'director'] },
+  { to: '/inbox', label: 'Thông báo', icon: Bell },
 ];
 
 const ROLE_LABEL: Record<string, string> = {
@@ -63,7 +79,7 @@ export default function Layout() {
               }`
             }
           >
-            <span className="text-lg leading-none">{n.icon}</span>
+            <n.icon size={18} aria-hidden className="shrink-0" />
             <span>{n.label}</span>
           </NavLink>
         ))}
@@ -124,10 +140,14 @@ export default function Layout() {
               <Brand variant="dark" compact />
             </div>
             <div className="ml-auto flex items-center gap-1">
-              <NavLink to="/inbox" className="grid h-9 w-9 place-items-center rounded-lg hover:bg-slate-100" aria-label="Thông báo">
-                🔔
+              <NavLink to="/inbox" className="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Thông báo">
+                <Bell size={20} aria-hidden />
               </NavLink>
-              <NavLink to="/profile" className="grid h-9 w-9 place-items-center rounded-full bg-brand-600 text-sm font-semibold text-white">
+              <NavLink
+                to="/profile"
+                className="grid h-9 w-9 place-items-center rounded-full bg-brand-600 text-sm font-semibold text-white"
+                aria-label="Hồ sơ cá nhân"
+              >
                 {initial}
               </NavLink>
             </div>

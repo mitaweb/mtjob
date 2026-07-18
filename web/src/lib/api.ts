@@ -32,6 +32,16 @@ export function onLoading(l: LoadingListener): () => void {
   return () => loadingListeners.delete(l);
 }
 
+// ── Cache trong phiên cho dữ liệu gần như tĩnh (vd /tasks/catalog) ──
+const getCache = new Map<string, { at: number; data: unknown }>();
+export async function cachedGet<T = unknown>(path: string, ttlMs = 5 * 60_000): Promise<T> {
+  const hit = getCache.get(path);
+  if (hit && Date.now() - hit.at < ttlMs) return hit.data as T;
+  const data = await api<T>(path);
+  getCache.set(path, { at: Date.now(), data });
+  return data;
+}
+
 export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Promise<T> {
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;

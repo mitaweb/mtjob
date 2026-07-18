@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
+import { useToast } from '../components/Toaster';
+import { SkeletonRows } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { vnd, currentYm } from '../lib/format';
 import type { Party, FinanceEntry } from '../lib/types';
@@ -37,7 +39,8 @@ export default function Finance() {
   const [parties, setParties] = useState<Party[]>([]);
   const [members, setMembers] = useState<Mem[]>([]);
   const [pay, setPay] = useState<PayRow[]>([]);
-  const [msg, setMsg] = useState('');
+  const [loading, setLoading] = useState(true);
+  const toast = useToast();
 
   const [pForm, setPForm] = useState<Partial<Party>>(emptyParty());
   const [eForm, setEForm] = useState({ kind: 'thu', name: '', amount: 0, date: '', recurring: false });
@@ -60,11 +63,15 @@ export default function Finance() {
     setPay(py.rows);
   }
   useEffect(() => {
-    loadAll().catch((e) => setMsg((e as Error).message));
+    setLoading(true);
+    loadAll()
+      .catch((e) => toast.error((e as Error).message))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ym]);
 
   async function saveParty() {
-    if (!pForm.name) return setMsg('Nhập tên bên.');
+    if (!pForm.name) return toast.error('Nhập tên bên.');
     try {
       await api('/finance/parties', {
         body: {
@@ -78,10 +85,10 @@ export default function Finance() {
         },
       });
       setPForm(emptyParty());
-      setMsg('Đã lưu bên ✅');
+      toast.success('Đã lưu bên');
       await loadAll();
     } catch (e) {
-      setMsg((e as Error).message);
+      toast.error((e as Error).message);
     }
   }
   async function delParty(id: string) {
@@ -95,21 +102,21 @@ export default function Finance() {
   async function toggleCollect(id: string) {
     try {
       await api(`/finance/parties/${id}/collect`, { body: { month: ym, collected: !isCollected(id) } });
-      setMsg(isCollected(id) ? 'Đã bỏ đánh dấu thu.' : 'Đã ghi nhận thu công nợ ✅');
+      toast.success(isCollected(id) ? 'Đã bỏ đánh dấu thu.' : 'Đã ghi nhận thu công nợ');
       await loadAll();
     } catch (e) {
-      setMsg((e as Error).message);
+      toast.error((e as Error).message);
     }
   }
   async function saveEntry() {
-    if (!eForm.name) return setMsg('Nhập tên khoản.');
+    if (!eForm.name) return toast.error('Nhập tên khoản.');
     try {
       await api('/finance/entries', { body: { month: ym, ...eForm, amount: Number(eForm.amount) || 0 } });
       setEForm({ kind: 'thu', name: '', amount: 0, date: '', recurring: false });
-      setMsg('Đã lưu khoản ✅');
+      toast.success('Đã lưu khoản');
       await loadAll();
     } catch (e) {
-      setMsg((e as Error).message);
+      toast.error((e as Error).message);
     }
   }
   async function delEntry(id: string) {
@@ -130,19 +137,19 @@ export default function Finance() {
         </div>
         <input type="month" className="input max-w-[10rem]" value={ym} onChange={(e) => setYm(e.target.value)} />
       </div>
-      {msg && <div className="text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2">{msg}</div>}
 
       {/* Tổng hợp */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Stat label="Thu" value={vnd(sum?.income ?? 0)} cls="text-emerald-600" />
-        <Stat label="Chi" value={vnd(sum?.expense ?? 0)} cls="text-red-600" />
-        <Stat label="Lãi / Lỗ" value={vnd(sum?.profit ?? 0)} cls={(sum?.profit ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'} />
+        <Stat label="Chi" value={vnd(sum?.expense ?? 0)} cls="text-rose-600" />
+        <Stat label="Lãi / Lỗ" value={vnd(sum?.profit ?? 0)} cls={(sum?.profit ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'} />
         <Stat label="Tổng phải thu/tháng" value={vnd(sum?.receivableTotal ?? 0)} cls="text-brand-600" />
       </div>
 
       {/* Các bên */}
       <div className="card">
         <h2 className="font-semibold mb-2">Các bên & công nợ phải thu</h2>
+        {loading && parties.length === 0 ? <SkeletonRows rows={3} /> : null}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-slate-500">
@@ -180,7 +187,7 @@ export default function Finance() {
                       <button className="text-brand-600 underline text-xs mr-2" onClick={() => setPForm({ ...p })}>
                         sửa
                       </button>
-                      <button className="text-red-600 underline text-xs" onClick={() => delParty(p.id)}>
+                      <button className="text-rose-600 underline text-xs" onClick={() => delParty(p.id)}>
                         xóa
                       </button>
                     </td>
@@ -241,6 +248,7 @@ export default function Finance() {
       {/* Thu / Chi */}
       <div className="card">
         <h2 className="font-semibold mb-2">Thu / Chi tháng {ym}</h2>
+        {loading && (sum?.entries || []).length === 0 ? <SkeletonRows rows={3} /> : null}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-slate-500">
@@ -257,13 +265,13 @@ export default function Finance() {
               {(sum?.entries || []).map((e) => (
                 <tr key={e.id} className="border-t">
                   <td className="py-1">{e.name}</td>
-                  <td className={e.kind === 'thu' ? 'text-emerald-600' : 'text-red-600'}>{e.kind === 'thu' ? 'Thu' : 'Chi'}</td>
+                  <td className={e.kind === 'thu' ? 'text-emerald-600' : 'text-rose-600'}>{e.kind === 'thu' ? 'Thu' : 'Chi'}</td>
                   <td className="text-right">{vnd(e.amount)}</td>
                   <td>{e.date || '—'}</td>
                   <td>{e.recurring ? '🔁' : ''}</td>
                   {canEdit && (
                     <td className="text-right">
-                      <button className="text-red-600 underline text-xs" onClick={() => delEntry(e.id)}>
+                      <button className="text-rose-600 underline text-xs" onClick={() => delEntry(e.id)}>
                         xóa
                       </button>
                     </td>
@@ -302,9 +310,24 @@ export default function Finance() {
       </div>
 
       {/* Lương nhân sự (xem) */}
-      <div className="card overflow-x-auto">
+      <div className="card">
         <h2 className="font-semibold mb-2">Lương nhân sự (tháng {ym})</h2>
-        <table className="w-full text-sm">
+        {loading && pay.length === 0 ? <SkeletonRows rows={4} /> : null}
+        {/* Mobile: dạng thẻ cho dễ đọc */}
+        <ul className="md:hidden divide-y">
+          {pay.map((r) => (
+            <li key={r.memberId} className="py-2 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">{r.fullName}</span>
+                <span className="font-medium text-emerald-600">{vnd(r.netSalary)}</span>
+              </div>
+              <div className="text-xs text-slate-500">
+                {r.teamId || '—'} · Công {r.actualDays}/{r.standardDays} · Mức lương {vnd(r.salary)}
+              </div>
+            </li>
+          ))}
+        </ul>
+        <table className="w-full text-sm hidden md:table">
           <thead className="text-left text-slate-500">
             <tr>
               <th className="py-1">Họ tên</th>

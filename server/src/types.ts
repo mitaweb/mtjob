@@ -88,6 +88,7 @@ export interface AppConfig {
   tz: string;
   taskSheetUrl: string;
   geminiApiKey: string; // lưu trong config DB để admin dán key ngay trên UI
+  geminiModel: string; // admin chọn model trong UI ('' = theo env/mặc định flash)
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -107,4 +108,5 @@ export const DEFAULT_CONFIG: AppConfig = {
   tz: 'Asia/Ho_Chi_Minh',
   taskSheetUrl: '',
   geminiApiKey: '',
+  geminiModel: '',
 };

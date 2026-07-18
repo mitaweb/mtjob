@@ -67,13 +67,23 @@ export async function interpret(
     '  Vd "đăng post X Salon" → taskCode = (đăng post), note = "X Salon". Không có mô tả riêng thì để note rỗng.',
     '- query_stats: hỏi điểm/thứ hạng/thưởng/lương/giờ làm của bản thân.',
     '- help: còn lại. reply = câu trả lời ngắn gọn, thân thiện (tiếng Việt).',
+    '',
+    'Ví dụ (tên việc → chọn taskCode tương ứng trong danh mục ở trên):',
+    '- "bắt đầu lên ads cho X Spa" → start_task, taskCode của "Lên Ads", note="X Spa".',
+    '- "đã đăng bài page" → log_task, taskCode của "Đăng bài page", note="".',
+    '- "dg xog bai page cho Y Coffee" (viết tắt/sai chính tả) → vẫn hiểu: log_task, taskCode của "Đăng bài page", note="Y Coffee".',
+    '- "xong post 1 ảnh với cả content cho Z Shop" (nhiều việc 1 câu) → chọn việc CHÍNH nhắc ĐẦU TIÊN: log_task, taskCode của "Thiết kế post 1 ảnh", note="Z Shop".',
+    '- "cách lên ads thế nào?" → help (hỏi CÁCH làm, không phải báo việc — đừng nhầm với start_task).',
+    '- "em sắp làm video quảng cáo" → start_task, taskCode của "Video quảng cáo".',
   ].join('\n');
 
   try {
-    const parsed = (await generateJson(prompt, SCHEMA)) as ChatExtraction;
+    // NLU ghi việc luôn dùng flash (nhanh/rẻ) kể cả khi admin chọn model khác cho Q&A.
+    const parsed = (await generateJson(prompt, SCHEMA, 'gemini-2.5-flash')) as ChatExtraction;
     if (!parsed.intent) return heuristic(message, catalog);
     return parsed;
-  } catch {
+  } catch (e) {
+    console.warn('[chatNlu] Gemini lỗi, dùng heuristic:', (e as Error).message);
     return heuristic(message, catalog);
   }
 }

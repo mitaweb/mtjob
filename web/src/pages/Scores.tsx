@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { api } from '../lib/api';
+import { api, cachedGet } from '../lib/api';
 import { vnd, fmtMin } from '../lib/format';
+import { Skeleton, SkeletonRows } from '../components/ui';
 import type { MemberScore } from '../lib/types';
 
 interface Task {
@@ -14,16 +15,18 @@ export default function Scores() {
   const [score, setScore] = useState<MemberScore | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [sheetUrl, setSheetUrl] = useState('');
+  const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
 
   useEffect(() => {
-    api<MemberScore>('/scores/me')
+    const pScore = api<MemberScore>('/scores/me')
       .then(setScore)
       .catch((e) => setMsg((e as Error).message));
-    api<{ tasks: Task[] }>('/tasks/me?range=month')
+    const pTasks = api<{ tasks: Task[] }>('/tasks/me?range=month')
       .then((r) => setTasks(r.tasks))
       .catch(() => {});
-    api<{ sheetUrl?: string }>('/tasks/catalog')
+    Promise.allSettled([pScore, pTasks]).then(() => setLoading(false));
+    cachedGet<{ sheetUrl?: string }>('/tasks/catalog')
       .then((r) => setSheetUrl(r.sheetUrl || ''))
       .catch(() => {});
   }, []);
@@ -31,6 +34,15 @@ export default function Scores() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {loading ? (
+          <>
+            <Skeleton className="h-20" />
+            <Skeleton className="h-20" />
+            <Skeleton className="h-20" />
+            <Skeleton className="h-20" />
+          </>
+        ) : (
+          <>
         <div className="card text-center">
           <div className="text-2xl font-bold">{score?.todayPoints ?? 0}</div>
           <div className="text-xs text-slate-500">Điểm hôm nay</div>
@@ -47,6 +59,8 @@ export default function Scores() {
           <div className="text-2xl font-bold text-brand-600">{fmtMin(score?.workMinutesToday ?? 0)}</div>
           <div className="text-xs text-slate-500">⏱ Giờ làm hôm nay</div>
         </div>
+          </>
+        )}
       </div>
 
       {msg && <div className="text-sm text-slate-600">{msg}</div>}
@@ -65,6 +79,9 @@ export default function Scores() {
             </a>
           )}
         </div>
+        {loading ? (
+          <SkeletonRows rows={4} />
+        ) : (
         <ul className="divide-y">
           {tasks.map((t) => (
             <li key={t.id} className="py-2 flex justify-between text-sm">
@@ -78,6 +95,7 @@ export default function Scores() {
             </li>
           )}
         </ul>
+        )}
       </div>
     </div>
   );

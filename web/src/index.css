@@ -57,6 +57,11 @@ body {
   @apply text-slate-400;
 }
 
+/* Khối placeholder khi đang tải dữ liệu */
+.skeleton {
+  @apply animate-pulse rounded-xl bg-slate-200/70;
+}
+
 /* Thanh loading chạy trên đỉnh */
 @keyframes loadingbar {
   0% {

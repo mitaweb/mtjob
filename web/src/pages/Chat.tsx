@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { api } from '../lib/api';
+import { api, cachedGet } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { fmtMin } from '../lib/format';
 import type { Assignee, CatalogItem, DoingTask, TodoTask } from '../lib/types';
@@ -30,8 +30,8 @@ function greeting(role?: string): string {
   if (role && DATA_ROLES.includes(role))
     return 'Chào sếp! 📌 Giao việc: gõ @tên người + mô tả việc (vd "@nam lên ads cho SP A"). 📊 Hỏi dữ liệu: "hôm nay ai chưa chấm công", "ai điểm cao nhất tháng này", "đơn nào đang chờ duyệt", "tổng phải thu bao nhiêu".';
   if (role === 'leader')
-    return 'Chào bạn! 📌 Giao việc: gõ @tên người + mô tả việc. ▶️ Hoặc bắt đầu/ghi nhận task, xem điểm/giờ làm.';
-  return 'Chào bạn! Mình có thể: ▶️ bắt đầu task ("bắt đầu lên ads"), ✅ ghi nhận task đã xong ("đã đăng bài page"), hoặc xem điểm/giờ làm. Bạn cần gì?';
+    return 'Chào bạn! 📌 Giao việc: gõ @tên người + mô tả việc. ▶️ Hoặc bắt đầu/ghi nhận task. 📊 Hỏi dữ liệu của bạn: "tháng này tôi làm mấy công", "điểm tháng trước của tôi".';
+  return 'Chào bạn! Mình có thể: ▶️ bắt đầu task ("bắt đầu lên ads"), ✅ ghi nhận task đã xong ("đã đăng bài page"), 📊 trả lời về dữ liệu của bạn ("tháng trước tôi được bao nhiêu điểm", "đơn nghỉ của tôi duyệt chưa"). Bạn cần gì?';
 }
 
 export default function Chat() {
@@ -69,7 +69,7 @@ export default function Chat() {
   useEffect(() => {
     loadDoing();
     loadTodo();
-    api<{ catalog: CatalogItem[] }>('/tasks/catalog')
+    cachedGet<{ catalog: CatalogItem[] }>('/tasks/catalog')
       .then((r) => setCatalog(r.catalog))
       .catch(() => setCatalog([]));
   }, []);
@@ -82,7 +82,7 @@ export default function Chat() {
   }, [canAssign]);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [msgs]);
+  }, [msgs, busy]);
 
   // Gợi ý @tên khi đang gõ một tag ở cuối ô nhập (chỉ leader/giám đốc).
   const mentionQuery = useMemo(() => {
@@ -111,7 +111,11 @@ export default function Chat() {
   async function send(message: string, extra: Record<string, unknown> = {}) {
     setBusy(true);
     try {
-      const res = await api<ChatResponse>('/chat', { body: { message, ...extra } });
+      // Gửi kèm 10 lượt gần nhất để AI hiểu câu hỏi nối tiếp ("còn tháng 5 thì sao?").
+      const history = msgs
+        .slice(-10)
+        .map((m) => ({ role: m.role === 'user' ? 'user' : 'model', text: m.text.slice(0, 2000) }));
+      const res = await api<ChatResponse>('/chat', { body: { message, history, ...extra } });
       setMsgs((m) => [...m, { role: 'bot', text: res.reply, res }]);
       if (res.action === 'task_started' || res.action === 'task_logged') await loadDoing();
     } catch (e) {
@@ -208,6 +212,16 @@ export default function Chat() {
             </div>
           </div>
         ))}
+        {busy && (
+          <div className="flex justify-start">
+            <div className="max-w-[85%] rounded-2xl border border-slate-200 bg-white px-4 py-2 text-slate-500">
+              Đang xem dữ liệu
+              <span className="inline-flex w-6 justify-start">
+                <span className="animate-pulse">…</span>
+              </span>
+            </div>
+          </div>
+        )}
         <div ref={endRef} />
       </div>
 

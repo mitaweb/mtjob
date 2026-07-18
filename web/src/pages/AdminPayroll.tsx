@@ -172,7 +172,32 @@ export default function AdminPayroll() {
       {msg && <div className="text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2">{msg}</div>}
 
       <div className="card overflow-x-auto">
-        <table className="w-full text-sm">
+        {/* Mobile: dạng thẻ cho dễ đọc */}
+        <ul className="md:hidden divide-y">
+          {rows.map((r) => (
+            <li key={r.memberId} className="py-2 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  className="font-semibold text-brand-700 underline-offset-2 hover:underline"
+                  onClick={() => openEditor(r)}
+                >
+                  {r.fullName}
+                </button>
+                <span className="font-semibold text-emerald-600">{vnd(r.netSalary)}</span>
+              </div>
+              <div className="mt-0.5 flex items-center justify-between gap-2">
+                <span className="text-xs text-slate-500">
+                  {r.teamId || '—'} · Công {r.actualDays}/{r.standardDays} · Mức lương {vnd(r.salary)}
+                </span>
+                <button className="btn-ghost text-xs px-2 py-1 whitespace-nowrap" onClick={() => openEditor(r)}>
+                  Chi tiết
+                </button>
+              </div>
+            </li>
+          ))}
+          {rows.length === 0 && <li className="py-3 text-sm text-slate-500">Chưa có dữ liệu.</li>}
+        </ul>
+        <table className="w-full text-sm hidden md:table">
           <thead className="text-left text-slate-500">
             <tr>
               <th className="py-1">Họ tên</th>

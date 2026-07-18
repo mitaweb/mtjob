@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
+import { useToast } from '../components/Toaster';
+import { Badge, type BadgeVariant } from '../components/ui';
 import type { Customer, Appointment } from '../lib/types';
 
 interface Mem {
@@ -14,37 +16,41 @@ const blankCustomer = (): Partial<Customer> => ({ name: '', phone: '', status: '
 const fmtDT = (iso: string) =>
   new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
 
-function statusCls(s: string) {
-  if (s === 'Đã chốt') return 'bg-emerald-100 text-emerald-700';
-  if (s === 'Đang chăm sóc') return 'bg-amber-100 text-amber-700';
-  if (s === 'Mất') return 'bg-rose-100 text-rose-600';
-  if (s === 'Tạm dừng') return 'bg-slate-200 text-slate-600';
-  return 'bg-brand-100 text-brand-700';
+function statusVariant(s: string): BadgeVariant {
+  if (s === 'Đã chốt') return 'success';
+  if (s === 'Đang chăm sóc') return 'warn';
+  if (s === 'Mất') return 'danger';
+  if (s === 'Tạm dừng') return 'neutral';
+  return 'info';
 }
 
 export default function CRM() {
+  const toast = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [members, setMembers] = useState<Mem[]>([]);
   const [upcoming, setUpcoming] = useState<Appointment[]>([]);
-  const [msg, setMsg] = useState('');
 
   // modal khách hàng
   const [edit, setEdit] = useState<Partial<Customer> | null>(null);
   const [appts, setAppts] = useState<Appointment[]>([]);
   const [apForm, setApForm] = useState({ at: '', note: '', ownerId: '' });
 
-  async function loadAll() {
-    const [c, m, u] = await Promise.all([
-      api<{ customers: Customer[] }>('/crm/customers'),
-      api<{ members: Mem[] }>('/crm/members'),
-      api<{ appointments: Appointment[] }>('/crm/appointments/upcoming'),
-    ]);
+  async function loadCustomers() {
+    const c = await api<{ customers: Customer[] }>('/crm/customers');
     setCustomers(c.customers);
-    setMembers(m.members);
+  }
+  async function loadUpcoming() {
+    const u = await api<{ appointments: Appointment[] }>('/crm/appointments/upcoming');
     setUpcoming(u.appointments);
   }
   useEffect(() => {
-    loadAll().catch((e) => setMsg((e as Error).message));
+    // Danh sách thành viên gần như tĩnh → chỉ tải 1 lần lúc mở trang.
+    Promise.all([
+      loadCustomers(),
+      loadUpcoming(),
+      api<{ members: Mem[] }>('/crm/members').then((m) => setMembers(m.members)),
+    ]).catch((e) => toast.error((e as Error).message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const memberName = (id: string) => members.find((m) => m.id === id)?.fullName || '';
@@ -61,7 +67,7 @@ export default function CRM() {
   }
 
   async function saveCustomer() {
-    if (!edit?.name) return setMsg('Nhập tên khách.');
+    if (!edit?.name) return toast.error('Nhập tên khách.');
     try {
       const r = await api<{ id: string }>('/crm/customers', {
         body: {
@@ -74,37 +80,43 @@ export default function CRM() {
           assignedTo: edit.assignedTo || '',
         },
       });
-      setMsg('Đã lưu khách hàng ✅');
-      await loadAll();
+      toast.success('Đã lưu khách hàng');
+      await loadCustomers();
       setEdit({ ...edit, id: r.id });
     } catch (e) {
-      setMsg((e as Error).message);
+      toast.error((e as Error).message);
     }
   }
   async function delCustomer(id: string) {
     await api(`/crm/customers/${id}`, { method: 'DELETE' }).catch(() => {});
     setEdit(null);
-    await loadAll();
+    setCustomers((list) => list.filter((c) => c.id !== id));
+    await loadUpcoming(); // lịch hẹn của khách vừa xoá cũng biến mất
   }
   async function addAppt() {
-    if (!edit?.id || !apForm.at) return setMsg('Lưu khách & chọn thời gian hẹn trước.');
+    if (!edit?.id || !apForm.at) return toast.error('Lưu khách & chọn thời gian hẹn trước.');
     try {
       await api('/crm/appointments', { body: { customerId: edit.id, at: apForm.at, note: apForm.note, ownerId: apForm.ownerId } });
       const r = await api<{ appointments: Appointment[] }>(`/crm/customers/${edit.id}/appointments`);
       setAppts(r.appointments);
       setApForm({ at: '', note: '', ownerId: edit.assignedTo || '' });
-      await loadAll();
+      await loadUpcoming();
+      toast.success('Đã thêm lịch hẹn');
     } catch (e) {
-      setMsg((e as Error).message);
+      toast.error((e as Error).message);
     }
   }
   async function toggleDone(a: Appointment) {
-    await api(`/crm/appointments/${a.id}/done`, { body: { done: !a.done } }).catch(() => {});
-    if (edit?.id) {
-      const r = await api<{ appointments: Appointment[] }>(`/crm/customers/${edit.id}/appointments`);
-      setAppts(r.appointments);
+    try {
+      await api(`/crm/appointments/${a.id}/done`, { body: { done: !a.done } });
+    } catch {
+      return; // đổi trạng thái thất bại thì giữ nguyên UI
     }
-    await loadAll();
+    const done = !a.done;
+    // Cập nhật tại chỗ thay vì tải lại tất cả: 1 request cho 1 cú bấm.
+    setAppts((list) => list.map((x) => (x.id === a.id ? { ...x, done } : x)));
+    if (done) setUpcoming((list) => list.filter((x) => x.id !== a.id));
+    else await loadUpcoming(); // mở lại → hẹn có thể quay về danh sách sắp tới
   }
 
   return (
@@ -118,7 +130,6 @@ export default function CRM() {
           ＋ Thêm khách
         </button>
       </div>
-      {msg && <div className="text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2">{msg}</div>}
 
       {/* Lịch hẹn sắp tới */}
       <div className="card">
@@ -159,7 +170,7 @@ export default function CRM() {
                 <td className="py-2 font-medium">{c.name}</td>
                 <td>{c.phone || '—'}</td>
                 <td>
-                  <span className={`rounded-full px-2 py-0.5 text-xs ${statusCls(c.status)}`}>{c.status}</span>
+                  <Badge variant={statusVariant(c.status)}>{c.status}</Badge>
                 </td>
                 <td>{memberName(c.assignedTo) || '—'}</td>
                 <td className="text-right">

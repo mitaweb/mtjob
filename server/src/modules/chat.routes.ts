@@ -6,7 +6,7 @@ import { interpret } from '../gemini/chatNlu.js';
 import { getActiveCatalog, findCatalogItem, sortCatalogForTeam } from './catalog.repo.js';
 import { findById, findByLogin } from './members.repo.js';
 import { logTask, startTask, assignTask, canAssign } from './tasks.service.js';
-import { answerDataQuestion } from './assistant.service.js';
+import { answerDataQuestion, answerMemberQuestion, type ChatTurn } from './assistant.service.js';
 import { taskTitle } from '../lib/tasks.js';
 import { memberScore } from './scores.service.js';
 import { formatVnd } from '../lib/money.js';
@@ -24,6 +24,12 @@ const bodySchema = z.object({
   confirmAssign: z.boolean().optional(),
   assigneeId: z.string().optional(),
   assignTaskName: z.string().optional(),
+  // Lịch sử hội thoại gần nhất (frontend gửi kèm) — để AI hiểu câu hỏi nối tiếp.
+  history: z
+    .array(z.object({ role: z.enum(['user', 'model']), text: z.string().max(2000) }))
+    .max(10)
+    .optional()
+    .default([]),
 });
 
 const ASSIGN_ROLES = new Set(['leader', 'director', 'admin']);
@@ -106,7 +112,7 @@ chatRouter.post(
 
     // 1e) Giám đốc/Admin (không @tag ai) → hỏi-đáp dữ liệu hệ thống bằng AI.
     if (me && (me.role === 'director' || me.role === 'admin') && b.message.trim()) {
-      const answer = await answerDataQuestion(b.message);
+      const answer = await answerDataQuestion(b.message, b.history as ChatTurn[]);
       res.json({ reply: answer, action: 'data_answer' });
       return;
     }
@@ -139,8 +145,14 @@ chatRouter.post(
       }
     }
 
-    // 4) Điểm/giờ làm cá nhân.
+    // 4) Hỏi về dữ liệu cá nhân (điểm/công/việc/đơn từ) → AI tự tra dữ liệu CỦA CHÍNH MÌNH.
     if (x.intent === 'query_stats') {
+      const answer = await answerMemberQuestion(memberId, b.message, b.history as ChatTurn[]);
+      if (answer) {
+        res.json({ reply: answer, action: 'data_answer' });
+        return;
+      }
+      // AI chưa cấu hình → trả con số cố định như cũ.
       const s = await memberScore(memberId);
       res.json({
         reply: `Tháng này bạn được ${s.monthPoints}đ (hôm nay +${s.todayPoints}đ). Thưởng hiện tại: ${formatVnd(s.bonus)}. ⏱ Giờ làm hôm nay: ${formatMinutes(s.workMinutesToday)}.`,
@@ -150,7 +162,14 @@ chatRouter.post(
       return;
     }
 
-    // 5) Help / fallback.
+    // 5) Câu hỏi tự do → trợ lý cá nhân (AI); chưa cấu hình AI thì trả hướng dẫn như cũ.
+    if (b.message.trim()) {
+      const answer = await answerMemberQuestion(memberId, b.message, b.history as ChatTurn[]);
+      if (answer) {
+        res.json({ reply: answer, action: 'data_answer' });
+        return;
+      }
+    }
     res.json({
       reply:
         x.reply ||
