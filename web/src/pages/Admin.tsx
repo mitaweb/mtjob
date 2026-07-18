@@ -106,6 +106,15 @@ export default function Admin() {
     }
   }
 
+  async function migrateDb() {
+    try {
+      await api('/admin/migrate-db', { method: 'POST' });
+      toast.success('Đã cập nhật cấu trúc DB (bảng + index mới có hiệu lực ngay).');
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
   async function setPassword(id: string) {
     const password = pwd[id];
     if (!password || password.length < 6) {
@@ -152,12 +161,15 @@ export default function Admin() {
             )}
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <AsyncButton className="btn-primary" onClick={sync} busyLabel="Đang đồng bộ…">
             Đồng bộ nhân sự
           </AsyncButton>
           <AsyncButton className="btn-ghost" onClick={syncCatalog} busyLabel="Đang đồng bộ…">
             Đồng bộ bảng điểm
+          </AsyncButton>
+          <AsyncButton className="btn-ghost" onClick={migrateDb} busyLabel="Đang cập nhật…">
+            🛠 Cập nhật cấu trúc DB
           </AsyncButton>
         </div>
       </div>

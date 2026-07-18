@@ -17,6 +17,8 @@ import {
 } from './payroll.service.js';
 import { hashPassword } from '../auth/password.js';
 import { setConfigValue, getConfig } from '../config.js';
+import { pool, closePool } from '../db/client.js';
+import { DDL } from '../db/schema.js';
 import { newId } from '../util/id.js';
 import { nowTz, monthRange, fmtHm, dayjs, TZ } from '../lib/datetime.js';
 import { dayFractionFromShifts } from '../lib/attendance.js';
@@ -117,6 +119,20 @@ adminRouter.post(
   asyncHandler(async (req, res) => {
     const { key, value } = z.object({ key: z.string().min(1), value: z.string() }).parse(req.body);
     await setConfigValue(key, value);
+    res.json({ ok: true });
+  }),
+);
+
+/**
+ * Chạy DDL schema (toàn CREATE TABLE/INDEX IF NOT EXISTS — idempotent, không mất dữ liệu)
+ * ngay trên server, nơi có sẵn DATABASE_URL. Thay cho việc chạy tay setup-db với env prod.
+ * Dùng pool pg (không phải driver HTTP) vì DDL nhiều câu lệnh; đóng pool ngay sau khi xong.
+ */
+adminRouter.post(
+  '/migrate-db',
+  asyncHandler(async (_req, res) => {
+    await pool().query(DDL);
+    await closePool();
     res.json({ ok: true });
   }),
 );
