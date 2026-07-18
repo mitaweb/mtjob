@@ -1,5 +1,11 @@
 import { q } from '../db/client.js';
+import { dayjs } from '../lib/datetime.js';
 import type { TaskRow, TaskStatus, Team } from '../types.js';
+
+/** Ngày kế tiếp (YYYY-MM-DD) — làm cận trên exclusive khi so chuỗi ISO datetime. */
+function nextDayIso(iso: string): string {
+  return dayjs(iso).add(1, 'day').format('YYYY-MM-DD');
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function rowToTask(r: any): TaskRow {
@@ -22,6 +28,40 @@ function rowToTask(r: any): TaskRow {
 
 export async function getAllTasks(): Promise<TaskRow[]> {
   const rows = await q('SELECT * FROM tasks ORDER BY completed_at DESC');
+  return rows.map(rowToTask);
+}
+
+/**
+ * Tasks phục vụ tính điểm/giờ làm trong [start, end] (YYYY-MM-DD, inclusive):
+ * task hoàn thành trong khoảng, task hoàn thành trong ngày `today` (điểm/giờ hôm nay
+ * kể cả khi xem tháng khác), và mọi task đang làm (giờ chạy tới hiện tại).
+ * So sánh chuỗi trên ISO text — cùng ngữ nghĩa với inRange (slice(0,10)).
+ */
+export async function getScoringTasks(start: string, end: string, today: string): Promise<TaskRow[]> {
+  const rows = await q(
+    `SELECT * FROM tasks
+     WHERE (completed_at >= $1 AND completed_at < $2)
+        OR (completed_at >= $3 AND completed_at < $4)
+        OR status = 'doing'`,
+    [start, nextDayIso(end), today, nextDayIso(today)],
+  );
+  return rows.map(rowToTask);
+}
+
+/** Task ĐÃ hoàn thành của 1 thành viên trong [start, end] — mới nhất trước. */
+export async function getDoneTasksForMemberRange(
+  memberId: string,
+  start: string,
+  end: string,
+): Promise<TaskRow[]> {
+  const rows = await q(
+    `SELECT * FROM tasks
+     WHERE member_id = $1 AND status = 'done'
+       AND ((completed_at <> '' AND completed_at >= $2 AND completed_at < $3)
+         OR (completed_at = '' AND created_at >= $2 AND created_at < $3))
+     ORDER BY completed_at DESC`,
+    [memberId, start, nextDayIso(end)],
+  );
   return rows.map(rowToTask);
 }
 

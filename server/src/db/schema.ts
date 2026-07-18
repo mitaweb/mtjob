@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   note         text DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS tasks_member_idx ON tasks (member_id);
+CREATE INDEX IF NOT EXISTS tasks_completed_idx ON tasks (completed_at DESC);
 -- Migration cho DB đã tạo trước khi có luồng bắt đầu/hoàn thành:
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS started_at text DEFAULT '';
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS status text DEFAULT 'done';
@@ -72,6 +73,8 @@ CREATE TABLE IF NOT EXISTS attendance (
   note             text DEFAULT '',
   PRIMARY KEY (date, member_id)
 );
+-- PK là (date, member_id) nên truy vấn theo member cần index riêng:
+CREATE INDEX IF NOT EXISTS attendance_member_date_idx ON attendance (member_id, date);
 
 CREATE TABLE IF NOT EXISTS requests (
   req_id          text PRIMARY KEY,
@@ -91,6 +94,9 @@ CREATE TABLE IF NOT EXISTS requests (
   final_status    text DEFAULT 'pending',
   created_at      text NOT NULL
 );
+-- Chấm công nào cũng tra đơn online/nghỉ đã duyệt của thành viên → cần index:
+CREATE INDEX IF NOT EXISTS requests_member_kind_idx ON requests (member_id, kind, final_status);
+CREATE INDEX IF NOT EXISTS requests_created_idx ON requests (created_at DESC);
 
 CREATE TABLE IF NOT EXISTS holidays (
   date text PRIMARY KEY,
@@ -195,6 +201,7 @@ CREATE TABLE IF NOT EXISTS customers (
   assigned_to text DEFAULT '',           -- member_id phụ trách (sale/account)
   created_at  text DEFAULT ''
 );
+CREATE INDEX IF NOT EXISTS customers_created_idx ON customers (created_at DESC);
 
 CREATE TABLE IF NOT EXISTS appointments (
   appt_id       text PRIMARY KEY,

@@ -1,4 +1,4 @@
-import { getAllTasks } from './tasks.repo.js';
+import { getScoringTasks } from './tasks.repo.js';
 import { getActiveMembers, findById } from './members.repo.js';
 import { sumPointsForMember, aggregateByMember, rankMembers } from '../lib/scores.js';
 import { computeBonus, type BonusConfig } from '../lib/money.js';
@@ -41,7 +41,7 @@ export async function memberScore(memberId: string, year?: number, month?: numbe
   const m = month ?? now.month() + 1;
   const { start, end } = monthRange(y, m);
   const today = todayIso();
-  const tasks = await getAllTasks();
+  const tasks = await getScoringTasks(start, end, today);
   // Điểm chỉ tính task đã hoàn thành; giờ làm tính cả task đang chạy.
   const doneTasks = tasks.filter((t) => t.status === 'done');
   const member = await findById(memberId);
@@ -68,7 +68,7 @@ export async function ranking(year?: number, month?: number, teamId?: string): P
   const m = month ?? now.month() + 1;
   const { start, end } = monthRange(y, m);
   const today = todayIso();
-  const tasks = await getAllTasks();
+  const tasks = await getScoringTasks(start, end, today);
   const doneTasks = tasks.filter((t) => t.status === 'done');
   let members = (await getActiveMembers()).filter((x) => x.role === 'member');
   if (teamId) members = members.filter((x) => x.teamId === teamId);

@@ -1,5 +1,5 @@
 import { getActiveMembers, findById } from './members.repo.js';
-import { getAllAttendance } from './attendance.repo.js';
+import { getAttendanceBetween } from './attendance.repo.js';
 import { getHolidaySet } from './holidays.repo.js';
 import { getConfig } from '../config.js';
 import { q } from '../db/client.js';
@@ -47,7 +47,7 @@ export async function payrollForMonth(year: number, month: number): Promise<Payr
     getHolidaySet(),
     getConfig(),
     getActiveMembers(),
-    getAllAttendance(),
+    getAttendanceBetween(start, end),
   ]);
   const std = standardWorkingDays(year, month, holidays);
 

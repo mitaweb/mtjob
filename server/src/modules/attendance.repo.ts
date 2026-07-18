@@ -26,6 +26,12 @@ export async function getAllAttendance(): Promise<AttendanceRow[]> {
   return rows.map(rowToAttendance);
 }
 
+/** Chấm công của MỌI thành viên trong [start, end] (YYYY-MM-DD, inclusive). */
+export async function getAttendanceBetween(start: string, end: string): Promise<AttendanceRow[]> {
+  const rows = await q('SELECT * FROM attendance WHERE date BETWEEN $1 AND $2', [start, end]);
+  return rows.map(rowToAttendance);
+}
+
 export async function getMemberDate(memberId: string, date: string): Promise<AttendanceRow | undefined> {
   const rows = await q('SELECT * FROM attendance WHERE member_id = $1 AND date = $2 LIMIT 1', [memberId, date]);
   return rows.length ? rowToAttendance(rows[0]) : undefined;

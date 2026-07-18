@@ -72,7 +72,7 @@ export async function submitRequest(i: SubmitInput): Promise<RequestRow> {
       title: 'Đơn cần duyệt',
       body: `${member.fullName} xin ${kindVi(i.kind)}: ${i.dates.join(', ')}.`,
       url: '/approvals',
-    });
+    }, { background: true });
   } else {
     for (const d of await getDirectors()) {
       await notify(d.id, {
@@ -80,7 +80,7 @@ export async function submitRequest(i: SubmitInput): Promise<RequestRow> {
         title: 'Đơn cần duyệt (cấp giám đốc)',
         body: `${member.fullName} xin ${kindVi(i.kind)}: ${i.dates.join(', ')}.`,
         url: '/approvals',
-      });
+      }, { background: true });
     }
   }
   return row;
@@ -195,14 +195,14 @@ export async function decideRequest(
       title: 'Đơn đã được duyệt ✅',
       body: `Đơn ${kindVi(kind)} (${req.dates.join(', ')}) đã được duyệt.`,
       url: '/requests',
-    });
+    }, { background: true });
   } else if (req.finalStatus === 'rejected') {
     await notify(req.memberId, {
       type: 'request',
       title: 'Đơn bị từ chối ❌',
       body: `Đơn ${kindVi(kind)} (${req.dates.join(', ')}) đã bị từ chối.`,
       url: '/requests',
-    });
+    }, { background: true });
   } else if (approver.role === 'leader' && decision === 'approve') {
     // Leader approved → notify directors for the next step.
     for (const d of await getDirectors()) {
@@ -211,7 +211,7 @@ export async function decideRequest(
         title: 'Đơn chờ giám đốc duyệt',
         body: `${req.name} xin ${kindVi(kind)} (${req.dates.join(', ')}) — leader đã duyệt.`,
         url: '/approvals',
-      });
+      }, { background: true });
     }
   }
   return req;

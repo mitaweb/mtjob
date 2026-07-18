@@ -26,7 +26,7 @@ attendanceRouter.post(
       title: 'Chấm công thành công ✅',
       body: `Ca ${shiftVi(r.shift)} — giờ vào ${fmtHm(r.time)}${r.late ? ' (đi trễ)' : ''}. Ngày công hôm nay: ${r.dayFraction}.`,
       url: '/attendance',
-    });
+    }, { background: true });
     res.json({ ok: true, ...r });
   }),
 );
@@ -41,7 +41,7 @@ attendanceRouter.post(
       title: 'Chấm công thành công ✅',
       body: `Ca ${shiftVi(r.shift)} — giờ ra ${fmtHm(r.time)}. Ngày công hôm nay: ${r.dayFraction}.`,
       url: '/attendance',
-    });
+    }, { background: true });
     res.json({ ok: true, ...r });
   }),
 );

@@ -4,9 +4,8 @@ import { asyncHandler } from '../util/errors.js';
 import { requireAuth } from '../auth/middleware.js';
 import { getActiveCatalog, sortCatalogForTeam } from './catalog.repo.js';
 import { findById, getActiveMembers, membersInTeam } from './members.repo.js';
-import { getAllTasks, getDoingTasks, getTodoTasks } from './tasks.repo.js';
+import { getDoneTasksForMemberRange, getDoingTasks, getTodoTasks } from './tasks.repo.js';
 import { logTask, startTask, completeTask, startAssignedTask, canAssign } from './tasks.service.js';
-import { inRange } from '../lib/scores.js';
 import { nowTz, monthRange, todayIso } from '../lib/datetime.js';
 import { getConfig } from '../config.js';
 
@@ -32,14 +31,7 @@ tasksRouter.get(
       range === 'today'
         ? { start: todayIso(), end: todayIso() }
         : monthRange(now.year(), now.month() + 1);
-    const tasks = (await getAllTasks())
-      .filter(
-        (t) =>
-          t.memberId === req.user!.sub &&
-          t.status === 'done' &&
-          inRange(t.completedAt || t.createdAt, start, end),
-      )
-      .sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1));
+    const tasks = await getDoneTasksForMemberRange(req.user!.sub, start, end);
     res.json({ range, start, end, tasks });
   }),
 );

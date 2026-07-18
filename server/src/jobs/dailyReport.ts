@@ -1,6 +1,6 @@
 import { getActiveMembers, getDirectors } from '../modules/members.repo.js';
 import { getTeams } from '../modules/teams.repo.js';
-import { getAllTasks } from '../modules/tasks.repo.js';
+import { getScoringTasks } from '../modules/tasks.repo.js';
 import { memberScore, ranking } from '../modules/scores.service.js';
 import { taskTitle } from '../lib/tasks.js';
 import type { TaskRow } from '../types.js';
@@ -84,7 +84,7 @@ export async function runDailyReports(): Promise<void> {
   const month = now.month() + 1;
 
   const today = todayIso();
-  const allTasks = await getAllTasks();
+  const allTasks = await getScoringTasks(today, today, today);
   const members = await getActiveMembers();
   const birthdays = birthdaysInMonth(
     members.map((m) => ({ fullName: m.fullName, dob: m.dob })),

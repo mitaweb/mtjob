@@ -19,7 +19,7 @@ async function notifyLeaderOnComplete(task: TaskRow): Promise<void> {
       title: 'Thành viên hoàn thành task ✅',
       body: `${task.memberName} đã hoàn thành "${task.taskName}" (+${task.points}đ).`,
       url: '/dashboard',
-    });
+    }, { background: true });
   } catch (e) {
     console.warn('[task] không gửi được thông báo cho leader:', (e as Error).message);
   }
@@ -144,7 +144,7 @@ export async function assignTask(input: AssignInput): Promise<{ task: TaskRow }>
     title: 'Bạn được giao việc 📌',
     body: `${assigner.fullName} giao: "${name}". Mở Chat → "Cần làm", chọn loại việc rồi bấm Bắt đầu.`,
     url: '/chat',
-  });
+  }, { background: true });
   return { task };
 }
 
