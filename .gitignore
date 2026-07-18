@@ -36,3 +36,5 @@ tmp/
 
 # Vercel
 .vercel/
+.vercel
+.env*
