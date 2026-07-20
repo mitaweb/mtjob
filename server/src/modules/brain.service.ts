@@ -251,25 +251,9 @@ const SOURCES: SourceSpec[] = [
       }));
     },
   },
-  {
-    sourceType: 'task',
-    table: 'tasks',
-    idCol: 'task_id',
-    where: "COALESCE(t.note, '') <> '' AND t.status = 'done'",
-    load: async (ids) => {
-      const rows = await q(
-        'SELECT task_id, member_name, task_name, note, completed_at, created_at FROM tasks WHERE task_id = ANY($1)',
-        [ids],
-      );
-      return rows.map((r) => ({
-        sourceType: 'task',
-        sourceId: r.task_id,
-        title: `Việc: ${r.task_name || ''}`,
-        text: `${String(r.completed_at || r.created_at || '').slice(0, 10)} ${r.member_name || ''} hoàn thành "${r.task_name || ''}": ${r.note || ''}`,
-        visibility: 'all',
-      }));
-    },
-  },
+  // KHÔNG nạp ghi chú công việc: là dữ liệu vận hành, không phải tri thức.
+  // Trợ lý tra thẳng bảng tasks qua get_member_tasks/get_my_tasks; hồ sơ 360° cũng
+  // đọc bảng tasks trực tiếp trong gatherCustomerData.
 ];
 
 /** Nạp một lượt (~30 nguồn) dữ liệu cũ chưa có trong kho. */

@@ -6,19 +6,18 @@ import { notify } from './notifications.service.js';
 import { ApiError } from '../util/errors.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
-import { ingestInBackground } from './brain.service.js';
+import { markCustomerDirty } from './brain.service.js';
 import type { Member, TaskRow } from '../types.js';
 
-/** Ghi chú việc (vd tên khách/dự án) là tri thức hữu ích — nạp vào kho khi việc hoàn thành. */
-function ingestTaskNote(task: TaskRow): void {
-  if (!task.note?.trim()) return;
-  ingestInBackground({
-    sourceType: 'task',
-    sourceId: task.id,
-    title: `Việc: ${task.taskName}`,
-    text: `${(task.completedAt || task.createdAt).slice(0, 10)} ${task.memberName} hoàn thành "${task.taskName}": ${task.note}`,
-    visibility: 'all',
-  });
+/**
+ * Ghi chú việc KHÔNG vào kho tri thức (là dữ liệu vận hành, không phải tri thức —
+ * trợ lý tra thẳng bảng tasks qua get_member_tasks/get_my_tasks).
+ * Nhưng nếu ghi chú nhắc tên khách thì hẹn dựng lại hồ sơ 360° của khách đó,
+ * vì mục "công việc đã làm" trong hồ sơ đọc từ bảng tasks.
+ */
+function touchCustomerFromTask(task: TaskRow): void {
+  const note = task.note?.trim();
+  if (note) markCustomerDirty(note);
 }
 
 /** Báo cho leader của team khi một thành viên hoàn thành task. Không làm hỏng luồng chính nếu lỗi. */
@@ -73,7 +72,7 @@ export async function logTask(input: LogTaskInput): Promise<{ task: TaskRow; poi
     note: input.note || '',
   };
   await addTask(task);
-  ingestTaskNote(task);
+  touchCustomerFromTask(task);
   await notifyLeaderOnComplete(task);
   return { task, points: item.points };
 }
@@ -189,7 +188,7 @@ export async function completeTask(
   const now = nowTz().toISOString();
   const task = await completeTaskRow(taskId, memberId, now);
   if (!task) throw new ApiError(404, 'Không tìm thấy task đang làm (có thể đã hoàn thành rồi)');
-  ingestTaskNote(task);
+  touchCustomerFromTask(task);
   await notifyLeaderOnComplete(task);
   return { task, points: task.points };
 }

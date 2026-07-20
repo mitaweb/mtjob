@@ -9,12 +9,14 @@ import { logTask, startTask, assignTask, canAssign } from './tasks.service.js';
 import { answerDataQuestion, answerMemberQuestion, type ChatTurn } from './assistant.service.js';
 import { taskTitle } from '../lib/tasks.js';
 import { looksLikeQuestion } from '../lib/question.js';
+import { removeAccents } from '../lib/people.js';
+import { getCustomers } from './crm.repo.js';
 import { memberScore } from './scores.service.js';
 import { formatVnd } from '../lib/money.js';
 import { formatMinutes } from '../lib/worktime.js';
 import { fmtHm, nowTz } from '../lib/datetime.js';
 import { addChatMessages, type ChatMessageRow } from './chat.repo.js';
-import { ingest, autoBackfill } from './brain.service.js';
+import { autoBackfill } from './brain.service.js';
 import { newId } from '../util/id.js';
 import { runInBackground } from '../util/background.js';
 
@@ -45,6 +47,26 @@ function parseMentions(message: string): string[] {
 }
 
 
+/** Tên các khách đang hoạt động (dùng cho bước hỏi "việc này cho khách nào"). */
+async function customerNames(): Promise<string[]> {
+  try {
+    return (await getCustomers()).map((c) => c.name).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/** Ghi chú việc đã nhắc tên khách nào chưa? Trả về tên khách khớp, hoặc null. */
+async function matchCustomer(note: string): Promise<string | null> {
+  const hay = removeAccents(note || '').toLowerCase();
+  if (!hay) return null;
+  for (const name of await customerNames()) {
+    const needle = removeAccents(name).toLowerCase().trim();
+    if (needle.length >= 3 && hay.includes(needle)) return name;
+  }
+  return null;
+}
+
 /** Payload trả về cho frontend (mọi lối ra của handler). */
 interface ChatReply {
   reply: string;
@@ -53,13 +75,10 @@ interface ChatReply {
   [k: string]: any;
 }
 
-// Câu hỏi quá ngắn thì không đáng lưu vào kho tri thức (nhiễu, tốn token).
-const MIN_QUESTION_FOR_BRAIN = 30;
-
 /**
- * Lưu 1 lượt hội thoại (câu hỏi + câu trả lời) chạy nền.
- * Riêng hỏi-đáp dữ liệu còn nạp vào kho tri thức để sau này tra lại được;
- * các lượt bấm nút xác nhận chỉ lưu lịch sử, không nạp kho.
+ * Lưu 1 lượt hội thoại (câu hỏi + câu trả lời) chạy nền — chỉ vào LỊCH SỬ chat.
+ * KHÔNG tự nạp vào kho tri thức: trước đây vơ vét mọi cặp hỏi-đáp nên kho bị nhiễu.
+ * Giờ người dùng chủ động bấm "Lưu vào kho" khi chốt được điều đáng nhớ (POST /brain/notes).
  */
 function saveChatTurn(memberId: string, userText: string, payload: ChatReply): void {
   const now = nowTz().toISOString();
@@ -68,9 +87,8 @@ function saveChatTurn(memberId: string, userText: string, payload: ChatReply): v
   if (question) {
     rows.push({ id: newId('CM-'), memberId, role: 'user', text: question, action: '', createdAt: now });
   }
-  const msgId = newId('CM-');
   rows.push({
-    id: msgId,
+    id: newId('CM-'),
     memberId,
     role: 'model',
     text: payload.reply || '',
@@ -78,20 +96,7 @@ function saveChatTurn(memberId: string, userText: string, payload: ChatReply): v
     createdAt: now,
   });
 
-  runInBackground(
-    addChatMessages(rows)
-      .then(() => {
-        if (payload.action !== 'data_answer' || question.length < MIN_QUESTION_FOR_BRAIN) return;
-        return ingest({
-          sourceType: 'chat',
-          sourceId: msgId,
-          title: 'Hội thoại với trợ lý',
-          text: `Hỏi: ${question}\nĐáp: ${payload.reply || ''}`,
-          visibility: memberId, // chat cá nhân — chỉ chính chủ (và giám đốc) tra được
-        });
-      })
-      .catch((e) => console.warn('[chat] lưu lịch sử:', e)),
-  );
+  runInBackground(addChatMessages(rows).catch((e) => console.warn('[chat] lưu lịch sử:', e)));
 }
 
 chatRouter.post(
@@ -192,27 +197,33 @@ chatRouter.post(
 
     const x = await interpret(b.message, catalog, me?.teamId || '');
 
-    // 2) Bắt đầu task → thẻ xác nhận bắt đầu.
-    if (x.intent === 'start_task' && x.taskCode) {
+    // 2+3) Ghi việc (bắt đầu / đã xong) — phải rõ việc này làm cho KHÁCH NÀO.
+    if ((x.intent === 'start_task' || x.intent === 'log_task') && x.taskCode) {
       const item = await findCatalogItem(x.taskCode);
       if (item) {
-        send({
-          reply: `Bắt đầu làm "${item.name}" từ bây giờ? (+${item.points}đ khi hoàn thành)`,
-          action: 'confirm_start',
-          suggestion: { taskCode: item.code, taskName: item.name, points: item.points, note: x.note || '' },
-        });
-        return;
-      }
-    }
+        const starting = x.intent === 'start_task';
+        const note = (x.note || '').trim();
+        const known = await matchCustomer(note);
 
-    // 3) Hoàn thành ngay → thẻ xác nhận ghi điểm.
-    if (x.intent === 'log_task' && x.taskCode) {
-      const item = await findCatalogItem(x.taskCode);
-      if (item) {
+        // Chưa biết khách nào → hỏi lại trước, đừng ghi nhận việc mơ hồ.
+        // (Chọn xong, frontend tự dựng thẻ xác nhận nên không quay lại nhánh này.)
+        if (!known) {
+          send({
+            reply: `"${item.name}" — việc này cho khách nào vậy?`,
+            action: 'ask_customer',
+            suggestion: { taskCode: item.code, taskName: item.name, points: item.points, note },
+            starting,
+            customers: await customerNames(),
+          });
+          return;
+        }
+
         send({
-          reply: `Bạn vừa hoàn thành "${item.name}" (+${item.points}đ)? Bấm xác nhận để ghi nhận nhé.`,
-          action: 'confirm_task',
-          suggestion: { taskCode: item.code, taskName: item.name, points: item.points, note: x.note || '' },
+          reply: starting
+            ? `Bắt đầu làm "${item.name}"${known ? ` cho ${known}` : ''} từ bây giờ? (+${item.points}đ khi hoàn thành)`
+            : `Bạn vừa hoàn thành "${item.name}"${known ? ` cho ${known}` : ''} (+${item.points}đ)? Bấm xác nhận để ghi nhận nhé.`,
+          action: starting ? 'confirm_start' : 'confirm_task',
+          suggestion: { taskCode: item.code, taskName: item.name, points: item.points, note },
         });
         return;
       }

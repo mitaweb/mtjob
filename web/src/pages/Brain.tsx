@@ -44,6 +44,7 @@ interface Stats {
 }
 
 const SOURCE_VI: Record<string, string> = {
+  note: 'Chốt từ hội thoại',
   profile: 'Hồ sơ khách (tổng hợp)',
   customer_note: 'Lưu ý khách hàng',
   customer: 'Hồ sơ khách hàng',
@@ -54,6 +55,7 @@ const SOURCE_VI: Record<string, string> = {
 };
 
 const SOURCE_VARIANT: Record<string, BadgeVariant> = {
+  note: 'info',
   profile: 'success',
   customer_note: 'info',
   customer: 'success',

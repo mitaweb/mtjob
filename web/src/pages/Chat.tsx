@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, cachedGet } from '../lib/api';
+import AsyncButton from '../components/AsyncButton';
+import { useToast } from '../components/Toaster';
 import { useAuth } from '../lib/auth';
 import { fmtMin } from '../lib/format';
 import type { Assignee, CatalogItem, DoingTask, TodoTask } from '../lib/types';
@@ -16,11 +18,15 @@ interface ChatResponse {
   suggestion?: Suggestion;
   assignee?: { id: string; fullName: string };
   catalog?: CatalogItem[];
+  customers?: string[]; // khi action = ask_customer
+  starting?: boolean; // true = đang bắt đầu việc, false = báo đã xong
 }
 interface Msg {
   role: 'user' | 'bot';
   text: string;
   res?: ChatResponse;
+  question?: string; // câu hỏi dẫn tới câu trả lời này — dùng khi lưu vào kho
+  saved?: boolean; // đã chốt vào kho tri thức chưa
 }
 
 const ASSIGN_ROLES = ['leader', 'director', 'admin'];
@@ -34,8 +40,140 @@ function greeting(role?: string): string {
   return 'Chào bạn! Mình giúp được:\n▶️ Ghi nhận việc — "bắt đầu lên ads", "đã đăng bài page"\n📊 Dữ liệu của bạn — "tháng trước tôi được bao nhiêu điểm?", "đơn nghỉ duyệt chưa?"\n🧠 Thông tin khách — "khách Ba Spa cần gì?"\n✍️ Hỗ trợ chuyên môn — "viết giúp caption cho bài spa", "ý tưởng content tháng 8"\nBạn cần gì?';
 }
 
+/** Chữ in đậm **…** và nghiêng *…* trong một dòng. */
+function inlineFmt(text: string, keyBase: string): ReactNode[] {
+  return text.split(/(\*\*[^*\n]+\*\*|\*[^*\n]+\*)/g).map((p, i) => {
+    const k = `${keyBase}-${i}`;
+    if (p.startsWith('**') && p.endsWith('**') && p.length > 4) {
+      return <strong key={k}>{p.slice(2, -2)}</strong>;
+    }
+    if (p.startsWith('*') && p.endsWith('*') && p.length > 2) {
+      return <em key={k}>{p.slice(1, -1)}</em>;
+    }
+    return <span key={k}>{p}</span>;
+  });
+}
+
+/**
+ * Hiển thị câu trả lời của AI cho dễ đọc: AI viết theo kiểu markdown
+ * (**đậm**, gạch đầu dòng) — nếu in thô sẽ thấy đầy dấu sao.
+ * Tự dựng phần tử React nên không có rủi ro chèn HTML.
+ */
+function RichText({ text }: { text: string }) {
+  const lines = text.split('\n');
+  const blocks: ReactNode[] = [];
+  let bullets: string[] = [];
+
+  const flushBullets = (key: string) => {
+    if (bullets.length === 0) return;
+    blocks.push(
+      <ul key={key} className="my-1 list-disc space-y-0.5 pl-5">
+        {bullets.map((b, i) => (
+          <li key={i}>{inlineFmt(b, `${key}-${i}`)}</li>
+        ))}
+      </ul>,
+    );
+    bullets = [];
+  };
+
+  lines.forEach((raw, i) => {
+    const line = raw.trimEnd();
+    const bullet = line.match(/^\s*[-•*]\s+(.*)$/);
+    if (bullet) {
+      bullets.push(bullet[1]!);
+      return;
+    }
+    flushBullets(`ul-${i}`);
+    if (!line.trim()) {
+      blocks.push(<div key={`sp-${i}`} className="h-2" />);
+      return;
+    }
+    blocks.push(
+      <p key={`p-${i}`} className="my-0.5">
+        {inlineFmt(line, `p-${i}`)}
+      </p>,
+    );
+  });
+  flushBullets('ul-end');
+  return <>{blocks}</>;
+}
+
+/** Trạng thái chờ: đổi chữ theo thời gian cho khớp các giai đoạn trợ lý đang chạy. */
+function ThinkingBubble() {
+  const [phase, setPhase] = useState(0);
+  useEffect(() => {
+    const t1 = setTimeout(() => setPhase(1), 2500);
+    const t2 = setTimeout(() => setPhase(2), 7000);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, []);
+  const label = phase === 0 ? 'Đang đọc câu hỏi' : phase === 1 ? 'Đang tra dữ liệu' : 'Đang tổng hợp câu trả lời';
+  return (
+    <div className="flex justify-start">
+      <div className="flex max-w-[85%] items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-slate-500">
+        <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600" />
+        {label}
+        <span className="animate-pulse">…</span>
+      </div>
+    </div>
+  );
+}
+
+/** Chọn khách hàng cho việc đang ghi: bấm nút, lọc theo từ gõ, hoặc gõ tên tự do. */
+function CustomerPicker({ res, onPick }: { res: ChatResponse; onPick: (customer: string) => void }) {
+  const [q, setQ] = useState('');
+  const all = res.customers || [];
+  const shown = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const list = needle ? all.filter((c) => c.toLowerCase().includes(needle)) : all;
+    return list.slice(0, 8);
+  }, [q, all]);
+
+  return (
+    <div className="mt-2 space-y-2">
+      {all.length > 6 && (
+        <input
+          className="input py-1 text-sm"
+          placeholder="Gõ để lọc hoặc nhập tên khách mới…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && q.trim() && onPick(q.trim())}
+        />
+      )}
+      <div className="flex flex-wrap gap-1.5">
+        {shown.map((c) => (
+          <button
+            key={c}
+            className="rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 text-sm text-brand-700 hover:bg-brand-100"
+            onClick={() => onPick(c)}
+          >
+            {c}
+          </button>
+        ))}
+        {q.trim() && !all.some((c) => c.toLowerCase() === q.trim().toLowerCase()) && (
+          <button
+            className="rounded-lg border border-slate-300 px-2.5 py-1 text-sm text-slate-600 hover:bg-slate-50"
+            onClick={() => onPick(q.trim())}
+          >
+            + {q.trim()}
+          </button>
+        )}
+        <button
+          className="rounded-lg border border-slate-300 px-2.5 py-1 text-sm text-slate-500 hover:bg-slate-50"
+          onClick={() => onPick('')}
+        >
+          Không thuộc khách nào
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Chat() {
   const { user } = useAuth();
+  const toast = useToast();
   const canAssign = !!user && ASSIGN_ROLES.includes(user.role);
 
   const [msgs, setMsgs] = useState<Msg[]>([{ role: 'bot', text: greeting(user?.role) }]);
@@ -48,6 +186,9 @@ export default function Chat() {
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [startingTodo, setStartingTodo] = useState<TodoTask | null>(null);
   const [pickQuery, setPickQuery] = useState('');
+  const [savingIdx, setSavingIdx] = useState<number | null>(null); // đang mở ô lưu vào kho
+  const [saveTitle, setSaveTitle] = useState('');
+  const [saveCustomer, setSaveCustomer] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
 
   async function loadDoing() {
@@ -116,7 +257,7 @@ export default function Chat() {
         .slice(-10)
         .map((m) => ({ role: m.role === 'user' ? 'user' : 'model', text: m.text.slice(0, 2000) }));
       const res = await api<ChatResponse>('/chat', { body: { message, history, ...extra } });
-      setMsgs((m) => [...m, { role: 'bot', text: res.reply, res }]);
+      setMsgs((m) => [...m, { role: 'bot', text: res.reply, res, question: message }]);
       if (res.action === 'task_started' || res.action === 'task_logged') await loadDoing();
     } catch (e) {
       setMsgs((m) => [...m, { role: 'bot', text: `⚠️ ${(e as Error).message}` }]);
@@ -133,6 +274,27 @@ export default function Chat() {
     await send(text);
   }
 
+  /** Chốt câu trả lời này vào kho tri thức để lần sau khỏi hỏi lại. */
+  async function saveToBrain(idx: number, title: string, customer: string) {
+    const m = msgs[idx];
+    if (!m) return;
+    try {
+      await api('/brain/notes', {
+        body: {
+          title: title.trim() || (m.question || 'Ghi chú từ hội thoại').slice(0, 120),
+          // Lưu cả câu hỏi để sau này tra ra vẫn hiểu ngữ cảnh.
+          content: m.question ? `Hỏi: ${m.question}\n\n${m.text}` : m.text,
+          customer: customer.trim(),
+        },
+      });
+      setMsgs((list) => list.map((x, i) => (i === idx ? { ...x, saved: true } : x)));
+      setSavingIdx(null);
+      toast.success('Đã lưu vào kho tri thức');
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
   async function confirmTask(s: Suggestion) {
     setMsgs((m) => [...m, { role: 'user', text: `✔️ Xác nhận hoàn thành: ${s.taskName}` }]);
     await send('', { confirmTaskCode: s.taskCode, note: s.note });
@@ -141,6 +303,32 @@ export default function Chat() {
   async function confirmStart(s: Suggestion) {
     setMsgs((m) => [...m, { role: 'user', text: `▶️ Bắt đầu: ${s.taskName}` }]);
     await send('', { confirmStartTaskCode: s.taskCode, note: s.note });
+  }
+
+  /**
+   * Chọn khách cho việc đang ghi. Đã biết đủ loại việc + bắt đầu hay đã xong nên
+   * dựng thẳng thẻ xác nhận tại đây, khỏi tốn thêm một vòng gọi máy chủ.
+   */
+  function pickCustomer(res: ChatResponse, customer: string) {
+    const s = res.suggestion;
+    if (!s) return;
+    const note = [s.note, customer].filter(Boolean).join(' — ');
+    const next: Suggestion = { ...s, note };
+    setMsgs((m) => [
+      ...m,
+      { role: 'user', text: customer || 'Không thuộc khách nào' },
+      {
+        role: 'bot',
+        text: res.starting
+          ? `Bắt đầu làm "${s.taskName}"${customer ? ` cho ${customer}` : ''} từ bây giờ? (+${s.points}đ khi hoàn thành)`
+          : `Bạn vừa hoàn thành "${s.taskName}"${customer ? ` cho ${customer}` : ''} (+${s.points}đ)? Bấm xác nhận để ghi nhận nhé.`,
+        res: {
+          reply: '',
+          action: res.starting ? 'confirm_start' : 'confirm_task',
+          suggestion: next,
+        },
+      },
+    ]);
   }
 
   async function confirmAssign(s: Suggestion, assignee: { id: string; fullName: string }) {
@@ -186,11 +374,14 @@ export default function Chat() {
         {msgs.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div
-              className={`max-w-[85%] rounded-2xl px-4 py-2 whitespace-pre-wrap ${
-                m.role === 'user' ? 'bg-brand-600 text-white' : 'bg-white border border-slate-200'
+              className={`max-w-[85%] rounded-2xl px-4 py-2 ${
+                m.role === 'user'
+                  ? 'whitespace-pre-wrap bg-brand-600 text-white'
+                  : 'border border-slate-200 bg-white'
               }`}
             >
-              {m.text}
+              {/* Người dùng: giữ nguyên chữ thô. Bot: AI trả lời kiểu markdown nên phải dựng lại. */}
+              {m.role === 'user' ? m.text : <RichText text={m.text} />}
               {m.res?.action === 'confirm_task' && m.res.suggestion && (
                 <button className="btn-primary mt-2 w-full" onClick={() => confirmTask(m.res!.suggestion!)}>
                   ✅ Xác nhận hoàn thành (+{m.res.suggestion.points}đ)
@@ -209,19 +400,60 @@ export default function Chat() {
                   📌 Giao cho {m.res.assignee.fullName}
                 </button>
               )}
+
+              {/* Việc này cho khách nào? */}
+              {m.res?.action === 'ask_customer' && m.res.suggestion && (
+                <CustomerPicker res={m.res} onPick={(c) => pickCustomer(m.res!, c)} />
+              )}
+
+              {/* Chốt câu trả lời vào kho tri thức — lần sau khỏi hỏi lại */}
+              {m.role === 'bot' && m.res?.action === 'data_answer' && (
+                m.saved ? (
+                  <div className="mt-2 text-xs text-emerald-600">✓ Đã lưu vào kho tri thức</div>
+                ) : savingIdx === i ? (
+                  <div className="mt-2 space-y-2 rounded-xl bg-slate-50 p-2">
+                    <input
+                      className="input py-1 text-sm"
+                      placeholder="Tiêu đề (để trống sẽ lấy theo câu hỏi)"
+                      value={saveTitle}
+                      onChange={(e) => setSaveTitle(e.target.value)}
+                    />
+                    <input
+                      className="input py-1 text-sm"
+                      placeholder="Gắn với khách hàng (tuỳ chọn)"
+                      value={saveCustomer}
+                      onChange={(e) => setSaveCustomer(e.target.value)}
+                    />
+                    <div className="flex gap-2">
+                      <AsyncButton
+                        className="btn-primary py-1 text-sm"
+                        onClick={() => saveToBrain(i, saveTitle, saveCustomer)}
+                        busyLabel="Đang lưu…"
+                      >
+                        Lưu
+                      </AsyncButton>
+                      <button className="btn-ghost py-1 text-sm" onClick={() => setSavingIdx(null)}>
+                        Huỷ
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    className="mt-2 text-xs text-brand-600 underline"
+                    onClick={() => {
+                      setSavingIdx(i);
+                      setSaveTitle((m.question || '').slice(0, 120));
+                      setSaveCustomer('');
+                    }}
+                  >
+                    📌 Lưu vào kho tri thức
+                  </button>
+                )
+              )}
             </div>
           </div>
         ))}
-        {busy && (
-          <div className="flex justify-start">
-            <div className="max-w-[85%] rounded-2xl border border-slate-200 bg-white px-4 py-2 text-slate-500">
-              Đang xem dữ liệu
-              <span className="inline-flex w-6 justify-start">
-                <span className="animate-pulse">…</span>
-              </span>
-            </div>
-          </div>
-        )}
+        {busy && <ThinkingBubble />}
         <div ref={endRef} />
       </div>
 

@@ -23,6 +23,7 @@ import {
   brainAvailable,
   processDocumentInBackground,
   removeSource,
+  ingest,
 } from './brain.service.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
@@ -155,6 +156,36 @@ brainRouter.delete(
     }
     await deleteChunk(String(req.params.id));
     res.json({ ok: true });
+  }),
+);
+
+/**
+ * Chốt một kết luận từ hội thoại vào kho tri thức.
+ * Đây là cách DUY NHẤT hội thoại vào kho — người dùng chủ động bấm lưu khi thấy đáng nhớ,
+ * thay vì hệ thống tự vơ vét mọi cặp hỏi-đáp (nhiễu và không đúng thứ cần).
+ */
+const noteSchema = z.object({
+  title: z.string().min(1).max(200),
+  content: z.string().min(10).max(20000),
+  customer: z.string().max(200).optional().default(''),
+});
+
+brainRouter.post(
+  '/notes',
+  asyncHandler(async (req, res) => {
+    if (!(await brainTableReady())) throw new ApiError(400, 'Kho tri thức chưa khởi tạo (Quản trị → Cập nhật cấu trúc DB)');
+    const b = noteSchema.parse(req.body);
+    const id = newId('N-');
+    const n = await ingest({
+      sourceType: 'note',
+      sourceId: id,
+      title: b.title.trim(),
+      text: b.content.trim(),
+      visibility: 'all',
+      customer: b.customer.trim(),
+    });
+    if (n === 0) throw new ApiError(400, 'Chưa lưu được — kho tri thức cần API key Gemini.');
+    res.json({ ok: true, id });
   }),
 );
 

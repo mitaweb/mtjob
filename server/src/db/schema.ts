@@ -310,6 +310,10 @@ CREATE TABLE IF NOT EXISTS brain_documents (
   processed_at  text DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS brain_documents_created_idx ON brain_documents (created_at DESC);
+
+-- Dọn các mục không còn coi là tri thức: ghi chú công việc (dữ liệu vận hành, trợ lý tra
+-- thẳng bảng tasks) và hội thoại tự động vơ vét (giờ do người dùng chủ động bấm lưu).
+DELETE FROM brain_chunks WHERE source_type IN ('task', 'chat');
 `;
 
 /** Seed rows for the config table (key/value). */

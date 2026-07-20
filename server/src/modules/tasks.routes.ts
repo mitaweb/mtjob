@@ -5,6 +5,7 @@ import { requireAuth } from '../auth/middleware.js';
 import { getActiveCatalog, sortCatalogForTeam } from './catalog.repo.js';
 import { findById, getActiveMembers, membersInTeam } from './members.repo.js';
 import { getDoneTasksForMemberRange, getDoingTasks, getTodoTasks } from './tasks.repo.js';
+import { getCustomers } from './crm.repo.js';
 import { logTask, startTask, completeTask, startAssignedTask, canAssign } from './tasks.service.js';
 import { nowTz, monthRange, todayIso } from '../lib/datetime.js';
 import { getConfig } from '../config.js';
@@ -19,6 +20,19 @@ tasksRouter.get(
     const me = await findById(req.user!.sub);
     const catalog = sortCatalogForTeam(await getActiveCatalog(), me?.teamId || '');
     res.json({ catalog, sheetUrl: cfg.taskSheetUrl });
+  }),
+);
+
+/**
+ * Tên khách hàng cho bước "việc này cho khách nào" khi ghi việc.
+ * CHỈ trả về tên — không SĐT, không thông tin khác — nên mọi thành viên gọi được
+ * (route /crm/* vẫn giới hạn cho sale/giám đốc/admin như cũ).
+ */
+tasksRouter.get(
+  '/customers',
+  asyncHandler(async (_req, res) => {
+    const customers = await getCustomers();
+    res.json({ customers: customers.map((c) => c.name).filter(Boolean) });
   }),
 );
 
