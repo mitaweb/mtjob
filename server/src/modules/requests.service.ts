@@ -8,7 +8,7 @@ import {
 } from './requests.repo.js';
 import { findById, getDirectors } from './members.repo.js';
 import { teamLeaderId } from './teams.repo.js';
-import { saveAttendance, getMemberDate } from './attendance.repo.js';
+import { saveAttendance, getMemberDate, deleteAttendance } from './attendance.repo.js';
 import { notify } from './notifications.service.js';
 import { dayFractionFromShifts } from '../lib/attendance.js';
 import { newId } from '../util/id.js';
@@ -142,7 +142,118 @@ async function recordLeave(req: RequestRow): Promise<void> {
   }
 }
 
+/** Gỡ ngày công đã ghi từ đơn NGHỈ PHÉP (chỉ xoá dòng do chính đơn này tạo). */
+async function undoLeaveAttendance(req: RequestRow): Promise<void> {
+  for (const date of req.dates) {
+    const row = await getMemberDate(req.memberId, date);
+    if (row && row.mode === 'leave' && (row.note || '').includes(req.id)) {
+      await deleteAttendance(date, req.memberId);
+    }
+  }
+}
+
+/** Gỡ buổi 'online' đã ghi từ đơn LÀM ONLINE; giữ nguyên buổi chấm công thật (nếu có). */
+async function undoOnlineAttendance(req: RequestRow): Promise<void> {
+  for (const date of req.dates) {
+    const row = await getMemberDate(req.memberId, date);
+    if (!row) continue;
+    let touched = false;
+    if (row.morningInAt === 'online') {
+      row.morningInAt = '';
+      touched = true;
+    }
+    if (row.afternoonInAt === 'online') {
+      row.afternoonInAt = '';
+      touched = true;
+    }
+    if (!touched) continue;
+    if (!row.morningInAt && !row.afternoonInAt) {
+      await deleteAttendance(date, req.memberId);
+      continue;
+    }
+    row.dayFraction = dayFractionFromShifts({
+      morningIn: row.morningInAt,
+      afternoonIn: row.afternoonInAt,
+      afternoonOut: row.afternoonOutAt,
+    });
+    row.mode = 'office';
+    row.status = row.dayFraction >= 1 ? 'present' : 'half';
+    row.note = '';
+    await saveAttendance(row);
+  }
+}
+
 export type Decision = 'approve' | 'reject';
+
+/**
+ * Đổi quyết định một đơn ĐÃ xử lý (đã duyệt ↔ từ chối) — chỉ giám đốc/admin.
+ * Huỷ duyệt: gỡ ngày công đã ghi từ đơn. Duyệt lại: ghi công như duyệt bình thường.
+ */
+export async function redecideRequest(
+  kind: RequestKind,
+  id: string,
+  approverId: string,
+  decision: Decision,
+): Promise<RequestRow> {
+  const req = await findRequest(kind, id);
+  if (!req) throw new ApiError(404, 'Không tìm thấy đơn');
+  const approver = await findById(approverId);
+  if (!approver || (approver.role !== 'director' && approver.role !== 'admin')) {
+    throw new ApiError(403, 'Chỉ giám đốc/admin được đổi quyết định đơn đã xử lý');
+  }
+  if (req.finalStatus === 'pending') {
+    throw new ApiError(400, 'Đơn còn chờ duyệt — dùng nút Duyệt/Từ chối ở tab Chờ duyệt');
+  }
+  const target: RequestStatus = decision === 'approve' ? 'approved' : 'rejected';
+  if (req.finalStatus === target) {
+    throw new ApiError(400, target === 'approved' ? 'Đơn này đã được duyệt rồi' : 'Đơn này đã bị từ chối rồi');
+  }
+
+  const now = nowTz().toISOString();
+  if (target === 'rejected') {
+    // Huỷ duyệt → gỡ công đã ghi TRƯỚC khi đổi trạng thái.
+    if (kind === 'online') await undoOnlineAttendance(req);
+    else await undoLeaveAttendance(req);
+  }
+
+  const patch: Record<string, unknown> = {
+    DirectorStatus: target,
+    DirectorBy: approver.id,
+    DirectorAt: now,
+    FinalStatus: target,
+  };
+  // Duyệt lại đơn từng bị leader từ chối: giám đốc ghi đè luôn cấp leader.
+  if (target === 'approved' && req.leaderStatus !== 'approved') {
+    patch['LeaderStatus'] = 'approved';
+    patch['LeaderBy'] = approver.id;
+    patch['LeaderAt'] = now;
+    req.leaderStatus = 'approved';
+  }
+  await updateRequest(kind, id, patch);
+  req.directorStatus = target;
+  req.directorBy = approver.id;
+  req.directorAt = now;
+  req.finalStatus = target;
+
+  if (target === 'approved') {
+    if (kind === 'online') await recordOnlineAttendance(req);
+    else await recordLeave(req);
+    await notify(req.memberId, {
+      type: 'request',
+      title: 'Đơn được duyệt lại ✅',
+      body: `Đơn ${kindVi(kind)} (${req.dates.join(', ')}) đã được duyệt lại.`,
+      url: '/requests',
+    }, { background: true });
+  } else {
+    await notify(req.memberId, {
+      type: 'request',
+      title: 'Đơn bị huỷ duyệt ❌',
+      body: `Đơn ${kindVi(kind)} (${req.dates.join(', ')}) đã bị huỷ duyệt — ngày công từ đơn này được gỡ.`,
+      url: '/requests',
+    }, { background: true });
+  }
+  return req;
+}
 
 export async function decideRequest(
   kind: RequestKind,

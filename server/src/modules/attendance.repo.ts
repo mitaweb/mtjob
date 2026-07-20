@@ -50,6 +50,11 @@ export async function getForDate(date: string): Promise<AttendanceRow[]> {
   return rows.map(rowToAttendance);
 }
 
+/** Xoá 1 dòng chấm công (dùng khi huỷ duyệt đơn online/nghỉ phép đã ghi công). */
+export async function deleteAttendance(date: string, memberId: string): Promise<void> {
+  await q('DELETE FROM attendance WHERE date = $1 AND member_id = $2', [date, memberId]);
+}
+
 export async function saveAttendance(a: AttendanceRow): Promise<void> {
   await q(
     `INSERT INTO attendance (date, member_id, name, morning_in_at, morning_out_at, afternoon_in_at, afternoon_out_at,
