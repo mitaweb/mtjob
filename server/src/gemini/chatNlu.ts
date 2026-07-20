@@ -74,6 +74,10 @@ export async function interpret(
     '- "dg xog bai page cho Y Coffee" (viết tắt/sai chính tả) → vẫn hiểu: log_task, taskCode của "Đăng bài page", note="Y Coffee".',
     '- "xong post 1 ảnh với cả content cho Z Shop" (nhiều việc 1 câu) → chọn việc CHÍNH nhắc ĐẦU TIÊN: log_task, taskCode của "Thiết kế post 1 ảnh", note="Z Shop".',
     '- "cách lên ads thế nào?" → help (hỏi CÁCH làm, không phải báo việc — đừng nhầm với start_task).',
+    '- "đã đăng bài page cho X chưa?" → help (CÂU HỎI, không phải báo đã làm).',
+    '- "viết giúp em caption cho bài spa" → help (nhờ hỗ trợ chuyên môn).',
+    'QUAN TRỌNG: câu có dấu ? hoặc từ để hỏi (ai/gì/sao/bao nhiêu/khi nào/chưa/không) LUÔN là help,',
+    'kể cả khi trong câu có nhắc tên một loại việc.',
     '- "em sắp làm video quảng cáo" → start_task, taskCode của "Video quảng cáo".',
   ].join('\n');
 

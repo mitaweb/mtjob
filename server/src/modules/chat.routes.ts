@@ -8,6 +8,7 @@ import { findById, findByLogin } from './members.repo.js';
 import { logTask, startTask, assignTask, canAssign } from './tasks.service.js';
 import { answerDataQuestion, answerMemberQuestion, type ChatTurn } from './assistant.service.js';
 import { taskTitle } from '../lib/tasks.js';
+import { looksLikeQuestion } from '../lib/question.js';
 import { memberScore } from './scores.service.js';
 import { formatVnd } from '../lib/money.js';
 import { formatMinutes } from '../lib/worktime.js';
@@ -42,6 +43,7 @@ const ASSIGN_ROLES = new Set(['leader', 'director', 'admin']);
 function parseMentions(message: string): string[] {
   return [...message.matchAll(/@([a-zA-Z0-9_.]+)/g)].map((m) => m[1]!.toLowerCase());
 }
+
 
 /** Payload trả về cho frontend (mọi lối ra của handler). */
 interface ChatReply {
@@ -176,6 +178,16 @@ chatRouter.post(
       const answer = await answerDataQuestion(b.message, b.history as ChatTurn[]);
       send({ reply: answer, action: 'data_answer' });
       return;
+    }
+
+    // 1f) Nhân viên ĐẶT CÂU HỎI → trả lời thẳng bằng AI, KHÔNG đưa qua bộ nhận diện ghi việc
+    // (nếu không, "đã đăng bài page chưa?" sẽ bị hiểu thành báo đã đăng bài).
+    if (b.message.trim() && looksLikeQuestion(b.message)) {
+      const answer = await answerMemberQuestion(memberId, b.message, b.history as ChatTurn[]);
+      if (answer) {
+        send({ reply: answer, action: 'data_answer' });
+        return;
+      }
     }
 
     const x = await interpret(b.message, catalog, me?.teamId || '');

@@ -283,7 +283,7 @@ export async function backfillPage(limit = 30): Promise<{ ingested: number; rema
       }
     }
     // Dựng lại hồ sơ khách có dữ liệu mới (sau khi các mảnh rời đã vào kho).
-    await rebuildDirtyProfiles(3);
+    await rebuildDirtyProfiles(5);
     return { ingested, remaining: await countRemaining() };
   } catch (e) {
     if (isMissingTable(e)) return { ingested: 0, remaining: 0 }; // chờ bấm Cập nhật cấu trúc DB
@@ -452,10 +452,11 @@ export async function customerProfileText(name: string): Promise<string> {
   }
 }
 
-// Tự kích hoạt nạp dần: throttle theo instance để không quét liên tục.
+// Tự kích hoạt nạp dần: gom thành lô lớn, quét thưa để đỡ tải máy chủ.
 let lastSweep = 0;
 let allDoneUntil = 0;
-const SWEEP_EVERY_MS = 2 * 60_000;
+const SWEEP_EVERY_MS = 8 * 60_000; // ~8 phút/lượt
+const SWEEP_BATCH = 60; // gom nhiều mục mỗi lượt thay vì nạp nhỏ giọt
 const RECHECK_DONE_MS = 30 * 60_000;
 
 /** Gọi sau mỗi request chat: kho tự đầy dần khi mọi người dùng app, không ai phải bấm nút. */
@@ -464,7 +465,7 @@ export function autoBackfill(): void {
   if (now < allDoneUntil || now - lastSweep < SWEEP_EVERY_MS) return;
   lastSweep = now;
   runInBackground(
-    backfillPage()
+    backfillPage(SWEEP_BATCH)
       .then((r) => {
         if (r.remaining === 0) allDoneUntil = Date.now() + RECHECK_DONE_MS;
         if (r.ingested > 0) console.log(`[brain] đã nạp ${r.ingested} mục, còn ${r.remaining}`);

@@ -30,8 +30,8 @@ function greeting(role?: string): string {
   if (role && DATA_ROLES.includes(role))
     return 'Chào sếp! 📌 Giao việc: gõ @tên người + mô tả việc (vd "@nam lên ads cho SP A"). 📊 Hỏi dữ liệu: "hôm nay ai chưa chấm công", "ai điểm cao nhất tháng này", "đơn nào đang chờ duyệt", "tổng phải thu bao nhiêu".';
   if (role === 'leader')
-    return 'Chào bạn! 📌 Giao việc: gõ @tên người + mô tả việc. ▶️ Hoặc bắt đầu/ghi nhận task. 📊 Hỏi dữ liệu của bạn: "tháng này tôi làm mấy công", "điểm tháng trước của tôi".';
-  return 'Chào bạn! Mình có thể: ▶️ bắt đầu task ("bắt đầu lên ads"), ✅ ghi nhận task đã xong ("đã đăng bài page"), 📊 trả lời về dữ liệu của bạn ("tháng trước tôi được bao nhiêu điểm", "đơn nghỉ của tôi duyệt chưa"). Bạn cần gì?';
+    return 'Chào bạn! 📌 Giao việc: gõ @tên người + mô tả việc. ▶️ Ghi nhận task. 💬 Hỏi mình bất cứ điều gì: dữ liệu của bạn, thông tin khách hàng, hay nhờ viết content/ý tưởng quảng cáo.';
+  return 'Chào bạn! Mình giúp được:\n▶️ Ghi nhận việc — "bắt đầu lên ads", "đã đăng bài page"\n📊 Dữ liệu của bạn — "tháng trước tôi được bao nhiêu điểm?", "đơn nghỉ duyệt chưa?"\n🧠 Thông tin khách — "khách Ba Spa cần gì?"\n✍️ Hỗ trợ chuyên môn — "viết giúp caption cho bài spa", "ý tưởng content tháng 8"\nBạn cần gì?';
 }
 
 export default function Chat() {
