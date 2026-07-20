@@ -39,7 +39,8 @@ const NAV: NavItem[] = [
   { to: '/crm', label: 'Khách hàng', icon: Users, roles: ['sale', 'director', 'admin'] },
   { to: '/customer-notes', label: 'Lưu ý KH', icon: StickyNote },
   { to: '/brain', label: 'Kho tri thức', icon: Brain },
-  { to: '/requests', label: 'Đơn từ', icon: FileText },
+  // Giám đốc không nộp đơn cho ai duyệt → ẩn Đơn từ, chỉ giữ Duyệt đơn.
+  { to: '/requests', label: 'Đơn từ', icon: FileText, roles: ['member', 'leader', 'sale', 'accountant', 'admin'] },
   { to: '/approvals', label: 'Duyệt đơn', icon: CheckSquare, roles: ['leader', 'director', 'admin'] },
   { to: '/dashboard', label: 'Tổng quan', icon: LayoutDashboard, roles: ['leader', 'director', 'admin'] },
   { to: '/admin', label: 'Quản trị', icon: Settings, roles: ['admin', 'director'] },

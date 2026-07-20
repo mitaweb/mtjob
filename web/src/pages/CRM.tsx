@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
 import { useToast } from '../components/Toaster';
@@ -11,17 +11,50 @@ interface Mem {
 }
 
 const STATUSES = ['Mới', 'Đang chăm sóc', 'Đã chốt', 'Tạm dừng', 'Mất'];
-const blankCustomer = (): Partial<Customer> => ({ name: '', phone: '', status: 'Mới', note: '', info: '', assignedTo: '' });
+const CLOSED = 'Đã chốt';
+const LOST = ['Tạm dừng', 'Mất'];
+const blankCustomer = (): Partial<Customer> => ({
+  name: '', phone: '', status: 'Mới', note: '', info: '', assignedTo: '', dob: '', closedAt: '',
+});
+
+type Tab = 'lead' | 'closed' | 'other';
+const TABS: Array<{ key: Tab; label: string; hint: string }> = [
+  { key: 'lead', label: '🎯 Tiềm năng', hint: 'Cần theo đuổi để chốt hợp đồng' },
+  { key: 'closed', label: '🤝 Đã chốt', hint: 'Chăm sóc hậu mãi để giữ khách và tái tục' },
+  { key: 'other', label: 'Tạm dừng / Mất', hint: 'Khách ngưng hợp tác' },
+];
 
 const fmtDT = (iso: string) =>
   new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
 
 function statusVariant(s: string): BadgeVariant {
-  if (s === 'Đã chốt') return 'success';
+  if (s === CLOSED) return 'success';
   if (s === 'Đang chăm sóc') return 'warn';
   if (s === 'Mất') return 'danger';
   if (s === 'Tạm dừng') return 'neutral';
   return 'info';
+}
+
+function tabOf(status: string): Tab {
+  if (status === CLOSED) return 'closed';
+  if (LOST.includes(status)) return 'other';
+  return 'lead';
+}
+
+/** Ngày trong tháng của sinh nhật (dob dạng YYYY-MM-DD hoặc --MM-DD). */
+function birthdayThisMonth(dob: string, month: number): number | null {
+  if (!dob) return null;
+  const m = Number(dob.slice(-5, -3));
+  const d = Number(dob.slice(-2));
+  return m === month && d > 0 ? d : null;
+}
+
+/** Số ngày kể từ lúc chốt hợp đồng — để nhắc tái tục. */
+function daysSince(iso: string): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso.slice(0, 10));
+  if (!Number.isFinite(t)) return null;
+  return Math.floor((Date.now() - t) / 86400000);
 }
 
 export default function CRM() {
@@ -30,10 +63,33 @@ export default function CRM() {
   const [members, setMembers] = useState<Mem[]>([]);
   const [upcoming, setUpcoming] = useState<Appointment[]>([]);
 
+  const [tab, setTab] = useState<Tab>('lead');
+
   // modal khách hàng
   const [edit, setEdit] = useState<Partial<Customer> | null>(null);
   const [appts, setAppts] = useState<Appointment[]>([]);
   const [apForm, setApForm] = useState({ at: '', note: '', ownerId: '' });
+
+  const now = new Date();
+  const thisMonth = now.getMonth() + 1;
+  const today = now.getDate();
+
+  const counts = useMemo<Record<Tab, number>>(() => {
+    const c: Record<Tab, number> = { lead: 0, closed: 0, other: 0 };
+    for (const x of customers) c[tabOf(x.status)]++;
+    return c;
+  }, [customers]);
+
+  const shown = useMemo(() => customers.filter((c) => tabOf(c.status) === tab), [customers, tab]);
+
+  const birthdays = useMemo(
+    () =>
+      customers
+        .map((c) => ({ c, day: birthdayThisMonth(c.dob, thisMonth) }))
+        .filter((x): x is { c: Customer; day: number } => x.day !== null)
+        .sort((a, b) => a.day - b.day),
+    [customers, thisMonth],
+  );
 
   async function loadCustomers() {
     const c = await api<{ customers: Customer[] }>('/crm/customers');
@@ -78,6 +134,8 @@ export default function CRM() {
           note: edit.note || '',
           info: edit.info || '',
           assignedTo: edit.assignedTo || '',
+          dob: edit.dob || '',
+          closedAt: edit.closedAt || '',
         },
       });
       toast.success('Đã lưu khách hàng');
@@ -151,44 +209,100 @@ export default function CRM() {
         </ul>
       </div>
 
-      {/* Danh sách khách */}
-      <div className="card overflow-x-auto">
-        <h2 className="font-semibold mb-2">Danh sách khách ({customers.length})</h2>
-        <table className="w-full text-sm">
-          <thead className="text-left text-slate-500">
-            <tr>
-              <th className="py-1">Tên</th>
-              <th>SĐT</th>
-              <th>Tình trạng</th>
-              <th>Phụ trách</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {customers.map((c) => (
-              <tr key={c.id} className="border-t">
-                <td className="py-2 font-medium">{c.name}</td>
-                <td>{c.phone || '—'}</td>
-                <td>
-                  <Badge variant={statusVariant(c.status)}>{c.status}</Badge>
-                </td>
-                <td>{memberName(c.assignedTo) || '—'}</td>
-                <td className="text-right">
-                  <button className="text-brand-600 underline text-xs" onClick={() => openCustomer(c)}>
-                    chi tiết
-                  </button>
-                </td>
-              </tr>
+      {/* Sinh nhật khách trong tháng — để chuẩn bị quà/lời chúc */}
+      {birthdays.length > 0 && (
+        <div className="card border-amber-200 bg-amber-50">
+          <h2 className="mb-2 font-semibold text-amber-900">🎂 Sinh nhật khách tháng {thisMonth}</h2>
+          <ul className="divide-y divide-amber-200/60">
+            {birthdays.map(({ c, day }) => (
+              <li key={c.id} className="flex items-center justify-between gap-2 py-1.5 text-sm">
+                <button className="text-left font-medium text-amber-900 underline" onClick={() => openCustomer(c)}>
+                  {c.name}
+                </button>
+                <span className="whitespace-nowrap text-xs text-amber-700">
+                  ngày {day}/{thisMonth}
+                  {day === today ? ' — HÔM NAY 🎉' : day > today ? ` (còn ${day - today} ngày)` : ' (đã qua)'}
+                </span>
+              </li>
             ))}
-            {customers.length === 0 && (
+          </ul>
+        </div>
+      )}
+
+      {/* Tabs: tiềm năng / đã chốt / khác */}
+      <div className="flex w-fit gap-1 rounded-xl bg-slate-100 p-1">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+              tab === t.key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
+            onClick={() => setTab(t.key)}
+          >
+            {t.label}
+            <span className={`ml-1.5 text-xs ${tab === t.key ? 'text-brand-600' : 'text-slate-400'}`}>
+              {counts[t.key]}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <div className="card">
+        <h2 className="font-semibold">{TABS.find((t) => t.key === tab)?.label}</h2>
+        <p className="mb-2 text-sm text-slate-500">{TABS.find((t) => t.key === tab)?.hint}</p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left text-slate-500">
               <tr>
-                <td colSpan={5} className="py-2 text-slate-500">
-                  Chưa có khách hàng nào.
-                </td>
+                <th className="py-1">Tên</th>
+                <th>SĐT</th>
+                <th>Tình trạng</th>
+                <th>Phụ trách</th>
+                {/* Cột riêng theo nhóm: tiềm năng quan tâm ghi chú, đã chốt quan tâm tái tục */}
+                <th>{tab === 'closed' ? 'Đã hợp tác' : 'Ghi chú'}</th>
+                <th></th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {shown.map((c) => {
+                const days = daysSince(c.closedAt);
+                return (
+                  <tr key={c.id} className="border-t">
+                    <td className="py-2 font-medium">{c.name}</td>
+                    <td>{c.phone || '—'}</td>
+                    <td>
+                      <Badge variant={statusVariant(c.status)}>{c.status}</Badge>
+                    </td>
+                    <td>{memberName(c.assignedTo) || '—'}</td>
+                    <td className="max-w-[16rem] truncate text-slate-500">
+                      {tab === 'closed'
+                        ? days === null
+                          ? 'chưa ghi ngày chốt'
+                          : `${days} ngày${days >= 330 ? ' — sắp tròn năm, nhắc tái tục!' : ''}`
+                        : c.note || '—'}
+                    </td>
+                    <td className="text-right">
+                      <button className="text-xs text-brand-600 underline" onClick={() => openCustomer(c)}>
+                        chi tiết
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {shown.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-2 text-slate-500">
+                    {tab === 'lead'
+                      ? 'Chưa có khách tiềm năng nào.'
+                      : tab === 'closed'
+                        ? 'Chưa có khách nào đã chốt.'
+                        : 'Không có khách nào ở nhóm này.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Modal chi tiết khách */}
@@ -231,6 +345,28 @@ export default function CRM() {
                     </option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className="label">🎂 Ngày sinh khách</label>
+                <input
+                  className="input"
+                  type="date"
+                  value={edit.dob || ''}
+                  onChange={(e) => setEdit({ ...edit, dob: e.target.value })}
+                />
+                <p className="mt-1 text-xs text-slate-500">Để nhắc chuẩn bị quà/lời chúc trong tháng sinh nhật.</p>
+              </div>
+              <div>
+                <label className="label">🤝 Ngày chốt hợp đồng</label>
+                <input
+                  className="input"
+                  type="date"
+                  value={edit.closedAt || ''}
+                  onChange={(e) => setEdit({ ...edit, closedAt: e.target.value })}
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Bỏ trống — hệ thống tự ghi khi anh chuyển sang “Đã chốt”.
+                </p>
               </div>
               <div className="sm:col-span-2">
                 <label className="label">Thông tin khách</label>

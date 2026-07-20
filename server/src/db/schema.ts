@@ -202,6 +202,9 @@ CREATE TABLE IF NOT EXISTS customers (
   created_at  text DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS customers_created_idx ON customers (created_at DESC);
+-- Chăm sóc khách: ngày sinh (chuẩn bị quà/lời chúc) + ngày chốt hợp đồng (tính tái tục).
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS dob text DEFAULT '';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS closed_at text DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS appointments (
   appt_id       text PRIMARY KEY,
@@ -254,6 +257,23 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   created_at text NOT NULL
 );
 CREATE INDEX IF NOT EXISTS chat_messages_member_idx ON chat_messages (member_id, created_at DESC);
+
+-- Nhắc hẹn cá nhân: CHỈ người tạo nhận được thông báo.
+-- repeat: once | daily | weekly | monthly. at_time = "HH:mm" giờ VN.
+CREATE TABLE IF NOT EXISTS reminders (
+  rem_id      text PRIMARY KEY,
+  member_id   text NOT NULL,
+  title       text NOT NULL,
+  at_time     text NOT NULL DEFAULT '08:00',
+  repeat_kind text NOT NULL DEFAULT 'once',
+  on_date     text DEFAULT '',        -- once: ngày cụ thể YYYY-MM-DD
+  weekday     integer DEFAULT 1,      -- weekly: 0=CN … 6=T7
+  day_of_month integer DEFAULT 1,     -- monthly: 1-31 (lớn hơn số ngày = cuối tháng)
+  active      boolean DEFAULT true,
+  last_fired  text DEFAULT '',        -- YYYY-MM-DD lần bắn gần nhất — chặn bắn trùng
+  created_at  text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS reminders_member_idx ON reminders (member_id, active);
 `;
 
 /**

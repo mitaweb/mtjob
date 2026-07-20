@@ -4,6 +4,7 @@ import { Router } from 'express';
 import { asyncHandler, ApiError } from '../util/errors.js';
 import { runDailyReports } from '../jobs/dailyReport.js';
 import { runMonthlyReport } from '../jobs/monthlyReport.js';
+import { runDueReminders } from './reminders.service.js';
 
 export const jobsRouter = Router();
 
@@ -29,5 +30,19 @@ jobsRouter.get(
     checkCron(req.headers.authorization);
     await runMonthlyReport();
     res.json({ ok: true, job: 'monthly' });
+  }),
+);
+
+/**
+ * Quét nhắc hẹn tới hạn. Gọi vài phút một lần từ dịch vụ cron ngoài
+ * (Vercel gói hiện tại chỉ chạy lịch 1 lần/ngày, không đủ cho nhắc hẹn theo giờ).
+ * Idempotent nhờ cột last_fired nên gọi dày cũng không gửi trùng.
+ */
+jobsRouter.get(
+  '/reminders',
+  asyncHandler(async (req, res) => {
+    checkCron(req.headers.authorization);
+    const sent = await runDueReminders();
+    res.json({ ok: true, job: 'reminders', sent });
   }),
 );

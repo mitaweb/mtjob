@@ -8,8 +8,13 @@ export interface Customer {
   note: string;
   info: string;
   assignedTo: string;
+  dob: string; // ngày sinh khách (YYYY-MM-DD hoặc --MM-DD nếu không rõ năm)
+  closedAt: string; // ngày chốt hợp đồng — mốc tính tái tục
   createdAt: string;
 }
+
+/** Khách đã chốt hợp đồng (cần hậu mãi/tái tục) hay còn tiềm năng (cần chốt)? */
+export const CLOSED_STATUS = 'Đã chốt';
 
 export interface Appointment {
   id: string;
@@ -31,6 +36,8 @@ function rowToCustomer(r: any): Customer {
     note: r.note || '',
     info: r.info || '',
     assignedTo: r.assigned_to || '',
+    dob: r.dob || '',
+    closedAt: r.closed_at || '',
     createdAt: r.created_at || '',
   };
 }
@@ -59,12 +66,16 @@ export async function findCustomer(id: string): Promise<Customer | undefined> {
 
 export async function upsertCustomer(c: Customer): Promise<void> {
   await q(
-    `INSERT INTO customers (customer_id, name, phone, status, note, info, assigned_to, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+    `INSERT INTO customers (customer_id, name, phone, status, note, info, assigned_to, dob, closed_at, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
      ON CONFLICT (customer_id) DO UPDATE SET
        name = EXCLUDED.name, phone = EXCLUDED.phone, status = EXCLUDED.status,
-       note = EXCLUDED.note, info = EXCLUDED.info, assigned_to = EXCLUDED.assigned_to`,
-    [c.id, c.name, c.phone, c.status, c.note, c.info, c.assignedTo, c.createdAt || new Date().toISOString()],
+       note = EXCLUDED.note, info = EXCLUDED.info, assigned_to = EXCLUDED.assigned_to,
+       dob = EXCLUDED.dob, closed_at = EXCLUDED.closed_at`,
+    [
+      c.id, c.name, c.phone, c.status, c.note, c.info, c.assignedTo,
+      c.dob || '', c.closedAt || '', c.createdAt || new Date().toISOString(),
+    ],
   );
 }
 

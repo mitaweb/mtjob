@@ -8,6 +8,8 @@ export interface Customer {
   note: string;
   info: string;
   assignedTo: string;
+  dob: string; // ngày sinh khách — để chuẩn bị quà/lời chúc
+  closedAt: string; // ngày chốt hợp đồng — mốc tính tái tục
   createdAt: string;
 }
 

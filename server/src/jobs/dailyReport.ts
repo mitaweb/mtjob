@@ -6,7 +6,7 @@ import { taskTitle } from '../lib/tasks.js';
 import type { TaskRow } from '../types.js';
 import { notify } from '../modules/notifications.service.js';
 import { getParties } from '../modules/finance.repo.js';
-import { getUpcoming } from '../modules/crm.repo.js';
+import { getUpcoming, getCustomers } from '../modules/crm.repo.js';
 import { birthdaysInMonth } from '../lib/people.js';
 import { formatVnd } from '../lib/money.js';
 import { formatMinutes } from '../lib/worktime.js';
@@ -81,6 +81,49 @@ export async function runFinanceReminders(): Promise<void> {
         url: '/finance',
       });
     }
+  }
+}
+
+/**
+ * Nhắc sinh nhật KHÁCH HÀNG trong tháng — gửi LIÊN TỤC mỗi ngày để có thời gian
+ * chuẩn bị quà/lời chúc. Gửi cho giám đốc + sale phụ trách khách đó.
+ */
+export async function runCustomerBirthdayReminders(): Promise<void> {
+  const now = nowTz();
+  const month = now.month() + 1;
+  const today = now.date();
+  const customers = (await getCustomers()).filter((c) => c.dob);
+  const inMonth = birthdaysInMonth(
+    customers.map((c) => ({ fullName: c.name, dob: c.dob, id: c.id, assignedTo: c.assignedTo })),
+    month,
+  );
+  if (inMonth.length === 0) return;
+
+  const dayOf = (dob: string) => Number(dob.slice(-2)) || 0;
+  const line = (c: { fullName: string; dob: string }) => {
+    const d = dayOf(c.dob);
+    const when = d === today ? 'HÔM NAY 🎉' : d > today ? `còn ${d - today} ngày` : 'đã qua';
+    return `• ${c.fullName} — ngày ${d}/${month} (${when})`;
+  };
+  const body = `Sinh nhật khách hàng tháng ${month}:\n${inMonth.map(line).join('\n')}\n\nChuẩn bị quà/lời chúc giúp giữ khách nhé.`;
+
+  const directors = await getDirectors();
+  for (const d of directors) {
+    await notify(d.id, { type: 'customer_birthday', title: 'Sinh nhật khách hàng 🎂', body, url: '/crm' });
+  }
+  // Sale phụ trách chỉ nhận phần khách của mình.
+  const byOwner = new Map<string, typeof inMonth>();
+  for (const c of inMonth) {
+    if (!c.assignedTo || directors.some((d) => d.id === c.assignedTo)) continue;
+    byOwner.set(c.assignedTo, [...(byOwner.get(c.assignedTo) || []), c]);
+  }
+  for (const [ownerId, list] of byOwner) {
+    await notify(ownerId, {
+      type: 'customer_birthday',
+      title: 'Sinh nhật khách bạn phụ trách 🎂',
+      body: `Tháng ${month}:\n${list.map(line).join('\n')}`,
+      url: '/crm',
+    });
   }
 }
 
@@ -162,6 +205,7 @@ export async function runDailyReports(): Promise<void> {
   // Nhắc thu tiền các bên sắp tới hạn + nhắc lịch hẹn khách ngày mai.
   await runFinanceReminders().catch((e) => console.error('[finance reminders]', e));
   await runAppointmentReminders().catch((e) => console.error('[appointment reminders]', e));
+  await runCustomerBirthdayReminders().catch((e) => console.error('[customer birthdays]', e));
 
   // Lưới an toàn cho kho tri thức: nạp nốt dữ liệu cũ/sót, kể cả khi app ít người dùng.
   await sweepBrainBackfill().catch((e) => console.error('[brain backfill]', e));

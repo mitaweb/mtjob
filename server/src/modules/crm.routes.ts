@@ -12,6 +12,7 @@ import {
   addAppointment,
   setAppointmentDone,
   deleteAppointment,
+  CLOSED_STATUS,
   type Customer,
 } from './crm.repo.js';
 import { getActiveMembers } from './members.repo.js';
@@ -42,6 +43,8 @@ const customerSchema = z.object({
   note: z.string().optional().default(''),
   info: z.string().optional().default(''),
   assignedTo: z.string().optional().default(''),
+  dob: z.string().optional().default(''),
+  closedAt: z.string().optional().default(''),
 });
 
 crmRouter.post(
@@ -57,6 +60,13 @@ crmRouter.post(
       note: b.note,
       info: b.info,
       assignedTo: b.assignedTo,
+      dob: b.dob,
+      // Tự ghi mốc chốt lần đầu chuyển sang "Đã chốt" — dùng để nhắc tái tục.
+      closedAt:
+        b.closedAt ||
+        (b.status === CLOSED_STATUS && existing?.status !== CLOSED_STATUS
+          ? nowTz().format('YYYY-MM-DD')
+          : existing?.closedAt || ''),
       createdAt: existing?.createdAt || nowTz().toISOString(),
     };
     await upsertCustomer(c);

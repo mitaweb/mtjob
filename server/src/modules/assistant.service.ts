@@ -12,6 +12,9 @@ import { getActiveCatalog } from './catalog.repo.js';
 import { getProvider, aiAvailable } from '../ai/index.js';
 import { searchKnowledgeText, customerProfileText } from './brain.service.js';
 import { getCustomers } from './crm.repo.js';
+import { addReminder } from './reminders.repo.js';
+import { describeRule, type RepeatKind } from '../lib/reminder.js';
+import { newId } from '../util/id.js';
 import type { GeminiContent, GeminiPart } from '../gemini/client.js';
 import { todayIso, nowTz, monthRange } from '../lib/datetime.js';
 import { formatVnd } from '../lib/money.js';
@@ -65,6 +68,66 @@ const PROFILE_TOOL: ToolDef = {
   },
   run: (a) => customerProfileText(String(a.name || '')),
 };
+
+/**
+ * Đặt nhắc hẹn ngay trong lúc chat: "nhắc tôi đăng bài X Salon 8h hằng ngày".
+ * Nhắc hẹn LUÔN thuộc về người đang chat — không tạo hộ người khác được.
+ */
+function reminderTool(memberId: string): ToolDef {
+  return {
+    declaration: {
+      name: 'create_reminder',
+      description:
+        'Đặt nhắc hẹn cho CHÍNH người đang chat. Dùng khi họ nói "nhắc tôi…", "đặt lịch nhắc…". ' +
+        'Chỉ người đặt mới nhận được thông báo.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          title: { type: 'STRING', description: 'Nội dung cần nhắc, vd "Đăng bài X Salon".' },
+          atTime: { type: 'STRING', description: 'Giờ nhắc dạng HH:mm (24h), vd "08:00".' },
+          repeatKind: {
+            type: 'STRING',
+            enum: ['once', 'daily', 'weekly', 'monthly'],
+            description: 'once = một lần, daily = hằng ngày, weekly = hằng tuần, monthly = hằng tháng.',
+          },
+          onDate: { type: 'STRING', description: 'Chỉ khi once: ngày YYYY-MM-DD.' },
+          weekday: { type: 'NUMBER', description: 'Chỉ khi weekly: 0=CN, 1=T2 … 6=T7.' },
+          dayOfMonth: { type: 'NUMBER', description: 'Chỉ khi monthly: ngày trong tháng 1-31.' },
+        },
+        required: ['title', 'atTime', 'repeatKind'],
+      },
+    },
+    run: async (a) => {
+      const title = String(a.title || '').trim();
+      const atTime = String(a.atTime || '').trim();
+      const repeatKind = String(a.repeatKind || 'once') as RepeatKind;
+      if (!title) return 'Chưa rõ cần nhắc việc gì.';
+      if (!/^\d{1,2}:\d{2}$/.test(atTime)) return 'Giờ nhắc phải dạng HH:mm, vd 08:00.';
+      const onDate = String(a.onDate || '');
+      if (repeatKind === 'once' && !/^\d{4}-\d{2}-\d{2}$/.test(onDate)) {
+        return 'Nhắc một lần cần biết ngày cụ thể (YYYY-MM-DD). Hỏi lại người dùng ngày nào.';
+      }
+      const [h, m] = atTime.split(':');
+      const rule = {
+        atTime: `${String(Number(h)).padStart(2, '0')}:${m}`,
+        repeatKind,
+        onDate,
+        weekday: Number(a.weekday ?? 1),
+        dayOfMonth: Number(a.dayOfMonth ?? 1),
+      };
+      await addReminder({
+        id: newId('RM-'),
+        memberId,
+        title,
+        ...rule,
+        active: true,
+        lastFired: '',
+        createdAt: nowTz().toISOString(),
+      });
+      return `Đã đặt nhắc hẹn "${title}" — ${describeRule(rule)}. Chỉ bạn nhận được thông báo này.`;
+    },
+  };
+}
 
 /** Tool tra kho tri thức — dùng chung cho cả hai vai, khác nhau ở phạm vi quyền xem. */
 function knowledgeTool(scope: { directorScope: boolean; memberId?: string }): ToolDef {
@@ -282,8 +345,15 @@ async function runToolLoop(opts: {
 
 // ── Trợ lý GIÁM ĐỐC/ADMIN: toàn bộ dữ liệu ──
 
-/** Trả lời câu hỏi của giám đốc/admin dựa trên dữ liệu hệ thống (chấm công, điểm, đơn, tài chính). */
-export async function answerDataQuestion(question: string, history: ChatTurn[] = []): Promise<string> {
+/**
+ * Trả lời câu hỏi của giám đốc/admin dựa trên dữ liệu hệ thống (chấm công, điểm, đơn, tài chính).
+ * `memberId` = người đang hỏi — cần để đặt nhắc hẹn đúng chủ.
+ */
+export async function answerDataQuestion(
+  memberId: string,
+  question: string,
+  history: ChatTurn[] = [],
+): Promise<string> {
   if (!(await aiAvailable())) {
     return 'Tính năng hỏi dữ liệu cần bật Trợ lý AI. Vào Quản trị → chọn nhà cung cấp và dán API key là dùng được ngay.';
   }
@@ -397,6 +467,7 @@ export async function answerDataQuestion(question: string, history: ChatTurn[] =
     },
     PROFILE_TOOL,
     knowledgeTool({ directorScope: true }),
+    reminderTool(memberId),
   ];
 
   const system = [
@@ -504,6 +575,7 @@ export async function answerMemberQuestion(
     PROFILE_TOOL,
     // Quyền xem chặn cứng ở tầng SQL: chỉ thấy đoạn 'all' + đoạn riêng của chính mình.
     knowledgeTool({ directorScope: false, memberId }),
+    reminderTool(memberId),
   ];
 
   const system = [

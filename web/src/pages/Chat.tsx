@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, cachedGet } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
+import Reminders from '../components/Reminders';
 import { useToast } from '../components/Toaster';
 import { useAuth } from '../lib/auth';
 import { fmtMin } from '../lib/format';
@@ -186,6 +187,7 @@ export default function Chat() {
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [startingTodo, setStartingTodo] = useState<TodoTask | null>(null);
   const [pickQuery, setPickQuery] = useState('');
+  const [showReminders, setShowReminders] = useState(false);
   const [savingIdx, setSavingIdx] = useState<number | null>(null); // đang mở ô lưu vào kho
   const [saveTitle, setSaveTitle] = useState('');
   const [saveCustomer, setSaveCustomer] = useState('');
@@ -512,16 +514,23 @@ export default function Chat() {
             Gửi
           </button>
         </div>
-        <button
-          className={`btn w-full ${doing.length ? 'bg-amber-100 text-amber-800 hover:bg-amber-200' : 'bg-slate-100 text-slate-500'}`}
-          onClick={() => {
-            loadDoing();
-            setShowDoing(true);
-          }}
-        >
-          ⏳ Đang làm ({doing.length}) — bấm để hoàn thành
-        </button>
+        <div className="flex gap-2">
+          <button
+            className={`btn flex-1 ${doing.length ? 'bg-amber-100 text-amber-800 hover:bg-amber-200' : 'bg-slate-100 text-slate-500'}`}
+            onClick={() => {
+              loadDoing();
+              setShowDoing(true);
+            }}
+          >
+            ⏳ Đang làm ({doing.length})
+          </button>
+          <button className="btn bg-slate-100 text-slate-600 hover:bg-slate-200" onClick={() => setShowReminders(true)}>
+            ⏰ Nhắc hẹn
+          </button>
+        </div>
       </div>
+
+      {showReminders && <Reminders onClose={() => setShowReminders(false)} />}
 
       {/* Chọn loại task khi bắt đầu việc được giao */}
       {startingTodo && (

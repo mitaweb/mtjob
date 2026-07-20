@@ -17,6 +17,7 @@ import { formatMinutes } from '../lib/worktime.js';
 import { fmtHm, nowTz } from '../lib/datetime.js';
 import { addChatMessages, type ChatMessageRow } from './chat.repo.js';
 import { autoBackfill } from './brain.service.js';
+import { sweepRemindersOpportunistic } from './reminders.service.js';
 import { newId } from '../util/id.js';
 import { runInBackground } from '../util/background.js';
 
@@ -111,6 +112,7 @@ chatRouter.post(
       res.json(payload);
       saveChatTurn(memberId, b.message, payload);
       autoBackfill(); // kho tự đầy dần khi mọi người dùng app — không ai phải bấm nút
+      sweepRemindersOpportunistic(); // lối lui khi chưa gắn cron ngoài cho nhắc hẹn
     };
 
     // 1a) Người dùng xác nhận HOÀN THÀNH NGAY một task được gợi ý.
@@ -180,7 +182,7 @@ chatRouter.post(
 
     // 1e) Giám đốc/Admin (không @tag ai) → hỏi-đáp dữ liệu hệ thống bằng AI.
     if (me && (me.role === 'director' || me.role === 'admin') && b.message.trim()) {
-      const answer = await answerDataQuestion(b.message, b.history as ChatTurn[]);
+      const answer = await answerDataQuestion(memberId, b.message, b.history as ChatTurn[]);
       send({ reply: answer, action: 'data_answer' });
       return;
     }
