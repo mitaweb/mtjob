@@ -89,6 +89,10 @@ export interface AppConfig {
   taskSheetUrl: string;
   geminiApiKey: string; // lưu trong config DB để admin dán key ngay trên UI
   geminiModel: string; // admin chọn model trong UI ('' = theo env/mặc định flash)
+  aiProvider: 'gemini' | 'claude'; // nhà cung cấp cho hỏi-đáp dữ liệu (NLU luôn dùng Gemini)
+  claudeApiKey: string;
+  claudeModel: string; // '' = mặc định claude-sonnet-5
+  claudeBaseUrl: string; // '' = endpoint mặc định của Anthropic
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -109,4 +113,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   taskSheetUrl: '',
   geminiApiKey: '',
   geminiModel: '',
+  aiProvider: 'gemini',
+  claudeApiKey: '',
+  claudeModel: '',
+  claudeBaseUrl: '',
 };

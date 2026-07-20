@@ -9,12 +9,8 @@ import { getAllRequests } from './requests.repo.js';
 import { getParties, getEntries } from './finance.repo.js';
 import { getDoneTasksForMemberRange } from './tasks.repo.js';
 import { getActiveCatalog } from './catalog.repo.js';
-import {
-  generateContent,
-  geminiAvailable,
-  type GeminiContent,
-  type GeminiPart,
-} from '../gemini/client.js';
+import { getProvider, aiAvailable } from '../ai/index.js';
+import type { GeminiContent, GeminiPart } from '../gemini/client.js';
 import { todayIso, nowTz, monthRange } from '../lib/datetime.js';
 import { formatVnd } from '../lib/money.js';
 import { formatMinutes } from '../lib/worktime.js';
@@ -204,8 +200,11 @@ async function runToolLoop(opts: {
   const tools = [{ functionDeclarations: opts.tools.map((t) => t.declaration) }];
   const systemInstruction = { parts: [{ text: opts.system }] };
 
+  const provider = await getProvider();
+  if (!provider) throw new Error('Chưa cấu hình trợ lý AI.');
+
   for (let round = 0; round < MAX_ROUNDS; round++) {
-    const parts = await generateContent({ contents, tools, systemInstruction });
+    const parts = await provider.generateContent({ contents, tools, systemInstruction });
     const calls = parts.filter((p) => p.functionCall);
     if (calls.length === 0) {
       return parts.map((p) => p.text || '').join('').trim();
@@ -229,7 +228,7 @@ async function runToolLoop(opts: {
 
   // Chạm giới hạn vòng gọi hàm → yêu cầu trả lời với dữ liệu đã có (không đưa tools nữa).
   contents.push({ role: 'user', parts: [{ text: 'Hãy trả lời ngay dựa trên dữ liệu đã truy vấn được.' }] });
-  const parts = await generateContent({ contents, systemInstruction });
+  const parts = await provider.generateContent({ contents, systemInstruction });
   return parts.map((p) => p.text || '').join('').trim();
 }
 
@@ -237,8 +236,8 @@ async function runToolLoop(opts: {
 
 /** Trả lời câu hỏi của giám đốc/admin dựa trên dữ liệu hệ thống (chấm công, điểm, đơn, tài chính). */
 export async function answerDataQuestion(question: string, history: ChatTurn[] = []): Promise<string> {
-  if (!(await geminiAvailable())) {
-    return 'Tính năng hỏi dữ liệu cần bật Trợ lý AI (Gemini). Vào Quản trị → dán API key Gemini là dùng được ngay.';
+  if (!(await aiAvailable())) {
+    return 'Tính năng hỏi dữ liệu cần bật Trợ lý AI. Vào Quản trị → chọn nhà cung cấp và dán API key là dùng được ngay.';
   }
 
   const today = todayIso();
@@ -351,7 +350,7 @@ export async function answerMemberQuestion(
   question: string,
   history: ChatTurn[] = [],
 ): Promise<string | null> {
-  if (!(await geminiAvailable())) return null;
+  if (!(await aiAvailable())) return null;
   const me = await findById(memberId);
   if (!me) return null;
 

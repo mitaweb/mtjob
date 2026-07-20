@@ -24,8 +24,9 @@ export function createApp() {
 
   // Health + config diagnostics (booleans only — never leak secret values).
   app.get('/api/health', async (_req, res) => {
-    const { geminiAvailable } = await import('../gemini/client.js');
-    const gemini = await geminiAvailable().catch(() => false);
+    const { aiAvailable } = await import('../ai/index.js');
+    // Giữ tên trường `gemini` cho tương thích ngược với UI cũ; nghĩa là "trợ lý AI đang bật".
+    const gemini = await aiAvailable().catch(() => false);
     res.json({
       ok: true,
       ts: Date.now(),

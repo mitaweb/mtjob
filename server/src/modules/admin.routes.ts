@@ -142,7 +142,13 @@ adminRouter.get(
   '/ai-info',
   asyncHandler(async (_req, res) => {
     const cfg = await getConfig({ fresh: true });
-    res.json({ model: cfg.geminiModel || '' });
+    res.json({
+      model: cfg.geminiModel || '',
+      provider: cfg.aiProvider || 'gemini',
+      hasClaudeKey: !!cfg.claudeApiKey,
+      claudeModel: cfg.claudeModel || '',
+      claudeBaseUrl: cfg.claudeBaseUrl || '',
+    });
   }),
 );
 

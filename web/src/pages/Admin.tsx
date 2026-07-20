@@ -14,7 +14,20 @@ export default function Admin() {
   const [authUrl, setAuthUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [aiModel, setAiModel] = useState('');
+  const [provider, setProvider] = useState<'gemini' | 'claude'>('gemini');
+  const [hasClaudeKey, setHasClaudeKey] = useState(false);
+  const [claudeKey, setClaudeKey] = useState('');
+  const [claudeModel, setClaudeModel] = useState('');
+  const [claudeBaseUrl, setClaudeBaseUrl] = useState('');
   const [syncInfo, setSyncInfo] = useState<{ hrSheetUrl: string; taskSheetUrl: string }>({ hrSheetUrl: '', taskSheetUrl: '' });
+
+  interface AiInfo {
+    model: string;
+    provider: 'gemini' | 'claude';
+    hasClaudeKey: boolean;
+    claudeModel: string;
+    claudeBaseUrl: string;
+  }
 
   async function loadMembers() {
     const r = await api<{ members: AdminMember[] }>('/admin/members');
@@ -28,10 +41,22 @@ export default function Admin() {
     api<{ hrSheetUrl: string; taskSheetUrl: string }>('/admin/sync-info')
       .then(setSyncInfo)
       .catch(() => undefined);
-    api<{ model: string }>('/admin/ai-info')
-      .then((r) => setAiModel(r.model || ''))
+    api<AiInfo>('/admin/ai-info')
+      .then((r) => {
+        setAiModel(r.model || '');
+        setProvider(r.provider || 'gemini');
+        setHasClaudeKey(!!r.hasClaudeKey);
+        setClaudeModel(r.claudeModel || '');
+        setClaudeBaseUrl(r.claudeBaseUrl || '');
+      })
       .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function refreshAiStatus() {
+    const h = await api<{ env: { gemini: boolean } }>('/health');
+    setAiOn(!!h.env.gemini);
+  }
 
   async function saveAiModel(value: string) {
     const prev = aiModel;
@@ -41,6 +66,55 @@ export default function Admin() {
       toast.success(value.includes('pro') ? 'Đã chuyển sang model Thông minh (pro).' : 'Đã chuyển sang model Nhanh (flash).');
     } catch (e) {
       setAiModel(prev);
+      toast.error((e as Error).message);
+    }
+  }
+
+  async function saveProvider(value: 'gemini' | 'claude') {
+    const prev = provider;
+    setProvider(value);
+    try {
+      await api('/admin/config', { body: { key: 'aiProvider', value } });
+      toast.success(value === 'claude' ? 'Trợ lý đang dùng Claude.' : 'Trợ lý đang dùng Gemini.');
+      await refreshAiStatus();
+    } catch (e) {
+      setProvider(prev);
+      toast.error((e as Error).message);
+    }
+  }
+
+  async function saveClaudeKey() {
+    const value = claudeKey.trim();
+    if (!value) return toast.error('Chưa nhập API key.');
+    try {
+      await api('/admin/config', { body: { key: 'claudeApiKey', value } });
+      setClaudeKey('');
+      setHasClaudeKey(true);
+      toast.success('Đã lưu API key Claude.');
+      await refreshAiStatus();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
+  async function saveClaudeModel(value: string) {
+    const prev = claudeModel;
+    setClaudeModel(value);
+    try {
+      await api('/admin/config', { body: { key: 'claudeModel', value } });
+      toast.success(value.includes('opus') ? 'Claude đang dùng Opus 4.8.' : 'Claude đang dùng Sonnet 5.');
+    } catch (e) {
+      setClaudeModel(prev);
+      toast.error((e as Error).message);
+    }
+  }
+
+  async function saveClaudeBaseUrl() {
+    try {
+      await api('/admin/config', { body: { key: 'claudeBaseUrl', value: claudeBaseUrl.trim() } });
+      toast.success(claudeBaseUrl.trim() ? 'Đã lưu địa chỉ endpoint.' : 'Đã trả về endpoint mặc định.');
+      await refreshAiStatus();
+    } catch (e) {
       toast.error((e as Error).message);
     }
   }
@@ -178,7 +252,7 @@ export default function Admin() {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h2 className="font-semibold">
-              Trợ lý AI (Gemini){' '}
+              Trợ lý AI{' '}
               {aiOn === null ? null : aiOn ? (
                 <span className="text-xs rounded-full px-2 py-0.5 bg-emerald-100 text-emerald-700">Đang BẬT</span>
               ) : (
@@ -186,43 +260,114 @@ export default function Admin() {
               )}
             </h2>
             <p className="text-sm text-slate-500 mt-1">
+              Chọn nhà cung cấp cho phần <b>hỏi-đáp dữ liệu</b>. Phần nhận diện tin nhắn ghi việc của nhân viên luôn dùng
+              Gemini Flash cho nhanh và rẻ.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="label mb-0" htmlFor="ai-provider">Nhà cung cấp:</label>
+            <select
+              id="ai-provider"
+              className="input max-w-[10rem]"
+              value={provider}
+              onChange={(e) => saveProvider(e.target.value as 'gemini' | 'claude')}
+            >
+              <option value="gemini">Gemini</option>
+              <option value="claude">Claude</option>
+            </select>
+          </div>
+        </div>
+
+        {provider === 'gemini' ? (
+          <div className="mt-4 border-t border-slate-100 pt-3">
+            <p className="text-sm text-slate-500 mb-2">
               Lấy API key tại{' '}
               <a className="text-brand-600 underline" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
                 aistudio.google.com/apikey
               </a>{' '}
-              rồi dán vào ô dưới — <b>hiệu lực ngay, không cần redeploy</b>. (Hoặc đăng nhập Google nếu đã cấu hình OAuth Client.)
+              rồi dán vào ô dưới — <b>hiệu lực ngay, không cần redeploy</b>.
             </p>
+            <div className="flex gap-2 flex-wrap">
+              <input
+                className="input"
+                type="password"
+                placeholder="Dán API key Gemini (AIza...)"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+              />
+              <AsyncButton className="btn-primary whitespace-nowrap" onClick={saveApiKey} busyLabel="Đang lưu…">
+                Lưu key
+              </AsyncButton>
+              <button className="btn-ghost whitespace-nowrap" onClick={geminiLogin}>
+                🔑 Đăng nhập Google
+              </button>
+              {authUrl && (
+                <a className="btn-primary whitespace-nowrap" href={authUrl} target="_blank" rel="noreferrer">
+                  👉 Mở trang đăng nhập Google
+                </a>
+              )}
+            </div>
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <label className="label mb-0" htmlFor="ai-model">Model trả lời câu hỏi dữ liệu:</label>
+              <select id="ai-model" className="input max-w-[18rem]" value={aiModel} onChange={(e) => saveAiModel(e.target.value)}>
+                <option value="">Nhanh — Gemini Flash (mặc định)</option>
+                <option value="gemini-2.5-pro">Thông minh — Gemini Pro (chậm hơn, phân tích sâu hơn)</option>
+              </select>
+            </div>
           </div>
-          <div className="flex flex-col gap-2">
-            <button className="btn-ghost" onClick={geminiLogin}>
-              🔑 Đăng nhập Google
-            </button>
-            {authUrl && (
-              <a className="btn-primary" href={authUrl} target="_blank" rel="noreferrer">
-                👉 Mở trang đăng nhập Google
-              </a>
-            )}
+        ) : (
+          <div className="mt-4 border-t border-slate-100 pt-3">
+            <p className="text-sm text-slate-500 mb-2">
+              Lấy API key tại{' '}
+              <a className="text-brand-600 underline" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">
+                console.anthropic.com
+              </a>{' '}
+              — trả theo mức dùng, không phải thuê bao.{' '}
+              {hasClaudeKey && <span className="text-emerald-600">Đã có key được lưu.</span>}
+            </p>
+            <div className="flex gap-2 flex-wrap">
+              <input
+                className="input"
+                type="password"
+                placeholder={hasClaudeKey ? 'Dán key mới để thay thế' : 'Dán API key Claude'}
+                value={claudeKey}
+                onChange={(e) => setClaudeKey(e.target.value)}
+              />
+              <AsyncButton className="btn-primary whitespace-nowrap" onClick={saveClaudeKey} busyLabel="Đang lưu…">
+                Lưu key
+              </AsyncButton>
+            </div>
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <label className="label mb-0" htmlFor="claude-model">Model:</label>
+              <select
+                id="claude-model"
+                className="input max-w-[20rem]"
+                value={claudeModel}
+                onChange={(e) => saveClaudeModel(e.target.value)}
+              >
+                <option value="">Sonnet 5 — cân bằng (mặc định)</option>
+                <option value="claude-opus-4-8">Opus 4.8 — mạnh nhất, đắt hơn</option>
+              </select>
+            </div>
+            <div className="mt-3">
+              <label className="label" htmlFor="claude-base">
+                Địa chỉ endpoint (tuỳ chọn — để trống dùng mặc định của Anthropic)
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                <input
+                  id="claude-base"
+                  className="input"
+                  placeholder="https://api.anthropic.com"
+                  value={claudeBaseUrl}
+                  onChange={(e) => setClaudeBaseUrl(e.target.value)}
+                />
+                <AsyncButton className="btn-ghost whitespace-nowrap" onClick={saveClaudeBaseUrl} busyLabel="Đang lưu…">
+                  Lưu endpoint
+                </AsyncButton>
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="mt-3 flex gap-2">
-          <input
-            className="input"
-            type="password"
-            placeholder="Dán API key (AIza...)"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-          />
-          <AsyncButton className="btn-primary whitespace-nowrap" onClick={saveApiKey} busyLabel="Đang lưu…">
-            Lưu key
-          </AsyncButton>
-        </div>
-        <div className="mt-3 flex items-center gap-2 flex-wrap">
-          <label className="label mb-0" htmlFor="ai-model">Model trả lời câu hỏi dữ liệu:</label>
-          <select id="ai-model" className="input max-w-[16rem]" value={aiModel} onChange={(e) => saveAiModel(e.target.value)}>
-            <option value="">Nhanh — Gemini Flash (mặc định)</option>
-            <option value="gemini-2.5-pro">Thông minh — Gemini Pro (chậm hơn, phân tích sâu hơn)</option>
-          </select>
-        </div>
+        )}
       </div>
 
       <div className="card overflow-x-auto">
