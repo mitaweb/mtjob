@@ -417,7 +417,9 @@ export async function answerDataQuestion(question: string, history: ChatTurn[] =
     return answer || 'Mình chưa tạo được câu trả lời, thử hỏi lại cụ thể hơn nhé.';
   } catch (e) {
     console.error('[assistant] director Q&A:', e);
-    return FRIENDLY_ERROR;
+    // Giám đốc/admin là người cấu hình hệ thống → cho xem luôn nguyên nhân để tự xử lý,
+    // thay vì chỉ báo chung chung rồi phải đi mò log.
+    return `${FRIENDLY_ERROR}\n\n(Nguyên nhân: ${(e as Error).message.slice(0, 300)})`;
   }
 }
 

@@ -6,13 +6,21 @@ import { q } from '../db/client.js';
  */
 export function isMissingTable(e: unknown): boolean {
   const err = e as { code?: string; message?: string };
-  return err?.code === '42P01' || /relation .*(brain_chunks|chat_messages).* does not exist/i.test(err?.message || '');
+  return (
+    err?.code === '42P01' ||
+    /relation .*(brain_chunks|brain_profiles|brain_documents|chat_messages).* does not exist/i.test(err?.message || '')
+  );
 }
 
-/** Kho đã sẵn sàng chưa (bảng tồn tại)? */
+/**
+ * Kho đã sẵn sàng chưa. Kiểm tra CẢ BA bảng: bản deploy sau thêm bảng mới nên
+ * chỉ kiểm brain_chunks là chưa đủ — brain_documents/brain_profiles vẫn có thể thiếu.
+ */
 export async function brainTableReady(): Promise<boolean> {
   try {
     await q('SELECT 1 FROM brain_chunks LIMIT 1');
+    await q('SELECT 1 FROM brain_profiles LIMIT 1');
+    await q('SELECT 1 FROM brain_documents LIMIT 1');
     return true;
   } catch (e) {
     if (isMissingTable(e)) return false;

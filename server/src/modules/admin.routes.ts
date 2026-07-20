@@ -201,6 +201,37 @@ adminRouter.post(
       return `${provider.name === 'claude' ? 'Claude' : 'Gemini'} trả lời: "${text.slice(0, 60)}"`;
     });
 
+    // Trợ lý thật LUÔN gửi kèm bộ công cụ. Nhiều endpoint chỉ hỗ trợ hội thoại thường,
+    // không hỗ trợ gọi hàm — phép thử này tách bạch đúng chỗ hỏng.
+    await run('Trợ lý AI — gọi hàm (tool calling)', async () => {
+      const { getProvider } = await import('../ai/index.js');
+      const provider = await getProvider();
+      if (!provider) throw new Error('Chưa cấu hình nhà cung cấp AI.');
+      const parts = await provider.generateContent({
+        contents: [{ role: 'user', parts: [{ text: 'Hôm nay ai chưa chấm công? Dùng hàm được cấp.' }] }],
+        systemInstruction: { parts: [{ text: 'Bạn là trợ lý dữ liệu. Dùng hàm khi cần dữ liệu.' }] },
+        tools: [
+          {
+            functionDeclarations: [
+              {
+                name: 'get_attendance',
+                description: 'Chấm công của tất cả nhân sự trong 1 ngày.',
+                parameters: {
+                  type: 'OBJECT',
+                  properties: { date: { type: 'STRING', description: 'Ngày YYYY-MM-DD.' } },
+                },
+              },
+            ],
+          },
+        ],
+      });
+      const called = parts.find((p) => p.functionCall);
+      if (called) return `Gọi hàm được — AI yêu cầu chạy "${called.functionCall!.name}"`;
+      const text = parts.map((p) => p.text || '').join('').trim();
+      // Không lỗi nhưng cũng không gọi hàm: mô hình yếu hoặc endpoint bỏ qua tools.
+      return `Không lỗi, nhưng AI trả lời thẳng thay vì gọi hàm: "${text.slice(0, 80)}"`;
+    });
+
     await run('Ghi nhớ kho tri thức (Gemini)', async () => {
       const { embedTexts, embeddingsAvailable } = await import('../gemini/client.js');
       if (!(await embeddingsAvailable())) {
