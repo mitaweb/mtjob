@@ -88,6 +88,8 @@ financeRouter.delete(
 const collectSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
   collected: z.boolean(),
+  /** Số thực thu. Bỏ trống khi collected=true = thu toàn bộ số phải thu. */
+  amount: z.number().min(0).optional(),
 });
 function receivableEntryId(partyId: string, month: string): string {
   return `RECV-${partyId}-${month}`;
@@ -97,26 +99,32 @@ financeRouter.post(
   canEdit,
   asyncHandler(async (req, res) => {
     const id = String(req.params.id);
-    const { month, collected } = collectSchema.parse(req.body);
+    const { month, collected, amount } = collectSchema.parse(req.body);
     const entryId = receivableEntryId(id, month);
-    if (!collected) {
+    // Bỏ đánh dấu, hoặc nhập số 0 → gỡ khoản thu của tháng này.
+    if (!collected || amount === 0) {
       await deleteEntry(entryId);
-      res.json({ ok: true, collected: false });
+      res.json({ ok: true, collected: false, amount: 0 });
       return;
     }
     const party = (await getParties()).find((p) => p.id === id);
     if (!party) throw new ApiError(404, 'Không tìm thấy bên');
+    const value = amount ?? party.receivable;
+    const partial = value < party.receivable;
     await upsertEntry({
       id: entryId,
       month,
       kind: 'thu',
-      name: `${party.name} (thu công nợ)`,
-      amount: party.receivable,
+      // Ghi rõ thu một phần để nhìn bảng Thu/Chi là biết còn nợ.
+      name: partial
+        ? `${party.name} (thu công nợ một phần)`
+        : `${party.name} (thu công nợ)`,
+      amount: value,
       date: todayIso(),
       recurring: false,
       partyId: id,
     });
-    res.json({ ok: true, collected: true });
+    res.json({ ok: true, collected: true, amount: value });
   }),
 );
 

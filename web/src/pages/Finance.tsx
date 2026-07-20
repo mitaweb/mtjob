@@ -43,6 +43,9 @@ export default function Finance() {
   const toast = useToast();
 
   const [pForm, setPForm] = useState<Partial<Party>>(emptyParty());
+  // Hộp thoại ghi nhận thu công nợ của 1 bên.
+  const [collectFor, setCollectFor] = useState<Party | null>(null);
+  const [collectInput, setCollectInput] = useState('');
   const [eForm, setEForm] = useState({ kind: 'thu', name: '', amount: 0, date: '', recurring: false });
 
   function ymQuery() {
@@ -95,14 +98,36 @@ export default function Finance() {
     await api(`/finance/parties/${id}`, { method: 'DELETE' }).catch(() => {});
     await loadAll();
   }
-  // Đã thu công nợ tháng này? (có khoản Thu mã RECV-<bên>-<tháng>)
-  function isCollected(id: string): boolean {
-    return (sum?.entries || []).some((e) => e.id === `RECV-${id}-${ym}`);
+  // Số đã thu của 1 bên trong tháng (khoản Thu mã RECV-<bên>-<tháng>); 0 = chưa thu.
+  function collectedAmount(id: string): number {
+    return (sum?.entries || []).find((e) => e.id === `RECV-${id}-${ym}`)?.amount ?? 0;
   }
-  async function toggleCollect(id: string) {
+  function isCollected(id: string): boolean {
+    return collectedAmount(id) > 0;
+  }
+
+  function openCollect(p: Party) {
+    const already = collectedAmount(p.id);
+    setCollectFor(p);
+    setCollectInput(String(already || p.receivable));
+  }
+
+  /** Ghi nhận số thực thu (bỏ trống amount = thu toàn bộ; 0 = gỡ đánh dấu). */
+  async function saveCollect(amount: number) {
+    if (!collectFor) return;
+    const p = collectFor;
     try {
-      await api(`/finance/parties/${id}/collect`, { body: { month: ym, collected: !isCollected(id) } });
-      toast.success(isCollected(id) ? 'Đã bỏ đánh dấu thu.' : 'Đã ghi nhận thu công nợ');
+      await api(`/finance/parties/${p.id}/collect`, {
+        body: { month: ym, collected: amount > 0, amount },
+      });
+      setCollectFor(null);
+      toast.success(
+        amount === 0
+          ? 'Đã bỏ đánh dấu thu.'
+          : amount >= p.receivable
+            ? `Đã thu đủ ${vnd(amount)}`
+            : `Đã ghi nhận thu ${vnd(amount)} — còn ${vnd(p.receivable - amount)}`,
+      );
       await loadAll();
     } catch (e) {
       toast.error((e as Error).message);
@@ -176,13 +201,19 @@ export default function Finance() {
                     <td className="text-right whitespace-nowrap">
                       <button
                         className={`mr-2 rounded-lg border px-2 py-0.5 text-xs font-medium ${
-                          isCollected(p.id)
+                          collectedAmount(p.id) >= p.receivable && isCollected(p.id)
                             ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                            : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+                            : isCollected(p.id)
+                              ? 'border-amber-500 bg-amber-50 text-amber-700'
+                              : 'border-slate-300 text-slate-600 hover:bg-slate-50'
                         }`}
-                        onClick={() => toggleCollect(p.id)}
+                        onClick={() => openCollect(p)}
                       >
-                        {isCollected(p.id) ? '✓ Đã thu' : 'Đã thu'}
+                        {!isCollected(p.id)
+                          ? 'Đã thu'
+                          : collectedAmount(p.id) >= p.receivable
+                            ? '✓ Đã thu đủ'
+                            : `Thu ${vnd(collectedAmount(p.id))}`}
                       </button>
                       <button className="text-brand-600 underline text-xs mr-2" onClick={() => setPForm({ ...p })}>
                         sửa
@@ -352,6 +383,80 @@ export default function Finance() {
           </tbody>
         </table>
       </div>
+
+      {/* Hộp thoại ghi nhận thu công nợ */}
+      {collectFor && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4"
+          onClick={() => setCollectFor(null)}
+        >
+          <div className="card my-8 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-semibold">Thu công nợ — {collectFor.name}</h2>
+              <button className="btn-ghost px-2 py-1 text-sm" onClick={() => setCollectFor(null)}>
+                ✕ Đóng
+              </button>
+            </div>
+
+            <div className="rounded-xl bg-slate-50 p-3 text-sm">
+              <div className="flex justify-between py-0.5">
+                <span className="text-slate-500">Phải thu tháng {ym}</span>
+                <span className="font-medium">{vnd(collectFor.receivable)}</span>
+              </div>
+              <div className="flex justify-between py-0.5">
+                <span className="text-slate-500">Đã ghi nhận</span>
+                <span className="font-medium text-emerald-600">{vnd(collectedAmount(collectFor.id))}</span>
+              </div>
+              <div className="mt-1 flex justify-between border-t border-slate-200 pt-1.5">
+                <span className="text-slate-500">Còn lại</span>
+                <span className="font-medium text-rose-600">
+                  {vnd(Math.max(0, collectFor.receivable - collectedAmount(collectFor.id)))}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <label className="label" htmlFor="collect-amount">
+                Số tiền đã thu (tổng của tháng này)
+              </label>
+              <input
+                id="collect-amount"
+                className="input"
+                type="number"
+                min={0}
+                value={collectInput}
+                onChange={(e) => setCollectInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && saveCollect(Number(collectInput) || 0)}
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Thu làm nhiều lần thì nhập <b>tổng cộng</b> đã thu tới hiện tại. Nhập 0 để bỏ đánh dấu.
+              </p>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <AsyncButton
+                className="btn-primary"
+                onClick={() => saveCollect(collectFor.receivable)}
+                busyLabel="Đang lưu…"
+              >
+                ✓ Đã thu toàn bộ ({vnd(collectFor.receivable)})
+              </AsyncButton>
+              <AsyncButton
+                className="btn-ghost"
+                onClick={() => saveCollect(Number(collectInput) || 0)}
+                busyLabel="Đang lưu…"
+              >
+                Lưu số đã nhập
+              </AsyncButton>
+              {isCollected(collectFor.id) && (
+                <AsyncButton className="btn-ghost text-rose-600" onClick={() => saveCollect(0)} busyLabel="Đang xoá…">
+                  Bỏ đánh dấu
+                </AsyncButton>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
