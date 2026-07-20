@@ -292,6 +292,24 @@ CREATE TABLE IF NOT EXISTS brain_profiles (
   built_at     text DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS brain_profiles_dirty_idx ON brain_profiles (dirty);
+
+-- Tài liệu tải lên kho (PDF/ảnh/text). AI đọc nội dung rồi nạp vào brain_chunks.
+CREATE TABLE IF NOT EXISTS brain_documents (
+  doc_id        text PRIMARY KEY,
+  kind          text DEFAULT 'pdf',      -- pdf | image | text
+  url           text NOT NULL,           -- Vercel Blob
+  name          text DEFAULT '',
+  mime          text DEFAULT '',
+  customer      text DEFAULT '',
+  uploaded_by   text DEFAULT '',
+  uploaded_name text DEFAULT '',
+  status        text DEFAULT 'pending',  -- pending | processing | done | error
+  error         text DEFAULT '',
+  transcript    text DEFAULT '',
+  created_at    text DEFAULT '',
+  processed_at  text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS brain_documents_created_idx ON brain_documents (created_at DESC);
 `;
 
 /** Seed rows for the config table (key/value). */

@@ -41,6 +41,8 @@ export async function geminiAvailable(): Promise<boolean> {
 // ── Kiểu dữ liệu tối thiểu cho hội thoại + function calling ──
 export interface GeminiPart {
   text?: string;
+  /** Tệp gửi kèm (PDF/ảnh) dạng base64 — dùng khi cho AI đọc tài liệu. */
+  inlineData?: { mimeType: string; data: string };
   functionCall?: { name: string; args?: Record<string, unknown> };
   functionResponse?: { name: string; response: Record<string, unknown> };
 }
@@ -57,6 +59,8 @@ export interface GenerateRequest {
   generationConfig?: Record<string, unknown>;
   /** Ghi đè model cho riêng lời gọi này (vd NLU luôn dùng flash). */
   model?: string;
+  /** Ghi đè timeout (vd đọc tài liệu dài cần lâu hơn mặc định 25s). */
+  timeoutMs?: number;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -84,13 +88,13 @@ async function authHeaders(): Promise<Record<string, string>> {
 
 /** Gọi Gemini generateContent: timeout 25s + retry 1 lần khi 429/5xx/lỗi mạng. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function callApi(model: string, body: unknown): Promise<any> {
+async function callApi(model: string, body: unknown, timeoutMs = TIMEOUT_MS): Promise<any> {
   const headers = await authHeaders();
   const url = `${baseUrl()}/models/${model}:generateContent`;
 
   for (let attempt = 0; ; attempt++) {
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
+    const timer = setTimeout(() => ac.abort(), timeoutMs);
     try {
       const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal: ac.signal });
       if (!res.ok) {
@@ -105,7 +109,7 @@ async function callApi(model: string, body: unknown): Promise<any> {
     } catch (e) {
       if ((e as Error).name === 'AbortError') {
         // Không retry timeout — retry sẽ đội gấp đôi thời gian chờ của người dùng.
-        throw new Error(`Gemini không phản hồi sau ${TIMEOUT_MS / 1000}s.`);
+        throw new Error(`Gemini không phản hồi sau ${timeoutMs / 1000}s.`);
       }
       if (attempt === 0 && e instanceof TypeError) {
         // Lỗi mạng tạm thời (fetch ném TypeError) → thử lại 1 lần.
@@ -129,7 +133,7 @@ export async function generateContent(req: GenerateRequest): Promise<GeminiPart[
   if (req.tools) body.tools = req.tools;
   if (req.systemInstruction) body.systemInstruction = req.systemInstruction;
   if (req.generationConfig) body.generationConfig = req.generationConfig;
-  const data = await callApi(model, body);
+  const data = await callApi(model, body, req.timeoutMs);
   return (data?.candidates?.[0]?.content?.parts ?? []) as GeminiPart[];
 }
 

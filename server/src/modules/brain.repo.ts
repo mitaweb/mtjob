@@ -242,6 +242,90 @@ export async function listProfiles(limit = 100): Promise<CustomerProfile[]> {
   return rows.map(rowToProfile);
 }
 
+// ── Tài liệu tải lên ──
+
+export interface BrainDocument {
+  id: string;
+  kind: string;
+  url: string;
+  name: string;
+  mime: string;
+  customer: string;
+  uploadedBy: string;
+  uploadedName: string;
+  status: 'pending' | 'processing' | 'done' | 'error';
+  error: string;
+  transcript: string;
+  createdAt: string;
+  processedAt: string;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToDoc(r: any): BrainDocument {
+  return {
+    id: r.doc_id || '',
+    kind: r.kind || 'pdf',
+    url: r.url || '',
+    name: r.name || '',
+    mime: r.mime || '',
+    customer: r.customer || '',
+    uploadedBy: r.uploaded_by || '',
+    uploadedName: r.uploaded_name || '',
+    status: (r.status || 'pending') as BrainDocument['status'],
+    error: r.error || '',
+    transcript: r.transcript || '',
+    createdAt: r.created_at || '',
+    processedAt: r.processed_at || '',
+  };
+}
+
+export async function addDocument(d: BrainDocument): Promise<void> {
+  await q(
+    `INSERT INTO brain_documents
+       (doc_id, kind, url, name, mime, customer, uploaded_by, uploaded_name, status, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9)`,
+    [d.id, d.kind, d.url, d.name, d.mime, d.customer, d.uploadedBy, d.uploadedName, d.createdAt],
+  );
+}
+
+export async function listDocuments(limit = 100): Promise<BrainDocument[]> {
+  const rows = await q('SELECT * FROM brain_documents ORDER BY created_at DESC LIMIT $1', [limit]);
+  return rows.map(rowToDoc);
+}
+
+export async function findDocument(id: string): Promise<BrainDocument | undefined> {
+  const rows = await q('SELECT * FROM brain_documents WHERE doc_id = $1 LIMIT 1', [id]);
+  return rows.length ? rowToDoc(rows[0]) : undefined;
+}
+
+/**
+ * Giành quyền xử lý tài liệu (pending/error → processing).
+ * Trả null nếu tài liệu đang được xử lý ở nơi khác — tránh chạy đôi khi bấm thử lại liên tục.
+ */
+export async function claimDocument(id: string): Promise<BrainDocument | null> {
+  const rows = await q(
+    `UPDATE brain_documents SET status = 'processing', error = ''
+     WHERE doc_id = $1 AND status IN ('pending','error') RETURNING *`,
+    [id],
+  );
+  return rows.length ? rowToDoc(rows[0]) : null;
+}
+
+export async function finishDocument(id: string, transcript: string, at: string): Promise<void> {
+  await q(
+    "UPDATE brain_documents SET status = 'done', transcript = $2, processed_at = $3, error = '' WHERE doc_id = $1",
+    [id, transcript, at],
+  );
+}
+
+export async function failDocument(id: string, message: string): Promise<void> {
+  await q("UPDATE brain_documents SET status = 'error', error = $2 WHERE doc_id = $1", [id, message.slice(0, 500)]);
+}
+
+export async function deleteDocument(id: string): Promise<void> {
+  await q('DELETE FROM brain_documents WHERE doc_id = $1', [id]);
+}
+
 /** Tổng số nguồn còn chờ nạp (hiển thị tiến độ). */
 export async function countPending(
   table: string,

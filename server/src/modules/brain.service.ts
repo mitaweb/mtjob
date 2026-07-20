@@ -1,6 +1,12 @@
 // Kho tri thức ("bộ não thứ hai"): cắt nội dung thành đoạn, mã hoá vector, tìm theo ngữ nghĩa.
 // Mọi thao tác nạp đều chạy nền và nuốt lỗi — KHÔNG được làm hỏng thao tác lưu dữ liệu gốc.
-import { embedTexts, embeddingsAvailable, generateJson } from '../gemini/client.js';
+import {
+  embedTexts,
+  embeddingsAvailable,
+  generateJson,
+  generateContent,
+  type GeminiPart,
+} from '../gemini/client.js';
 import { removeAccents } from '../lib/people.js';
 import {
   insertChunks,
@@ -14,6 +20,9 @@ import {
   countDirtyProfiles,
   saveProfile,
   findProfiles,
+  claimDocument,
+  finishDocument,
+  failDocument,
   type NewChunk,
   type BrainHit,
 } from './brain.repo.js';
@@ -450,6 +459,66 @@ export async function customerProfileText(name: string): Promise<string> {
     if (isMissingTable(e)) return 'Kho tri thức chưa được khởi tạo (Quản trị → Cập nhật cấu trúc DB).';
     throw e;
   }
+}
+
+// ── Tài liệu tải lên: AI đọc rồi nạp nội dung vào kho ──
+
+const DOC_TIMEOUT_MS = 50_000; // response đã trả rồi, waitUntil giữ hàm sống tới 60s
+const MAX_DOC_BYTES = 10 * 1024 * 1024; // base64 nở 4/3, giữ dưới hạn 20MB của Gemini
+
+/** Đọc tài liệu bằng Gemini (PDF/ảnh/text) → trích xuất nội dung + tóm tắt → nạp vào kho. */
+export async function processDocument(docId: string): Promise<void> {
+  const doc = await claimDocument(docId);
+  if (!doc) return; // đang được xử lý ở nơi khác, hoặc đã xong
+
+  try {
+    if (!(await embeddingsAvailable())) throw new Error('Chưa cấu hình API key Gemini.');
+
+    const res = await fetch(doc.url);
+    if (!res.ok) throw new Error(`Không tải được tệp (${res.status}).`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.byteLength > MAX_DOC_BYTES) {
+      throw new Error(`Tệp ${Math.round(buf.byteLength / 1024 / 1024)}MB, vượt giới hạn 10MB.`);
+    }
+
+    const prompt = [
+      `Đây là tài liệu "${doc.name}"${doc.customer ? ` của khách hàng ${doc.customer}` : ''}.`,
+      'Trích xuất TOÀN BỘ nội dung chữ có ý nghĩa (bảng thì ghi thành dòng, giữ nguyên số liệu),',
+      'sau đó xuống dòng và viết "TÓM TẮT:" kèm 3-5 ý chính.',
+      'Trả lời bằng tiếng Việt. KHÔNG bịa thêm thông tin không có trong tài liệu.',
+    ].join('\n');
+
+    // text/* thì đọc thẳng, khỏi tốn token cho ảnh hoá.
+    const parts: GeminiPart[] = doc.mime.startsWith('text/')
+      ? [{ text: `${prompt}\n\nNỘI DUNG:\n${buf.toString('utf8').slice(0, 30000)}` }]
+      : [{ inlineData: { mimeType: doc.mime, data: buf.toString('base64') } }, { text: prompt }];
+
+    const out = await generateContent({
+      contents: [{ role: 'user', parts }],
+      model: 'gemini-2.5-flash', // đọc/trích xuất — không cần model cao cấp
+      timeoutMs: DOC_TIMEOUT_MS,
+    });
+    const transcript = out.map((p) => p.text || '').join('').trim();
+    if (!transcript) throw new Error('AI không đọc được nội dung tệp.');
+
+    await ingest({
+      sourceType: 'document',
+      sourceId: doc.id,
+      title: `Tài liệu: ${doc.name}`,
+      text: transcript,
+      visibility: 'all',
+      customer: doc.customer,
+    });
+    await finishDocument(doc.id, transcript, nowTz().toISOString());
+  } catch (e) {
+    console.error('[brain] xử lý tài liệu', docId, e);
+    await failDocument(docId, (e as Error).message).catch(() => undefined);
+  }
+}
+
+/** Đăng ký tài liệu rồi xử lý nền — người dùng không phải chờ. */
+export function processDocumentInBackground(docId: string): void {
+  runInBackground(processDocument(docId));
 }
 
 // Tự kích hoạt nạp dần: gom thành lô lớn, quét thưa để đỡ tải máy chủ.

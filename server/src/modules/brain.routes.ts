@@ -1,11 +1,76 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { asyncHandler } from '../util/errors.js';
+import { del } from '@vercel/blob';
+import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
+import { asyncHandler, ApiError } from '../util/errors.js';
 import { requireAuth } from '../auth/middleware.js';
-import { browseChunks, statsBySource, deleteChunk, brainTableReady, listProfiles } from './brain.repo.js';
-import { backfillPage, countRemaining, brainAvailable } from './brain.service.js';
+import { verifyToken } from '../auth/jwt.js';
+import {
+  browseChunks,
+  statsBySource,
+  deleteChunk,
+  brainTableReady,
+  listProfiles,
+  addDocument,
+  listDocuments,
+  findDocument,
+  deleteDocument,
+  type BrainDocument,
+} from './brain.repo.js';
+import {
+  backfillPage,
+  countRemaining,
+  brainAvailable,
+  processDocumentInBackground,
+  removeSource,
+} from './brain.service.js';
+import { newId } from '../util/id.js';
+import { nowTz } from '../lib/datetime.js';
 
 export const brainRouter = Router();
+
+// Tệp cho phép tải lên kho. Ảnh cũng nhận vì Gemini đọc được chữ trong ảnh
+// (chụp hợp đồng, báo giá giấy…). Ghi âm để sẵn cho lần sau, hiện chưa bật.
+const ALLOWED_CONTENT_TYPES = [
+  'application/pdf',
+  'text/plain',
+  'text/markdown',
+  'text/csv',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+];
+
+// Cấp token cho Vercel Blob (client upload). KHÔNG bọc requireAuth vì callback
+// onUploadCompleted do hạ tầng Vercel gọi, không mang JWT — xác thực qua clientPayload.
+brainRouter.post(
+  '/upload',
+  asyncHandler(async (req, res) => {
+    const body = req.body as HandleUploadBody;
+    const json = await handleUpload({
+      body,
+      request: req,
+      token: process.env.mt_READ_WRITE_TOKEN,
+      onBeforeGenerateToken: async (_pathname, clientPayload) => {
+        try {
+          verifyToken(String(clientPayload || ''));
+        } catch {
+          throw new ApiError(401, 'Phiên đăng nhập không hợp lệ');
+        }
+        return {
+          allowedContentTypes: ALLOWED_CONTENT_TYPES,
+          maximumSizeInBytes: 10 * 1024 * 1024, // 10MB — AI phải đọc trọn tệp trong 1 lần gọi
+          addRandomSuffix: true,
+        };
+      },
+      onUploadCompleted: async () => {
+        // Tài liệu được đăng ký qua POST /documents ngay sau khi upload xong.
+      },
+    });
+    res.json(json);
+  }),
+);
+
 brainRouter.use(requireAuth);
 
 const DIRECTOR_ROLES = new Set(['director', 'admin']);
@@ -89,6 +154,78 @@ brainRouter.delete(
       return;
     }
     await deleteChunk(String(req.params.id));
+    res.json({ ok: true });
+  }),
+);
+
+// ── Tài liệu ──
+
+brainRouter.get(
+  '/documents',
+  asyncHandler(async (_req, res) => {
+    if (!(await brainTableReady())) {
+      res.json({ documents: [], needsMigrate: true });
+      return;
+    }
+    res.json({ documents: await listDocuments(100) });
+  }),
+);
+
+const docSchema = z.object({
+  url: z.string().url(),
+  name: z.string().min(1),
+  mime: z.string().min(1),
+  customer: z.string().optional().default(''),
+});
+
+/** Đăng ký tài liệu vừa upload → trả về ngay, AI đọc nội dung chạy nền. */
+brainRouter.post(
+  '/documents',
+  asyncHandler(async (req, res) => {
+    const b = docSchema.parse(req.body);
+    if (!ALLOWED_CONTENT_TYPES.includes(b.mime)) throw new ApiError(400, 'Định dạng tệp không được hỗ trợ');
+    const doc: BrainDocument = {
+      id: newId('D-'),
+      kind: b.mime === 'application/pdf' ? 'pdf' : b.mime.startsWith('image/') ? 'image' : 'text',
+      url: b.url,
+      name: b.name,
+      mime: b.mime,
+      customer: b.customer.trim(),
+      uploadedBy: req.user!.sub,
+      uploadedName: req.user!.name,
+      status: 'pending',
+      error: '',
+      transcript: '',
+      createdAt: nowTz().toISOString(),
+      processedAt: '',
+    };
+    await addDocument(doc);
+    res.json({ ok: true, id: doc.id });
+    processDocumentInBackground(doc.id);
+  }),
+);
+
+/** Xử lý lại tài liệu bị lỗi. */
+brainRouter.post(
+  '/documents/:id/retry',
+  asyncHandler(async (req, res) => {
+    const doc = await findDocument(String(req.params.id));
+    if (!doc) throw new ApiError(404, 'Không tìm thấy tài liệu');
+    res.json({ ok: true });
+    processDocumentInBackground(doc.id);
+  }),
+);
+
+brainRouter.delete(
+  '/documents/:id',
+  asyncHandler(async (req, res) => {
+    const id = String(req.params.id);
+    const doc = await findDocument(id);
+    await deleteDocument(id);
+    await removeSource('document', id);
+    if (doc?.url) {
+      await del(doc.url, { token: process.env.mt_READ_WRITE_TOKEN }).catch(() => undefined);
+    }
     res.json({ ok: true });
   }),
 );
