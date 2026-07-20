@@ -1,5 +1,25 @@
 import { q } from '../db/client.js';
 
+/**
+ * Bảng kho tri thức chưa được tạo (chưa bấm "Cập nhật cấu trúc DB", hoặc pgvector lỗi).
+ * Postgres 42P01 = undefined_table. Dùng để degrade êm thay vì ném lỗi kỹ thuật ra UI.
+ */
+export function isMissingTable(e: unknown): boolean {
+  const err = e as { code?: string; message?: string };
+  return err?.code === '42P01' || /relation .*(brain_chunks|chat_messages).* does not exist/i.test(err?.message || '');
+}
+
+/** Kho đã sẵn sàng chưa (bảng tồn tại)? */
+export async function brainTableReady(): Promise<boolean> {
+  try {
+    await q('SELECT 1 FROM brain_chunks LIMIT 1');
+    return true;
+  } catch (e) {
+    if (isMissingTable(e)) return false;
+    throw e;
+  }
+}
+
 // LƯU Ý về pgvector qua driver Neon HTTP: truyền embedding dạng CHUỖI JSON ('[0.1,0.2,...]')
 // rồi cast `$n::vector` trong SQL. Truyền mảng JS thô sẽ bị serialize thành array literal
 // kiểu Postgres ('{...}') và pgvector từ chối. Không bao giờ SELECT cột embedding về (rất dài).

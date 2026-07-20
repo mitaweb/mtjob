@@ -182,8 +182,14 @@ export default function Admin() {
 
   async function migrateDb() {
     try {
-      await api('/admin/migrate-db', { method: 'POST' });
-      toast.success('Đã cập nhật cấu trúc DB (bảng + index mới có hiệu lực ngay).');
+      const r = await api<{ core: string; brain: string }>('/admin/migrate-db', { method: 'POST' });
+      if (r.brain === 'ok') {
+        toast.success('Đã cập nhật cấu trúc DB — bảng, index và kho tri thức đều sẵn sàng.');
+      } else {
+        // Phần chính đã xong; chỉ kho tri thức lỗi (thường do pgvector).
+        toast.success('Đã cập nhật cấu trúc DB (phần chính).');
+        toast.error(`Kho tri thức chưa tạo được: ${r.brain}`);
+      }
     } catch (e) {
       toast.error((e as Error).message);
     }

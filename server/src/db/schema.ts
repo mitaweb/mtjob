@@ -2,9 +2,6 @@
 // Dates/timestamps are stored as ISO text — the app compares them lexicographically.
 
 export const DDL = `
--- Kho tri thức ("bộ não thứ hai"): tìm theo ngữ nghĩa bằng pgvector.
-CREATE EXTENSION IF NOT EXISTS vector;
-
 CREATE TABLE IF NOT EXISTS members (
   member_id     text PRIMARY KEY,
   full_name     text NOT NULL,
@@ -246,7 +243,27 @@ CREATE TABLE IF NOT EXISTS customer_note_history (
 );
 CREATE INDEX IF NOT EXISTS customer_note_history_note_idx ON customer_note_history (note_id, saved_at);
 
--- ── Kho tri thức ──
+-- Lịch sử chat (trước đây không lưu, mất khi tải lại trang).
+-- Nằm ở DDL chính vì không phụ thuộc pgvector.
+CREATE TABLE IF NOT EXISTS chat_messages (
+  msg_id     text PRIMARY KEY,
+  member_id  text NOT NULL,
+  role       text NOT NULL,             -- user | model
+  text       text DEFAULT '',
+  action     text DEFAULT '',
+  created_at text NOT NULL
+);
+CREATE INDEX IF NOT EXISTS chat_messages_member_idx ON chat_messages (member_id, created_at DESC);
+`;
+
+/**
+ * Kho tri thức — TÁCH RIÊNG khỏi DDL chính vì phụ thuộc extension pgvector.
+ * Nếu CREATE EXTENSION lỗi (thiếu quyền / Postgres không có pgvector) thì chỉ phần này
+ * hỏng, các bảng khác vẫn được tạo bình thường.
+ */
+export const BRAIN_DDL = `
+CREATE EXTENSION IF NOT EXISTS vector;
+
 -- Mỗi dòng = 1 đoạn nội dung đã mã hoá vector để AI tìm theo ngữ nghĩa.
 -- visibility: 'all' (ai cũng tra được) | 'director' (chỉ giám đốc/admin) | <member_id> (riêng người đó).
 CREATE TABLE IF NOT EXISTS brain_chunks (
@@ -263,17 +280,6 @@ CREATE TABLE IF NOT EXISTS brain_chunks (
 CREATE INDEX IF NOT EXISTS brain_chunks_source_idx ON brain_chunks (source_type, source_id);
 -- HNSW (không phải ivfflat): dựng tăng dần từ bảng rỗng, hợp với DDL idempotent chạy lại nhiều lần.
 CREATE INDEX IF NOT EXISTS brain_chunks_embedding_idx ON brain_chunks USING hnsw (embedding vector_cosine_ops);
-
--- Lịch sử chat (trước đây không lưu, mất khi tải lại trang).
-CREATE TABLE IF NOT EXISTS chat_messages (
-  msg_id     text PRIMARY KEY,
-  member_id  text NOT NULL,
-  role       text NOT NULL,             -- user | model
-  text       text DEFAULT '',
-  action     text DEFAULT '',
-  created_at text NOT NULL
-);
-CREATE INDEX IF NOT EXISTS chat_messages_member_idx ON chat_messages (member_id, created_at DESC);
 `;
 
 /** Seed rows for the config table (key/value). */

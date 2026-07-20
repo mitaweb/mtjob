@@ -7,6 +7,7 @@ import {
   searchChunks,
   pendingSources,
   countPending,
+  isMissingTable,
   type NewChunk,
   type BrainHit,
 } from './brain.repo.js';
@@ -129,6 +130,7 @@ export async function searchKnowledgeText(
     if (!vec) return 'Không tìm được trong kho tri thức lúc này.';
     hits = await searchChunks(vec, { ...opts, limit: 8 });
   } catch (e) {
+    if (isMissingTable(e)) return 'Kho tri thức chưa được khởi tạo (Quản trị → Cập nhật cấu trúc DB).';
     console.warn('[brain] tìm kiếm lỗi:', e);
     return 'Không tìm được trong kho tri thức lúc này.';
   }
@@ -257,20 +259,26 @@ const SOURCES: SourceSpec[] = [
 export async function backfillPage(limit = 30): Promise<{ ingested: number; remaining: number }> {
   if (!(await embeddingsAvailable())) return { ingested: 0, remaining: 0 };
   let ingested = 0;
-  for (const s of SOURCES) {
-    if (ingested >= limit) break;
-    const ids = await pendingSources(s.table, s.idCol, s.sourceType, s.where, limit - ingested);
-    if (ids.length === 0) continue;
-    for (const input of await s.load(ids)) {
-      try {
-        await ingest(input);
-      } catch (e) {
-        console.warn('[brain] backfill lỗi', input.sourceType, input.sourceId, e);
+  try {
+    for (const s of SOURCES) {
+      if (ingested >= limit) break;
+      const ids = await pendingSources(s.table, s.idCol, s.sourceType, s.where, limit - ingested);
+      if (ids.length === 0) continue;
+      for (const input of await s.load(ids)) {
+        try {
+          await ingest(input);
+        } catch (e) {
+          if (isMissingTable(e)) throw e; // chưa migrate → dừng cả lượt, không log rác từng mục
+          console.warn('[brain] backfill lỗi', input.sourceType, input.sourceId, e);
+        }
+        ingested++;
       }
-      ingested++;
     }
+    return { ingested, remaining: await countRemaining() };
+  } catch (e) {
+    if (isMissingTable(e)) return { ingested: 0, remaining: 0 }; // chờ bấm Cập nhật cấu trúc DB
+    throw e;
   }
-  return { ingested, remaining: await countRemaining() };
 }
 
 export async function countRemaining(): Promise<number> {

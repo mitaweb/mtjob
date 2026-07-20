@@ -18,7 +18,7 @@ import {
 import { hashPassword } from '../auth/password.js';
 import { setConfigValue, getConfig } from '../config.js';
 import { pool, closePool } from '../db/client.js';
-import { DDL } from '../db/schema.js';
+import { DDL, BRAIN_DDL } from '../db/schema.js';
 import { newId } from '../util/id.js';
 import { nowTz, monthRange, fmtHm, dayjs, TZ } from '../lib/datetime.js';
 import { dayFractionFromShifts } from '../lib/attendance.js';
@@ -131,9 +131,21 @@ adminRouter.post(
 adminRouter.post(
   '/migrate-db',
   asyncHandler(async (_req, res) => {
-    await pool().query(DDL);
-    await closePool();
-    res.json({ ok: true });
+    try {
+      await pool().query(DDL);
+      // Kho tri thức chạy RIÊNG: cần extension pgvector, lỗi ở đây không được
+      // kéo đổ phần schema chính (bảng/index còn lại vẫn phải được tạo).
+      let brain = 'ok';
+      try {
+        await pool().query(BRAIN_DDL);
+      } catch (e) {
+        brain = (e as Error).message;
+        console.error('[migrate-db] kho tri thức:', e);
+      }
+      res.json({ ok: true, core: 'ok', brain });
+    } finally {
+      await closePool().catch(() => undefined);
+    }
   }),
 );
 

@@ -16,6 +16,8 @@ interface Chunk {
 
 interface Stats {
   enabled: boolean;
+  needsMigrate?: boolean;
+  reason?: string;
   total: number;
   bySource: Array<{ sourceType: string; count: number }>;
   remaining: number;
@@ -132,9 +134,14 @@ export default function Brain() {
       />
 
       {stats && !stats.enabled && (
-        <div className="card bg-amber-50 border-amber-200 text-sm text-amber-800">
-          Kho tri thức chưa hoạt động — cần API key Gemini trong Quản trị (phần ghi nhớ luôn dùng Gemini,
-          kể cả khi trợ lý đang chạy Claude).
+        <div className="card border-amber-200 bg-amber-50 text-sm text-amber-800">
+          <div className="font-medium">Kho tri thức chưa sẵn sàng</div>
+          <p className="mt-1">{stats.reason || 'Chưa cấu hình.'}</p>
+          {stats.needsMigrate && (
+            <a className="btn-primary mt-3 inline-flex" href="/admin">
+              Mở trang Quản trị
+            </a>
+          )}
         </div>
       )}
 
@@ -193,7 +200,7 @@ export default function Brain() {
 
       {loading && <SkeletonRows rows={4} />}
 
-      {!loading && chunks.length === 0 && (
+      {!loading && chunks.length === 0 && stats?.enabled && (
         <div className="card">
           <EmptyState
             icon="🧠"
