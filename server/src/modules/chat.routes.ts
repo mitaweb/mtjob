@@ -11,7 +11,11 @@ import { taskTitle } from '../lib/tasks.js';
 import { memberScore } from './scores.service.js';
 import { formatVnd } from '../lib/money.js';
 import { formatMinutes } from '../lib/worktime.js';
-import { fmtHm } from '../lib/datetime.js';
+import { fmtHm, nowTz } from '../lib/datetime.js';
+import { addChatMessages, type ChatMessageRow } from './chat.repo.js';
+import { ingest, autoBackfill } from './brain.service.js';
+import { newId } from '../util/id.js';
+import { runInBackground } from '../util/background.js';
 
 export const chatRouter = Router();
 chatRouter.use(requireAuth);
@@ -39,23 +43,80 @@ function parseMentions(message: string): string[] {
   return [...message.matchAll(/@([a-zA-Z0-9_.]+)/g)].map((m) => m[1]!.toLowerCase());
 }
 
+/** Payload trả về cho frontend (mọi lối ra của handler). */
+interface ChatReply {
+  reply: string;
+  action: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [k: string]: any;
+}
+
+// Câu hỏi quá ngắn thì không đáng lưu vào kho tri thức (nhiễu, tốn token).
+const MIN_QUESTION_FOR_BRAIN = 30;
+
+/**
+ * Lưu 1 lượt hội thoại (câu hỏi + câu trả lời) chạy nền.
+ * Riêng hỏi-đáp dữ liệu còn nạp vào kho tri thức để sau này tra lại được;
+ * các lượt bấm nút xác nhận chỉ lưu lịch sử, không nạp kho.
+ */
+function saveChatTurn(memberId: string, userText: string, payload: ChatReply): void {
+  const now = nowTz().toISOString();
+  const rows: ChatMessageRow[] = [];
+  const question = (userText || '').trim();
+  if (question) {
+    rows.push({ id: newId('CM-'), memberId, role: 'user', text: question, action: '', createdAt: now });
+  }
+  const msgId = newId('CM-');
+  rows.push({
+    id: msgId,
+    memberId,
+    role: 'model',
+    text: payload.reply || '',
+    action: payload.action || '',
+    createdAt: now,
+  });
+
+  runInBackground(
+    addChatMessages(rows)
+      .then(() => {
+        if (payload.action !== 'data_answer' || question.length < MIN_QUESTION_FOR_BRAIN) return;
+        return ingest({
+          sourceType: 'chat',
+          sourceId: msgId,
+          title: 'Hội thoại với trợ lý',
+          text: `Hỏi: ${question}\nĐáp: ${payload.reply || ''}`,
+          visibility: memberId, // chat cá nhân — chỉ chính chủ (và giám đốc) tra được
+        });
+      })
+      .catch((e) => console.warn('[chat] lưu lịch sử:', e)),
+  );
+}
+
 chatRouter.post(
   '/',
   asyncHandler(async (req, res) => {
     const b = bodySchema.parse(req.body);
     const memberId = req.user!.sub;
 
+    // Mọi lối ra của handler đi qua đây: trả response rồi lưu lịch sử chat chạy nền.
+    // Câu hỏi-đáp về dữ liệu còn được nạp vào kho tri thức để lần sau tra lại được.
+    const send = (payload: ChatReply): void => {
+      res.json(payload);
+      saveChatTurn(memberId, b.message, payload);
+      autoBackfill(); // kho tự đầy dần khi mọi người dùng app — không ai phải bấm nút
+    };
+
     // 1a) Người dùng xác nhận HOÀN THÀNH NGAY một task được gợi ý.
     if (b.confirmTaskCode) {
       const { task, points } = await logTask({ memberId, taskCode: b.confirmTaskCode, note: b.note, source: 'chat' });
-      res.json({ reply: `Đã ghi nhận "${taskTitle(task)}" (+${points}đ). 💪`, action: 'task_logged', task });
+      send({ reply: `Đã ghi nhận "${taskTitle(task)}" (+${points}đ). 💪`, action: 'task_logged', task });
       return;
     }
 
     // 1b) Người dùng xác nhận BẮT ĐẦU một task.
     if (b.confirmStartTaskCode) {
       const { task } = await startTask({ memberId, taskCode: b.confirmStartTaskCode, note: b.note, source: 'chat' });
-      res.json({
+      send({
         reply: `▶️ Đã bắt đầu "${taskTitle(task)}" lúc ${fmtHm(task.startedAt)}. Xong việc bấm nút "⏳ Đang làm" bên dưới để hoàn thành & nhận +${task.points}đ nhé.`,
         action: 'task_started',
         task,
@@ -70,7 +131,7 @@ chatRouter.post(
         assigneeId: b.assigneeId,
         taskName: b.assignTaskName,
       });
-      res.json({
+      send({
         reply: `📌 Đã giao "${task.taskName}" cho ${task.memberName}. Họ sẽ thấy ở mục "Cần làm", chọn loại việc rồi bắt đầu.`,
         action: 'task_assigned',
         task,
@@ -89,19 +150,19 @@ chatRouter.post(
     if (me && ASSIGN_ROLES.has(me.role) && mentions.length > 0) {
       const assignee = await findByLogin(mentions[0]!);
       if (!assignee || !assignee.active) {
-        res.json({ reply: `Không tìm thấy người dùng @${mentions[0]}. Gõ @ rồi chọn tên trong danh sách nhé.`, action: 'help' });
+        send({ reply: `Không tìm thấy người dùng @${mentions[0]}. Gõ @ rồi chọn tên trong danh sách nhé.`, action: 'help' });
         return;
       }
       if (!canAssign(me, assignee)) {
-        res.json({ reply: `Bạn không có quyền giao việc cho ${assignee.fullName}.`, action: 'help' });
+        send({ reply: `Bạn không có quyền giao việc cho ${assignee.fullName}.`, action: 'help' });
         return;
       }
       const taskText = b.message.replace(/@[a-zA-Z0-9_.]+/g, ' ').replace(/\s+/g, ' ').trim();
       if (!taskText) {
-        res.json({ reply: `Nhập nội dung việc cần giao cho ${assignee.fullName}, vd "@${assignee.username} viết bài SEO sản phẩm A".`, action: 'help' });
+        send({ reply: `Nhập nội dung việc cần giao cho ${assignee.fullName}, vd "@${assignee.username} viết bài SEO sản phẩm A".`, action: 'help' });
         return;
       }
-      res.json({
+      send({
         reply: `Giao việc "${taskText}" cho ${assignee.fullName}? Bấm xác nhận để giao.`,
         action: 'confirm_assign',
         suggestion: { taskName: taskText },
@@ -113,7 +174,7 @@ chatRouter.post(
     // 1e) Giám đốc/Admin (không @tag ai) → hỏi-đáp dữ liệu hệ thống bằng AI.
     if (me && (me.role === 'director' || me.role === 'admin') && b.message.trim()) {
       const answer = await answerDataQuestion(b.message, b.history as ChatTurn[]);
-      res.json({ reply: answer, action: 'data_answer' });
+      send({ reply: answer, action: 'data_answer' });
       return;
     }
 
@@ -123,7 +184,7 @@ chatRouter.post(
     if (x.intent === 'start_task' && x.taskCode) {
       const item = await findCatalogItem(x.taskCode);
       if (item) {
-        res.json({
+        send({
           reply: `Bắt đầu làm "${item.name}" từ bây giờ? (+${item.points}đ khi hoàn thành)`,
           action: 'confirm_start',
           suggestion: { taskCode: item.code, taskName: item.name, points: item.points, note: x.note || '' },
@@ -136,7 +197,7 @@ chatRouter.post(
     if (x.intent === 'log_task' && x.taskCode) {
       const item = await findCatalogItem(x.taskCode);
       if (item) {
-        res.json({
+        send({
           reply: `Bạn vừa hoàn thành "${item.name}" (+${item.points}đ)? Bấm xác nhận để ghi nhận nhé.`,
           action: 'confirm_task',
           suggestion: { taskCode: item.code, taskName: item.name, points: item.points, note: x.note || '' },
@@ -149,12 +210,12 @@ chatRouter.post(
     if (x.intent === 'query_stats') {
       const answer = await answerMemberQuestion(memberId, b.message, b.history as ChatTurn[]);
       if (answer) {
-        res.json({ reply: answer, action: 'data_answer' });
+        send({ reply: answer, action: 'data_answer' });
         return;
       }
       // AI chưa cấu hình → trả con số cố định như cũ.
       const s = await memberScore(memberId);
-      res.json({
+      send({
         reply: `Tháng này bạn được ${s.monthPoints}đ (hôm nay +${s.todayPoints}đ). Thưởng hiện tại: ${formatVnd(s.bonus)}. ⏱ Giờ làm hôm nay: ${formatMinutes(s.workMinutesToday)}.`,
         action: 'stats',
         score: s,
@@ -166,11 +227,11 @@ chatRouter.post(
     if (b.message.trim()) {
       const answer = await answerMemberQuestion(memberId, b.message, b.history as ChatTurn[]);
       if (answer) {
-        res.json({ reply: answer, action: 'data_answer' });
+        send({ reply: answer, action: 'data_answer' });
         return;
       }
     }
-    res.json({
+    send({
       reply:
         x.reply ||
         'Mình có thể: bắt đầu task ("bắt đầu lên ads"), ghi nhận task đã xong ("đã đăng bài page"), hoặc xem điểm/thưởng/giờ làm. Bạn cần gì?',

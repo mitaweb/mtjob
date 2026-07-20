@@ -10,6 +10,8 @@ import { getParties, getEntries } from './finance.repo.js';
 import { getDoneTasksForMemberRange } from './tasks.repo.js';
 import { getActiveCatalog } from './catalog.repo.js';
 import { getProvider, aiAvailable } from '../ai/index.js';
+import { searchKnowledgeText } from './brain.service.js';
+import { getCustomers } from './crm.repo.js';
 import type { GeminiContent, GeminiPart } from '../gemini/client.js';
 import { todayIso, nowTz, monthRange } from '../lib/datetime.js';
 import { formatVnd } from '../lib/money.js';
@@ -42,6 +44,32 @@ function argMonth(args: Record<string, unknown>): { year: number; month: number 
   const year = Number(args.year) || cur.year;
   const month = Number(args.month) || cur.month;
   return { year, month };
+}
+
+/** Tool tra kho tri thức — dùng chung cho cả hai vai, khác nhau ở phạm vi quyền xem. */
+function knowledgeTool(scope: { directorScope: boolean; memberId?: string }): ToolDef {
+  return {
+    declaration: {
+      name: 'search_knowledge',
+      description:
+        'Tìm trong kho tri thức nội bộ: lưu ý khách hàng, hồ sơ CRM, lịch hẹn, ghi chú công việc, tài liệu, hội thoại cũ. ' +
+        'Dùng khi câu hỏi liên quan tới khách hàng, dự án, hoặc thông tin không có trong các hàm khác.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          query: { type: 'STRING', description: 'Câu tìm kiếm bằng tiếng Việt tự nhiên.' },
+          customer: { type: 'STRING', description: 'Lọc theo tên khách hàng (tuỳ chọn).' },
+        },
+        required: ['query'],
+      },
+    },
+    run: (a) =>
+      searchKnowledgeText(String(a.query || ''), {
+        directorScope: scope.directorScope,
+        memberId: scope.memberId,
+        customer: String(a.customer || ''),
+      }),
+  };
 }
 
 const MONTH_PARAMS = {
@@ -319,6 +347,35 @@ export async function answerDataQuestion(question: string, history: ChatTurn[] =
         return `${hit.fullName}:\n${await memberTasksText(hit.id, year, month)}`;
       },
     },
+    // Số điện thoại khách KHÔNG nằm trong kho tri thức (nhân viên tra được kho) —
+    // chỉ giám đốc/admin lấy được qua hàm riêng này.
+    {
+      declaration: {
+        name: 'get_customer_contact',
+        description: 'Số điện thoại và người phụ trách của một khách hàng.',
+        parameters: {
+          type: 'OBJECT',
+          properties: { name: { type: 'STRING', description: 'Tên (hoặc một phần tên) khách hàng.' } },
+          required: ['name'],
+        },
+      },
+      run: async (a) => {
+        const needle = removeAccents(String(a.name || '')).toLowerCase();
+        if (!needle) return 'Chưa cho biết tên khách hàng.';
+        const hits = (await getCustomers()).filter((c) =>
+          removeAccents(c.name).toLowerCase().includes(needle),
+        );
+        if (hits.length === 0) return `Không tìm thấy khách hàng tên "${a.name}".`;
+        return hits
+          .slice(0, 5)
+          .map((c) => {
+            const owner = members.find((m) => m.id === c.assignedTo)?.fullName || 'chưa gán';
+            return `${c.name}: ${c.phone || 'chưa có SĐT'} · phụ trách: ${owner} · ${c.status}`;
+          })
+          .join('\n');
+      },
+    },
+    knowledgeTool({ directorScope: true }),
   ];
 
   const system = [
@@ -327,6 +384,9 @@ export async function answerDataQuestion(question: string, history: ChatTurn[] =
     'Dùng các hàm được cấp để lấy đúng dữ liệu cần thiết rồi trả lời NGẮN GỌN, chính xác, bằng tiếng Việt.',
     'CHỈ trả lời dựa trên dữ liệu lấy được từ hàm; thiếu dữ liệu thì nói rõ "dữ liệu hiện có chưa đủ".',
     'Câu hỏi về quá khứ (hôm qua, tháng trước…): tự quy đổi ra ngày/tháng cụ thể rồi truyền vào hàm.',
+    'Công ty có KHO TRI THỨC (search_knowledge) chứa lưu ý khách hàng, hồ sơ CRM, lịch hẹn, ghi chú việc,',
+    'tài liệu và hội thoại cũ. Câu hỏi liên quan khách hàng/dự án thì tra kho trước.',
+    'Khi trả lời dựa trên kho, ghi rõ nguồn và ngày (vd "theo lưu ý KH ngày 12/7").',
     `Danh sách nhân sự (để nhận diện tên trong câu hỏi): ${names}.`,
   ].join('\n');
 
@@ -399,14 +459,21 @@ export async function answerMemberQuestion(
       declaration: { name: 'get_task_catalog', description: 'Danh mục loại việc và điểm tương ứng.' },
       run: () => catalogText(),
     },
+    // Quyền xem chặn cứng ở tầng SQL: chỉ thấy đoạn 'all' + đoạn riêng của chính mình.
+    knowledgeTool({ directorScope: false, memberId }),
   ];
 
   const system = [
     'Bạn là trợ lý cá nhân trong app MTJOB của agency marketing MT Digital.',
     `Người hỏi: ${me.fullName} (team ${me.teamId || '—'}). Hôm nay là ${today}.`,
     'Dùng các hàm được cấp để lấy dữ liệu rồi trả lời NGẮN GỌN, thân thiện, bằng tiếng Việt.',
-    'Bạn CHỈ có dữ liệu của chính người hỏi. Nếu họ hỏi về người khác, lương người khác hay tài chính công ty,',
-    'từ chối khéo: "Mình chỉ xem được dữ liệu của bạn thôi nhé."',
+    'Về dữ liệu CÁ NHÂN (điểm, công, việc, đơn từ) bạn chỉ có dữ liệu của chính người hỏi.',
+    'Nếu họ hỏi điểm/lương/công của người khác, hoặc tài chính công ty, từ chối khéo:',
+    '"Mình chỉ xem được dữ liệu của bạn thôi nhé."',
+    'Ngoài ra công ty có KHO TRI THỨC (search_knowledge) chứa lưu ý khách hàng, hồ sơ CRM, lịch hẹn,',
+    'ghi chú công việc và tài liệu — đây là kiến thức dùng chung, cứ tra giúp họ khi hỏi về khách hàng/dự án.',
+    'Khi trả lời dựa trên kho, ghi rõ nguồn và ngày (vd "theo lưu ý KH ngày 12/7").',
+    'Kho KHÔNG chứa số điện thoại khách và số liệu tài chính; ai hỏi thì bảo liên hệ giám đốc.',
     'Câu hỏi về quá khứ (tháng trước…): tự quy đổi ra tháng cụ thể rồi truyền vào hàm.',
   ].join('\n');
 

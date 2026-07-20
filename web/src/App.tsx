@@ -16,6 +16,7 @@ const AdminPayroll = lazy(() => import('./pages/AdminPayroll'));
 const Finance = lazy(() => import('./pages/Finance'));
 const CRM = lazy(() => import('./pages/CRM'));
 const CustomerNotes = lazy(() => import('./pages/CustomerNotes'));
+const Brain = lazy(() => import('./pages/Brain'));
 const Requests = lazy(() => import('./pages/Requests'));
 const Approvals = lazy(() => import('./pages/Approvals'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -96,6 +97,7 @@ export default function App() {
           }
         />
         <Route path="/customer-notes" element={<CustomerNotes />} />
+        <Route path="/brain" element={<Brain />} />
         <Route path="/requests" element={<Requests />} />
         <Route path="/inbox" element={<Inbox />} />
         <Route path="/profile" element={<Profile />} />

@@ -17,6 +17,7 @@ import {
 } from './customerNotes.repo.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
+import { ingestInBackground, removeSource, htmlToText } from './brain.service.js';
 
 export const customerNotesRouter = Router();
 
@@ -118,6 +119,15 @@ customerNotesRouter.post(
       updatedName: req.user!.name,
     };
     await upsertNote(note);
+    // Nạp vào kho tri thức (chạy nền — sửa note thì nạp lại, không nhân bản).
+    ingestInBackground({
+      sourceType: 'customer_note',
+      sourceId: note.id,
+      title: `Lưu ý khách hàng${note.customer ? `: ${note.customer}` : ''}`,
+      text: htmlToText(note.content),
+      visibility: 'all',
+      customer: note.customer,
+    });
     res.json({ ok: true, id: note.id });
   }),
 );
@@ -150,6 +160,7 @@ customerNotesRouter.delete(
     const history = await getHistory(id);
     await deleteNote(id);
     await deleteHistory(id);
+    await removeSource('customer_note', id);
     const urls = new Set<string>(blobUrlsOf(note));
     for (const h of history) for (const u of blobUrlsOf({ content: h.content })) urls.add(u);
     if (urls.size) {

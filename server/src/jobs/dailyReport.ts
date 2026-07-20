@@ -12,8 +12,25 @@ import { formatVnd } from '../lib/money.js';
 import { formatMinutes } from '../lib/worktime.js';
 import { nextDueDateIso, daysUntil } from '../lib/finance.js';
 import { nowTz, todayIso, fmtDate, fmtHm } from '../lib/datetime.js';
+import { backfillPage } from '../modules/brain.service.js';
 
 const DUE_REMINDER_DAYS = 5;
+
+// Mỗi lượt job nạp tối đa ngần này mục vào kho tri thức (tránh chạy quá lâu/tốn quota).
+const BRAIN_MAX_PER_RUN = 300;
+
+/** Nạp dần dữ liệu cũ vào kho tri thức cho tới khi hết hoặc chạm hạn mức của lượt này. */
+async function sweepBrainBackfill(): Promise<void> {
+  let done = 0;
+  for (;;) {
+    const r = await backfillPage(30);
+    done += r.ingested;
+    if (r.ingested === 0 || r.remaining === 0 || done >= BRAIN_MAX_PER_RUN) {
+      if (done > 0) console.log(`[brain] job nạp ${done} mục, còn ${r.remaining}`);
+      return;
+    }
+  }
+}
 
 // Tối đa số việc liệt kê chi tiết trong báo cáo ngày (tránh body quá dài).
 const MAX_TASKS_IN_REPORT = 15;
@@ -140,4 +157,7 @@ export async function runDailyReports(): Promise<void> {
   // Nhắc thu tiền các bên sắp tới hạn + nhắc lịch hẹn khách ngày mai.
   await runFinanceReminders().catch((e) => console.error('[finance reminders]', e));
   await runAppointmentReminders().catch((e) => console.error('[appointment reminders]', e));
+
+  // Lưới an toàn cho kho tri thức: nạp nốt dữ liệu cũ/sót, kể cả khi app ít người dùng.
+  await sweepBrainBackfill().catch((e) => console.error('[brain backfill]', e));
 }

@@ -17,6 +17,7 @@ import {
 import { getActiveMembers } from './members.repo.js';
 import { newId } from '../util/id.js';
 import { nowTz, dayjs, TZ } from '../lib/datetime.js';
+import { ingestInBackground, removeSource } from './brain.service.js';
 
 /** datetime-local 'YYYY-MM-DDTHH:mm' (giờ VN) → ISO UTC; nếu đã là ISO thì giữ nguyên. */
 function toIsoVn(s: string): string {
@@ -59,6 +60,20 @@ crmRouter.post(
       createdAt: existing?.createdAt || nowTz().toISOString(),
     };
     await upsertCustomer(c);
+    // Nạp vào kho tri thức — KHÔNG kèm số điện thoại (nhân viên tra được kho; SĐT chỉ giám đốc xem).
+    ingestInBackground({
+      sourceType: 'customer',
+      sourceId: c.id,
+      title: `Hồ sơ khách hàng: ${c.name}`,
+      text: [
+        `Khách hàng: ${c.name}`,
+        c.status ? `Tình trạng: ${c.status}` : '',
+        c.info ? `Thông tin: ${c.info}` : '',
+        c.note ? `Ghi chú: ${c.note}` : '',
+      ].filter(Boolean).join('\n'),
+      visibility: 'all',
+      customer: c.name,
+    });
     res.json({ ok: true, id: c.id });
   }),
 );
@@ -67,6 +82,7 @@ crmRouter.delete(
   '/customers/:id',
   asyncHandler(async (req, res) => {
     await deleteCustomer(String(req.params.id));
+    await removeSource('customer', String(req.params.id));
     res.json({ ok: true });
   }),
 );
@@ -110,6 +126,16 @@ crmRouter.post(
       ownerId: b.ownerId || customer.assignedTo || req.user!.sub,
       done: false,
     });
+    if (b.note.trim()) {
+      ingestInBackground({
+        sourceType: 'appointment',
+        sourceId: id,
+        title: `Lịch hẹn: ${customer.name}`,
+        text: `Hẹn ${customer.name} lúc ${toIsoVn(b.at).slice(0, 16).replace('T', ' ')}: ${b.note}`,
+        visibility: 'all',
+        customer: customer.name,
+      });
+    }
     res.json({ ok: true, id });
   }),
 );
@@ -127,6 +153,7 @@ crmRouter.delete(
   '/appointments/:id',
   asyncHandler(async (req, res) => {
     await deleteAppointment(String(req.params.id));
+    await removeSource('appointment', String(req.params.id));
     res.json({ ok: true });
   }),
 );

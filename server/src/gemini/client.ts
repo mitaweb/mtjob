@@ -63,25 +63,30 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/** Header xác thực dùng chung cho mọi endpoint Gemini. */
+async function authHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (oauthConfigured()) {
+    headers['Authorization'] = `Bearer ${await getAccessToken()}`;
+    return headers;
+  }
+  const key = await configuredApiKey();
+  if (key) {
+    // Header thay vì ?key= trên URL: key trong URL dễ lọt vào log proxy/access log.
+    headers['x-goog-api-key'] = key;
+  } else if (process.env.GEMINI_BASE_URL) {
+    // Proxy cục bộ (vd cliproxyapi) tự lo xác thực — không cần key.
+  } else {
+    throw new Error('Gemini chưa cấu hình (dán API key trong Quản trị, hoặc OAuth/GEMINI_BASE_URL).');
+  }
+  return headers;
+}
+
 /** Gọi Gemini generateContent: timeout 25s + retry 1 lần khi 429/5xx/lỗi mạng. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function callApi(model: string, body: unknown): Promise<any> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const headers = await authHeaders();
   const url = `${baseUrl()}/models/${model}:generateContent`;
-
-  if (oauthConfigured()) {
-    headers['Authorization'] = `Bearer ${await getAccessToken()}`;
-  } else {
-    const key = await configuredApiKey();
-    if (key) {
-      // Header thay vì ?key= trên URL: key trong URL dễ lọt vào log proxy/access log.
-      headers['x-goog-api-key'] = key;
-    } else if (process.env.GEMINI_BASE_URL) {
-      // Proxy cục bộ (vd cliproxyapi) tự lo xác thực — không cần key.
-    } else {
-      throw new Error('Gemini chưa cấu hình (dán API key trong Quản trị, hoặc OAuth/GEMINI_BASE_URL).');
-    }
-  }
 
   for (let attempt = 0; ; attempt++) {
     const ac = new AbortController();
@@ -147,4 +152,71 @@ export async function generateJson(prompt: string, schema: unknown, model?: stri
 export async function generateText(prompt: string): Promise<string> {
   const parts = await generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
   return partsText(parts).trim();
+}
+
+// ── Embeddings cho kho tri thức ──
+// LUÔN dùng Gemini kể cả khi trợ lý đang chạy Claude (Anthropic không có API embeddings).
+
+const EMBED_MODEL = 'gemini-embedding-001';
+const EMBED_DIM = 768; // khớp cột vector(768) trong schema — đổi số này phải nạp lại toàn bộ kho
+const EMBED_BATCH = 100; // giới hạn của batchEmbedContents
+
+/** Kho tri thức cần API key thật: OAuth (scope retriever) và proxy có thể không phục vụ embedContent. */
+export async function embeddingsAvailable(): Promise<boolean> {
+  return !!(await configuredApiKey());
+}
+
+/** Chuẩn hoá vector về độ dài 1 (dim < 3072 không được Gemini chuẩn hoá sẵn). */
+function normalize(v: number[]): number[] {
+  let sum = 0;
+  for (const x of v) sum += x * x;
+  const len = Math.sqrt(sum);
+  return len > 0 ? v.map((x) => x / len) : v;
+}
+
+/**
+ * Mã hoá danh sách văn bản thành vector.
+ * taskType: 'RETRIEVAL_DOCUMENT' khi nạp kho, 'RETRIEVAL_QUERY' khi tìm kiếm.
+ */
+export async function embedTexts(
+  texts: string[],
+  taskType: 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY',
+): Promise<number[][]> {
+  if (texts.length === 0) return [];
+  const headers = await authHeaders();
+  const out: number[][] = [];
+
+  for (let i = 0; i < texts.length; i += EMBED_BATCH) {
+    const slice = texts.slice(i, i + EMBED_BATCH);
+    const body = {
+      requests: slice.map((text) => ({
+        model: `models/${EMBED_MODEL}`,
+        content: { parts: [{ text }] },
+        taskType,
+        outputDimensionality: EMBED_DIM,
+      })),
+    };
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
+    try {
+      const res = await fetch(`${baseUrl()}/models/${EMBED_MODEL}:batchEmbedContents`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: ac.signal,
+      });
+      if (!res.ok) {
+        throw new Error(`Gemini embed ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`);
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = (await res.json()) as any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vecs: number[][] = (data?.embeddings ?? []).map((e: any) => (e?.values ?? []) as number[]);
+      if (vecs.length !== slice.length) throw new Error('Gemini embed trả về thiếu vector.');
+      out.push(...vecs.map(normalize));
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return out;
 }

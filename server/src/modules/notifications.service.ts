@@ -1,7 +1,7 @@
-import { waitUntil } from '@vercel/functions';
 import { addNotification, getSubscriptions, deleteSubscription } from './notifications.repo.js';
 import { sendPush } from '../push/webpush.js';
 import { newId } from '../util/id.js';
+import { runInBackground } from '../util/background.js';
 import { nowTz } from '../lib/datetime.js';
 
 export interface NotifyInput {
@@ -9,15 +9,6 @@ export interface NotifyInput {
   title: string;
   body: string;
   url?: string;
-}
-
-/** Giữ promise sống sau khi response đã trả (Vercel); local thì cứ chạy nền bình thường. */
-function runInBackground(p: Promise<unknown>): void {
-  try {
-    waitUntil(p);
-  } catch {
-    // Ngoài môi trường Vercel: promise vẫn chạy trên event loop của process dài hạn.
-  }
 }
 
 /** Fan-out một notification tới mọi push subscription của thành viên. */
