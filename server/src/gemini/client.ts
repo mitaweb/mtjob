@@ -158,6 +158,30 @@ export async function generateText(prompt: string): Promise<string> {
   return partsText(parts).trim();
 }
 
+export interface ModelOption {
+  id: string;
+  label: string;
+}
+
+/** Danh sách model Gemini dùng được (lấy thẳng từ API, không cài cứng trong code). */
+export async function listGeminiModels(): Promise<ModelOption[]> {
+  const headers = await authHeaders();
+  const res = await fetch(`${baseUrl()}/models?pageSize=200`, { headers });
+  if (!res.ok) {
+    throw new Error(`Không lấy được danh sách model (${res.status}): ${(await res.text().catch(() => '')).slice(0, 200)}`);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = (await res.json()) as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return ((data?.models ?? []) as any[])
+    .filter((m) => (m?.supportedGenerationMethods ?? []).includes('generateContent'))
+    .map((m) => {
+      const id = String(m.name || '').replace(/^models\//, '');
+      return { id, label: m.displayName ? `${m.displayName} (${id})` : id };
+    })
+    .filter((m) => m.id);
+}
+
 // ── Embeddings cho kho tri thức ──
 // LUÔN dùng Gemini kể cả khi trợ lý đang chạy Claude (Anthropic không có API embeddings).
 

@@ -149,6 +149,97 @@ adminRouter.post(
   }),
 );
 
+/**
+ * Kiểm tra kết nối thật: gọi thử từng thành phần rồi báo cái nào chạy, cái nào hỏng.
+ * Mỗi mục tự bắt lỗi để một cái hỏng không che mất kết quả các cái còn lại.
+ */
+adminRouter.post(
+  '/test-connection',
+  asyncHandler(async (_req, res) => {
+    interface Check {
+      name: string;
+      ok: boolean;
+      detail: string;
+    }
+    const checks: Check[] = [];
+    const run = async (name: string, fn: () => Promise<string>): Promise<void> => {
+      const t0 = Date.now();
+      try {
+        const detail = await fn();
+        checks.push({ name, ok: true, detail: `${detail} (${Date.now() - t0}ms)` });
+      } catch (e) {
+        checks.push({ name, ok: false, detail: (e as Error).message.slice(0, 300) });
+      }
+    };
+
+    await run('Cơ sở dữ liệu', async () => {
+      const { q } = await import('../db/client.js');
+      const rows = await q('SELECT COUNT(*) AS n FROM members');
+      return `Kết nối tốt — ${Number(rows[0]?.n) || 0} thành viên`;
+    });
+
+    await run('Bảng kho tri thức', async () => {
+      const { brainTableReady } = await import('./brain.repo.js');
+      if (!(await brainTableReady())) {
+        throw new Error('Chưa có bảng. Bấm nút Cập nhật cấu trúc DB ở trên.');
+      }
+      const { q } = await import('../db/client.js');
+      const rows = await q('SELECT COUNT(*) AS n FROM brain_chunks');
+      return `Sẵn sàng — ${Number(rows[0]?.n) || 0} mục trong kho`;
+    });
+
+    await run('Trợ lý AI', async () => {
+      const { getProvider, currentProviderName } = await import('../ai/index.js');
+      const provider = await getProvider();
+      const configured = await currentProviderName();
+      if (!provider) throw new Error(`Chưa cấu hình ${configured === 'claude' ? 'Claude' : 'Gemini'} (thiếu API key).`);
+      const parts = await provider.generateContent({
+        contents: [{ role: 'user', parts: [{ text: 'Trả lời đúng hai chữ: xin chào' }] }],
+      });
+      const text = parts.map((p) => p.text || '').join('').trim();
+      if (!text) throw new Error('Gọi được nhưng không nhận được nội dung trả lời.');
+      return `${provider.name === 'claude' ? 'Claude' : 'Gemini'} trả lời: "${text.slice(0, 60)}"`;
+    });
+
+    await run('Ghi nhớ kho tri thức (Gemini)', async () => {
+      const { embedTexts, embeddingsAvailable } = await import('../gemini/client.js');
+      if (!(await embeddingsAvailable())) {
+        throw new Error('Cần API key Gemini — phần ghi nhớ luôn dùng Gemini kể cả khi trợ lý chạy Claude.');
+      }
+      const [vec] = await embedTexts(['kiểm tra kết nối'], 'RETRIEVAL_QUERY');
+      if (!vec?.length) throw new Error('Không nhận được vector.');
+      return `Hoạt động — vector ${vec.length} chiều`;
+    });
+
+    await run('Lưu trữ tệp tải lên', async () => {
+      if (!process.env.mt_READ_WRITE_TOKEN) throw new Error('Thiếu token lưu trữ (mt_READ_WRITE_TOKEN).');
+      return 'Đã cấu hình';
+    });
+
+    res.json({ checks, allOk: checks.every((c) => c.ok) });
+  }),
+);
+
+/** Danh sách model lấy từ API của nhà cung cấp — không cài cứng trong code. */
+adminRouter.get(
+  '/ai-models',
+  asyncHandler(async (req, res) => {
+    const which = String(req.query.provider || '') === 'claude' ? 'claude' : 'gemini';
+    try {
+      if (which === 'claude') {
+        const { listClaudeModels } = await import('../ai/claude.js');
+        res.json({ provider: which, models: await listClaudeModels() });
+      } else {
+        const { listGeminiModels } = await import('../gemini/client.js');
+        res.json({ provider: which, models: await listGeminiModels() });
+      }
+    } catch (e) {
+      // Endpoint tuỳ biến có thể không hỗ trợ liệt kê model → UI cho gõ tay.
+      res.json({ provider: which, models: [], error: (e as Error).message.slice(0, 300) });
+    }
+  }),
+);
+
 /** Thông tin cấu hình Trợ lý AI cho UI Quản trị (không trả về key). */
 adminRouter.get(
   '/ai-info',

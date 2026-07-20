@@ -6,6 +6,70 @@ import type { User } from '../lib/types';
 
 type AdminMember = User & { active: boolean };
 
+/**
+ * Chọn model: danh sách lấy từ API của nhà cung cấp, nhưng vẫn gõ tay được
+ * (endpoint tuỳ biến có thể không hỗ trợ liệt kê model).
+ */
+function ModelPicker({
+  id,
+  value,
+  placeholder,
+  models,
+  loading,
+  error,
+  onRefresh,
+  onSave,
+}: {
+  id: string;
+  value: string;
+  placeholder: string;
+  models: Array<{ id: string; label: string }>;
+  loading: boolean;
+  error: string;
+  onRefresh: () => void;
+  onSave: (v: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+
+  return (
+    <div className="mt-3">
+      <label className="label" htmlFor={id}>
+        Model {loading ? '(đang lấy danh sách…)' : `(${models.length} model khả dụng)`}
+      </label>
+      <div className="flex flex-wrap gap-2">
+        <input
+          id={id}
+          className="input max-w-[24rem]"
+          list={`${id}-list`}
+          placeholder={placeholder}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && onSave(draft.trim())}
+        />
+        <datalist id={`${id}-list`}>
+          {models.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </datalist>
+        <AsyncButton className="btn-primary whitespace-nowrap" onClick={() => onSave(draft.trim())} busyLabel="Đang lưu…">
+          Lưu model
+        </AsyncButton>
+        <button className="btn-ghost whitespace-nowrap" onClick={onRefresh} disabled={loading}>
+          ↻ Tải lại danh sách
+        </button>
+      </div>
+      {error ? (
+        <p className="mt-1 text-xs text-amber-600">Không lấy được danh sách ({error}) — bạn gõ tên model trực tiếp nhé.</p>
+      ) : (
+        <p className="mt-1 text-xs text-slate-500">Bấm vào ô để chọn từ danh sách, hoặc gõ tên model bất kỳ.</p>
+      )}
+    </div>
+  );
+}
+
 export default function Admin() {
   const toast = useToast();
   const [members, setMembers] = useState<AdminMember[]>([]);
@@ -19,7 +83,22 @@ export default function Admin() {
   const [claudeKey, setClaudeKey] = useState('');
   const [claudeModel, setClaudeModel] = useState('');
   const [claudeBaseUrl, setClaudeBaseUrl] = useState('');
+  const [checks, setChecks] = useState<Check[] | null>(null);
+  const [models, setModels] = useState<ModelOption[]>([]);
+  const [modelsError, setModelsError] = useState('');
+  const [loadingModels, setLoadingModels] = useState(false);
   const [syncInfo, setSyncInfo] = useState<{ hrSheetUrl: string; taskSheetUrl: string }>({ hrSheetUrl: '', taskSheetUrl: '' });
+
+  interface Check {
+    name: string;
+    ok: boolean;
+    detail: string;
+  }
+
+  interface ModelOption {
+    id: string;
+    label: string;
+  }
 
   interface AiInfo {
     model: string;
@@ -48,6 +127,7 @@ export default function Admin() {
         setHasClaudeKey(!!r.hasClaudeKey);
         setClaudeModel(r.claudeModel || '');
         setClaudeBaseUrl(r.claudeBaseUrl || '');
+        loadModels(r.provider || 'gemini');
       })
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -58,12 +138,29 @@ export default function Admin() {
     setAiOn(!!h.env.gemini);
   }
 
+  /** Lấy danh sách model từ API của nhà cung cấp đang chọn. */
+  async function loadModels(which: 'gemini' | 'claude') {
+    setLoadingModels(true);
+    setModelsError('');
+    try {
+      const r = await api<{ models: ModelOption[]; error?: string }>(`/admin/ai-models?provider=${which}`);
+      setModels(r.models);
+      if (r.error) setModelsError(r.error);
+      else if (r.models.length === 0) setModelsError('Không có model nào được trả về.');
+    } catch (e) {
+      setModels([]);
+      setModelsError((e as Error).message);
+    } finally {
+      setLoadingModels(false);
+    }
+  }
+
   async function saveAiModel(value: string) {
     const prev = aiModel;
     setAiModel(value);
     try {
       await api('/admin/config', { body: { key: 'geminiModel', value } });
-      toast.success(value.includes('pro') ? 'Đã chuyển sang model Thông minh (pro).' : 'Đã chuyển sang model Nhanh (flash).');
+      toast.success(value ? `Đã chuyển sang ${value}.` : 'Dùng model mặc định (flash).');
     } catch (e) {
       setAiModel(prev);
       toast.error((e as Error).message);
@@ -77,6 +174,7 @@ export default function Admin() {
       await api('/admin/config', { body: { key: 'aiProvider', value } });
       toast.success(value === 'claude' ? 'Trợ lý đang dùng Claude.' : 'Trợ lý đang dùng Gemini.');
       await refreshAiStatus();
+      await loadModels(value); // model của mỗi nhà cung cấp khác nhau
     } catch (e) {
       setProvider(prev);
       toast.error((e as Error).message);
@@ -92,6 +190,7 @@ export default function Admin() {
       setHasClaudeKey(true);
       toast.success('Đã lưu API key Claude.');
       await refreshAiStatus();
+      await loadModels('claude'); // có key rồi mới liệt kê model được
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -102,7 +201,7 @@ export default function Admin() {
     setClaudeModel(value);
     try {
       await api('/admin/config', { body: { key: 'claudeModel', value } });
-      toast.success(value.includes('opus') ? 'Claude đang dùng Opus 4.8.' : 'Claude đang dùng Sonnet 5.');
+      toast.success(value ? `Claude đang dùng ${value}.` : 'Claude dùng model mặc định.');
     } catch (e) {
       setClaudeModel(prev);
       toast.error((e as Error).message);
@@ -114,6 +213,7 @@ export default function Admin() {
       await api('/admin/config', { body: { key: 'claudeBaseUrl', value: claudeBaseUrl.trim() } });
       toast.success(claudeBaseUrl.trim() ? 'Đã lưu địa chỉ endpoint.' : 'Đã trả về endpoint mặc định.');
       await refreshAiStatus();
+      await loadModels('claude'); // endpoint mới có thể phục vụ danh sách model khác
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -176,6 +276,19 @@ export default function Admin() {
       }
     } catch (e) {
       if (w && !w.closed) w.close();
+      toast.error((e as Error).message);
+    }
+  }
+
+  async function testConnection() {
+    setChecks(null);
+    try {
+      const r = await api<{ checks: Check[]; allOk: boolean }>('/admin/test-connection', { method: 'POST' });
+      setChecks(r.checks);
+      if (r.allOk) toast.success('Tất cả đều kết nối tốt ✓');
+      else toast.error('Có mục chưa kết nối được — xem chi tiết bên dưới.');
+      await refreshAiStatus();
+    } catch (e) {
       toast.error((e as Error).message);
     }
   }
@@ -251,8 +364,34 @@ export default function Admin() {
           <AsyncButton className="btn-ghost" onClick={migrateDb} busyLabel="Đang cập nhật…">
             🛠 Cập nhật cấu trúc DB
           </AsyncButton>
+          <AsyncButton className="btn-ghost" onClick={testConnection} busyLabel="Đang kiểm tra…">
+            🔌 Kiểm tra kết nối
+          </AsyncButton>
         </div>
       </div>
+
+      {/* Kết quả kiểm tra kết nối */}
+      {checks && (
+        <div className="card">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="font-semibold">Kết quả kiểm tra</h2>
+            <button className="text-xs text-slate-400 underline" onClick={() => setChecks(null)}>
+              đóng
+            </button>
+          </div>
+          <ul className="divide-y">
+            {checks.map((c) => (
+              <li key={c.name} className="flex items-start gap-2 py-2 text-sm">
+                <span className={c.ok ? 'text-emerald-600' : 'text-rose-600'}>{c.ok ? '✓' : '✕'}</span>
+                <div className="min-w-0">
+                  <div className="font-medium text-slate-800">{c.name}</div>
+                  <div className={`break-words ${c.ok ? 'text-slate-500' : 'text-rose-600'}`}>{c.detail}</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="card">
         <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -313,13 +452,16 @@ export default function Admin() {
                 </a>
               )}
             </div>
-            <div className="mt-3 flex items-center gap-2 flex-wrap">
-              <label className="label mb-0" htmlFor="ai-model">Model trả lời câu hỏi dữ liệu:</label>
-              <select id="ai-model" className="input max-w-[18rem]" value={aiModel} onChange={(e) => saveAiModel(e.target.value)}>
-                <option value="">Nhanh — Gemini Flash (mặc định)</option>
-                <option value="gemini-2.5-pro">Thông minh — Gemini Pro (chậm hơn, phân tích sâu hơn)</option>
-              </select>
-            </div>
+            <ModelPicker
+              id="ai-model"
+              value={aiModel}
+              placeholder="Để trống = mặc định (gemini-2.5-flash)"
+              models={models}
+              loading={loadingModels}
+              error={modelsError}
+              onRefresh={() => loadModels('gemini')}
+              onSave={saveAiModel}
+            />
           </div>
         ) : (
           <div className="mt-4 border-t border-slate-100 pt-3">
@@ -343,18 +485,16 @@ export default function Admin() {
                 Lưu key
               </AsyncButton>
             </div>
-            <div className="mt-3 flex items-center gap-2 flex-wrap">
-              <label className="label mb-0" htmlFor="claude-model">Model:</label>
-              <select
-                id="claude-model"
-                className="input max-w-[20rem]"
-                value={claudeModel}
-                onChange={(e) => saveClaudeModel(e.target.value)}
-              >
-                <option value="">Sonnet 5 — cân bằng (mặc định)</option>
-                <option value="claude-opus-4-8">Opus 4.8 — mạnh nhất, đắt hơn</option>
-              </select>
-            </div>
+            <ModelPicker
+              id="claude-model"
+              value={claudeModel}
+              placeholder="Để trống = mặc định (claude-sonnet-5)"
+              models={models}
+              loading={loadingModels}
+              error={modelsError}
+              onRefresh={() => loadModels('claude')}
+              onSave={saveClaudeModel}
+            />
             <div className="mt-3">
               <label className="label" htmlFor="claude-base">
                 Địa chỉ endpoint (tuỳ chọn — để trống dùng mặc định của Anthropic)

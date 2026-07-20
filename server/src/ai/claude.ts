@@ -168,4 +168,21 @@ async function generateContent(req: GenerateRequest): Promise<GeminiPart[]> {
   return toGeminiParts(res.content as any[]);
 }
 
+/** Danh sách model Claude lấy thẳng từ API (hoạt động với cả endpoint tuỳ biến nếu nó hỗ trợ). */
+export async function listClaudeModels(): Promise<Array<{ id: string; label: string }>> {
+  const { apiKey, baseUrl } = await cfg();
+  if (!apiKey) throw new Error('Chưa cấu hình API key Claude.');
+  const client = new Anthropic({
+    apiKey,
+    ...(baseUrl ? { baseURL: baseUrl.replace(/\/+$/, '') } : {}),
+    timeout: 15_000,
+    maxRetries: 1,
+  });
+  const res = await client.models.list({ limit: 100 });
+  return (res.data ?? []).map((m) => ({
+    id: m.id,
+    label: m.display_name ? `${m.display_name} (${m.id})` : m.id,
+  }));
+}
+
 export const claudeProvider: AiProvider = { name: 'claude', generateContent };
