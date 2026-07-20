@@ -280,6 +280,18 @@ CREATE TABLE IF NOT EXISTS brain_chunks (
 CREATE INDEX IF NOT EXISTS brain_chunks_source_idx ON brain_chunks (source_type, source_id);
 -- HNSW (không phải ivfflat): dựng tăng dần từ bảng rỗng, hợp với DDL idempotent chạy lại nhiều lần.
 CREATE INDEX IF NOT EXISTS brain_chunks_embedding_idx ON brain_chunks USING hnsw (embedding vector_cosine_ops);
+
+-- Hồ sơ 360° mỗi khách hàng: bản tổng hợp do AI viết từ MỌI nguồn nói về khách đó
+-- (lưu ý KH + hồ sơ CRM + lịch hẹn + ghi chú việc). Tránh cảnh thông tin bị xé lẻ.
+-- dirty = có dữ liệu mới về khách này, cần dựng lại hồ sơ ở lượt quét kế tiếp.
+CREATE TABLE IF NOT EXISTS brain_profiles (
+  customer_key text PRIMARY KEY,      -- tên khách đã chuẩn hoá (không dấu, chữ thường)
+  customer     text NOT NULL,         -- tên hiển thị
+  summary      text DEFAULT '',
+  dirty        boolean DEFAULT true,
+  built_at     text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS brain_profiles_dirty_idx ON brain_profiles (dirty);
 `;
 
 /** Seed rows for the config table (key/value). */

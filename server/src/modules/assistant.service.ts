@@ -10,7 +10,7 @@ import { getParties, getEntries } from './finance.repo.js';
 import { getDoneTasksForMemberRange } from './tasks.repo.js';
 import { getActiveCatalog } from './catalog.repo.js';
 import { getProvider, aiAvailable } from '../ai/index.js';
-import { searchKnowledgeText } from './brain.service.js';
+import { searchKnowledgeText, customerProfileText } from './brain.service.js';
 import { getCustomers } from './crm.repo.js';
 import type { GeminiContent, GeminiPart } from '../gemini/client.js';
 import { todayIso, nowTz, monthRange } from '../lib/datetime.js';
@@ -45,6 +45,26 @@ function argMonth(args: Record<string, unknown>): { year: number; month: number 
   const month = Number(args.month) || cur.month;
   return { year, month };
 }
+
+/**
+ * Hồ sơ 360° của khách: bản tổng hợp từ MỌI nguồn (lưu ý, CRM, lịch hẹn, việc đã làm).
+ * Hỏi về một khách cụ thể thì dùng hàm này trước — tránh cảnh tìm rời rạc bị sót thông tin.
+ */
+const PROFILE_TOOL: ToolDef = {
+  declaration: {
+    name: 'get_customer_profile',
+    description:
+      'Hồ sơ tổng hợp của MỘT khách hàng: tình trạng, người phụ trách, nhu cầu/ngân sách, ' +
+      'diễn biến theo thời gian, công việc đã làm, điểm cần theo dõi. ' +
+      'Dùng ĐẦU TIÊN khi câu hỏi nhắc tới tên một khách hàng cụ thể.',
+    parameters: {
+      type: 'OBJECT',
+      properties: { name: { type: 'STRING', description: 'Tên khách hàng.' } },
+      required: ['name'],
+    },
+  },
+  run: (a) => customerProfileText(String(a.name || '')),
+};
 
 /** Tool tra kho tri thức — dùng chung cho cả hai vai, khác nhau ở phạm vi quyền xem. */
 function knowledgeTool(scope: { directorScope: boolean; memberId?: string }): ToolDef {
@@ -375,6 +395,7 @@ export async function answerDataQuestion(question: string, history: ChatTurn[] =
           .join('\n');
       },
     },
+    PROFILE_TOOL,
     knowledgeTool({ directorScope: true }),
   ];
 
@@ -386,6 +407,7 @@ export async function answerDataQuestion(question: string, history: ChatTurn[] =
     'Câu hỏi về quá khứ (hôm qua, tháng trước…): tự quy đổi ra ngày/tháng cụ thể rồi truyền vào hàm.',
     'Công ty có KHO TRI THỨC (search_knowledge) chứa lưu ý khách hàng, hồ sơ CRM, lịch hẹn, ghi chú việc,',
     'tài liệu và hội thoại cũ. Câu hỏi liên quan khách hàng/dự án thì tra kho trước.',
+    'Hỏi về MỘT khách cụ thể: gọi get_customer_profile trước (đã tổng hợp sẵn), thiếu chi tiết mới tra thêm.',
     'Khi trả lời dựa trên kho, ghi rõ nguồn và ngày (vd "theo lưu ý KH ngày 12/7").',
     `Danh sách nhân sự (để nhận diện tên trong câu hỏi): ${names}.`,
   ].join('\n');
@@ -459,6 +481,7 @@ export async function answerMemberQuestion(
       declaration: { name: 'get_task_catalog', description: 'Danh mục loại việc và điểm tương ứng.' },
       run: () => catalogText(),
     },
+    PROFILE_TOOL,
     // Quyền xem chặn cứng ở tầng SQL: chỉ thấy đoạn 'all' + đoạn riêng của chính mình.
     knowledgeTool({ directorScope: false, memberId }),
   ];
@@ -472,6 +495,7 @@ export async function answerMemberQuestion(
     '"Mình chỉ xem được dữ liệu của bạn thôi nhé."',
     'Ngoài ra công ty có KHO TRI THỨC (search_knowledge) chứa lưu ý khách hàng, hồ sơ CRM, lịch hẹn,',
     'ghi chú công việc và tài liệu — đây là kiến thức dùng chung, cứ tra giúp họ khi hỏi về khách hàng/dự án.',
+    'Hỏi về MỘT khách cụ thể: gọi get_customer_profile trước (đã tổng hợp sẵn), thiếu chi tiết mới tra thêm.',
     'Khi trả lời dựa trên kho, ghi rõ nguồn và ngày (vd "theo lưu ý KH ngày 12/7").',
     'Kho KHÔNG chứa số điện thoại khách và số liệu tài chính; ai hỏi thì bảo liên hệ giám đốc.',
     'Câu hỏi về quá khứ (tháng trước…): tự quy đổi ra tháng cụ thể rồi truyền vào hàm.',

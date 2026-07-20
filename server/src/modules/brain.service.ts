@@ -1,6 +1,7 @@
 // Kho tri thức ("bộ não thứ hai"): cắt nội dung thành đoạn, mã hoá vector, tìm theo ngữ nghĩa.
 // Mọi thao tác nạp đều chạy nền và nuốt lỗi — KHÔNG được làm hỏng thao tác lưu dữ liệu gốc.
-import { embedTexts, embeddingsAvailable } from '../gemini/client.js';
+import { embedTexts, embeddingsAvailable, generateJson } from '../gemini/client.js';
+import { removeAccents } from '../lib/people.js';
 import {
   insertChunks,
   deleteBySource,
@@ -8,6 +9,11 @@ import {
   pendingSources,
   countPending,
   isMissingTable,
+  markProfileDirty,
+  listDirtyProfiles,
+  countDirtyProfiles,
+  saveProfile,
+  findProfiles,
   type NewChunk,
   type BrainHit,
 } from './brain.repo.js';
@@ -101,6 +107,8 @@ export async function ingest(input: IngestInput): Promise<number> {
     createdAt: now,
   }));
   await insertChunks(rows);
+  // Có dữ liệu mới về khách → hẹn dựng lại hồ sơ 360°. Bỏ qua chính chunk hồ sơ để khỏi lặp vô hạn.
+  if (input.customer && input.sourceType !== 'profile') markCustomerDirty(input.customer);
   return rows.length;
 }
 
@@ -274,6 +282,8 @@ export async function backfillPage(limit = 30): Promise<{ ingested: number; rema
         ingested++;
       }
     }
+    // Dựng lại hồ sơ khách có dữ liệu mới (sau khi các mảnh rời đã vào kho).
+    await rebuildDirtyProfiles(3);
     return { ingested, remaining: await countRemaining() };
   } catch (e) {
     if (isMissingTable(e)) return { ingested: 0, remaining: 0 }; // chờ bấm Cập nhật cấu trúc DB
@@ -284,7 +294,162 @@ export async function backfillPage(limit = 30): Promise<{ ingested: number; rema
 export async function countRemaining(): Promise<number> {
   let n = 0;
   for (const s of SOURCES) n += await countPending(s.table, s.idCol, s.sourceType, s.where);
-  return n;
+  return n + (await countDirtyProfiles());
+}
+
+// ── Hồ sơ 360° khách hàng ──
+// Thông tin về 1 khách nằm rải rác ở 4 nguồn; tìm theo ngữ nghĩa chỉ lấy được vài mảnh gần
+// câu hỏi nhất nên dễ sót. Hồ sơ là bản tổng hợp do AI viết từ TẤT CẢ nguồn của khách đó.
+
+/** Chuẩn hoá tên khách làm khoá (không dấu, chữ thường, gọn khoảng trắng). */
+export function customerKey(name: string): string {
+  return removeAccents(String(name || '')).toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** Đánh dấu khách có dữ liệu mới — gọi ở mọi điểm ghi liên quan tới khách. */
+export function markCustomerDirty(customer: string): void {
+  const key = customerKey(customer);
+  if (!key) return;
+  runInBackground(
+    markProfileDirty(key, customer.trim()).catch((e) => {
+      if (!isMissingTable(e)) console.warn('[brain] đánh dấu hồ sơ:', e);
+    }),
+  );
+}
+
+/** Gom MỌI dữ liệu đang có về một khách hàng thành văn bản thô. */
+async function gatherCustomerData(customer: string): Promise<string> {
+  const like = `%${customer.trim()}%`;
+  const [notes, crm, appts, tasks] = await Promise.all([
+    q('SELECT content, updated_at, created_at FROM customer_notes WHERE customer ILIKE $1 ORDER BY updated_at DESC LIMIT 20', [like]),
+    q('SELECT name, status, info, note, assigned_to FROM customers WHERE name ILIKE $1 LIMIT 5', [like]),
+    q('SELECT at, note, done FROM appointments WHERE customer_name ILIKE $1 ORDER BY at DESC LIMIT 20', [like]),
+    q("SELECT task_name, note, member_name, completed_at FROM tasks WHERE note ILIKE $1 AND status = 'done' ORDER BY completed_at DESC LIMIT 30", [like]),
+  ]);
+
+  const parts: string[] = [];
+  if (crm.length) {
+    parts.push(
+      'HỒ SƠ CRM:\n' +
+        crm.map((r) => [
+          `Tên: ${r.name}`,
+          r.status ? `Tình trạng: ${r.status}` : '',
+          r.info ? `Thông tin: ${r.info}` : '',
+          r.note ? `Ghi chú: ${r.note}` : '',
+        ].filter(Boolean).join(' · ')).join('\n'),
+    );
+  }
+  if (notes.length) {
+    parts.push(
+      'LƯU Ý KHÁCH HÀNG (mới nhất trước):\n' +
+        notes.map((r) => `[${String(r.updated_at || r.created_at || '').slice(0, 10)}] ${htmlToText(r.content || '').slice(0, 1500)}`).join('\n---\n'),
+    );
+  }
+  if (appts.length) {
+    parts.push(
+      'LỊCH HẸN:\n' +
+        appts.map((r) => `[${String(r.at || '').slice(0, 16).replace('T', ' ')}]${r.done ? ' (đã xong)' : ''} ${r.note || ''}`).join('\n'),
+    );
+  }
+  if (tasks.length) {
+    parts.push(
+      'CÔNG VIỆC ĐÃ LÀM:\n' +
+        tasks.map((r) => `[${String(r.completed_at || '').slice(0, 10)}] ${r.member_name}: ${r.task_name} — ${r.note || ''}`).join('\n'),
+    );
+  }
+  return parts.join('\n\n');
+}
+
+const PROFILE_SCHEMA = {
+  type: 'OBJECT',
+  properties: { summary: { type: 'STRING' } },
+  required: ['summary'],
+};
+
+/** Dựng lại hồ sơ 1 khách: gom dữ liệu → AI tổng hợp → lưu + nạp vào kho để tìm được. */
+export async function rebuildProfile(key: string, customer: string): Promise<boolean> {
+  const raw = await gatherCustomerData(customer);
+  const now = nowTz().toISOString();
+  if (!raw.trim()) {
+    // Không còn dữ liệu nào (khách đã xoá) → dọn hồ sơ cũ.
+    await saveProfile(key, customer, '', now);
+    await deleteBySource('profile', key);
+    return false;
+  }
+
+  const prompt = [
+    `Tổng hợp hồ sơ khách hàng "${customer}" cho một agency marketing, bằng tiếng Việt.`,
+    'Viết NGẮN GỌN theo các mục (bỏ mục nào không có dữ liệu, KHÔNG bịa):',
+    '- Tình trạng & người phụ trách',
+    '- Nhu cầu / dịch vụ quan tâm / ngân sách',
+    '- Diễn biến chính theo thời gian (ngày → sự việc)',
+    '- Công việc đã làm cho khách',
+    '- Điểm cần lưu ý / việc cần theo dõi tiếp',
+    'Tối đa khoảng 250 từ. Giữ nguyên con số và ngày tháng có trong dữ liệu.',
+    '',
+    'DỮ LIỆU:',
+    // Chặn độ dài đầu vào để không đội chi phí khi khách có quá nhiều ghi chú.
+    raw.slice(0, 12000),
+  ].join('\n');
+
+  // Dùng Gemini Flash: đây là việc tóm tắt, không cần model mạnh — giữ chi phí thấp
+  // kể cả khi trợ lý đang chạy model cao cấp.
+  const r = await generateJson(prompt, PROFILE_SCHEMA, 'gemini-2.5-flash');
+  const summary = String(r?.summary || '').trim();
+  if (!summary) return false;
+
+  await saveProfile(key, customer, summary, now);
+  await ingest({
+    sourceType: 'profile',
+    sourceId: key,
+    title: `Hồ sơ khách hàng: ${customer}`,
+    text: summary,
+    visibility: 'all',
+    customer,
+  });
+  return true;
+}
+
+/** Dựng lại các hồ sơ đang chờ (gọi từ lượt quét tự động + job hằng ngày). */
+export async function rebuildDirtyProfiles(limit = 3): Promise<number> {
+  if (!(await embeddingsAvailable())) return 0;
+  try {
+    const dirty = await listDirtyProfiles(limit);
+    let done = 0;
+    for (const p of dirty) {
+      try {
+        if (await rebuildProfile(p.key, p.customer)) done++;
+        else await saveProfile(p.key, p.customer, '', nowTz().toISOString()); // hết dirty, khỏi lặp lại
+      } catch (e) {
+        if (isMissingTable(e)) throw e;
+        console.warn('[brain] dựng hồ sơ lỗi', p.customer, e);
+        // Đánh dấu đã xử lý để 1 khách lỗi không chặn hàng đợi mãi.
+        await saveProfile(p.key, p.customer, p.summary, nowTz().toISOString()).catch(() => undefined);
+      }
+    }
+    return done;
+  } catch (e) {
+    if (isMissingTable(e)) return 0;
+    throw e;
+  }
+}
+
+/** Lấy hồ sơ theo tên gần đúng — cho tool của trợ lý. */
+export async function customerProfileText(name: string): Promise<string> {
+  const needle = customerKey(name);
+  if (!needle) return 'Chưa cho biết tên khách hàng.';
+  try {
+    const hits = await findProfiles(needle, 3);
+    if (hits.length === 0) {
+      return `Chưa có hồ sơ tổng hợp cho "${name}". Thử dùng search_knowledge để tìm các ghi chú rời.`;
+    }
+    return hits
+      .map((p) => `📋 HỒ SƠ: ${p.customer} (cập nhật ${p.builtAt.slice(0, 10)})\n${p.summary}`)
+      .join('\n\n');
+  } catch (e) {
+    if (isMissingTable(e)) return 'Kho tri thức chưa được khởi tạo (Quản trị → Cập nhật cấu trúc DB).';
+    throw e;
+  }
 }
 
 // Tự kích hoạt nạp dần: throttle theo instance để không quét liên tục.

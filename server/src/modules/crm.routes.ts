@@ -17,7 +17,7 @@ import {
 import { getActiveMembers } from './members.repo.js';
 import { newId } from '../util/id.js';
 import { nowTz, dayjs, TZ } from '../lib/datetime.js';
-import { ingestInBackground, removeSource } from './brain.service.js';
+import { ingestInBackground, removeSource, markCustomerDirty } from './brain.service.js';
 
 /** datetime-local 'YYYY-MM-DDTHH:mm' (giờ VN) → ISO UTC; nếu đã là ISO thì giữ nguyên. */
 function toIsoVn(s: string): string {
@@ -81,8 +81,11 @@ crmRouter.post(
 crmRouter.delete(
   '/customers/:id',
   asyncHandler(async (req, res) => {
+    const gone = await findCustomer(String(req.params.id));
     await deleteCustomer(String(req.params.id));
     await removeSource('customer', String(req.params.id));
+    // Lưu ý KH có thể vẫn nhắc tới khách này → dựng lại hồ sơ thay vì xoá thẳng.
+    if (gone?.name) markCustomerDirty(gone.name);
     res.json({ ok: true });
   }),
 );

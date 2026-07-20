@@ -12,7 +12,7 @@ import { formatVnd } from '../lib/money.js';
 import { formatMinutes } from '../lib/worktime.js';
 import { nextDueDateIso, daysUntil } from '../lib/finance.js';
 import { nowTz, todayIso, fmtDate, fmtHm } from '../lib/datetime.js';
-import { backfillPage } from '../modules/brain.service.js';
+import { backfillPage, rebuildDirtyProfiles } from '../modules/brain.service.js';
 
 const DUE_REMINDER_DAYS = 5;
 
@@ -25,11 +25,16 @@ async function sweepBrainBackfill(): Promise<void> {
   for (;;) {
     const r = await backfillPage(30);
     done += r.ingested;
-    if (r.ingested === 0 || r.remaining === 0 || done >= BRAIN_MAX_PER_RUN) {
-      if (done > 0) console.log(`[brain] job nạp ${done} mục, còn ${r.remaining}`);
-      return;
-    }
+    if (r.ingested === 0 || r.remaining === 0 || done >= BRAIN_MAX_PER_RUN) break;
   }
+  // Dựng nốt hồ sơ 360° của các khách còn chờ (backfillPage mỗi lượt chỉ dựng 3 hồ sơ).
+  let profiles = 0;
+  for (let i = 0; i < 20; i++) {
+    const n = await rebuildDirtyProfiles(3);
+    if (n === 0) break;
+    profiles += n;
+  }
+  if (done > 0 || profiles > 0) console.log(`[brain] job nạp ${done} mục, dựng ${profiles} hồ sơ khách`);
 }
 
 // Tối đa số việc liệt kê chi tiết trong báo cáo ngày (tránh body quá dài).

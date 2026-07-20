@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../util/errors.js';
 import { requireAuth } from '../auth/middleware.js';
-import { browseChunks, statsBySource, deleteChunk, brainTableReady } from './brain.repo.js';
+import { browseChunks, statsBySource, deleteChunk, brainTableReady, listProfiles } from './brain.repo.js';
 import { backfillPage, countRemaining, brainAvailable } from './brain.service.js';
 
 export const brainRouter = Router();
@@ -45,6 +45,18 @@ brainRouter.get(
       bySource,
       remaining,
     });
+  }),
+);
+
+/** Hồ sơ 360° các khách hàng đã tổng hợp — cho trang Kho tri thức. */
+brainRouter.get(
+  '/profiles',
+  asyncHandler(async (_req, res) => {
+    if (!(await brainTableReady())) {
+      res.json({ profiles: [] });
+      return;
+    }
+    res.json({ profiles: await listProfiles(100) });
   }),
 );
 

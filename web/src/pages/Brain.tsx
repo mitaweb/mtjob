@@ -23,7 +23,15 @@ interface Stats {
   remaining: number;
 }
 
+interface Profile {
+  key: string;
+  customer: string;
+  summary: string;
+  builtAt: string;
+}
+
 const SOURCE_VI: Record<string, string> = {
+  profile: 'Hồ sơ khách (tổng hợp)',
   customer_note: 'Lưu ý khách hàng',
   customer: 'Hồ sơ khách hàng',
   appointment: 'Lịch hẹn',
@@ -33,6 +41,7 @@ const SOURCE_VI: Record<string, string> = {
 };
 
 const SOURCE_VARIANT: Record<string, BadgeVariant> = {
+  profile: 'success',
   customer_note: 'info',
   customer: 'success',
   appointment: 'warn',
@@ -53,6 +62,8 @@ function body(content: string): string {
 export default function Brain() {
   const toast = useToast();
   const [stats, setStats] = useState<Stats | null>(null);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [openProfile, setOpenProfile] = useState<string | null>(null);
   const [chunks, setChunks] = useState<Chunk[]>([]);
   const [canDelete, setCanDelete] = useState(false);
   const [keyword, setKeyword] = useState('');
@@ -61,7 +72,12 @@ export default function Brain() {
   const [open, setOpen] = useState<string | null>(null);
 
   async function loadStats() {
-    setStats(await api<Stats>('/brain/stats'));
+    const [s, p] = await Promise.all([
+      api<Stats>('/brain/stats'),
+      api<{ profiles: Profile[] }>('/brain/profiles'),
+    ]);
+    setStats(s);
+    setProfiles(p.profiles);
   }
   async function loadChunks() {
     const params = new URLSearchParams();
@@ -175,6 +191,37 @@ export default function Brain() {
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Hồ sơ 360° — AI tự tổng hợp mọi thứ biết về từng khách */}
+      {profiles.length > 0 && (
+        <div className="card">
+          <h2 className="font-semibold">📋 Hồ sơ khách hàng ({profiles.length})</h2>
+          <p className="mb-3 text-sm text-slate-500">
+            Bản tổng hợp tự động từ lưu ý, hồ sơ CRM, lịch hẹn và công việc đã làm. Trợ lý dùng bản này
+            để trả lời khi anh hỏi về một khách cụ thể.
+          </p>
+          <ul className="divide-y">
+            {profiles.map((p) => (
+              <li key={p.key} className="py-2">
+                <button
+                  className="flex w-full items-center justify-between gap-2 text-left"
+                  onClick={() => setOpenProfile(openProfile === p.key ? null : p.key)}
+                >
+                  <span className="font-medium text-slate-800">{p.customer}</span>
+                  <span className="whitespace-nowrap text-xs text-slate-400">
+                    cập nhật {fmtD(p.builtAt)} {openProfile === p.key ? '▲' : '▼'}
+                  </span>
+                </button>
+                {openProfile === p.key && (
+                  <p className="mt-2 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
+                    {p.summary}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

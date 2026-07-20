@@ -174,6 +174,74 @@ export async function pendingSources(
   return rows.map((r) => String(r.id || ''));
 }
 
+// ── Hồ sơ 360° khách hàng ──
+
+export interface CustomerProfile {
+  key: string;
+  customer: string;
+  summary: string;
+  dirty: boolean;
+  builtAt: string;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToProfile(r: any): CustomerProfile {
+  return {
+    key: r.customer_key || '',
+    customer: r.customer || '',
+    summary: r.summary || '',
+    dirty: !!r.dirty,
+    builtAt: r.built_at || '',
+  };
+}
+
+/** Đánh dấu khách có dữ liệu mới → lượt quét kế tiếp sẽ dựng lại hồ sơ. */
+export async function markProfileDirty(key: string, customer: string): Promise<void> {
+  await q(
+    `INSERT INTO brain_profiles (customer_key, customer, dirty) VALUES ($1,$2,true)
+     ON CONFLICT (customer_key) DO UPDATE SET dirty = true, customer = EXCLUDED.customer`,
+    [key, customer],
+  );
+}
+
+export async function listDirtyProfiles(limit: number): Promise<CustomerProfile[]> {
+  const rows = await q('SELECT * FROM brain_profiles WHERE dirty = true LIMIT $1', [limit]);
+  return rows.map(rowToProfile);
+}
+
+export async function countDirtyProfiles(): Promise<number> {
+  const rows = await q('SELECT COUNT(*) AS n FROM brain_profiles WHERE dirty = true');
+  return Number(rows[0]?.n) || 0;
+}
+
+export async function saveProfile(key: string, customer: string, summary: string, builtAt: string): Promise<void> {
+  await q(
+    `INSERT INTO brain_profiles (customer_key, customer, summary, dirty, built_at) VALUES ($1,$2,$3,false,$4)
+     ON CONFLICT (customer_key) DO UPDATE SET
+       customer = EXCLUDED.customer, summary = EXCLUDED.summary, dirty = false, built_at = EXCLUDED.built_at`,
+    [key, customer, summary, builtAt],
+  );
+}
+
+/** Tìm hồ sơ theo tên gần đúng (khách "ba spa" khớp "Ba Spa Quận 7"). */
+export async function findProfiles(needle: string, limit = 3): Promise<CustomerProfile[]> {
+  const rows = await q(
+    `SELECT * FROM brain_profiles
+     WHERE customer_key ILIKE '%' || $1 || '%' AND summary <> ''
+     ORDER BY length(customer_key) LIMIT $2`,
+    [needle, limit],
+  );
+  return rows.map(rowToProfile);
+}
+
+export async function listProfiles(limit = 100): Promise<CustomerProfile[]> {
+  const rows = await q(
+    "SELECT * FROM brain_profiles WHERE summary <> '' ORDER BY customer LIMIT $1",
+    [limit],
+  );
+  return rows.map(rowToProfile);
+}
+
 /** Tổng số nguồn còn chờ nạp (hiển thị tiến độ). */
 export async function countPending(
   table: string,
