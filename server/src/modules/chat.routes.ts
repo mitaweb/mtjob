@@ -6,7 +6,12 @@ import { interpret } from '../gemini/chatNlu.js';
 import { getActiveCatalog, findCatalogItem, sortCatalogForTeam } from './catalog.repo.js';
 import { findById, findByLogin } from './members.repo.js';
 import { logTask, startTask, assignTask, canAssign } from './tasks.service.js';
-import { answerDataQuestion, answerMemberQuestion, type ChatTurn } from './assistant.service.js';
+import {
+  answerDataQuestion,
+  answerMemberQuestion,
+  type ChatTurn,
+  type OnAssistantEvent,
+} from './assistant.service.js';
 import { taskTitle } from '../lib/tasks.js';
 import { looksLikeQuestion } from '../lib/question.js';
 import { removeAccents } from '../lib/people.js';
@@ -100,16 +105,24 @@ function saveChatTurn(memberId: string, userText: string, payload: ChatReply): v
   runInBackground(addChatMessages(rows).catch((e) => console.warn('[chat] lưu lịch sử:', e)));
 }
 
-chatRouter.post(
-  '/',
-  asyncHandler(async (req, res) => {
-    const b = bodySchema.parse(req.body);
-    const memberId = req.user!.sub;
+type ChatBody = z.infer<typeof bodySchema>;
 
-    // Mọi lối ra của handler đi qua đây: trả response rồi lưu lịch sử chat chạy nền.
-    // Câu hỏi-đáp về dữ liệu còn được nạp vào kho tri thức để lần sau tra lại được.
+/**
+ * Toàn bộ logic chat, dùng chung cho cả hai đường:
+ *  - POST /api/chat        → gom lại rồi trả JSON một lần
+ *  - POST /api/chat/stream → phát sự kiện SSE, chữ hiện dần
+ * `emit` nhận payload cuối cùng; `onEvent` (nếu có) nhận tiến trình + từng mẩu chữ.
+ */
+async function runChat(
+  memberId: string,
+  b: ChatBody,
+  emit: (payload: ChatReply) => void,
+  onEvent?: OnAssistantEvent,
+): Promise<void> {
+  {
+    // Mọi lối ra đi qua đây: trả kết quả rồi lưu lịch sử chat chạy nền.
     const send = (payload: ChatReply): void => {
-      res.json(payload);
+      emit(payload);
       saveChatTurn(memberId, b.message, payload);
       autoBackfill(); // kho tự đầy dần khi mọi người dùng app — không ai phải bấm nút
       sweepRemindersOpportunistic(); // lối lui khi chưa gắn cron ngoài cho nhắc hẹn
@@ -182,7 +195,7 @@ chatRouter.post(
 
     // 1e) Giám đốc/Admin (không @tag ai) → hỏi-đáp dữ liệu hệ thống bằng AI.
     if (me && (me.role === 'director' || me.role === 'admin') && b.message.trim()) {
-      const answer = await answerDataQuestion(memberId, b.message, b.history as ChatTurn[]);
+      const answer = await answerDataQuestion(memberId, b.message, b.history as ChatTurn[], onEvent);
       send({ reply: answer, action: 'data_answer' });
       return;
     }
@@ -190,7 +203,7 @@ chatRouter.post(
     // 1f) Nhân viên ĐẶT CÂU HỎI → trả lời thẳng bằng AI, KHÔNG đưa qua bộ nhận diện ghi việc
     // (nếu không, "đã đăng bài page chưa?" sẽ bị hiểu thành báo đã đăng bài).
     if (b.message.trim() && looksLikeQuestion(b.message)) {
-      const answer = await answerMemberQuestion(memberId, b.message, b.history as ChatTurn[]);
+      const answer = await answerMemberQuestion(memberId, b.message, b.history as ChatTurn[], onEvent);
       if (answer) {
         send({ reply: answer, action: 'data_answer' });
         return;
@@ -233,7 +246,7 @@ chatRouter.post(
 
     // 4) Hỏi về dữ liệu cá nhân (điểm/công/việc/đơn từ) → AI tự tra dữ liệu CỦA CHÍNH MÌNH.
     if (x.intent === 'query_stats') {
-      const answer = await answerMemberQuestion(memberId, b.message, b.history as ChatTurn[]);
+      const answer = await answerMemberQuestion(memberId, b.message, b.history as ChatTurn[], onEvent);
       if (answer) {
         send({ reply: answer, action: 'data_answer' });
         return;
@@ -250,7 +263,7 @@ chatRouter.post(
 
     // 5) Câu hỏi tự do → trợ lý cá nhân (AI); chưa cấu hình AI thì trả hướng dẫn như cũ.
     if (b.message.trim()) {
-      const answer = await answerMemberQuestion(memberId, b.message, b.history as ChatTurn[]);
+      const answer = await answerMemberQuestion(memberId, b.message, b.history as ChatTurn[], onEvent);
       if (answer) {
         send({ reply: answer, action: 'data_answer' });
         return;
@@ -263,5 +276,48 @@ chatRouter.post(
       action: 'help',
       catalog,
     });
+  }
+}
+
+// Đường thường: trả JSON một lần. Dùng cho các nút xác nhận và làm lối lui khi stream hỏng.
+chatRouter.post(
+  '/',
+  asyncHandler(async (req, res) => {
+    const b = bodySchema.parse(req.body);
+    await runChat(req.user!.sub, b, (payload) => res.json(payload));
+  }),
+);
+
+/**
+ * Đường stream (SSE): chữ hiện dần + báo đang tra hàm nào.
+ * Sự kiện: {type:'tool'|'text'|'done'|'error'}. Frontend tự rơi về POST /api/chat nếu hỏng.
+ */
+chatRouter.post(
+  '/stream',
+  asyncHandler(async (req, res) => {
+    const b = bodySchema.parse(req.body);
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // chặn proxy gom buffer làm mất tác dụng stream
+    res.flushHeaders?.();
+
+    const write = (ev: Record<string, unknown>): void => {
+      res.write(`data: ${JSON.stringify(ev)}\n\n`);
+    };
+
+    try {
+      await runChat(
+        req.user!.sub,
+        b,
+        (payload) => write({ type: 'done', payload }),
+        (ev) => write(ev),
+      );
+    } catch (e) {
+      console.error('[chat stream]', e);
+      write({ type: 'error', message: (e as Error).message });
+    } finally {
+      res.end();
+    }
   }),
 );

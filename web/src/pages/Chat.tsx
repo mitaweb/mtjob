@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { api, cachedGet } from '../lib/api';
+import { api, apiStream, cachedGet } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
 import Reminders from '../components/Reminders';
 import { useToast } from '../components/Toaster';
@@ -28,7 +28,27 @@ interface Msg {
   res?: ChatResponse;
   question?: string; // câu hỏi dẫn tới câu trả lời này — dùng khi lưu vào kho
   saved?: boolean; // đã chốt vào kho tri thức chưa
+  streaming?: boolean; // đang viết dở, sẽ thay bằng bản hoàn chỉnh khi xong
 }
+
+/** Tên hàm trợ lý đang chạy → câu tiếng Việt hiện lúc chờ. */
+const TOOL_VI: Record<string, string> = {
+  get_customer_profile: 'Đang xem hồ sơ khách hàng',
+  search_knowledge: 'Đang tra kho tri thức',
+  get_roster: 'Đang xem danh sách nhân sự',
+  get_attendance: 'Đang xem chấm công',
+  get_ranking: 'Đang xem bảng điểm',
+  get_pending_requests: 'Đang xem đơn chờ duyệt',
+  get_finance_summary: 'Đang xem thu chi',
+  get_member_tasks: 'Đang xem công việc',
+  get_customer_contact: 'Đang tra liên hệ khách',
+  get_my_score: 'Đang xem điểm của bạn',
+  get_my_attendance: 'Đang xem chấm công của bạn',
+  get_my_tasks: 'Đang xem việc của bạn',
+  get_my_requests: 'Đang xem đơn từ của bạn',
+  get_task_catalog: 'Đang xem danh mục việc',
+  create_reminder: 'Đang đặt nhắc hẹn',
+};
 
 const ASSIGN_ROLES = ['leader', 'director', 'admin'];
 const DATA_ROLES = ['director', 'admin'];
@@ -99,8 +119,11 @@ function RichText({ text }: { text: string }) {
   return <>{blocks}</>;
 }
 
-/** Trạng thái chờ: đổi chữ theo thời gian cho khớp các giai đoạn trợ lý đang chạy. */
-function ThinkingBubble() {
+/**
+ * Trạng thái chờ. Ưu tiên `stage` — việc trợ lý ĐANG làm thật (máy chủ đẩy về qua stream);
+ * chưa có thì đoán theo thời gian.
+ */
+function ThinkingBubble({ stage }: { stage?: string }) {
   const [phase, setPhase] = useState(0);
   useEffect(() => {
     const t1 = setTimeout(() => setPhase(1), 2500);
@@ -110,7 +133,8 @@ function ThinkingBubble() {
       clearTimeout(t2);
     };
   }, []);
-  const label = phase === 0 ? 'Đang đọc câu hỏi' : phase === 1 ? 'Đang tra dữ liệu' : 'Đang tổng hợp câu trả lời';
+  const guessed = phase === 0 ? 'Đang đọc câu hỏi' : phase === 1 ? 'Đang tra dữ liệu' : 'Đang tổng hợp câu trả lời';
+  const label = stage || guessed;
   return (
     <div className="flex justify-start">
       <div className="flex max-w-[85%] items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-slate-500">
@@ -187,6 +211,7 @@ export default function Chat() {
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [startingTodo, setStartingTodo] = useState<TodoTask | null>(null);
   const [pickQuery, setPickQuery] = useState('');
+  const [stage, setStage] = useState(''); // việc trợ lý đang làm, hiện lúc chờ
   const [showReminders, setShowReminders] = useState(false);
   const [savingIdx, setSavingIdx] = useState<number | null>(null); // đang mở ô lưu vào kho
   const [saveTitle, setSaveTitle] = useState('');
@@ -253,18 +278,60 @@ export default function Chat() {
 
   async function send(message: string, extra: Record<string, unknown> = {}) {
     setBusy(true);
+    setStage('');
+    // Gửi kèm 10 lượt gần nhất để AI hiểu câu hỏi nối tiếp ("còn tháng 5 thì sao?").
+    const history = msgs
+      .slice(-10)
+      .map((m) => ({ role: m.role === 'user' ? 'user' : 'model', text: m.text.slice(0, 2000) }));
+    const body = { message, history, ...extra };
+
+    const finish = (res: ChatResponse, text?: string) => {
+      setMsgs((m) => {
+        // Nếu đã dựng bong bóng lúc stream thì thay tại chỗ, không thêm bong bóng mới.
+        const last = m[m.length - 1];
+        const bubble: Msg = { role: 'bot', text: text ?? res.reply, res, question: message };
+        return last?.streaming ? [...m.slice(0, -1), bubble] : [...m, bubble];
+      });
+    };
+
     try {
-      // Gửi kèm 10 lượt gần nhất để AI hiểu câu hỏi nối tiếp ("còn tháng 5 thì sao?").
-      const history = msgs
-        .slice(-10)
-        .map((m) => ({ role: m.role === 'user' ? 'user' : 'model', text: m.text.slice(0, 2000) }));
-      const res = await api<ChatResponse>('/chat', { body: { message, history, ...extra } });
-      setMsgs((m) => [...m, { role: 'bot', text: res.reply, res, question: message }]);
-      if (res.action === 'task_started' || res.action === 'task_logged') await loadDoing();
-    } catch (e) {
-      setMsgs((m) => [...m, { role: 'bot', text: `⚠️ ${(e as Error).message}` }]);
+      let streamed = '';
+      let gotEvent = false;
+      await apiStream('/chat/stream', body, (ev) => {
+        gotEvent = true;
+        if (ev.type === 'tool') {
+          setStage(TOOL_VI[ev.name || ''] || 'Đang tra dữ liệu');
+        } else if (ev.type === 'text' && ev.delta) {
+          streamed += ev.delta;
+          setStage('');
+          // Cập nhật dần bong bóng đang viết.
+          setMsgs((m) => {
+            const last = m[m.length - 1];
+            if (last?.streaming) return [...m.slice(0, -1), { ...last, text: streamed }];
+            return [...m, { role: 'bot', text: streamed, streaming: true }];
+          });
+        } else if (ev.type === 'done') {
+          const res = ev.payload as ChatResponse;
+          finish(res, streamed || res.reply);
+          if (res.action === 'task_started' || res.action === 'task_logged') void loadDoing();
+        } else if (ev.type === 'error') {
+          throw new Error(ev.message || 'Lỗi không rõ');
+        }
+      });
+      if (!gotEvent) throw new Error('Không nhận được dữ liệu');
+    } catch {
+      // Stream hỏng (endpoint không hỗ trợ, mạng đứt…) → gọi lại đường thường để không mất câu trả lời.
+      try {
+        setMsgs((m) => (m[m.length - 1]?.streaming ? m.slice(0, -1) : m));
+        const res = await api<ChatResponse>('/chat', { body });
+        setMsgs((m) => [...m, { role: 'bot', text: res.reply, res, question: message }]);
+        if (res.action === 'task_started' || res.action === 'task_logged') await loadDoing();
+      } catch (e2) {
+        setMsgs((m) => [...m, { role: 'bot', text: `⚠️ ${(e2 as Error).message}` }]);
+      }
     } finally {
       setBusy(false);
+      setStage('');
     }
   }
 
@@ -455,7 +522,8 @@ export default function Chat() {
             </div>
           </div>
         ))}
-        {busy && <ThinkingBubble />}
+        {/* Đang stream chữ rồi thì thôi hiện ô chờ — bong bóng đang tự lớn dần. */}
+        {busy && !msgs[msgs.length - 1]?.streaming && <ThinkingBubble stage={stage} />}
         <div ref={endRef} />
       </div>
 

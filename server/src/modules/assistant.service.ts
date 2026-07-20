@@ -287,11 +287,19 @@ async function catalogText(): Promise<string> {
 
 // ── Vòng lặp function-calling ──
 
+/** Sự kiện phát ra trong lúc trợ lý làm việc — để màn hình hiện tiến trình và chữ dần. */
+export type AssistantEvent =
+  | { type: 'tool'; name: string } // đang chạy hàm nào
+  | { type: 'text'; delta: string }; // một mẩu chữ AI vừa viết
+
+export type OnAssistantEvent = (ev: AssistantEvent) => void;
+
 async function runToolLoop(opts: {
   system: string;
   question: string;
   history: ChatTurn[];
   tools: ToolDef[];
+  onEvent?: OnAssistantEvent;
 }): Promise<string> {
   const byName = new Map(opts.tools.map((t) => [t.declaration.name, t]));
 
@@ -314,8 +322,16 @@ async function runToolLoop(opts: {
   const provider = await getProvider();
   if (!provider) throw new Error('Chưa cấu hình trợ lý AI.');
 
+  // Chỉ stream khi caller cần và nhà cung cấp hỗ trợ; không thì gọi thường như cũ.
+  const wantStream = !!opts.onEvent && !!provider.generateContentStream;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const call = (req: any): Promise<GeminiPart[]> =>
+    wantStream
+      ? provider.generateContentStream!(req, (d) => opts.onEvent!({ type: 'text', delta: d }))
+      : provider.generateContent(req);
+
   for (let round = 0; round < MAX_ROUNDS; round++) {
-    const parts = await provider.generateContent({ contents, tools, systemInstruction });
+    const parts = await call({ contents, tools, systemInstruction });
     const calls = parts.filter((p) => p.functionCall);
     if (calls.length === 0) {
       return parts.map((p) => p.text || '').join('').trim();
@@ -324,6 +340,7 @@ async function runToolLoop(opts: {
     const responses: GeminiPart[] = await Promise.all(
       calls.map(async (p) => {
         const fc = p.functionCall!;
+        opts.onEvent?.({ type: 'tool', name: fc.name });
         const tool = byName.get(fc.name);
         let result: unknown;
         try {
@@ -339,7 +356,7 @@ async function runToolLoop(opts: {
 
   // Chạm giới hạn vòng gọi hàm → yêu cầu trả lời với dữ liệu đã có (không đưa tools nữa).
   contents.push({ role: 'user', parts: [{ text: 'Hãy trả lời ngay dựa trên dữ liệu đã truy vấn được.' }] });
-  const parts = await provider.generateContent({ contents, systemInstruction });
+  const parts = await call({ contents, systemInstruction });
   return parts.map((p) => p.text || '').join('').trim();
 }
 
@@ -353,6 +370,7 @@ export async function answerDataQuestion(
   memberId: string,
   question: string,
   history: ChatTurn[] = [],
+  onEvent?: OnAssistantEvent,
 ): Promise<string> {
   if (!(await aiAvailable())) {
     return 'Tính năng hỏi dữ liệu cần bật Trợ lý AI. Vào Quản trị → chọn nhà cung cấp và dán API key là dùng được ngay.';
@@ -502,7 +520,7 @@ export async function answerDataQuestion(
   ].join('\n');
 
   try {
-    const answer = await runToolLoop({ system, question, history, tools });
+    const answer = await runToolLoop({ system, question, history, tools, onEvent });
     return answer || 'Mình chưa tạo được câu trả lời, thử hỏi lại cụ thể hơn nhé.';
   } catch (e) {
     console.error('[assistant] director Q&A:', e);
@@ -522,6 +540,7 @@ export async function answerMemberQuestion(
   memberId: string,
   question: string,
   history: ChatTurn[] = [],
+  onEvent?: OnAssistantEvent,
 ): Promise<string | null> {
   if (!(await aiAvailable())) return null;
   const me = await findById(memberId);
@@ -603,7 +622,7 @@ export async function answerMemberQuestion(
   ].join('\n');
 
   try {
-    const answer = await runToolLoop({ system, question, history, tools });
+    const answer = await runToolLoop({ system, question, history, tools, onEvent });
     return answer || 'Mình chưa tạo được câu trả lời, thử hỏi lại cụ thể hơn nhé.';
   } catch (e) {
     console.error('[assistant] member Q&A:', e);

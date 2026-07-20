@@ -141,6 +141,79 @@ function partsText(parts: GeminiPart[]): string {
   return parts.map((p) => p.text || '').join('');
 }
 
+/**
+ * Như generateContent nhưng bắn từng mẩu chữ qua onDelta trong lúc AI viết.
+ * Dùng endpoint :streamGenerateContent?alt=sse, gộp các mẩu lại rồi trả về
+ * ĐÚNG shape của generateContent để vòng lặp gọi hàm dùng chung được.
+ */
+export async function generateContentStream(
+  req: GenerateRequest,
+  onDelta: (delta: string) => void,
+): Promise<GeminiPart[]> {
+  const model = req.model || (await geminiModel());
+  const headers = await authHeaders();
+  const body: Record<string, unknown> = { contents: req.contents };
+  if (req.tools) body.tools = req.tools;
+  if (req.systemInstruction) body.systemInstruction = req.systemInstruction;
+  if (req.generationConfig) body.generationConfig = req.generationConfig;
+
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), req.timeoutMs ?? TIMEOUT_MS);
+  try {
+    const res = await fetch(`${baseUrl()}/models/${model}:streamGenerateContent?alt=sse`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: ac.signal,
+    });
+    if (!res.ok || !res.body) {
+      throw new Error(`Gemini ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let text = ''; // gộp chữ để trả về cuối cùng
+    const calls: GeminiPart[] = [];
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      // SSE: mỗi sự kiện là một dòng "data: {...}", cách nhau bằng dòng trống.
+      const lines = buf.split('\n');
+      buf = lines.pop() ?? ''; // giữ lại phần chưa trọn dòng
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith('data:')) continue;
+        const payload = t.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const chunk = JSON.parse(payload) as any;
+          for (const p of chunk?.candidates?.[0]?.content?.parts ?? []) {
+            if (p?.text) {
+              text += p.text;
+              onDelta(p.text);
+            } else if (p?.functionCall) {
+              calls.push({ functionCall: p.functionCall });
+            }
+          }
+        } catch {
+          // Mẩu JSON hỏng — bỏ qua, không làm chết cả luồng.
+        }
+      }
+    }
+
+    const out: GeminiPart[] = [];
+    if (text) out.push({ text });
+    out.push(...calls);
+    return out;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Ask Gemini for a JSON object matching `schema` (responseSchema). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function generateJson(prompt: string, schema: unknown, model?: string): Promise<any> {

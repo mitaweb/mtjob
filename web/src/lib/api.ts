@@ -42,6 +42,55 @@ export async function cachedGet<T = unknown>(path: string, ttlMs = 5 * 60_000): 
   return data;
 }
 
+/** Sự kiện máy chủ đẩy về trong lúc trợ lý làm việc. */
+export interface StreamEvent {
+  type: 'tool' | 'text' | 'done' | 'error';
+  name?: string; // type=tool: tên hàm đang chạy
+  delta?: string; // type=text: mẩu chữ mới
+  message?: string; // type=error
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  payload?: any; // type=done: kết quả cuối cùng
+}
+
+/**
+ * Gọi API dạng SSE, gọi onEvent cho từng sự kiện. Ném lỗi nếu không mở được stream
+ * để caller rơi về đường thường.
+ */
+export async function apiStream(
+  path: string,
+  body: unknown,
+  onEvent: (ev: StreamEvent) => void,
+): Promise<void> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE}/api${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
+  if (!res.ok || !res.body) {
+    if (res.status === 401) setToken(null);
+    throw new Error(`Không mở được kết nối (${res.status})`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop() ?? ''; // giữ lại phần chưa trọn dòng
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t.startsWith('data:')) continue;
+      try {
+        onEvent(JSON.parse(t.slice(5).trim()) as StreamEvent);
+      } catch {
+        // Mẩu JSON hỏng — bỏ qua, không làm chết cả luồng.
+      }
+    }
+  }
+}
+
 export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Promise<T> {
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;

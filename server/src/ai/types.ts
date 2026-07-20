@@ -7,10 +7,19 @@ import type { GenerateRequest, GeminiPart } from '../gemini/client.js';
 
 export type AiProviderName = 'gemini' | 'claude';
 
+/** Nhận từng mẩu chữ khi AI đang viết, để hiện dần trên màn hình. */
+export type TextDeltaHandler = (delta: string) => void;
+
 export interface AiProvider {
   name: AiProviderName;
   /** Hội thoại nhiều lượt + function calling. Trả về parts của candidate đầu. */
   generateContent(req: GenerateRequest): Promise<GeminiPart[]>;
+  /**
+   * Như generateContent nhưng bắn từng mẩu chữ qua onDelta trong lúc AI viết.
+   * Trả về ĐÚNG shape của generateContent nên vòng lặp gọi hàm dùng chung được.
+   * Tuỳ chọn: endpoint không hỗ trợ stream thì bỏ qua, caller tự rơi về generateContent.
+   */
+  generateContentStream?(req: GenerateRequest, onDelta: TextDeltaHandler): Promise<GeminiPart[]>;
 }
 
 /** Khai báo 1 hàm cho AI gọi (định dạng Gemini — provider tự chuyển đổi). */

@@ -132,7 +132,9 @@ export function toGeminiParts(content: any[]): GeminiPart[] {
   return parts;
 }
 
-async function generateContent(req: GenerateRequest): Promise<GeminiPart[]> {
+/** Dựng client + body Messages API từ request kiểu Gemini — dùng chung cho gọi thường và stream. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function buildRequest(req: GenerateRequest): Promise<{ client: Anthropic; body: any }> {
   const { apiKey, model, baseUrl } = await cfg();
   if (!apiKey) throw new Error('Claude chưa cấu hình (dán API key trong Quản trị).');
 
@@ -159,7 +161,11 @@ async function generateContent(req: GenerateRequest): Promise<GeminiPart[]> {
   if (system) body.system = system;
   const tools = toClaudeTools(req.tools);
   if (tools) body.tools = tools;
+  return { client, body };
+}
 
+async function generateContent(req: GenerateRequest): Promise<GeminiPart[]> {
+  const { client, body } = await buildRequest(req);
   const res = await client.messages.create(body);
   if (res.stop_reason === 'refusal') {
     throw new Error('Claude đã từ chối trả lời câu hỏi này.');
@@ -185,4 +191,17 @@ export async function listClaudeModels(): Promise<Array<{ id: string; label: str
   }));
 }
 
-export const claudeProvider: AiProvider = { name: 'claude', generateContent };
+/** Như generateContent nhưng bắn từng mẩu chữ ra ngoài trong lúc Claude viết. */
+async function generateContentStream(req: GenerateRequest, onDelta: (d: string) => void): Promise<GeminiPart[]> {
+  const { client, body } = await buildRequest(req);
+  const stream = client.messages.stream(body);
+  stream.on('text', (delta: string) => {
+    if (delta) onDelta(delta);
+  });
+  const final = await stream.finalMessage();
+  if (final.stop_reason === 'refusal') throw new Error('Claude đã từ chối trả lời câu hỏi này.');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return toGeminiParts(final.content as any[]);
+}
+
+export const claudeProvider: AiProvider = { name: 'claude', generateContent, generateContentStream };
