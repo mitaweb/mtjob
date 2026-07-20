@@ -8,6 +8,8 @@ import {
   type GeminiPart,
 } from '../gemini/client.js';
 import { removeAccents } from '../lib/people.js';
+import { parseSheetUrl, sheetCsvUrl, rowsToLabeledText } from '../lib/table.js';
+import { parseCsv } from './admin.sync.js';
 import {
   insertChunks,
   deleteBySource,
@@ -445,6 +447,51 @@ export async function customerProfileText(name: string): Promise<string> {
   }
 }
 
+// ── Nhập bảng từ Google Sheets ──
+
+/**
+ * Đọc một sheet công khai rồi nạp vào kho. Mỗi HÀNG thành một dòng tự chứa kèm tên cột
+ * (xem lib/table.ts) nên cắt đoạn kiểu gì cũng không đứt quan hệ hàng–cột.
+ * Sheet phải share "Anyone with the link – Viewer" — đây cũng là cách app đọc sheet nhân sự.
+ */
+export async function importGoogleSheet(input: {
+  url: string;
+  title?: string;
+  customer?: string;
+}): Promise<{ ok: boolean; message: string; rows?: number }> {
+  const parsed = parseSheetUrl(input.url);
+  if (!parsed) return { ok: false, message: 'Link không phải Google Sheets.' };
+  if (!(await embeddingsAvailable())) return { ok: false, message: 'Kho tri thức cần API key Gemini.' };
+
+  const res = await fetch(sheetCsvUrl(parsed.id, parsed.gid), { redirect: 'follow' });
+  if (!res.ok) {
+    return {
+      ok: false,
+      message: `Không đọc được sheet (lỗi ${res.status}). Mở sheet → Share → "Anyone with the link" → Viewer rồi thử lại.`,
+    };
+  }
+  const text = await res.text();
+  if (/<html/i.test(text.slice(0, 300))) {
+    return { ok: false, message: 'Sheet chưa share công khai nên không tải được. Hãy share ở chế độ "Anyone with the link – Viewer".' };
+  }
+
+  const rows = parseCsv(text);
+  const body = rowsToLabeledText(rows);
+  if (!body.trim()) return { ok: false, message: 'Sheet không có dữ liệu.' };
+
+  const title = (input.title || '').trim() || 'Bảng từ Google Sheets';
+  // sourceId theo id+gid → nhập lại cùng sheet là CẬP NHẬT, không nhân bản.
+  await ingest({
+    sourceType: 'sheet',
+    sourceId: `${parsed.id}-${parsed.gid}`,
+    title,
+    text: body,
+    visibility: 'all',
+    customer: (input.customer || '').trim(),
+  });
+  return { ok: true, message: `Đã nạp "${title}" vào kho tri thức.`, rows: Math.max(0, rows.length - 1) };
+}
+
 // ── Tài liệu tải lên: AI đọc rồi nạp nội dung vào kho ──
 
 const DOC_TIMEOUT_MS = 50_000; // response đã trả rồi, waitUntil giữ hàm sống tới 60s
@@ -471,6 +518,23 @@ export async function processDocument(docId: string): Promise<void> {
       'sau đó xuống dòng và viết "TÓM TẮT:" kèm 3-5 ý chính.',
       'Trả lời bằng tiếng Việt. KHÔNG bịa thêm thông tin không có trong tài liệu.',
     ].join('\n');
+
+    // CSV (Excel xuất ra) xử lý riêng: mỗi hàng thành một dòng tự chứa kèm tên cột.
+    // Nhờ vậy cắt đoạn không làm đứt quan hệ hàng–cột, và KHÔNG tốn lượt gọi AI.
+    if (doc.mime === 'text/csv' || /\.csv$/i.test(doc.name)) {
+      const body = rowsToLabeledText(parseCsv(buf.toString('utf8')));
+      if (!body.trim()) throw new Error('Tệp CSV không có dữ liệu.');
+      await ingest({
+        sourceType: 'document',
+        sourceId: doc.id,
+        title: `Tài liệu: ${doc.name}`,
+        text: body,
+        visibility: 'all',
+        customer: doc.customer,
+      });
+      await finishDocument(doc.id, body, nowTz().toISOString());
+      return;
+    }
 
     // text/* thì đọc thẳng, khỏi tốn token cho ảnh hoá.
     const parts: GeminiPart[] = doc.mime.startsWith('text/')

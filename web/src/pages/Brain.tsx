@@ -45,6 +45,7 @@ interface Stats {
 
 const SOURCE_VI: Record<string, string> = {
   note: 'Chốt từ hội thoại',
+  sheet: 'Bảng từ Google Sheets',
   profile: 'Hồ sơ khách (tổng hợp)',
   customer_note: 'Lưu ý khách hàng',
   customer: 'Hồ sơ khách hàng',
@@ -56,6 +57,7 @@ const SOURCE_VI: Record<string, string> = {
 
 const SOURCE_VARIANT: Record<string, BadgeVariant> = {
   note: 'info',
+  sheet: 'warn',
   profile: 'success',
   customer_note: 'info',
   customer: 'success',
@@ -297,6 +299,10 @@ export default function Brain() {
               onChange={(e) => setDocCustomer(e.target.value)}
             />
           </div>
+          <p className="w-full text-xs text-slate-500">
+            Excel/Google Sheets: dán link sheet thẳng cho trợ lý (“cập nhật sheet này vào kho”) hoặc xuất ra
+            CSV rồi tải lên — dữ liệu bảng giữ được quan hệ hàng–cột nên tra cứu chính xác hơn PDF.
+          </p>
           <input
             ref={fileRef}
             type="file"

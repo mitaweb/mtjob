@@ -10,7 +10,7 @@ import { getParties, getEntries } from './finance.repo.js';
 import { getDoneTasksForMemberRange } from './tasks.repo.js';
 import { getActiveCatalog } from './catalog.repo.js';
 import { getProvider, aiAvailable } from '../ai/index.js';
-import { searchKnowledgeText, customerProfileText } from './brain.service.js';
+import { searchKnowledgeText, customerProfileText, importGoogleSheet, ingest } from './brain.service.js';
 import { getCustomers } from './crm.repo.js';
 import { addReminder } from './reminders.repo.js';
 import { describeRule, type RepeatKind } from '../lib/reminder.js';
@@ -128,6 +128,70 @@ function reminderTool(memberId: string): ToolDef {
     },
   };
 }
+
+/**
+ * Nạp bảng từ Google Sheets vào kho. Sheet được đọc MỘT LẦN rồi lưu thành chữ + vector;
+ * các lần hỏi sau chỉ tra kho, không mở lại sheet.
+ */
+const SHEET_TOOL: ToolDef = {
+  declaration: {
+    name: 'import_google_sheet',
+    description:
+      'Nạp nội dung một Google Sheets (kế hoạch content, bảng giá, danh sách…) vào kho tri thức. ' +
+      'Dùng khi người dùng dán link docs.google.com/spreadsheets và bảo cập nhật/lưu vào kho. ' +
+      'Sheet phải được share ở chế độ ai có link cũng xem được.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        url: { type: 'STRING', description: 'Link Google Sheets người dùng đưa.' },
+        title: { type: 'STRING', description: 'Tên gợi nhớ, vd "Kế hoạch content Quốc Phong tháng 7".' },
+        customer: { type: 'STRING', description: 'Tên khách hàng liên quan (nếu có).' },
+      },
+      required: ['url'],
+    },
+  },
+  run: async (a) => {
+    const r = await importGoogleSheet({
+      url: String(a.url || ''),
+      title: String(a.title || ''),
+      customer: String(a.customer || ''),
+    });
+    return r.ok ? `${r.message} (${r.rows ?? 0} hàng dữ liệu)` : r.message;
+  },
+};
+
+/** Cho AI tự lưu kết luận vào kho khi người dùng bảo "ghi lại", "cập nhật vào kho". */
+const SAVE_TOOL: ToolDef = {
+  declaration: {
+    name: 'save_to_knowledge',
+    description:
+      'Lưu một nội dung vào kho tri thức để lần sau tra lại được. ' +
+      'Dùng khi người dùng bảo "ghi lại cái này", "lưu vào kho", hoặc vừa chốt một quy trình/quyết định.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        title: { type: 'STRING', description: 'Tiêu đề ngắn gọn.' },
+        content: { type: 'STRING', description: 'Nội dung đầy đủ cần nhớ, viết rõ ràng và tự chứa.' },
+        customer: { type: 'STRING', description: 'Tên khách hàng liên quan (nếu có).' },
+      },
+      required: ['title', 'content'],
+    },
+  },
+  run: async (a) => {
+    const title = String(a.title || '').trim();
+    const content = String(a.content || '').trim();
+    if (!title || content.length < 10) return 'Cần tiêu đề và nội dung đủ dài để lưu.';
+    const n = await ingest({
+      sourceType: 'note',
+      sourceId: newId('N-'),
+      title,
+      text: content,
+      visibility: 'all',
+      customer: String(a.customer || '').trim(),
+    });
+    return n > 0 ? `Đã lưu "${title}" vào kho tri thức.` : 'Chưa lưu được (kho tri thức cần API key Gemini).';
+  },
+};
 
 /** Tool tra kho tri thức — dùng chung cho cả hai vai, khác nhau ở phạm vi quyền xem. */
 function knowledgeTool(scope: { directorScope: boolean; memberId?: string }): ToolDef {
@@ -486,6 +550,8 @@ export async function answerDataQuestion(
     PROFILE_TOOL,
     knowledgeTool({ directorScope: true }),
     reminderTool(memberId),
+    SHEET_TOOL,
+    SAVE_TOOL,
   ];
 
   const system = [
@@ -595,6 +661,8 @@ export async function answerMemberQuestion(
     // Quyền xem chặn cứng ở tầng SQL: chỉ thấy đoạn 'all' + đoạn riêng của chính mình.
     knowledgeTool({ directorScope: false, memberId }),
     reminderTool(memberId),
+    SHEET_TOOL,
+    SAVE_TOOL,
   ];
 
   const system = [
