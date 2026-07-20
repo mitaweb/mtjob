@@ -28,7 +28,7 @@ const DATA_ROLES = ['director', 'admin'];
 
 function greeting(role?: string): string {
   if (role && DATA_ROLES.includes(role))
-    return 'Chào sếp! 📌 Giao việc: gõ @tên người + mô tả việc (vd "@nam lên ads cho SP A"). 📊 Hỏi dữ liệu: "hôm nay ai chưa chấm công", "ai điểm cao nhất tháng này", "đơn nào đang chờ duyệt", "tổng phải thu bao nhiêu".';
+    return 'Chào sếp! Em giúp được:\n📊 Hỏi dữ liệu — "hôm nay ai chưa chấm công?", "ai điểm cao nhất tháng này?", "tổng phải thu bao nhiêu?"\n🧠 Thông tin khách — "khách X Salon tình hình sao rồi?"\n✍️ Tư vấn chuyên môn — "X Salon ngày mai nên đăng bài gì?", "kế hoạch content tháng 8"\n📌 Giao việc — gõ @tên người + mô tả việc';
   if (role === 'leader')
     return 'Chào bạn! 📌 Giao việc: gõ @tên người + mô tả việc. ▶️ Ghi nhận task. 💬 Hỏi mình bất cứ điều gì: dữ liệu của bạn, thông tin khách hàng, hay nhờ viết content/ý tưởng quảng cáo.';
   return 'Chào bạn! Mình giúp được:\n▶️ Ghi nhận việc — "bắt đầu lên ads", "đã đăng bài page"\n📊 Dữ liệu của bạn — "tháng trước tôi được bao nhiêu điểm?", "đơn nghỉ duyệt chưa?"\n🧠 Thông tin khách — "khách Ba Spa cần gì?"\n✍️ Hỗ trợ chuyên môn — "viết giúp caption cho bài spa", "ý tưởng content tháng 8"\nBạn cần gì?';
