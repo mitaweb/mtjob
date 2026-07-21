@@ -358,6 +358,37 @@ export type AssistantEvent =
 
 export type OnAssistantEvent = (ev: AssistantEvent) => void;
 
+/**
+ * Tìm hàm theo tên, chịu được tên bị hỏng khi truyền qua stream
+ * (từng gặp: "get_customer_profile" biến thành "..._ide_ide").
+ * Khớp chính xác trước; không có thì lấy hàm có tiền tố chung dài nhất và DUY NHẤT.
+ */
+export function resolveToolName(name: string, known: string[]): string | null {
+  const raw = String(name || '').trim();
+  if (known.includes(raw)) return raw;
+  if (raw.length < 6) return null;
+
+  let best: { name: string; len: number } | null = null;
+  let tie = false;
+  for (const k of known) {
+    let i = 0;
+    while (i < raw.length && i < k.length && raw[i] === k[i]) i++;
+    if (i < 8) continue; // tiền tố quá ngắn thì không đủ chắc chắn
+    if (!best || i > best.len) {
+      best = { name: k, len: i };
+      tie = false;
+    } else if (i === best.len) {
+      tie = true;
+    }
+  }
+  return best && !tie ? best.name : null;
+}
+
+function resolveTool(name: string, byName: Map<string, ToolDef>): ToolDef | null {
+  const hit = resolveToolName(name, [...byName.keys()]);
+  return hit ? byName.get(hit) || null : null;
+}
+
 async function runToolLoop(opts: {
   system: string;
   question: string;
@@ -404,14 +435,19 @@ async function runToolLoop(opts: {
     const responses: GeminiPart[] = await Promise.all(
       calls.map(async (p) => {
         const fc = p.functionCall!;
-        opts.onEvent?.({ type: 'tool', name: fc.name });
-        const tool = byName.get(fc.name);
+        const tool = resolveTool(fc.name, byName);
+        // Báo tiến trình bằng tên đã nhận diện được, để nhãn chờ hiện đúng việc.
+        opts.onEvent?.({ type: 'tool', name: tool?.declaration.name || fc.name });
         let result: unknown;
         try {
-          result = tool ? await tool.run(fc.args || {}) : `Không có hàm ${fc.name}.`;
+          result = tool
+            ? await tool.run(fc.args || {})
+            : // Liệt kê tên hợp lệ để AI tự sửa ngay ở lượt sau, khỏi mò.
+              `Không có hàm "${fc.name}". Các hàm dùng được: ${[...byName.keys()].join(', ')}.`;
         } catch (e) {
           result = `Lỗi khi truy vấn: ${(e as Error).message}`;
         }
+        // Trả về đúng tên AI đã gọi, nếu không Claude/Gemini không ghép được với lệnh gọi.
         return { functionResponse: { name: fc.name, response: { result } } };
       }),
     );

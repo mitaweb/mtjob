@@ -174,7 +174,8 @@ export async function generateContentStream(
     const decoder = new TextDecoder();
     let buf = '';
     let text = ''; // gộp chữ để trả về cuối cùng
-    const calls: GeminiPart[] = [];
+    // Gộp lệnh gọi hàm theo TÊN — Gemini có thể gửi rải qua nhiều mẩu.
+    const calls = new Map<string, { name: string; args: Record<string, unknown> }>();
 
     for (;;) {
       const { done, value } = await reader.read();
@@ -196,7 +197,13 @@ export async function generateContentStream(
               text += p.text;
               onDelta(p.text);
             } else if (p?.functionCall) {
-              calls.push({ functionCall: p.functionCall });
+              // Gemini có thể chia một lệnh gọi hàm thành nhiều mẩu. Gộp theo tên hàm
+              // thay vì đẩy từng mẩu vào — nếu không sẽ ra tên hàm cụt/lặp và gọi sai.
+              const name = String(p.functionCall.name || '').trim();
+              if (!name) continue;
+              const seen = calls.get(name);
+              if (seen) Object.assign(seen.args, p.functionCall.args || {});
+              else calls.set(name, { name, args: { ...(p.functionCall.args || {}) } });
             }
           }
         } catch {
@@ -207,7 +214,7 @@ export async function generateContentStream(
 
     const out: GeminiPart[] = [];
     if (text) out.push({ text });
-    out.push(...calls);
+    for (const c of calls.values()) out.push({ functionCall: { name: c.name, args: c.args } });
     return out;
   } finally {
     clearTimeout(timer);
