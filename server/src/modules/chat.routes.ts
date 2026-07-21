@@ -21,7 +21,7 @@ import { formatVnd } from '../lib/money.js';
 import { formatMinutes } from '../lib/worktime.js';
 import { fmtHm, nowTz } from '../lib/datetime.js';
 import { addChatMessages, getChatMessages, type ChatMessageRow } from './chat.repo.js';
-import { autoBackfill } from './brain.service.js';
+import { autoBackfill, autoCaptureKnowledge } from './brain.service.js';
 import { sweepRemindersOpportunistic } from './reminders.service.js';
 import { newId } from '../util/id.js';
 import { runInBackground } from '../util/background.js';
@@ -102,7 +102,17 @@ function saveChatTurn(memberId: string, userText: string, payload: ChatReply): v
     createdAt: now,
   });
 
-  runInBackground(addChatMessages(rows).catch((e) => console.warn('[chat] lưu lịch sử:', e)));
+  runInBackground(
+    addChatMessages(rows)
+      .then(() => {
+        // Chỉ xét hỏi-đáp thật; các lượt bấm nút xác nhận không phải tri thức.
+        if (payload.action !== 'data_answer') return;
+        return autoCaptureKnowledge(question, payload.reply || '').then((saved) => {
+          if (saved) console.log('[brain] tự lưu tri thức từ hội thoại');
+        });
+      })
+      .catch((e) => console.warn('[chat] lưu lịch sử:', e)),
+  );
 }
 
 type ChatBody = z.infer<typeof bodySchema>;

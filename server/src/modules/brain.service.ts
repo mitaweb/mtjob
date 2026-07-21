@@ -31,6 +31,7 @@ import {
 import { q } from '../db/client.js';
 import { newId } from '../util/id.js';
 import { runInBackground } from '../util/background.js';
+import { getConfig } from '../config.js';
 import { nowTz } from '../lib/datetime.js';
 
 const CHUNK_SIZE = 1000;
@@ -444,6 +445,78 @@ export async function customerProfileText(name: string): Promise<string> {
   } catch (e) {
     if (isMissingTable(e)) return 'Kho tri thức chưa được khởi tạo (Quản trị → Cập nhật cấu trúc DB).';
     throw e;
+  }
+}
+
+// ── Tự động ghi tri thức từ hội thoại ──
+//
+// Trước đây từng nhồi MỌI cặp hỏi-đáp vào kho → nhiễu nặng, phải bỏ.
+// Giờ lọc hai tầng: chặn rẻ bằng luật, rồi mới nhờ AI phán đoán (chạy nền, không làm chậm chat).
+
+const AUTO_MIN_ANSWER = 300; // câu trả lời ngắn thường là tra số liệu, không phải tri thức
+const AUTO_MIN_QUESTION = 15;
+
+const CAPTURE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    worth: { type: 'BOOLEAN' },
+    title: { type: 'STRING' },
+    customer: { type: 'STRING' },
+  },
+  required: ['worth'],
+};
+
+/**
+ * Xét xem một lượt hỏi-đáp có chứa tri thức đáng nhớ lâu dài không; có thì tự lưu vào kho.
+ * Chạy NỀN sau khi đã trả lời người dùng nên không ảnh hưởng tốc độ chat.
+ */
+export async function autoCaptureKnowledge(question: string, answer: string): Promise<boolean> {
+  const q = (question || '').trim();
+  const a = (answer || '').trim();
+  // Tầng 1 — luật rẻ tiền, loại phần lớn trước khi tốn một lượt gọi AI.
+  if (q.length < AUTO_MIN_QUESTION || a.length < AUTO_MIN_ANSWER) return false;
+  if (!(await embeddingsAvailable())) return false;
+  // Công tắc trong Quản trị — tắt được ngay mà không cần deploy lại.
+  try {
+    if ((await getConfig()).brainAutoCapture === 'off') return false;
+  } catch {
+    // DB chưa sẵn sàng → cứ chạy như mặc định.
+  }
+
+  const prompt = [
+    'Xét đoạn hội thoại giữa nhân sự agency marketing và trợ lý AI.',
+    'Nó có chứa TRI THỨC đáng lưu lâu dài để lần sau khỏi hỏi lại không?',
+    '',
+    'ĐÁNG lưu: quy trình/cách làm, quyết định đã chốt, định hướng nội dung, kinh nghiệm xử lý',
+    'tình huống với khách, thông tin bền vững về một khách hàng, bảng giá/chính sách.',
+    '',
+    'KHÔNG đáng lưu: tra cứu số liệu tại thời điểm (ai chưa chấm công, điểm tháng này, còn bao nhiêu đơn),',
+    'chào hỏi, câu trả lời chung chung ai cũng biết, hoặc trợ lý báo lỗi/không tra được dữ liệu.',
+    '',
+    'Trả JSON: worth (true/false), title (tiêu đề ngắn gọn nếu đáng lưu),',
+    'customer (tên khách hàng nếu nội dung nói về một khách cụ thể, không thì để rỗng).',
+    '',
+    `HỎI: ${q.slice(0, 1000)}`,
+    `ĐÁP: ${a.slice(0, 4000)}`,
+  ].join('\n');
+
+  try {
+    // Tầng 2 — Gemini Flash phán đoán: việc phân loại đơn giản, giữ chi phí thấp.
+    const r = await generateJson(prompt, CAPTURE_SCHEMA, 'gemini-2.5-flash');
+    if (!r?.worth) return false;
+    const title = String(r.title || '').trim() || q.slice(0, 120);
+    await ingest({
+      sourceType: 'auto', // tách khỏi 'note' để anh Tâm soát được AI đang tự lưu những gì
+      sourceId: newId('A-'),
+      title,
+      text: `Hỏi: ${q}\n\n${a}`,
+      visibility: 'all',
+      customer: String(r.customer || '').trim(),
+    });
+    return true;
+  } catch (e) {
+    console.warn('[brain] tự ghi tri thức:', e);
+    return false;
   }
 }
 

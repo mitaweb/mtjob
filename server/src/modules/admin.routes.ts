@@ -282,6 +282,7 @@ adminRouter.get(
       hasClaudeKey: !!cfg.claudeApiKey,
       claudeModel: cfg.claudeModel || '',
       claudeBaseUrl: cfg.claudeBaseUrl || '',
+      autoCapture: cfg.brainAutoCapture !== 'off',
     });
   }),
 );

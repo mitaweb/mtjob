@@ -83,6 +83,7 @@ export default function Admin() {
   const [claudeKey, setClaudeKey] = useState('');
   const [claudeModel, setClaudeModel] = useState('');
   const [claudeBaseUrl, setClaudeBaseUrl] = useState('');
+  const [autoCapture, setAutoCapture] = useState(true);
   const [checks, setChecks] = useState<Check[] | null>(null);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [modelsError, setModelsError] = useState('');
@@ -106,6 +107,7 @@ export default function Admin() {
     hasClaudeKey: boolean;
     claudeModel: string;
     claudeBaseUrl: string;
+    autoCapture: boolean;
   }
 
   async function loadMembers() {
@@ -127,6 +129,7 @@ export default function Admin() {
         setHasClaudeKey(!!r.hasClaudeKey);
         setClaudeModel(r.claudeModel || '');
         setClaudeBaseUrl(r.claudeBaseUrl || '');
+        setAutoCapture(r.autoCapture !== false);
         loadModels(r.provider || 'gemini');
       })
       .catch(() => undefined);
@@ -163,6 +166,18 @@ export default function Admin() {
       toast.success(value ? `Đã chuyển sang ${value}.` : 'Dùng model mặc định (flash).');
     } catch (e) {
       setAiModel(prev);
+      toast.error((e as Error).message);
+    }
+  }
+
+  async function saveAutoCapture(on: boolean) {
+    const prev = autoCapture;
+    setAutoCapture(on);
+    try {
+      await api('/admin/config', { body: { key: 'brainAutoCapture', value: on ? '' : 'off' } });
+      toast.success(on ? 'AI sẽ tự ghi tri thức đáng nhớ từ hội thoại.' : 'Đã tắt — chỉ lưu khi bấm nút.');
+    } catch (e) {
+      setAutoCapture(prev);
       toast.error((e as Error).message);
     }
   }
@@ -422,6 +437,23 @@ export default function Admin() {
             </select>
           </div>
         </div>
+
+        <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-xl bg-slate-50 p-3 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={autoCapture}
+            onChange={(e) => saveAutoCapture(e.target.checked)}
+          />
+          <span>
+            <b>Tự ghi tri thức từ hội thoại</b>
+            <span className="block text-xs text-slate-500">
+              Sau mỗi câu trả lời dài, AI tự xét xem có đáng nhớ lâu dài không (quy trình, quyết định,
+              thông tin khách) rồi lưu vào kho. Tra cứu số liệu tạm thời thì bỏ qua. Xem lại ở Kho tri thức,
+              nhóm “AI tự ghi nhận”.
+            </span>
+          </span>
+        </label>
 
         {provider === 'gemini' ? (
           <div className="mt-4 border-t border-slate-100 pt-3">

@@ -44,7 +44,8 @@ interface Stats {
 }
 
 const SOURCE_VI: Record<string, string> = {
-  note: 'Chốt từ hội thoại',
+  note: 'Bạn chốt từ hội thoại',
+  auto: 'AI tự ghi nhận',
   sheet: 'Bảng từ Google Sheets',
   profile: 'Hồ sơ khách (tổng hợp)',
   customer_note: 'Lưu ý khách hàng',
@@ -57,6 +58,7 @@ const SOURCE_VI: Record<string, string> = {
 
 const SOURCE_VARIANT: Record<string, BadgeVariant> = {
   note: 'info',
+  auto: 'neutral',
   sheet: 'warn',
   profile: 'success',
   customer_note: 'info',

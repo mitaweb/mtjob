@@ -93,6 +93,7 @@ export interface AppConfig {
   claudeApiKey: string;
   claudeModel: string; // '' = mặc định claude-sonnet-5
   claudeBaseUrl: string; // '' = endpoint mặc định của Anthropic
+  brainAutoCapture: string; // '' = bật (mặc định), 'off' = tắt AI tự ghi tri thức từ chat
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -117,4 +118,5 @@ export const DEFAULT_CONFIG: AppConfig = {
   claudeApiKey: '',
   claudeModel: '',
   claudeBaseUrl: '',
+  brainAutoCapture: '',
 };
