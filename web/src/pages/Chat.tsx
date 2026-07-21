@@ -234,12 +234,31 @@ export default function Chat() {
       /* ignore */
     }
   }
+  /** Tải lại hội thoại cũ để F5 không mất — lịch sử được lưu ở máy chủ. */
+  async function loadHistory() {
+    const r = await api<{ messages: Array<{ role: 'user' | 'model'; text: string; action: string }> }>(
+      '/chat/history?limit=60',
+    );
+    if (r.messages.length === 0) return;
+    const restored: Msg[] = r.messages.map((m, i) => ({
+      role: m.role === 'user' ? 'user' : 'bot',
+      text: m.text,
+      // Chỉ giữ `action` để nút 📌 lưu vào kho còn dùng được; KHÔNG dựng lại thẻ xác nhận
+      // (suggestion không được lưu, mà bấm xác nhận cũ cũng không còn đúng nữa).
+      res: m.role === 'model' && m.action ? { reply: '', action: m.action } : undefined,
+      question: m.role === 'model' ? r.messages[i - 1]?.text : undefined,
+    }));
+    setMsgs((cur) => [...cur, ...restored]);
+  }
+
   useEffect(() => {
     loadDoing();
     loadTodo();
+    loadHistory().catch(() => undefined); // mất lịch sử không được chặn dùng chat
     cachedGet<{ catalog: CatalogItem[] }>('/tasks/catalog')
       .then((r) => setCatalog(r.catalog))
       .catch(() => setCatalog([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     if (canAssign) {

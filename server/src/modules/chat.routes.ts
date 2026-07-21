@@ -20,7 +20,7 @@ import { memberScore } from './scores.service.js';
 import { formatVnd } from '../lib/money.js';
 import { formatMinutes } from '../lib/worktime.js';
 import { fmtHm, nowTz } from '../lib/datetime.js';
-import { addChatMessages, type ChatMessageRow } from './chat.repo.js';
+import { addChatMessages, getChatMessages, type ChatMessageRow } from './chat.repo.js';
 import { autoBackfill } from './brain.service.js';
 import { sweepRemindersOpportunistic } from './reminders.service.js';
 import { newId } from '../util/id.js';
@@ -278,6 +278,24 @@ async function runChat(
     });
   }
 }
+
+/**
+ * Lịch sử chat của CHÍNH mình (cũ → mới) để mở lại trang không mất hội thoại.
+ * Không ai xem được lịch sử của người khác.
+ */
+chatRouter.get(
+  '/history',
+  asyncHandler(async (req, res) => {
+    const limit = Math.min(Number(req.query.limit) || 60, 200);
+    const rows = await getChatMessages(req.user!.sub, limit);
+    res.json({
+      messages: rows
+        .slice()
+        .reverse() // repo trả mới nhất trước; màn hình cần cũ → mới
+        .map((r) => ({ role: r.role, text: r.text, action: r.action, createdAt: r.createdAt })),
+    });
+  }),
+);
 
 // Đường thường: trả JSON một lần. Dùng cho các nút xác nhận và làm lối lui khi stream hỏng.
 chatRouter.post(
