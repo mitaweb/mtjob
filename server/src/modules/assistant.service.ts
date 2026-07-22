@@ -13,6 +13,7 @@ import { getProvider, aiAvailable } from '../ai/index.js';
 import { searchKnowledgeText, customerProfileText, importGoogleSheet, ingest } from './brain.service.js';
 import { getCustomers } from './crm.repo.js';
 import { addReminder } from './reminders.repo.js';
+import { previewDirectorReport } from '../jobs/dailyReport.js';
 import { describeRule, type RepeatKind } from '../lib/reminder.js';
 import { newId } from '../util/id.js';
 import type { GeminiContent, GeminiPart } from '../gemini/client.js';
@@ -582,6 +583,15 @@ export async function answerDataQuestion(
           })
           .join('\n');
       },
+    },
+    {
+      declaration: {
+        name: 'get_today_work_report',
+        description:
+          'Báo cáo công việc HÔM NAY của toàn công ty: từng người đã hoàn thành việc gì (kèm tên khách), ' +
+          'ai chưa ghi nhận việc nào. Dùng khi hỏi "hôm nay ai làm gì", "tình hình công việc hôm nay".',
+      },
+      run: () => previewDirectorReport(),
     },
     PROFILE_TOOL,
     knowledgeTool({ directorScope: true }),

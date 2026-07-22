@@ -39,6 +39,8 @@ async function sweepBrainBackfill(): Promise<void> {
 
 // Tối đa số việc liệt kê chi tiết trong báo cáo ngày (tránh body quá dài).
 const MAX_TASKS_IN_REPORT = 15;
+// Báo cáo giám đốc gộp nhiều người nên mỗi người chỉ liệt kê vài việc.
+const MAX_TASKS_PER_MEMBER = 6;
 
 /** Các việc 1 thành viên ĐÃ HOÀN THÀNH trong ngày `todayIso` (bỏ việc đang làm). */
 function tasksDoneToday(tasks: TaskRow[], memberId: string, todayIso: string): TaskRow[] {
@@ -57,6 +59,46 @@ function doneTasksLine(done: TaskRow[]): string {
   const lines = shown.map((t) => `• ${taskTitle(t)} (+${t.points}đ)`).join('\n');
   const more = done.length > shown.length ? `\n… và ${done.length - shown.length} việc khác.` : '';
   return `\n\n✅ Việc hoàn thành hôm nay (${done.length}):\n${lines}${more}`;
+}
+
+/**
+ * Báo cáo "ai hôm nay làm gì" — dùng chung cho giám đốc (toàn công ty) và leader (team).
+ * Liệt kê TÊN VIỆC kèm ghi chú (thường là tên khách), không chỉ điểm số.
+ */
+function memberWorkLines(
+  lines: Array<{ memberId: string; fullName: string; todayPoints: number; monthPoints: number; rank: number }>,
+  allTasks: TaskRow[],
+  todayIso: string,
+  teamOf?: (memberId: string) => string | undefined,
+): string {
+  const worked: string[] = [];
+  const idle: string[] = [];
+
+  for (const l of lines) {
+    const done = tasksDoneToday(allTasks, l.memberId, todayIso);
+    const team = teamOf?.(l.memberId);
+    const who = `${l.fullName}${team ? ` [${team}]` : ''}`;
+    if (done.length === 0) {
+      idle.push(who);
+      continue;
+    }
+    const items = done
+      .slice(0, MAX_TASKS_PER_MEMBER)
+      .map((t) => `   • ${taskTitle(t)} (+${t.points}đ)`)
+      .join('\n');
+    const more = done.length > MAX_TASKS_PER_MEMBER ? `\n   … và ${done.length - MAX_TASKS_PER_MEMBER} việc khác` : '';
+    worked.push(`▸ ${who} — ${done.length} việc, +${l.todayPoints}đ hôm nay\n${items}${more}`);
+  }
+
+  return [
+    worked.length ? `✅ ĐÃ LÀM HÔM NAY (${worked.length} người):\n${worked.join('\n')}` : '',
+    idle.length ? `\n⚠️ Chưa ghi nhận việc nào: ${idle.join(', ')}` : '',
+    lines.length
+      ? `\n📊 Xếp hạng tháng: ${lines.slice(0, 5).map((l) => `#${l.rank} ${l.fullName} ${l.monthPoints}đ`).join(' · ')}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 /** Nhắc thu tiền: 5 ngày trước hạn thu của từng bên → gửi cho người được chọn (mặc định giám đốc). */
@@ -142,6 +184,23 @@ export async function runAppointmentReminders(): Promise<void> {
   }
 }
 
+/**
+ * Bản xem trước báo cáo công việc toàn công ty NGAY BÂY GIỜ (không gửi thông báo).
+ * Để giám đốc xem giữa ngày, khỏi chờ tới giờ báo cáo.
+ */
+export async function previewDirectorReport(): Promise<string> {
+  const today = todayIso();
+  const [allTasks, members, all] = await Promise.all([
+    getScoringTasks(today, today, today),
+    getActiveMembers(),
+    ranking(),
+  ]);
+  const byId = new Map(members.map((m) => [m.id, m]));
+  return (
+    memberWorkLines(all, allTasks, today, (id) => byId.get(id)?.teamId) || 'Hôm nay chưa có dữ liệu công việc.'
+  );
+}
+
 /** Daily personal + leader + director reports (birthdays + bonus included). */
 export async function runDailyReports(): Promise<void> {
   const now = nowTz();
@@ -173,14 +232,12 @@ export async function runDailyReports(): Promise<void> {
     });
   }
 
-  // Leader: team report.
+  // Leader: team report — cũng liệt kê việc từng người, không chỉ điểm.
   const teams = await getTeams();
   for (const t of teams) {
     if (!t.leaderMemberId) continue;
     const lines = await ranking(undefined, undefined, t.id);
-    const body =
-      lines.map((l, i) => `${i + 1}. ${l.fullName}: ${l.monthPoints}đ (+${l.todayPoints} hôm nay)`).join('\n') ||
-      'Chưa có dữ liệu.';
+    const body = memberWorkLines(lines, allTasks, today) || 'Chưa có dữ liệu.';
     await notify(t.leaderMemberId, {
       type: 'daily_team',
       title: `Báo cáo team ${t.name} — ${dd}`,
@@ -189,14 +246,17 @@ export async function runDailyReports(): Promise<void> {
     });
   }
 
-  // Director: whole-company report.
+  // Director: toàn công ty — CHI TIẾT từng người hôm nay làm việc gì, không chỉ điểm số.
   const all = await ranking();
+  const byId = new Map(members.map((m) => [m.id, m]));
   const dirBody =
-    all.slice(0, 30).map((l) => `#${l.rank} ${l.fullName}: ${l.monthPoints}đ`).join('\n') || 'Chưa có dữ liệu.';
+    memberWorkLines(all, allTasks, today, (id) => byId.get(id)?.teamId) ||
+    'Hôm nay chưa có dữ liệu công việc.';
+
   for (const d of await getDirectors()) {
     await notify(d.id, {
       type: 'daily_all',
-      title: `Báo cáo toàn công ty — ${dd}`,
+      title: `Báo cáo công việc toàn công ty — ${dd}`,
       body: dirBody,
       url: '/dashboard',
     });
