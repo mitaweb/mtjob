@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Bell,
   Banknote,
@@ -18,6 +18,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
+import { api } from '../lib/api';
 import Brand from './Brand';
 import type { Role } from '../lib/types';
 
@@ -59,9 +60,20 @@ const ROLE_LABEL: Record<string, string> = {
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [open, setOpen] = useState(false);
+  const [unread, setUnread] = useState(0);
   const items = NAV.filter((n) => !n.roles || (user && n.roles.includes(user.role)));
   const initial = (user?.fullName || '?').trim().charAt(0).toUpperCase();
+
+  // Số thông báo chưa đọc trên chuông. Tải lại khi đổi trang (rẻ hơn hỏi liên tục),
+  // nhờ vậy đọc xong ở Inbox quay ra là số tự cập nhật.
+  useEffect(() => {
+    if (!user) return;
+    api<{ notifications: Array<{ readAt: string }> }>('/notifications')
+      .then((r) => setUnread(r.notifications.filter((n) => !n.readAt).length))
+      .catch(() => undefined);
+  }, [user, location.pathname]);
 
   const sidebar = (
     <div className="flex h-full flex-col bg-white">
@@ -143,8 +155,17 @@ export default function Layout() {
               <Brand variant="dark" compact />
             </div>
             <div className="ml-auto flex items-center gap-1">
-              <NavLink to="/inbox" className="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Thông báo">
+              <NavLink
+                to="/inbox"
+                className="relative grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"
+                aria-label={unread > 0 ? `Thông báo (${unread} chưa đọc)` : 'Thông báo'}
+              >
                 <Bell size={20} aria-hidden />
+                {unread > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 grid min-w-[18px] place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold text-white">
+                    {unread > 99 ? '99+' : unread}
+                  </span>
+                )}
               </NavLink>
               <NavLink
                 to="/profile"

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../util/errors.js';
 import { requireAuth } from '../auth/middleware.js';
-import { getNotifications, markRead, saveSubscription } from './notifications.repo.js';
+import { getNotifications, markRead, markAllRead, saveSubscription } from './notifications.repo.js';
 import { vapidPublicKey } from '../push/webpush.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
@@ -42,6 +42,15 @@ notificationsRouter.post(
       createdAt: nowTz().toISOString(),
     });
     res.json({ ok: true });
+  }),
+);
+
+/** Đánh dấu đã đọc cả nhóm (hoặc tất cả nếu không truyền types). */
+notificationsRouter.post(
+  '/read-all',
+  asyncHandler(async (req, res) => {
+    const { types } = z.object({ types: z.array(z.string()).optional() }).parse(req.body ?? {});
+    res.json({ ok: true, marked: await markAllRead(req.user!.sub, types) });
   }),
 );
 

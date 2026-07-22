@@ -44,6 +44,24 @@ export async function getNotifications(memberId: string, limit = 50): Promise<No
   }));
 }
 
+/**
+ * Đánh dấu đã đọc hàng loạt cho một người. `types` rỗng = tất cả.
+ * Dùng cho nút "đánh dấu đã đọc" theo từng nhóm thông báo.
+ */
+export async function markAllRead(memberId: string, types?: string[]): Promise<number> {
+  const now = new Date().toISOString();
+  const rows = types?.length
+    ? await q(
+        "UPDATE notifications SET read_at = $1 WHERE member_id = $2 AND read_at = '' AND type = ANY($3) RETURNING notif_id",
+        [now, memberId, types],
+      )
+    : await q(
+        "UPDATE notifications SET read_at = $1 WHERE member_id = $2 AND read_at = '' RETURNING notif_id",
+        [now, memberId],
+      );
+  return rows.length;
+}
+
 export async function markRead(notifId: string): Promise<boolean> {
   const rows = await q(
     'UPDATE notifications SET read_at = $1 WHERE notif_id = $2 RETURNING notif_id',
