@@ -17,13 +17,8 @@ import {
 } from './crm.repo.js';
 import { getActiveMembers } from './members.repo.js';
 import { newId } from '../util/id.js';
-import { nowTz, dayjs, TZ } from '../lib/datetime.js';
+import { nowTz, toIsoVn } from '../lib/datetime.js';
 import { ingestInBackground, removeSource, markCustomerDirty } from './brain.service.js';
-
-/** datetime-local 'YYYY-MM-DDTHH:mm' (giờ VN) → ISO UTC; nếu đã là ISO thì giữ nguyên. */
-function toIsoVn(s: string): string {
-  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s) ? dayjs.tz(s, 'YYYY-MM-DDTHH:mm', TZ).toISOString() : s;
-}
 
 export const crmRouter = Router();
 crmRouter.use(requireAuth, requireRole('sale', 'director', 'admin'));

@@ -71,6 +71,16 @@ export function fmtDate(iso: string): string {
   return dayjs(iso).tz(TZ).format('DD/MM/YYYY');
 }
 
+/**
+ * datetime-local 'YYYY-MM-DDTHH:mm' (giờ VN) → ISO UTC; nếu đã là ISO thì giữ nguyên.
+ * Dùng chung cho form lịch hẹn và cho trợ lý AI đặt hẹn — một cách hiểu giờ duy nhất.
+ */
+export function toIsoVn(s: string): string {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s)
+    ? dayjs.tz(s, 'YYYY-MM-DDTHH:mm', TZ).toISOString()
+    : s;
+}
+
 /** Epoch-ms bounds [00:00, 24:00) of a YYYY-MM-DD day in app TZ. */
 export function dayBoundsMs(dayIso: string): { startMs: number; endMs: number } {
   const start = dayjs.tz(dayIso, TZ).startOf('day');

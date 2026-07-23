@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeBonus, computeNetSalary, formatVnd } from './money.js';
+import { computeBonus, computeNetSalary, formatVnd, parseVndAmount } from './money.js';
 
 describe('computeBonus', () => {
   it('is 0 at or below the 6000 threshold', () => {
@@ -78,5 +78,40 @@ describe('formatVnd', () => {
   it('formats with Vietnamese grouping', () => {
     expect(formatVnd(1_600_000)).toBe('1.600.000đ');
     expect(formatVnd(0)).toBe('0đ');
+  });
+});
+
+describe('parseVndAmount', () => {
+  it('reads shorthand units the way people say them', () => {
+    expect(parseVndAmount('20tr')).toBe(20_000_000);
+    expect(parseVndAmount('20 triệu')).toBe(20_000_000);
+    expect(parseVndAmount('500k')).toBe(500_000);
+    expect(parseVndAmount('300 nghìn')).toBe(300_000);
+    expect(parseVndAmount('1 tỷ')).toBe(1_000_000_000);
+  });
+
+  it('treats , and . as decimal point ONLY when a unit follows', () => {
+    expect(parseVndAmount('1,5 triệu')).toBe(1_500_000);
+    expect(parseVndAmount('1.5tr')).toBe(1_500_000);
+    expect(parseVndAmount('20.000.000')).toBe(20_000_000); // không hậu tố = ngăn nghìn
+    expect(parseVndAmount('1,500,000')).toBe(1_500_000);
+  });
+
+  it('ignores the currency word or symbol', () => {
+    expect(parseVndAmount('20 triệu đồng')).toBe(20_000_000);
+    expect(parseVndAmount('500.000đ')).toBe(500_000);
+    expect(parseVndAmount('500000 VNĐ')).toBe(500_000);
+  });
+
+  it('passes numbers through', () => {
+    expect(parseVndAmount(20_000_000)).toBe(20_000_000);
+    expect(parseVndAmount(0)).toBe(0);
+  });
+
+  it('returns NaN rather than guessing', () => {
+    expect(parseVndAmount('')).toBeNaN();
+    expect(parseVndAmount(null)).toBeNaN();
+    expect(parseVndAmount('nhiều lắm')).toBeNaN();
+    expect(parseVndAmount('20 xu')).toBeNaN(); // hậu tố lạ
   });
 });

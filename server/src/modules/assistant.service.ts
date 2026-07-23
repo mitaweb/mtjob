@@ -15,6 +15,7 @@ import { getCustomers } from './crm.repo.js';
 import { addReminder } from './reminders.repo.js';
 import { previewDirectorReport } from '../jobs/dailyReport.js';
 import { describeRule, type RepeatKind } from '../lib/reminder.js';
+import { moneyWriteTools, crmWriteTools, reminderManageTools, dedupeTools } from './assistant.tools.write.js';
 import { newId } from '../util/id.js';
 import type { GeminiContent, GeminiPart } from '../gemini/client.js';
 import { todayIso, nowTz, monthRange } from '../lib/datetime.js';
@@ -32,7 +33,7 @@ const MAX_ROUNDS = 5; // chặn vòng lặp functionCall vô hạn
 const MAX_HISTORY_CHARS = 4000;
 
 // ── Khai báo tool + hàm chạy ──
-interface ToolDef {
+export interface ToolDef {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   declaration: { name: string; description: string; parameters?: any };
   run: (args: Record<string, unknown>) => Promise<unknown>;
@@ -598,13 +599,32 @@ export async function answerDataQuestion(
     reminderTool(memberId),
     SHEET_TOOL,
     SAVE_TOOL,
+    // Nhóm GHI: giám đốc nhắn một câu là dữ liệu vào thẳng sổ sách.
+    ...moneyWriteTools(),
+    ...crmWriteTools(memberId),
+    ...reminderManageTools(memberId),
+    ...dedupeTools(),
   ];
 
   const system = [
     'Bạn là trợ lý của GIÁM ĐỐC một agency marketing (MT Digital).',
     `Hôm nay là ${today}. Trả lời NGẮN GỌN, đi thẳng vào việc, bằng tiếng Việt.`,
     '',
-    'BẠN GIÚP 2 LOẠI VIỆC:',
+    'BẠN GIÚP 3 LOẠI VIỆC:',
+    '',
+    '0. GHI NHẬN VÀO HỆ THỐNG — quan trọng nhất, làm NGAY, KHÔNG hỏi xác nhận:',
+    '   Anh ấy nói là bạn ghi luôn, sai thì anh ấy nhắn sửa. Đừng bao giờ hỏi "anh có muốn tôi ghi không?".',
+    '   - Tiền vào/ra ("thu 20 triệu của Quốc Phong", "chi 5tr chạy ads") → add_finance_entry.',
+    '   - "Khách A đã trả tiền/đã thanh toán" → collect_receivable trước; hàm báo không có bên đó',
+    '     trong danh sách công nợ thì mới chuyển sang add_finance_entry.',
+    '   - Khách hàng mới, đổi tình trạng, số điện thoại, ghi chú về khách → add_customer.',
+    '   - Hẹn gặp: nếu là KHÁCH HÀNG trong CRM thì create_appointment; nếu là người quen/việc riêng',
+    '     ("chị Hằng hẹn gặp anh lúc 2h") thì create_reminder một lần vào đúng ngày giờ đó.',
+    '   - Ghi xong PHẢI nói rõ đã ghi CÁI GÌ: số tiền dạng 20.000.000đ, tên, ngày giờ. Có sai anh ấy thấy ngay.',
+    '   - Sửa/xoá: list_finance_entries rồi delete_finance_entry; list_reminders rồi cancel_reminder.',
+    '   - GIỜ TIẾNG VIỆT: "2h", "3h" nói về hẹn gặp trong giờ làm việc là BUỔI CHIỀU (14:00, 15:00),',
+    '     không phải 2 giờ sáng. "8h" mặc định là buổi sáng. Luôn nhắc lại giờ bạn đã hiểu.',
+    '   - Không nói ngày → hiểu là hôm nay; "mai" → ngày mai. Tự quy ra ngày cụ thể, đừng hỏi lại.',
     '',
     '1. HỎI DỮ LIỆU (nhân sự, chấm công, điểm, đơn từ, tài chính, khách hàng):',
     '   Dùng các hàm được cấp để lấy dữ liệu thật. TUYỆT ĐỐI không bịa số liệu.',
@@ -707,8 +727,12 @@ export async function answerMemberQuestion(
     // Quyền xem chặn cứng ở tầng SQL: chỉ thấy đoạn 'all' + đoạn riêng của chính mình.
     knowledgeTool({ directorScope: false, memberId }),
     reminderTool(memberId),
+    ...reminderManageTools(memberId),
     SHEET_TOOL,
     SAVE_TOOL,
+    // Chỉ sale mới ghi được khách/lịch hẹn. Nhân viên khác KHÔNG có công cụ ghi nào —
+    // chặn ở đây chứ không nhờ prompt, để không "dụ" được.
+    ...(me.role === 'sale' ? crmWriteTools(memberId) : []),
   ];
 
   const system = [
@@ -728,6 +752,14 @@ export async function answerMemberQuestion(
     'LUÔN ĐỀ XUẤT, ĐỪNG HỎI NGƯỢC RỒI DỪNG: thiếu dữ liệu thì vẫn đưa phương án cụ thể dựa trên',
     'những gì đang có, ghi rõ chỗ nào là giả định. Không kết thúc bằng "bạn có muốn mình… không?".',
     '',
+    ...(me.role === 'sale'
+      ? [
+          'GHI NHẬN KHÁCH HÀNG (bạn làm sale nên có quyền này): khách mới, đổi tình trạng, ghi chú,',
+          'lưu số điện thoại → add_customer. Hẹn gặp khách → create_appointment. Làm luôn, không hỏi lại,',
+          'ghi xong nói rõ đã ghi gì. "2h", "3h" nói về hẹn gặp trong giờ làm là buổi chiều (14:00, 15:00).',
+          '',
+        ]
+      : []),
     'GIỚI HẠN (từ chối khéo, đừng gọi hàm):',
     '- Điểm/lương/ngày công của NGƯỜI KHÁC → "Mình chỉ xem được dữ liệu của bạn thôi nhé."',
     '- Số liệu tài chính công ty, số điện thoại khách → "Phần này bạn hỏi giám đốc giúp mình nhé."',

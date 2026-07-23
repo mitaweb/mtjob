@@ -8,10 +8,10 @@ import {
   deleteParty,
   getEntries,
   addEntry,
-  upsertEntry,
   deleteEntry,
   type Party,
 } from './finance.repo.js';
+import { collectReceivable } from './finance.service.js';
 import { payrollForMonth } from './payroll.service.js';
 import { getActiveMembers } from './members.repo.js';
 import { nextDueDateIso } from '../lib/finance.js';
@@ -91,40 +91,14 @@ const collectSchema = z.object({
   /** Số thực thu. Bỏ trống khi collected=true = thu toàn bộ số phải thu. */
   amount: z.number().min(0).optional(),
 });
-function receivableEntryId(partyId: string, month: string): string {
-  return `RECV-${partyId}-${month}`;
-}
 financeRouter.post(
   '/parties/:id/collect',
   canEdit,
   asyncHandler(async (req, res) => {
-    const id = String(req.params.id);
-    const { month, collected, amount } = collectSchema.parse(req.body);
-    const entryId = receivableEntryId(id, month);
-    // Bỏ đánh dấu, hoặc nhập số 0 → gỡ khoản thu của tháng này.
-    if (!collected || amount === 0) {
-      await deleteEntry(entryId);
-      res.json({ ok: true, collected: false, amount: 0 });
-      return;
-    }
-    const party = (await getParties()).find((p) => p.id === id);
-    if (!party) throw new ApiError(404, 'Không tìm thấy bên');
-    const value = amount ?? party.receivable;
-    const partial = value < party.receivable;
-    await upsertEntry({
-      id: entryId,
-      month,
-      kind: 'thu',
-      // Ghi rõ thu một phần để nhìn bảng Thu/Chi là biết còn nợ.
-      name: partial
-        ? `${party.name} (thu công nợ một phần)`
-        : `${party.name} (thu công nợ)`,
-      amount: value,
-      date: todayIso(),
-      recurring: false,
-      partyId: id,
-    });
-    res.json({ ok: true, collected: true, amount: value });
+    const b = collectSchema.parse(req.body);
+    const r = await collectReceivable({ partyId: String(req.params.id), ...b });
+    if (!r.ok) throw new ApiError(404, r.message || 'Không thu được');
+    res.json({ ok: true, collected: r.collected, amount: r.amount });
   }),
 );
 
