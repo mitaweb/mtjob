@@ -12,7 +12,7 @@ import {
   type ChatTurn,
   type OnAssistantEvent,
 } from './assistant.service.js';
-import { taskTitle } from '../lib/tasks.js';
+import { taskTitle, cleanNote } from '../lib/tasks.js';
 import { looksLikeQuestion } from '../lib/question.js';
 import { removeAccents } from '../lib/people.js';
 import { getCustomers } from './crm.repo.js';
@@ -227,7 +227,9 @@ async function runChat(
       const item = await findCatalogItem(x.taskCode);
       if (item) {
         const starting = x.intent === 'start_task';
-        const note = (x.note || '').trim();
+        // Bỏ cụm hành động + phần lặp tên việc, giữ lại mô tả thật (thường là tên khách),
+        // để bảng điểm không hiện những dòng kiểu "bắt đầu tối ưu quảng cáo".
+        const note = cleanNote(x.note || '', item.name);
         const known = await matchCustomer(note);
 
         // Chưa biết khách nào → hỏi lại trước, đừng ghi nhận việc mơ hồ.

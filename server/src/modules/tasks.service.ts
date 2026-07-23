@@ -1,4 +1,4 @@
-import { addTask, completeTaskRow, startTodoTask } from './tasks.repo.js';
+import { addTask, completeTaskRow, startTodoTask, getDoingTasks } from './tasks.repo.js';
 import { findById } from './members.repo.js';
 import { findCatalogItem } from './catalog.repo.js';
 import { teamLeaderId } from './teams.repo.js';
@@ -48,7 +48,13 @@ export interface LogTaskInput {
   source?: string;
 }
 
-/** Ghi nhận task ĐÃ hoàn thành ngay (không qua bước bắt đầu). Điểm lấy từ danh mục. */
+/**
+ * Ghi nhận task ĐÃ hoàn thành. Điểm lấy từ danh mục.
+ *
+ * Nếu người này đang có task CÙNG LOẠI dở dang (status 'doing') thì HOÀN THÀNH task đó
+ * thay vì tạo dòng mới — một việc chỉ được tính điểm MỘT lần, dù họ báo "bắt đầu" rồi
+ * lại báo "đã xong". Trước đây mỗi lần báo tạo một dòng nên điểm bị nhân đôi.
+ */
 export async function logTask(input: LogTaskInput): Promise<{ task: TaskRow; points: number }> {
   const member = await findById(input.memberId);
   if (!member) throw new ApiError(404, 'Không tìm thấy thành viên');
@@ -59,6 +65,17 @@ export async function logTask(input: LogTaskInput): Promise<{ task: TaskRow; poi
   }
 
   const now = nowTz().toISOString();
+
+  // Việc cùng loại đang làm dở → chốt luôn việc đó, khỏi sinh việc trùng.
+  const doing = (await getDoingTasks(member.id)).find((t) => t.taskCode === item.code);
+  if (doing) {
+    const finished = await completeTaskRow(doing.id, member.id, now, input.note?.trim() || undefined);
+    if (finished) {
+      touchCustomerFromTask(finished);
+      await notifyLeaderOnComplete(finished);
+      return { task: finished, points: finished.points };
+    }
+  }
   const task: TaskRow = {
     id: newId('T-'),
     createdAt: now,

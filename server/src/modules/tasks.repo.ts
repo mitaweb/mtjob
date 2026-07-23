@@ -115,17 +115,28 @@ export async function startTodoTask(
   return rows.length ? rowToTask(rows[0]) : null;
 }
 
-/** Hoàn thành 1 task đang làm (đúng chủ sở hữu). Trả về task sau cập nhật, hoặc null nếu không có. */
+/**
+ * Hoàn thành 1 task đang làm (đúng chủ sở hữu). Trả về task sau cập nhật, hoặc null nếu không có.
+ * `note`: chỉ ghi đè khi có giá trị — lúc báo xong người dùng thường mới nói rõ khách nào.
+ */
 export async function completeTaskRow(
   taskId: string,
   memberId: string,
   completedAt: string,
+  note?: string,
 ): Promise<TaskRow | null> {
-  const rows = await q(
-    `UPDATE tasks SET completed_at = $1, status = 'done'
-     WHERE task_id = $2 AND member_id = $3 AND status = 'doing'
-     RETURNING *`,
-    [completedAt, taskId, memberId],
-  );
+  const rows = note
+    ? await q(
+        `UPDATE tasks SET completed_at = $1, status = 'done', note = $4
+         WHERE task_id = $2 AND member_id = $3 AND status = 'doing'
+         RETURNING *`,
+        [completedAt, taskId, memberId, note],
+      )
+    : await q(
+        `UPDATE tasks SET completed_at = $1, status = 'done'
+         WHERE task_id = $2 AND member_id = $3 AND status = 'doing'
+         RETURNING *`,
+        [completedAt, taskId, memberId],
+      );
   return rows.length ? rowToTask(rows[0]) : null;
 }
