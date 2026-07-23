@@ -70,7 +70,9 @@ export interface MemberScore {
 export interface DoingTask {
   id: string;
   taskCode: string;
-  taskName: string;
+  taskName: string; // loại việc trong danh mục
+  title?: string; // loại việc + ghi chú (tên khách) — máy chủ ghép sẵn, ưu tiên hiển thị
+  note?: string;
   points: number;
   startedAt: string;
   elapsedMinutes: number;

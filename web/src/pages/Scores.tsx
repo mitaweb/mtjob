@@ -6,7 +6,8 @@ import type { MemberScore } from '../lib/types';
 
 interface Task {
   id: string;
-  taskName: string;
+  taskName: string; // loại việc trong danh mục
+  title?: string; // loại việc + ghi chú (tên khách) — máy chủ ghép sẵn
   points: number;
   completedAt: string;
 }
@@ -85,7 +86,7 @@ export default function Scores() {
         <ul className="divide-y">
           {tasks.map((t) => (
             <li key={t.id} className="py-2 flex justify-between text-sm">
-              <span>{t.taskName}</span>
+              <span>{t.title || t.taskName}</span>
               <span className="font-medium text-brand-600">+{t.points}đ</span>
             </li>
           ))}

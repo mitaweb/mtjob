@@ -8,6 +8,7 @@ import { getDoneTasksForMemberRange, getDoingTasks, getTodoTasks } from './tasks
 import { getCustomers } from './crm.repo.js';
 import { logTask, startTask, completeTask, startAssignedTask, canAssign } from './tasks.service.js';
 import { nowTz, monthRange, todayIso } from '../lib/datetime.js';
+import { taskTitle } from '../lib/tasks.js';
 import { getConfig } from '../config.js';
 
 export const tasksRouter = Router();
@@ -46,7 +47,8 @@ tasksRouter.get(
         ? { start: todayIso(), end: todayIso() }
         : monthRange(now.year(), now.month() + 1);
     const tasks = await getDoneTasksForMemberRange(req.user!.sub, start, end);
-    res.json({ range, start, end, tasks });
+    // `title` = loại việc + ghi chú (tên khách) — client hiển thị thẳng, khỏi tự ghép.
+    res.json({ range, start, end, tasks: tasks.map((t) => ({ ...t, title: taskTitle(t) })) });
   }),
 );
 
@@ -61,6 +63,8 @@ tasksRouter.get(
         id: t.id,
         taskCode: t.taskCode,
         taskName: t.taskName,
+        title: taskTitle(t), // kèm ghi chú/tên khách
+        note: t.note,
         points: t.points,
         startedAt: t.startedAt,
         elapsedMinutes: Math.max(0, Math.round((now - Date.parse(t.startedAt)) / 60000)) || 0,

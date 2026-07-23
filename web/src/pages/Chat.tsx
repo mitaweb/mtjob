@@ -445,7 +445,10 @@ export default function Chat() {
       const r = await api<{ points: number }>(`/tasks/${t.id}/complete`, { method: 'POST' });
       setMsgs((m) => [
         ...m,
-        { role: 'bot', text: `✅ Đã hoàn thành "${t.taskName}" sau ${fmtMin(t.elapsedMinutes)} (+${r.points}đ). 💪` },
+        {
+          role: 'bot',
+          text: `✅ Đã hoàn thành "${t.title || t.taskName}" sau ${fmtMin(t.elapsedMinutes)} (+${r.points}đ). 💪`,
+        },
       ]);
       await loadDoing();
     } catch (e) {
@@ -690,7 +693,7 @@ export default function Chat() {
               {doing.map((t) => (
                 <li key={t.id} className="py-2 flex items-center justify-between gap-2">
                   <div>
-                    <div className="font-medium text-sm">{t.taskName}</div>
+                    <div className="font-medium text-sm">{t.title || t.taskName}</div>
                     <div className="text-xs text-slate-500">
                       Bắt đầu {hm(t.startedAt)} · đã {fmtMin(t.elapsedMinutes)} · +{t.points}đ khi xong
                     </div>

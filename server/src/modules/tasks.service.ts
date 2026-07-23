@@ -6,6 +6,7 @@ import { notify } from './notifications.service.js';
 import { ApiError } from '../util/errors.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
+import { taskTitle } from '../lib/tasks.js';
 import { markCustomerDirty } from './brain.service.js';
 import type { Member, TaskRow } from '../types.js';
 
@@ -29,7 +30,9 @@ async function notifyLeaderOnComplete(task: TaskRow): Promise<void> {
     await notify(leaderId, {
       type: 'task_done',
       title: 'Thành viên hoàn thành task ✅',
-      body: `${task.memberName} đã hoàn thành "${task.taskName}" (+${task.points}đ).`,
+      // taskTitle ghép cả ghi chú (thường là tên khách) — leader cần biết việc CHO AI,
+      // không chỉ loại việc.
+      body: `${task.memberName} đã hoàn thành "${taskTitle(task)}" (+${task.points}đ).`,
       url: '/dashboard',
     }, { background: true });
   } catch (e) {
