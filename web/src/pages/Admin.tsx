@@ -85,7 +85,6 @@ export default function Admin() {
   const [claudeBaseUrl, setClaudeBaseUrl] = useState('');
   const [autoCapture, setAutoCapture] = useState(true);
   const [checks, setChecks] = useState<Check[] | null>(null);
-  const [dupes, setDupes] = useState<DedupeReport | null>(null);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [modelsError, setModelsError] = useState('');
   const [loadingModels, setLoadingModels] = useState(false);
@@ -100,13 +99,6 @@ export default function Admin() {
   interface ModelOption {
     id: string;
     label: string;
-  }
-
-  interface DedupeReport {
-    totalTasks: number;
-    totalPoints: number;
-    byMember: Array<{ memberName: string; tasks: number; points: number }>;
-    items: Array<{ id: string; memberName: string; taskName: string; date: string; note: string; points: number }>;
   }
 
   interface AiInfo {
@@ -316,44 +308,6 @@ export default function Admin() {
     }
   }
 
-  /** Rà soát việc bị tính điểm hai lần — chỉ liệt kê, chưa đụng dữ liệu. */
-  async function scanDupes() {
-    try {
-      const r = await api<DedupeReport>('/admin/dedupe-tasks', { body: {} });
-      setDupes(r);
-      if (r.totalTasks === 0) toast.success('Không tìm thấy việc nào bị tính trùng.');
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  }
-
-  /** Đánh dấu các việc thừa (đổi trạng thái, không xoá — khôi phục lại được). */
-  async function applyDupes() {
-    if (!dupes) return;
-    const ok = window.confirm(
-      `Bỏ ${dupes.totalTasks} việc trùng (${dupes.totalPoints} điểm) khỏi bảng điểm?\n\n` +
-        'Dữ liệu KHÔNG bị xoá, chỉ đánh dấu là trùng nên khôi phục lại được.',
-    );
-    if (!ok) return;
-    try {
-      const r = await api<{ marked: number }>('/admin/dedupe-tasks', { body: { apply: true } });
-      toast.success(`Đã bỏ ${r.marked} việc trùng khỏi bảng điểm.`);
-      setDupes(null);
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  }
-
-  async function restoreDupes() {
-    if (!window.confirm('Khôi phục lại tất cả việc đã đánh dấu trùng?')) return;
-    try {
-      const r = await api<{ restored: number }>('/admin/dedupe-restore', { method: 'POST' });
-      toast.success(`Đã khôi phục ${r.restored} việc.`);
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  }
-
   /** Gửi ngay báo cáo công việc cho chính mình — kiểm tra đường thông báo, khỏi chờ 17:15. */
   async function testReport() {
     try {
@@ -441,80 +395,8 @@ export default function Admin() {
           <AsyncButton className="btn-ghost" onClick={testReport} busyLabel="Đang gửi…">
             📊 Gửi thử báo cáo
           </AsyncButton>
-          <AsyncButton className="btn-ghost" onClick={scanDupes} busyLabel="Đang rà soát…">
-            🧹 Rà soát điểm trùng
-          </AsyncButton>
         </div>
       </div>
-
-      {/* Kết quả rà soát điểm trùng */}
-      {dupes && (
-        <div className="card">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <h2 className="font-semibold">🧹 Việc bị tính điểm hai lần</h2>
-            <button className="text-xs text-slate-400 underline" onClick={() => setDupes(null)}>
-              đóng
-            </button>
-          </div>
-
-          {dupes.totalTasks === 0 ? (
-            <p className="text-sm text-emerald-600">Không tìm thấy việc nào bị tính trùng ✓</p>
-          ) : (
-            <>
-              <p className="text-sm text-slate-600">
-                Tìm thấy <b>{dupes.totalTasks}</b> việc thừa, tổng <b>{dupes.totalPoints} điểm</b>. Chỉ tính là
-                trùng khi cùng người · cùng loại việc · cùng ngày · cùng mô tả, và có cả dòng đã bấm “bắt đầu”
-                lẫn dòng báo xong thẳng.
-              </p>
-
-              <table className="mt-3 w-full text-sm">
-                <thead className="text-left text-slate-500">
-                  <tr>
-                    <th className="py-1">Nhân sự</th>
-                    <th className="text-right">Việc thừa</th>
-                    <th className="text-right">Điểm bị trừ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dupes.byMember.map((m) => (
-                    <tr key={m.memberName} className="border-t">
-                      <td className="py-1">{m.memberName}</td>
-                      <td className="text-right">{m.tasks}</td>
-                      <td className="text-right text-rose-600">−{m.points}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              <details className="mt-2">
-                <summary className="cursor-pointer text-xs text-brand-600">
-                  Xem {Math.min(dupes.items.length, 200)} dòng chi tiết
-                </summary>
-                <ul className="mt-1 max-h-64 space-y-0.5 overflow-y-auto text-xs text-slate-600">
-                  {dupes.items.map((it) => (
-                    <li key={it.id}>
-                      {it.date} · {it.memberName} · {it.taskName}
-                      {it.note ? ` — ${it.note}` : ''} (+{it.points}đ)
-                    </li>
-                  ))}
-                </ul>
-              </details>
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                <AsyncButton className="btn-primary" onClick={applyDupes} busyLabel="Đang dọn…">
-                  Bỏ {dupes.totalTasks} việc trùng khỏi bảng điểm
-                </AsyncButton>
-                <AsyncButton className="btn-ghost" onClick={restoreDupes} busyLabel="Đang khôi phục…">
-                  Khôi phục lại
-                </AsyncButton>
-              </div>
-              <p className="mt-1 text-xs text-slate-500">
-                Dữ liệu không bị xoá — chỉ đánh dấu là trùng nên khôi phục lại được bất cứ lúc nào.
-              </p>
-            </>
-          )}
-        </div>
-      )}
 
       {/* Kết quả kiểm tra kết nối */}
       {checks && (

@@ -69,3 +69,51 @@ export function computeNetSalary(i: NetSalaryInput): NetSalaryResult {
 export function formatVnd(n: number): string {
   return new Intl.NumberFormat('vi-VN').format(Math.round(Number(n) || 0)) + 'đ';
 }
+
+/** Hậu tố đơn vị (đã bỏ dấu tiếng Việt) → hệ số nhân. */
+const UNITS: Record<string, number> = {
+  d: 1, // "500.000đ" — ký hiệu tiền, không phải đơn vị nhân
+  k: 1_000,
+  nghin: 1_000,
+  ngan: 1_000,
+  tr: 1_000_000,
+  trieu: 1_000_000,
+  m: 1_000_000,
+  ty: 1_000_000_000,
+  ti: 1_000_000_000,
+  b: 1_000_000_000,
+};
+
+/**
+ * Đọc số tiền người dùng (hoặc AI) viết tự do thành số đồng.
+ *
+ * Điểm mấu chốt là dấu chấm/phẩy đổi nghĩa theo việc CÓ hậu tố hay không:
+ * có hậu tố ("1,5 triệu") thì là dấu thập phân; không hậu tố ("20.000.000")
+ * thì là dấu ngăn nghìn. Đoán sai chỗ này là lệch 1000 lần trên sổ thu chi.
+ *
+ * "20tr" → 20.000.000 · "1,5 triệu" → 1.500.000 · "500k" → 500.000
+ * "1 tỷ" → 1.000.000.000 · "20.000.000" → 20.000.000 · rác → NaN
+ */
+export function parseVndAmount(input: string | number | null | undefined): number {
+  if (typeof input === 'number') return Number.isFinite(input) ? input : NaN;
+  const raw = String(input ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // b\u1ecf d\u1ea5u thanh: "tri\u1ec7u" th\u00e0nh "trieu", "t\u1ef7" th\u00e0nh "ty"
+    .replace(/đ/gi, 'd')
+    .toLowerCase()
+    .replace(/vnd|dong/g, ' ') // "20 triệu đồng", "500.000 VNĐ"
+    .trim();
+
+  const m = raw.match(/(\d[\d.,]*)\s*([a-z]*)/);
+  if (!m) return NaN;
+  const [, digits, suffix] = m;
+  const multiplier = suffix ? UNITS[suffix] : 1;
+  if (!multiplier) return NaN; // hậu tố lạ → không đoán bừa
+
+  const num =
+    multiplier === 1
+      ? Number(digits.replace(/[.,]/g, '')) // không hậu tố → dấu ngăn nghìn
+      : Number(digits.replace(/,/g, '.')); // có hậu tố → dấu thập phân
+  if (!Number.isFinite(num)) return NaN;
+  return Math.round(num * multiplier);
+}
