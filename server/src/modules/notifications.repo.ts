@@ -28,11 +28,25 @@ export async function addNotification(n: NotificationRow): Promise<void> {
   );
 }
 
-export async function getNotifications(memberId: string, limit = 50): Promise<NotificationRow[]> {
-  const rows = await q(
-    'SELECT * FROM notifications WHERE member_id = $1 ORDER BY created_at DESC LIMIT $2',
-    [memberId, limit],
-  );
+/**
+ * Thông báo của một người, MỚI NHẤT TRƯỚC.
+ * `types`: lọc theo loại ngay trong SQL — quan trọng vì mỗi nhóm cần suất riêng.
+ * (Lọc phía client sẽ hỏng khi một nhóm ồn chiếm hết `limit`, các nhóm khác thành trống.)
+ */
+export async function getNotifications(
+  memberId: string,
+  opts: { types?: string[]; limit?: number } = {},
+): Promise<NotificationRow[]> {
+  const limit = opts.limit ?? 50;
+  const rows = opts.types?.length
+    ? await q(
+        'SELECT * FROM notifications WHERE member_id = $1 AND type = ANY($2) ORDER BY created_at DESC LIMIT $3',
+        [memberId, opts.types, limit],
+      )
+    : await q('SELECT * FROM notifications WHERE member_id = $1 ORDER BY created_at DESC LIMIT $2', [
+        memberId,
+        limit,
+      ]);
   return rows.map((r) => ({
     id: r.notif_id || '',
     memberId: r.member_id || '',
@@ -42,6 +56,17 @@ export async function getNotifications(memberId: string, limit = 50): Promise<No
     createdAt: r.created_at || '',
     readAt: r.read_at || '',
   }));
+}
+
+/** Số chưa đọc theo từng loại — đếm trên TOÀN BỘ dữ liệu nên badge không phụ thuộc limit. */
+export async function countUnreadByType(memberId: string): Promise<Record<string, number>> {
+  const rows = await q(
+    "SELECT type, COUNT(*) AS n FROM notifications WHERE member_id = $1 AND read_at = '' GROUP BY type",
+    [memberId],
+  );
+  const out: Record<string, number> = {};
+  for (const r of rows) out[String(r.type || '')] = Number(r.n) || 0;
+  return out;
 }
 
 /**

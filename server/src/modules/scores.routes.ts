@@ -2,7 +2,11 @@ import { Router } from 'express';
 import { asyncHandler, ApiError } from '../util/errors.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
 import { memberScore, ranking } from './scores.service.js';
-import { findById } from './members.repo.js';
+import { findById, membersInTeam } from './members.repo.js';
+import { getDoneTasksForMemberRange } from './tasks.repo.js';
+import { taskTitle } from '../lib/tasks.js';
+import { unionMinutes, taskIntervalsForDay } from '../lib/worktime.js';
+import { nowTz, monthRange, dayBoundsMs } from '../lib/datetime.js';
 
 export const scoresRouter = Router();
 scoresRouter.use(requireAuth);
@@ -33,5 +37,71 @@ scoresRouter.get(
   requireRole('director', 'admin'),
   asyncHandler(async (_req, res) => {
     res.json({ members: await ranking() });
+  }),
+);
+
+/**
+ * Chi tiết công việc THEO NGÀY của một thành viên trong tháng — để giám đốc/leader
+ * bấm vào một người trong bảng xếp hạng là thấy họ làm gì mỗi ngày.
+ * Quyền: giám đốc/admin xem mọi người; leader chỉ xem người trong team mình.
+ */
+scoresRouter.get(
+  '/member/:id/detail',
+  requireRole('leader', 'director', 'admin'),
+  asyncHandler(async (req, res) => {
+    const targetId = String(req.params.id);
+    const target = await findById(targetId);
+    if (!target) throw new ApiError(404, 'Không tìm thấy thành viên');
+
+    if (req.user!.role === 'leader') {
+      const me = await findById(req.user!.sub);
+      const inTeam = me?.teamId ? (await membersInTeam(me.teamId)).some((x) => x.id === targetId) : false;
+      if (!inTeam) throw new ApiError(403, 'Bạn chỉ xem được thành viên trong team mình');
+    }
+
+    const now = nowTz();
+    const year = Number(req.query.year) || now.year();
+    const month = Number(req.query.month) || now.month() + 1;
+    const { start, end } = monthRange(year, month);
+
+    const [tasks, score, rank] = await Promise.all([
+      getDoneTasksForMemberRange(targetId, start, end),
+      memberScore(targetId, year, month),
+      ranking(year, month).then((r) => r.find((x) => x.memberId === targetId)?.rank ?? 0),
+    ]);
+
+    // Gom theo ngày hoàn thành; giờ làm tính lại từ khoảng thời gian thực của từng ngày.
+    const byDay = new Map<string, typeof tasks>();
+    for (const t of tasks) {
+      const day = (t.completedAt || t.createdAt || '').slice(0, 10);
+      if (!day) continue;
+      byDay.set(day, [...(byDay.get(day) || []), t]);
+    }
+
+    const nowMs = Date.now();
+    const days = [...byDay.entries()]
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1)) // mới nhất trước
+      .map(([date, list]) => {
+        const { startMs, endMs } = dayBoundsMs(date);
+        return {
+          date,
+          points: list.reduce((s, t) => s + (Number(t.points) || 0), 0),
+          minutes: unionMinutes(taskIntervalsForDay(list, startMs, endMs, nowMs)),
+          tasks: list.map((t) => ({
+            id: t.id,
+            title: taskTitle(t), // kèm ghi chú / tên khách
+            points: t.points,
+            completedAt: t.completedAt,
+          })),
+        };
+      });
+
+    res.json({
+      member: { id: target.id, fullName: target.fullName, teamId: target.teamId },
+      year,
+      month,
+      score: { monthPoints: score.monthPoints, bonus: score.bonus, rank },
+      days,
+    });
   }),
 );

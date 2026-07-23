@@ -2,7 +2,13 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../util/errors.js';
 import { requireAuth } from '../auth/middleware.js';
-import { getNotifications, markRead, markAllRead, saveSubscription } from './notifications.repo.js';
+import {
+  getNotifications,
+  countUnreadByType,
+  markRead,
+  markAllRead,
+  saveSubscription,
+} from './notifications.repo.js';
 import { vapidPublicKey } from '../push/webpush.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
@@ -19,7 +25,22 @@ notificationsRouter.use(requireAuth);
 notificationsRouter.get(
   '/',
   asyncHandler(async (req, res) => {
-    res.json({ notifications: await getNotifications(req.user!.sub) });
+    // ?types=request,daily — mỗi nhóm tải riêng nên nhóm ồn không lấn chỗ nhóm khác.
+    const types = String(req.query.types || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    res.json({ notifications: await getNotifications(req.user!.sub, { types, limit }) });
+  }),
+);
+
+/** Số chưa đọc theo loại — cho badge từng nhóm và chuông trên thanh trên. */
+notificationsRouter.get(
+  '/unread-counts',
+  asyncHandler(async (req, res) => {
+    const counts = await countUnreadByType(req.user!.sub);
+    res.json({ counts, total: Object.values(counts).reduce((s, n) => s + n, 0) });
   }),
 );
 

@@ -66,12 +66,12 @@ export default function Layout() {
   const items = NAV.filter((n) => !n.roles || (user && n.roles.includes(user.role)));
   const initial = (user?.fullName || '?').trim().charAt(0).toUpperCase();
 
-  // Số thông báo chưa đọc trên chuông. Tải lại khi đổi trang (rẻ hơn hỏi liên tục),
-  // nhờ vậy đọc xong ở Inbox quay ra là số tự cập nhật.
+  // Số thông báo chưa đọc trên chuông. Dùng endpoint đếm (chỉ trả về con số) thay vì
+  // tải cả danh sách. Tải lại khi đổi trang nên đọc xong ở Inbox quay ra là số tự cập nhật.
   useEffect(() => {
     if (!user) return;
-    api<{ notifications: Array<{ readAt: string }> }>('/notifications')
-      .then((r) => setUnread(r.notifications.filter((n) => !n.readAt).length))
+    api<{ total: number }>('/notifications/unread-counts')
+      .then((r) => setUnread(r.total || 0))
       .catch(() => undefined);
   }, [user, location.pathname]);
 

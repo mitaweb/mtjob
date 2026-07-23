@@ -49,9 +49,10 @@ const GROUPS: GroupDef[] = [
   },
 ];
 
-/** Thông báo lạ (loại mới chưa phân nhóm) dồn vào Công việc để không bị mất. */
-function groupOf(type: string): Group {
-  return GROUPS.find((g) => g.types.includes(type))?.key ?? 'work';
+/** Cộng số chưa đọc của các loại thuộc một nhóm. */
+function sumTypes(counts: Record<string, number>, g: Group): number {
+  const def = GROUPS.find((x) => x.key === g)!;
+  return def.types.reduce((s, t) => s + (counts[t] || 0), 0);
 }
 
 const fmtWhen = (iso: string) => {
@@ -69,46 +70,65 @@ export default function Inbox() {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Group>('request');
+  const [unread, setUnread] = useState<Record<Group, number>>({ request: 0, report: 0, remind: 0, work: 0 });
 
-  async function load() {
-    const r = await api<{ notifications: NotificationItem[] }>('/notifications');
+  /** Tải riêng từng nhóm: nhóm ồn (duyệt đơn) không lấn chỗ nhóm khác. */
+  async function loadGroup(g: Group) {
+    const def = GROUPS.find((x) => x.key === g)!;
+    const r = await api<{ notifications: NotificationItem[] }>(
+      `/notifications?types=${def.types.join(',')}&limit=50`,
+    );
     setItems(r.notifications);
   }
+
+  /** Số chưa đọc lấy từ máy chủ nên đếm đúng toàn bộ, không phụ thuộc số bản ghi tải về. */
+  async function loadCounts() {
+    const r = await api<{ counts: Record<string, number> }>('/notifications/unread-counts');
+    setUnread({
+      request: sumTypes(r.counts, 'request'),
+      report: sumTypes(r.counts, 'report'),
+      remind: sumTypes(r.counts, 'remind'),
+      work: sumTypes(r.counts, 'work'),
+    });
+    return r.counts;
+  }
+
+  // Lần đầu: đếm trước để biết mở tab nào, rồi mới tải danh sách của tab đó.
   useEffect(() => {
-    load()
+    loadCounts()
+      .then((counts) => {
+        const first = GROUPS.find((g) => sumTypes(counts, g.key) > 0)?.key ?? 'request';
+        setTab(first);
+        return loadGroup(first);
+      })
       .catch((e) => toast.error((e as Error).message))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Số chưa đọc của từng nhóm — để biết chỗ nào cần xem trước.
-  const unread = useMemo(() => {
-    const c: Record<Group, number> = { request: 0, report: 0, remind: 0, work: 0 };
-    for (const n of items) if (!n.readAt) c[groupOf(n.type)]++;
-    return c;
-  }, [items]);
-
-  // Mở tab đang có việc chưa đọc, thay vì luôn mở Duyệt đơn.
+  // Đổi tab → tải danh sách của nhóm đó (bỏ qua lần đầu vì effect trên đã tải).
   useEffect(() => {
     if (loading) return;
-    const firstWithUnread = GROUPS.find((g) => unread[g.key] > 0);
-    if (firstWithUnread) setTab(firstWithUnread.key);
+    setItems([]);
+    loadGroup(tab).catch((e) => toast.error((e as Error).message));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
+  }, [tab]);
 
   const current = GROUPS.find((g) => g.key === tab)!;
-  const shown = useMemo(() => items.filter((n) => groupOf(n.type) === tab), [items, tab]);
+  const shown = items;
 
   async function markRead(id: string) {
     await api(`/notifications/${id}/read`, { method: 'POST' }).catch(() => {});
     setItems((list) => list.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n)));
+    setUnread((u) => ({ ...u, [tab]: Math.max(0, u[tab] - 1) }));
   }
 
   async function markGroupRead() {
     try {
       await api('/notifications/read-all', { body: { types: current.types } });
       const now = new Date().toISOString();
-      setItems((list) => list.map((n) => (groupOf(n.type) === tab ? { ...n, readAt: n.readAt || now } : n)));
+      setItems((list) => list.map((n) => ({ ...n, readAt: n.readAt || now })));
+      setUnread((u) => ({ ...u, [tab]: 0 }));
       toast.success(`Đã đánh dấu đã đọc nhóm ${current.label}`);
     } catch (e) {
       toast.error((e as Error).message);

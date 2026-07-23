@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { vnd, fmtMin } from '../lib/format';
 import { Skeleton, SkeletonRows } from '../components/ui';
+import MemberWorkDetail from '../components/MemberWorkDetail';
 import type { MemberScore } from '../lib/types';
 
 export default function Dashboard() {
@@ -12,6 +13,7 @@ export default function Dashboard() {
   const [scores, setScores] = useState<MemberScore[]>([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
+  const [detail, setDetail] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     const scoreUrl = isDirector ? '/scores/all' : '/scores/team';
@@ -48,7 +50,8 @@ export default function Dashboard() {
       </div>
 
       <div className="card overflow-x-auto">
-        <h2 className="font-semibold mb-2">Bảng xếp hạng</h2>
+        <h2 className="font-semibold">Bảng xếp hạng</h2>
+        <p className="mb-2 text-xs text-slate-500">Bấm vào tên để xem chi tiết công việc từng ngày.</p>
         {loading ? (
           <SkeletonRows rows={5} />
         ) : (
@@ -65,9 +68,13 @@ export default function Dashboard() {
           </thead>
           <tbody>
             {scores.map((s) => (
-              <tr key={s.memberId} className="border-t">
+              <tr
+                key={s.memberId}
+                className="cursor-pointer border-t hover:bg-slate-50"
+                onClick={() => setDetail({ id: s.memberId, name: s.fullName })}
+              >
                 <td className="py-1">{s.rank}</td>
-                <td>{s.fullName}</td>
+                <td className="font-medium text-brand-700 underline">{s.fullName}</td>
                 <td>{s.teamId}</td>
                 <td className="font-medium">{s.monthPoints}</td>
                 <td className="text-emerald-600">{vnd(s.bonus)}</td>
@@ -78,6 +85,10 @@ export default function Dashboard() {
         </table>
         )}
       </div>
+
+      {detail && (
+        <MemberWorkDetail memberId={detail.id} fullName={detail.name} onClose={() => setDetail(null)} />
+      )}
     </div>
   );
 }
