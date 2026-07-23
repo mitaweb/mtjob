@@ -19,6 +19,7 @@ import { hashPassword } from '../auth/password.js';
 import { setConfigValue, getConfig } from '../config.js';
 import { pool, closePool } from '../db/client.js';
 import { DDL, BRAIN_DDL } from '../db/schema.js';
+import { findDuplicateTasks, markDuplicates, restoreDuplicates } from './tasks.dedupe.js';
 import { newId } from '../util/id.js';
 import { nowTz, monthRange, fmtHm, dayjs, TZ } from '../lib/datetime.js';
 import { dayFractionFromShifts } from '../lib/attendance.js';
@@ -268,6 +269,39 @@ adminRouter.post(
       url: '/dashboard',
     });
     res.json({ ok: true, preview: body.slice(0, 400) });
+  }),
+);
+
+/**
+ * Rà soát việc bị tính điểm hai lần. `apply=false` (mặc định) chỉ liệt kê để xem trước;
+ * `apply=true` mới đánh dấu — và chỉ đổi trạng thái nên khôi phục lại được.
+ */
+const dedupeSchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  apply: z.boolean().optional().default(false),
+});
+
+adminRouter.post(
+  '/dedupe-tasks',
+  requireRole('director', 'admin'),
+  asyncHandler(async (req, res) => {
+    const b = dedupeSchema.parse(req.body ?? {});
+    const report = await findDuplicateTasks(b.month);
+    if (!b.apply) {
+      res.json({ applied: false, ...report, items: report.items.slice(0, 200) });
+      return;
+    }
+    const marked = await markDuplicates(report.items.map((i) => i.id));
+    res.json({ applied: true, marked, totalPoints: report.totalPoints, byMember: report.byMember });
+  }),
+);
+
+/** Khôi phục toàn bộ việc đã đánh dấu trùng — lối lui nếu dọn nhầm. */
+adminRouter.post(
+  '/dedupe-restore',
+  requireRole('director', 'admin'),
+  asyncHandler(async (_req, res) => {
+    res.json({ ok: true, restored: await restoreDuplicates() });
   }),
 );
 
