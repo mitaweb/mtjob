@@ -308,6 +308,16 @@ export default function Admin() {
     }
   }
 
+  /** Gửi ngay báo cáo công việc cho chính mình — kiểm tra đường thông báo, khỏi chờ 17:15. */
+  async function testReport() {
+    try {
+      await api('/admin/test-report', { method: 'POST' });
+      toast.success('Đã gửi — mở Thông báo → tab 📊 Báo cáo để xem.');
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
   async function migrateDb() {
     try {
       const r = await api<{ core: string; brain: string }>('/admin/migrate-db', { method: 'POST' });
@@ -381,6 +391,9 @@ export default function Admin() {
           </AsyncButton>
           <AsyncButton className="btn-ghost" onClick={testConnection} busyLabel="Đang kiểm tra…">
             🔌 Kiểm tra kết nối
+          </AsyncButton>
+          <AsyncButton className="btn-ghost" onClick={testReport} busyLabel="Đang gửi…">
+            📊 Gửi thử báo cáo
           </AsyncButton>
         </div>
       </div>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
-import { enablePush } from '../lib/push';
+import { enablePush, pushStatus, type PushStatus } from '../lib/push';
 import { useToast } from '../components/Toaster';
 import { Badge, EmptyState, SkeletonRows } from '../components/ui';
 import type { NotificationItem } from '../lib/types';
@@ -71,6 +71,11 @@ export default function Inbox() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Group>('request');
   const [unread, setUnread] = useState<Record<Group, number>>({ request: 0, report: 0, remind: 0, work: 0 });
+  const [push, setPush] = useState<PushStatus>('off');
+
+  useEffect(() => {
+    pushStatus().then(setPush).catch(() => undefined);
+  }, []);
 
   /** Tải riêng từng nhóm: nhóm ồn (duyệt đơn) không lấn chỗ nhóm khác. */
   async function loadGroup(g: Group) {
@@ -139,12 +144,32 @@ export default function Inbox() {
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-lg font-bold">Thông báo</h1>
-        <button
-          className="btn-ghost text-sm"
-          onClick={() => enablePush().then((r) => toast.success(r.message)).catch(() => undefined)}
-        >
-          🔔 Bật đẩy
-        </button>
+        {push === 'on' ? (
+          <span className="text-sm text-emerald-600" title="Thiết bị này đã nhận được thông báo đẩy">
+            🔔 Đã bật thông báo đẩy
+          </span>
+        ) : push === 'unsupported' ? (
+          <span className="text-sm text-slate-400">Trình duyệt không hỗ trợ thông báo đẩy</span>
+        ) : push === 'blocked' ? (
+          <span className="text-sm text-amber-600" title="Mở cài đặt trình duyệt để cho phép lại">
+            🔕 Trình duyệt đang chặn thông báo
+          </span>
+        ) : (
+          <button
+            className="btn-ghost text-sm"
+            onClick={() =>
+              enablePush()
+                .then((r) => {
+                  if (r.ok) toast.success(r.message);
+                  else toast.error(r.message);
+                  return pushStatus().then(setPush);
+                })
+                .catch((e) => toast.error((e as Error).message))
+            }
+          >
+            🔔 Bật đẩy
+          </button>
+        )}
       </div>
 
       {/* Tabs theo nhóm — duyệt đơn tách riêng cho khỏi lẫn với báo cáo và nhắc hẹn */}

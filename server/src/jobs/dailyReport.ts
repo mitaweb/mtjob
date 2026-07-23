@@ -1,7 +1,7 @@
 import { getActiveMembers, getDirectors } from '../modules/members.repo.js';
 import { getTeams } from '../modules/teams.repo.js';
 import { getScoringTasks } from '../modules/tasks.repo.js';
-import { memberScore, ranking } from '../modules/scores.service.js';
+import { ranking, scoresFor, withRanks } from '../modules/scores.service.js';
 import { taskTitle } from '../lib/tasks.js';
 import type { TaskRow } from '../types.js';
 import { notify } from '../modules/notifications.service.js';
@@ -201,6 +201,21 @@ export async function previewDirectorReport(): Promise<string> {
   );
 }
 
+/**
+ * Chạy một phần của job, nuốt lỗi + đo thời gian.
+ * Một phần hỏng không được kéo đổ các phần sau (trước đây lỗi/chậm ở báo cáo cá nhân
+ * khiến báo cáo giám đốc không bao giờ chạy tới).
+ */
+async function section(name: string, fn: () => Promise<void>): Promise<void> {
+  const t0 = Date.now();
+  try {
+    await fn();
+    console.log(`[job] ${name}: xong sau ${Date.now() - t0}ms`);
+  } catch (e) {
+    console.error(`[job] ${name} lỗi:`, e);
+  }
+}
+
 /** Daily personal + leader + director reports (birthdays + bonus included). */
 export async function runDailyReports(): Promise<void> {
   const now = nowTz();
@@ -208,8 +223,22 @@ export async function runDailyReports(): Promise<void> {
   const month = now.month() + 1;
 
   const today = todayIso();
-  const allTasks = await getScoringTasks(today, today, today);
-  const members = await getActiveMembers();
+  const [allTasks, members] = await Promise.all([
+    getScoringTasks(today, today, today),
+    getActiveMembers(),
+  ]);
+  const byId = new Map(members.map((m) => [m.id, m]));
+
+  // MỘT lượt tính điểm cho tất cả (trước đây gọi memberScore trong vòng lặp = mỗi người
+  // một lần quét cả tháng, cộng thêm ranking() cho từng team → job hết giờ 60s trước khi
+  // tới báo cáo giám đốc, nên giám đốc KHÔNG BAO GIỜ nhận được).
+  const staff = members.filter((m) => m.role !== 'director');
+  const scores = await scoresFor(staff);
+  const scoreById = new Map(scores.map((s) => [s.memberId, s]));
+
+  // Bảng xếp hạng công ty: chỉ nhân viên, giống ranking() nhưng không tốn thêm truy vấn.
+  const all = withRanks(scores.filter((s) => byId.get(s.memberId)?.role === 'member'));
+
   const birthdays = birthdaysInMonth(
     members.map((m) => ({ fullName: m.fullName, dob: m.dob })),
     month,
@@ -218,49 +247,50 @@ export async function runDailyReports(): Promise<void> {
     ? `\n🎂 Sinh nhật tháng này: ${birthdays.map((b) => b.fullName).join(', ')}. Chúc mừng sinh nhật! 🎉`
     : '';
 
-  // Personal report (giám đốc không làm task → không gửi báo cáo điểm cá nhân).
-  for (const m of members) {
-    if (m.role === 'director') continue;
-    const s = await memberScore(m.id);
-    const bonusLine = s.bonus > 0 ? `\n💰 Thưởng hiện tại: ${formatVnd(s.bonus)}.` : '';
-    const tasksLine = doneTasksLine(tasksDoneToday(allTasks, m.id, today));
-    await notify(m.id, {
-      type: 'daily',
-      title: `Báo cáo điểm ngày ${dd}`,
-      body: `Hôm nay: +${s.todayPoints}đ · ⏱ ${formatMinutes(s.workMinutesToday)} làm việc. Lũy kế tháng: ${s.monthPoints}đ.${bonusLine}${tasksLine}${birthdayLine}`,
-      url: '/scores',
-    });
-  }
+  // 1) GIÁM ĐỐC TRƯỚC — báo cáo quan trọng nhất, trước đây nằm cuối nên hay bị bỏ lỡ.
+  await section('báo cáo giám đốc', async () => {
+    const dirBody =
+      memberWorkLines(all, allTasks, today, (id) => byId.get(id)?.teamId) ||
+      'Hôm nay chưa có dữ liệu công việc.';
+    for (const d of await getDirectors()) {
+      await notify(d.id, {
+        type: 'daily_all',
+        title: `Báo cáo công việc toàn công ty — ${dd}`,
+        body: dirBody,
+        url: '/dashboard',
+      });
+    }
+  });
 
-  // Leader: team report — cũng liệt kê việc từng người, không chỉ điểm.
-  const teams = await getTeams();
-  for (const t of teams) {
-    if (!t.leaderMemberId) continue;
-    const lines = await ranking(undefined, undefined, t.id);
-    const body = memberWorkLines(lines, allTasks, today) || 'Chưa có dữ liệu.';
-    await notify(t.leaderMemberId, {
-      type: 'daily_team',
-      title: `Báo cáo team ${t.name} — ${dd}`,
-      body,
-      url: '/dashboard',
-    });
-  }
+  // 2) Leader: lọc từ bảng xếp hạng đã có, xếp hạng lại trong nội bộ team.
+  await section('báo cáo team', async () => {
+    for (const t of await getTeams()) {
+      if (!t.leaderMemberId) continue;
+      const teamLines = withRanks(all.filter((l) => l.teamId === t.id));
+      await notify(t.leaderMemberId, {
+        type: 'daily_team',
+        title: `Báo cáo team ${t.name} — ${dd}`,
+        body: memberWorkLines(teamLines, allTasks, today) || 'Chưa có dữ liệu.',
+        url: '/dashboard',
+      });
+    }
+  });
 
-  // Director: toàn công ty — CHI TIẾT từng người hôm nay làm việc gì, không chỉ điểm số.
-  const all = await ranking();
-  const byId = new Map(members.map((m) => [m.id, m]));
-  const dirBody =
-    memberWorkLines(all, allTasks, today, (id) => byId.get(id)?.teamId) ||
-    'Hôm nay chưa có dữ liệu công việc.';
-
-  for (const d of await getDirectors()) {
-    await notify(d.id, {
-      type: 'daily_all',
-      title: `Báo cáo công việc toàn công ty — ${dd}`,
-      body: dirBody,
-      url: '/dashboard',
-    });
-  }
+  // 3) Cá nhân (giám đốc không làm task → không gửi báo cáo điểm cá nhân).
+  await section('báo cáo cá nhân', async () => {
+    for (const m of staff) {
+      const s = scoreById.get(m.id);
+      if (!s) continue;
+      const bonusLine = s.bonus > 0 ? `\n💰 Thưởng hiện tại: ${formatVnd(s.bonus)}.` : '';
+      const tasksLine = doneTasksLine(tasksDoneToday(allTasks, m.id, today));
+      await notify(m.id, {
+        type: 'daily',
+        title: `Báo cáo điểm ngày ${dd}`,
+        body: `Hôm nay: +${s.todayPoints}đ · ⏱ ${formatMinutes(s.workMinutesToday)} làm việc. Lũy kế tháng: ${s.monthPoints}đ.${bonusLine}${tasksLine}${birthdayLine}`,
+        url: '/scores',
+      });
+    }
+  });
 
   // Nhắc thu tiền các bên sắp tới hạn + nhắc lịch hẹn khách ngày mai.
   await runFinanceReminders().catch((e) => console.error('[finance reminders]', e));

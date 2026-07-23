@@ -61,38 +61,53 @@ export async function memberScore(memberId: string, year?: number, month?: numbe
   };
 }
 
-/** Ranked month scores — CHỈ nhân viên (admin/leader/giám đốc không vào bảng xếp hạng). */
-export async function ranking(year?: number, month?: number, teamId?: string): Promise<RankedMemberScore[]> {
+/**
+ * Điểm của NHIỀU thành viên trong MỘT lượt truy vấn.
+ * Gọi memberScore trong vòng lặp sẽ quét lại bảng task cho từng người — với 15 người
+ * là 15 lần quét cả tháng, đủ làm job báo cáo hết giờ trước khi chạy xong.
+ */
+export async function scoresFor(
+  members: Array<{ id: string; fullName: string; teamId: string }>,
+  year?: number,
+  month?: number,
+): Promise<MemberScore[]> {
   const now = nowTz();
   const y = year ?? now.year();
   const m = month ?? now.month() + 1;
   const { start, end } = monthRange(y, m);
   const today = todayIso();
-  const tasks = await getScoringTasks(start, end, today);
+  const [tasks, cfg] = await Promise.all([getScoringTasks(start, end, today), bonusCfg()]);
   const doneTasks = tasks.filter((t) => t.status === 'done');
+  const agg = aggregateByMember(doneTasks, start, end);
+
+  return members.map((mem) => {
+    const monthPoints = agg.get(mem.id) || 0;
+    return {
+      memberId: mem.id,
+      fullName: mem.fullName,
+      teamId: mem.teamId,
+      year: y,
+      month: m,
+      todayPoints: sumPointsForMember(doneTasks, mem.id, today, today),
+      monthPoints,
+      bonus: computeBonus(monthPoints, cfg),
+      workMinutesToday: workMinutesForDay(tasks, mem.id, today),
+    };
+  });
+}
+
+/** Gắn thứ hạng theo điểm tháng (điểm bằng nhau thì cùng hạng). */
+export function withRanks(scores: MemberScore[]): RankedMemberScore[] {
+  const ranked = rankMembers(new Map(scores.map((s) => [s.memberId, s.monthPoints])));
+  const rankByMember = new Map(ranked.map((r) => [r.memberId, r.rank]));
+  return scores
+    .map((s) => ({ ...s, rank: rankByMember.get(s.memberId) || 0 }))
+    .sort((a, b) => a.rank - b.rank);
+}
+
+/** Ranked month scores — CHỈ nhân viên (admin/leader/giám đốc không vào bảng xếp hạng). */
+export async function ranking(year?: number, month?: number, teamId?: string): Promise<RankedMemberScore[]> {
   let members = (await getActiveMembers()).filter((x) => x.role === 'member');
   if (teamId) members = members.filter((x) => x.teamId === teamId);
-
-  const cfg = await bonusCfg();
-  const agg = aggregateByMember(doneTasks, start, end);
-  const ranked = rankMembers(new Map(members.map((mem) => [mem.id, agg.get(mem.id) || 0])));
-  const rankByMember = new Map(ranked.map((r) => [r.memberId, r.rank]));
-
-  return members
-    .map((mem) => {
-      const monthPoints = agg.get(mem.id) || 0;
-      return {
-        memberId: mem.id,
-        fullName: mem.fullName,
-        teamId: mem.teamId,
-        year: y,
-        month: m,
-        todayPoints: sumPointsForMember(doneTasks, mem.id, today, today),
-        monthPoints,
-        bonus: computeBonus(monthPoints, cfg),
-        workMinutesToday: workMinutesForDay(tasks, mem.id, today),
-        rank: rankByMember.get(mem.id) || 0,
-      };
-    })
-    .sort((a, b) => a.rank - b.rank);
+  return withRanks(await scoresFor(members, year, month));
 }

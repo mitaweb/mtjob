@@ -9,6 +9,23 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   return out;
 }
 
+export type PushStatus = 'on' | 'off' | 'blocked' | 'unsupported';
+
+/** Trạng thái thông báo đẩy trên THIẾT BỊ NÀY — để nút không mời bật lại khi đã bật. */
+export async function pushStatus(): Promise<PushStatus> {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    return 'unsupported';
+  }
+  if (Notification.permission === 'denied') return 'blocked';
+  if (Notification.permission !== 'granted') return 'off';
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    return (await reg.pushManager.getSubscription()) ? 'on' : 'off';
+  } catch {
+    return 'off';
+  }
+}
+
 export async function enablePush(): Promise<{ ok: boolean; message: string }> {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     return { ok: false, message: 'Trình duyệt không hỗ trợ thông báo đẩy.' };

@@ -251,6 +251,26 @@ adminRouter.post(
   }),
 );
 
+/**
+ * Gửi NGAY bản báo cáo công việc cho chính người bấm — để kiểm tra đường thông báo
+ * mà không phải chờ tới giờ báo cáo tự động (17:15).
+ */
+adminRouter.post(
+  '/test-report',
+  asyncHandler(async (req, res) => {
+    const { previewDirectorReport } = await import('../jobs/dailyReport.js');
+    const { notify } = await import('./notifications.service.js');
+    const body = await previewDirectorReport();
+    await notify(req.user!.sub, {
+      type: 'daily_all',
+      title: `Báo cáo công việc (gửi thử) — ${nowTz().format('DD/MM HH:mm')}`,
+      body,
+      url: '/dashboard',
+    });
+    res.json({ ok: true, preview: body.slice(0, 400) });
+  }),
+);
+
 /** Danh sách model lấy từ API của nhà cung cấp — không cài cứng trong code. */
 adminRouter.get(
   '/ai-models',
