@@ -6,7 +6,7 @@ import { notify } from './notifications.service.js';
 import { ApiError } from '../util/errors.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
-import { taskTitle } from '../lib/tasks.js';
+import { taskTitle, isStartReport } from '../lib/tasks.js';
 import { markCustomerDirty } from './brain.service.js';
 import type { Member, TaskRow } from '../types.js';
 
@@ -51,6 +51,8 @@ export interface LogTaskInput {
 /**
  * Ghi nhận task ĐÃ hoàn thành. Điểm lấy từ danh mục.
  *
+ * ĐIỂM CHỈ ĐƯỢC TÍNH Ở ĐÂY — lúc KẾT THÚC. `startTask` không cộng điểm.
+ *
  * Nếu người này đang có task CÙNG LOẠI dở dang (status 'doing') thì HOÀN THÀNH task đó
  * thay vì tạo dòng mới — một việc chỉ được tính điểm MỘT lần, dù họ báo "bắt đầu" rồi
  * lại báo "đã xong". Trước đây mỗi lần báo tạo một dòng nên điểm bị nhân đôi.
@@ -62,6 +64,13 @@ export async function logTask(input: LogTaskInput): Promise<{ task: TaskRow; poi
   const item = await findCatalogItem(input.taskCode);
   if (!item || !item.active) {
     throw new ApiError(400, `Loại task "${input.taskCode}" không có trong danh mục`);
+  }
+
+  // Chốt chặn cuối: câu báo BẮT ĐẦU không bao giờ được đi vào đường ghi việc xong.
+  // Mọi đường vào (chat, API, import) đều qua đây, nên chặn ở đây là chặn được hết —
+  // đúng lỗi đã làm bảng điểm tháng 7 phồng gấp đôi.
+  if (isStartReport(input.note || '')) {
+    return startTask(input).then((r) => ({ task: r.task, points: 0 }));
   }
 
   const now = nowTz().toISOString();
