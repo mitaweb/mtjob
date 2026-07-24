@@ -26,7 +26,14 @@ import {
   type Customer,
 } from './crm.repo.js';
 import { getReminders, setReminderActive } from './reminders.repo.js';
-import { findDuplicateTasks, markDuplicates, restoreDuplicates, relabelStartNotes } from './tasks.dedupe.js';
+import {
+  findDuplicateTasks,
+  markDuplicates,
+  restoreDuplicates,
+  relabelStartNotes,
+  inspectTasks,
+} from './tasks.dedupe.js';
+import { isStartReport } from '../lib/tasks.js';
 import { ingestInBackground, markCustomerDirty } from './brain.service.js';
 import { describeRule } from '../lib/reminder.js';
 import { parseVndAmount, formatVnd } from '../lib/money.js';
@@ -487,7 +494,52 @@ const RESTORE_TOOL: ToolDef = {
   },
 };
 
-/** Cặp công cụ dọn/khôi phục điểm tính hai lần. Chỉ cấp cho giám đốc/admin. */
+const INSPECT_TOOL: ToolDef = {
+  declaration: {
+    name: 'inspect_tasks',
+    description:
+      'Xem DỮ LIỆU THÔ của bảng công việc: từng dòng có giờ bắt đầu hay không, trạng thái, điểm, ghi chú. ' +
+      'Dùng khi người dùng thắc mắc "vì sao dòng này còn điểm", "sao dọn rồi vẫn còn", ' +
+      'hoặc muốn kiểm chứng trước khi dọn. Chỉ đọc, không sửa gì.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        keyword: { type: 'STRING', description: 'Lọc theo chữ trong ghi chú hoặc tên việc, vd "bắt đầu lên ads".' },
+        month: { type: 'STRING', description: 'Tháng YYYY-MM.' },
+        member: { type: 'STRING', description: 'Tên (một phần) nhân sự.' },
+      },
+    },
+  },
+  run: async (a) => {
+    const rows = await inspectTasks({
+      keyword: String(a.keyword || '').trim() || undefined,
+      month: /^\d{4}-\d{2}$/.test(String(a.month || '')) ? String(a.month) : undefined,
+      member: String(a.member || '').trim() || undefined,
+    });
+    if (rows.length === 0) return 'Không có dòng nào khớp.';
+
+    let bogus = 0;
+    let real = 0;
+    const lines = rows.map((r) => {
+      const hasStart = (r.started_at || '').trim() !== '';
+      const start = isStartReport(r.note || '');
+      if (start && !hasStart) bogus += 1;
+      if (start && hasStart) real += 1;
+      const day = String(r.completed_at || r.created_at || '').slice(0, 10);
+      const mark = hasStart ? 'CÓ giờ bắt đầu' : 'KHÔNG có giờ bắt đầu';
+      return `${day} · ${r.member_name} · ${r.task_name} · ghi chú: "${r.note || '(trống)'}" · ${r.points}đ · ${mark} · ${r.status}`;
+    });
+    return [
+      `${rows.length} dòng:`,
+      ...lines,
+      '',
+      `Trong đó ghi chú là câu báo bắt đầu: ${bogus} dòng KHÔNG có giờ bắt đầu (sẽ bị bỏ điểm khi dọn), ` +
+        `${real} dòng CÓ giờ bắt đầu (việc thật, chỉ sửa lại nhãn, giữ nguyên điểm).`,
+    ].join('\n');
+  },
+};
+
+/** Bộ công cụ soi/dọn/khôi phục điểm tính hai lần. Chỉ cấp cho giám đốc/admin. */
 export function dedupeTools(): ToolDef[] {
-  return [DEDUPE_TOOL, RESTORE_TOOL];
+  return [INSPECT_TOOL, DEDUPE_TOOL, RESTORE_TOOL];
 }
