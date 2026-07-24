@@ -57,9 +57,26 @@ describe('pickDuplicates', () => {
     expect(pickDuplicates(rows).totalTasks).toBe(0);
   });
 
-  it('GIỮ dòng bấm nút Bắt đầu rồi Kết thúc, dù ghi chú vẫn còn chữ "bắt đầu"', () => {
-    // Dữ liệu cũ tạo trước khi có cleanNote: note là "bắt đầu lên ads" nhưng có giờ bắt đầu
-    // nên đó là việc thật, xoá đi là mất công của nhân sự.
+  it('nửa bắt đầu bị bỏ kể cả khi đã bấm nút (có giờ bắt đầu), vì nửa kết thúc đã có điểm', () => {
+    // Anh Tâm chốt: điểm ghi ở lúc KẾT THÚC. Dòng "bắt đầu lên ads" dù có giờ bắt đầu
+    // vẫn chỉ là nửa đầu của việc mà nửa sau đã được ghi ở dòng "Lên Ads".
+    const rows = [
+      row({
+        task_code: 'LA',
+        task_name: 'Lên Ads',
+        note: 'bắt đầu lên ads',
+        points: 20,
+        started_at: '2026-07-23T02:00:00.000Z',
+      }),
+      row({ task_code: 'LA', task_name: 'Lên Ads', note: '', points: 20 }),
+    ];
+    const r = pickDuplicates(rows);
+    expect(r.totalTasks).toBe(1);
+    expect(r.items[0].note).toBe('bắt đầu lên ads');
+  });
+
+  it('chỉ toàn dòng báo bắt đầu (không dòng kết thúc nào) thì KHÔNG bỏ gì', () => {
+    // Không có nửa kết thúc để đối chiếu → bỏ đi là nhân sự mất trắng công đã làm.
     const rows = [
       row({
         task_code: 'LA',

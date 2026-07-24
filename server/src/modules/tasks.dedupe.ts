@@ -91,26 +91,27 @@ export function pickDuplicates(rows: Row[]): DedupeReport {
 
   for (const list of groups.values()) {
     if (list.length < 2) continue;
-    // Dòng có giờ bắt đầu = việc thật đã bấm nút, luôn giữ.
-    const started = list.filter((r) => (r.started_at || '').trim() !== '');
-    const logged = list.filter((r) => (r.started_at || '').trim() === '');
-    if (logged.length === 0) continue;
 
-    // Kiểu 2: câu báo bắt đầu bị ghi thẳng thành việc xong → không được có điểm.
-    // Chỉ bỏ khi nhóm còn dòng báo xong thật, để người mới kịp báo bắt đầu không mất công.
-    const startReports = logged.filter((r) => isStartReport(r.note || ''));
-    const realDone = list.filter((r) => !startReports.includes(r));
-    if (startReports.length > 0 && realDone.length > 0) {
-      startReports.forEach((r) => add(r, 'câu báo bắt đầu bị tính điểm'));
+    // Nửa BẮT ĐẦU và nửa KẾT THÚC của cùng một việc. Phân loại theo CÂU NGƯỜI TA VIẾT,
+    // không theo giờ bắt đầu: dòng "bắt đầu lên ads" dù có bấm nút vẫn chỉ là nửa đầu của
+    // việc mà nửa sau đã được ghi ở dòng khác.
+    const startHalf = list.filter((r) => isStartReport(r.note || ''));
+    const endHalf = list.filter((r) => !isStartReport(r.note || ''));
+
+    // Cả hai nửa cùng có điểm → nửa bắt đầu là thừa. Không có nửa kết thúc nào thì giữ
+    // nguyên: người mới kịp báo bắt đầu không đáng bị mất trắng công.
+    if (startHalf.length > 0 && endHalf.length > 0) {
+      startHalf.forEach((r) => add(r, 'câu báo bắt đầu bị tính điểm'));
     }
 
-    // Kiểu 1: báo thẳng trùng với dòng đã bấm bắt đầu. Chỉ xét các dòng CHƯA bị kiểu 2
-    // gom, nếu không một dòng bị đếm thừa hai lần và báo cáo sẽ thổi phồng số điểm trừ.
-    const rest = logged.filter((r) => !startReports.includes(r));
-    if (started.length > 0 && rest.length > 0) {
-      rest
+    // Còn lại: hai dòng kết thúc cho cùng một việc — một dòng bấm nút (có giờ bắt đầu),
+    // một dòng báo thẳng trong chat. Bỏ dòng báo thẳng, giữ dòng có giờ làm thật.
+    const startedRows = endHalf.filter((r) => (r.started_at || '').trim() !== '');
+    const loggedRows = endHalf.filter((r) => (r.started_at || '').trim() === '');
+    if (startedRows.length > 0 && loggedRows.length > 0) {
+      loggedRows
         .sort((a, b) => (a.created_at < b.created_at ? 1 : -1)) // dòng báo lại thường tới sau
-        .slice(0, Math.min(started.length, rest.length))
+        .slice(0, Math.min(startedRows.length, loggedRows.length))
         .forEach((r) => add(r, 'báo thẳng trùng dòng đã bắt đầu'));
     }
   }
