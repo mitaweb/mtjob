@@ -51,6 +51,7 @@ export interface Row {
   started_at: string;
   completed_at: string;
   created_at: string;
+  status: string;
 }
 
 /** Tìm các việc thừa. KHÔNG thay đổi gì — chỉ liệt kê để xem trước. */
@@ -59,6 +60,41 @@ export async function findDuplicateTasks(month?: string): Promise<DedupeReport> 
     ? await q("SELECT * FROM tasks WHERE status = 'done' AND completed_at LIKE $1", [`${month}%`])
     : await q("SELECT * FROM tasks WHERE status = 'done'");
   return pickDuplicates(rows);
+}
+
+/**
+ * Đọc thẳng các dòng thô trong bảng tasks để soi bằng mắt.
+ *
+ * Có mặt vì không ai truy cập được database production (biến môi trường DB trên Vercel
+ * là Sensitive). Không nhìn được dữ liệu thật thì mọi phán đoán về "vì sao dòng này còn
+ * điểm" đều là đoán mò — mà đoán mò trên bảng điểm là đoán mò trên lương người ta.
+ */
+export async function inspectTasks(opts: {
+  keyword?: string;
+  month?: string;
+  member?: string;
+  limit?: number;
+}): Promise<Row[]> {
+  const where: string[] = ["status <> 'todo'"];
+  const params: unknown[] = [];
+  if (opts.month) {
+    params.push(`${opts.month}%`);
+    params.push(`${opts.month}%`);
+    where.push(`(completed_at LIKE $${params.length - 1} OR created_at LIKE $${params.length})`);
+  }
+  if (opts.keyword) {
+    params.push(`%${opts.keyword}%`);
+    where.push(`(note ILIKE $${params.length} OR task_name ILIKE $${params.length})`);
+  }
+  if (opts.member) {
+    params.push(`%${opts.member}%`);
+    where.push(`member_name ILIKE $${params.length}`);
+  }
+  params.push(Math.min(Math.max(opts.limit || 60, 1), 200));
+  return q(
+    `SELECT * FROM tasks WHERE ${where.join(' AND ')} ORDER BY completed_at DESC LIMIT $${params.length}`,
+    params,
+  );
 }
 
 /**

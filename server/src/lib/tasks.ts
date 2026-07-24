@@ -39,7 +39,10 @@ export function cleanNote(note: string, taskName = ''): string {
 }
 
 // Cụm mở đầu cho biết câu đó là BÁO BẮT ĐẦU, không phải báo xong.
-const START_REPORT = /^(bat dau|bat tay|dang lam|chuan bi|sap lam|se lam|gio lam|vao viec)\b/;
+// CỐ Ý không có "chuẩn bị": có loại việc tên là "Chuẩn bị nội dung quảng cáo",
+// "Chuẩn bị chứng từ" — câu "chuẩn bị nội dung quảng cáo cho X" là báo XONG việc đó,
+// không phải báo bắt đầu. Chỉ giữ những cụm không trùng tên loại việc nào.
+const START_REPORT = /^(bat dau|bat tay|dang lam|vao viec)\b/;
 
 /**
  * Câu này là báo BẮT ĐẦU việc chứ không phải báo đã xong?

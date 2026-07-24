@@ -19,6 +19,15 @@ describe('isStartReport', () => {
     // "bắt đầu" nằm giữa câu là mô tả, không phải báo bắt đầu.
     expect(isStartReport('báo cáo ads từ lúc bắt đầu chiến dịch')).toBe(false);
   });
+
+  it('KHÔNG coi "chuẩn bị…" là báo bắt đầu — đó là tên loại việc thật (ca thật trong DB)', () => {
+    // "Chuẩn bị nội dung quảng cáo" và "Chuẩn bị chứng từ" là loại việc; câu báo xong
+    // chúng mở đầu bằng "chuẩn bị" nhưng KHÔNG phải báo bắt đầu, không được bỏ điểm.
+    expect(isStartReport('chuẩn bị nội dung quảng cáo content tiến minh')).toBe(false);
+    expect(isStartReport('chuẩn bị chứng từ')).toBe(false);
+    // Nhưng có "bắt đầu" đứng trước thì vẫn là báo bắt đầu.
+    expect(isStartReport('bắt đầu chuẩn bị nội dung quảng cáo')).toBe(true);
+  });
 });
 
 describe('cleanNote', () => {

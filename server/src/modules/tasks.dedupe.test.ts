@@ -18,6 +18,7 @@ function row(p: Partial<Row> & { note: string; task_name: string; points: number
     started_at: p.started_at ?? '',
     completed_at: p.completed_at ?? '2026-07-23T10:00:00.000Z',
     created_at: p.created_at ?? `2026-07-23T10:0${seq % 10}:00.000Z`,
+    status: p.status ?? 'done',
   };
 }
 
