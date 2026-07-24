@@ -31,6 +31,7 @@ import {
   markDuplicates,
   restoreDuplicates,
   relabelStartNotes,
+  countRelabelable,
   inspectTasks,
 } from './tasks.dedupe.js';
 import { isStartReport } from '../lib/tasks.js';
@@ -418,8 +419,9 @@ const DEDUPE_TOOL: ToolDef = {
   declaration: {
     name: 'dedupe_tasks',
     description:
-      'Rà soát các việc bị TÍNH ĐIỂM HAI LẦN (vừa bấm bắt đầu vừa báo xong thành hai dòng). ' +
-      'Mặc định chỉ liệt kê để xem trước; chỉ đặt apply=true khi người dùng đã xem và bảo dọn.',
+      'Dọn bảng điểm: (1) bỏ điểm việc bị TÍNH HAI LẦN, (2) sửa nhãn việc THẬT còn chữ "bắt đầu" ' +
+      'cho hiện đúng tên việc (không đụng điểm). Mặc định chỉ xem trước; đặt apply=true khi người dùng bảo dọn. ' +
+      'Dùng cả khi người dùng nói "sao vẫn còn bắt đầu lên ads", "dọn nhãn", "dọn đi".',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -432,50 +434,63 @@ const DEDUPE_TOOL: ToolDef = {
     const month = /^\d{4}-\d{2}$/.test(String(a.month || '')) ? String(a.month) : undefined;
     const report = await findDuplicateTasks(month);
     const scope = month ? `tháng ${month}` : 'toàn bộ dữ liệu';
-    if (report.totalTasks === 0) return `Rà soát ${scope}: không thấy việc nào bị tính điểm hai lần.`;
 
     const summary = (rows: Array<{ memberName: string; tasks: number; points: number }>) =>
       rows.map((m) => `${m.memberName}: bỏ ${m.tasks} việc, trừ ${m.points}đ`).join('\n');
 
+    // XEM TRƯỚC — chưa đụng gì. Báo cả hai việc sẽ làm: bỏ điểm dòng trùng, và sửa nhãn
+    // việc thật. Đừng thoát sớm khi 0 dòng trùng — có thể vẫn còn hàng chục nhãn cần sửa.
     if (!isTrue(a.apply)) {
-      const byReason = new Map<string, number>();
-      for (const it of report.items) byReason.set(it.reason, (byReason.get(it.reason) || 0) + 1);
-      return [
-        `Rà soát ${scope}: ${report.totalTasks} việc thừa, tổng ${report.totalPoints}đ tính dư.`,
-        summary(report.byMember),
-        `Lý do: ${[...byReason].map(([r, n]) => `${n} dòng ${r}`).join('; ')}.`,
-        'CHƯA đụng gì vào dữ liệu. Hỏi người dùng có dọn không; đồng ý thì gọi lại với apply=true.',
-      ].join('\n');
+      const toRelabel = await countRelabelable(month);
+      const out: string[] = [];
+      if (report.totalTasks > 0) {
+        const byReason = new Map<string, number>();
+        for (const it of report.items) byReason.set(it.reason, (byReason.get(it.reason) || 0) + 1);
+        out.push(
+          `Rà soát ${scope}: ${report.totalTasks} việc bị tính điểm hai lần, tổng ${report.totalPoints}đ tính dư.`,
+          summary(report.byMember),
+          `Lý do: ${[...byReason].map(([r, n]) => `${n} dòng ${r}`).join('; ')}.`,
+        );
+      } else {
+        out.push(`Rà soát ${scope}: không có việc nào bị tính điểm hai lần.`);
+      }
+      if (toRelabel > 0) {
+        out.push(
+          `Ngoài ra có ${toRelabel} việc THẬT (đã bấm nút Bắt đầu rồi Kết thúc) mà nhãn còn chữ "bắt đầu" — ` +
+            'điểm ĐÚNG, chỉ xấu chữ; sẽ đổi cho hiện đúng tên việc.',
+        );
+      }
+      if (report.totalTasks === 0 && toRelabel === 0) return `${scope}: sạch hoàn toàn, không có gì để dọn.`;
+      out.push('CHƯA đụng gì vào dữ liệu. Người dùng đồng ý thì gọi lại với apply=true để dọn.');
+      return out.join('\n');
     }
 
-    // Báo đúng những dòng ĐỔI ĐƯỢC THẬT — không báo con số dự kiến của lượt quét.
+    // DỌN THẬT. Chạy CẢ HAI bất kể bên nào bằng 0 — đây là chỗ lỗi cũ thoát sớm khi
+    // không có dòng trùng, khiến hàng chục nhãn "bắt đầu…" không bao giờ được sửa.
     const markedIds = new Set(await markDuplicates(report.items.map((i) => i.id)));
     const done = report.items.filter((i) => markedIds.has(i.id));
-    // Việc thật đã bấm nút nhưng nhãn còn chữ "bắt đầu" → sửa nhãn, giữ nguyên điểm.
     const relabelled = await relabelStartNotes(month);
-    if (done.length === 0) {
-      return relabelled > 0
-        ? `Không có dòng nào phải bỏ điểm, nhưng đã sửa nhãn ${relabelled} việc thật cho hết chữ "bắt đầu".`
-        : `Không dọn được dòng nào (${report.totalTasks} dòng tìm thấy nhưng không đổi được trạng thái). Bảng điểm giữ nguyên.`;
-    }
+
+    const points = done.reduce((s, i) => s + i.points, 0);
     const byMember = new Map<string, { tasks: number; points: number }>();
     for (const it of done) {
       const cur = byMember.get(it.memberName) || { tasks: 0, points: 0 };
       byMember.set(it.memberName, { tasks: cur.tasks + 1, points: cur.points + it.points });
     }
-    const points = done.reduce((s, i) => s + i.points, 0);
-    const missed = report.totalTasks - done.length;
-    return [
-      `Đã dọn ${done.length} việc thừa, trừ ${points}đ khỏi bảng điểm:`,
-      summary([...byMember].map(([memberName, v]) => ({ memberName, ...v }))),
-      relabelled > 0
-        ? `Ngoài ra sửa nhãn ${relabelled} việc THẬT (đã bấm nút Bắt đầu rồi Kết thúc) cho hết chữ "bắt đầu" — điểm và giờ làm giữ nguyên.`
-        : '',
-      missed > 0 ? `(${missed} dòng không đổi được trạng thái — nói người dùng chạy lại lượt rà soát.)` : '',
-      'Chỉ đánh dấu chứ chưa xoá — bảo "khôi phục điểm trùng" là lấy lại được hết.',
-    ]
-      .filter(Boolean)
-      .join('\n');
+
+    const out: string[] = [];
+    if (done.length > 0) {
+      out.push(
+        `Đã bỏ điểm ${done.length} việc trùng, trừ ${points}đ:`,
+        summary([...byMember].map(([memberName, v]) => ({ memberName, ...v }))),
+      );
+    }
+    if (relabelled > 0) {
+      out.push(`Đã sửa nhãn ${relabelled} việc THẬT cho hết chữ "bắt đầu" — điểm và giờ làm GIỮ NGUYÊN.`);
+    }
+    if (out.length === 0) return `${scope}: không có gì để dọn, bảng điểm giữ nguyên.`;
+    out.push('Việc bỏ điểm chỉ đánh dấu chứ chưa xoá — bảo "khôi phục điểm trùng" là lấy lại được.');
+    return out.join('\n');
   },
 };
 
