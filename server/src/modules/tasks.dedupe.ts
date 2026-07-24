@@ -190,6 +190,18 @@ export async function markDuplicates(ids: string[]): Promise<string[]> {
  * đang tính điểm cho câu báo bắt đầu. Sau bước này bảng điểm không còn dòng nào mở đầu
  * bằng "bắt đầu…" nữa — dòng nào sai thì đã bị bỏ, dòng nào thật thì hiện đúng tên việc.
  */
+/** Số việc THẬT đang có nhãn "bắt đầu…" cần sửa (chỉ đếm, không đổi). */
+export async function countRelabelable(month?: string): Promise<number> {
+  const rows: Row[] = month
+    ? await q(
+        "SELECT * FROM tasks WHERE status = 'done' AND started_at <> '' AND note <> '' AND completed_at LIKE $1",
+        [`${month}%`],
+      )
+    : await q("SELECT * FROM tasks WHERE status = 'done' AND started_at <> '' AND note <> ''");
+  return rows.filter((r) => isStartReport(r.note || '') && cleanNote(r.note || '', r.task_name || '') !== r.note)
+    .length;
+}
+
 export async function relabelStartNotes(month?: string): Promise<number> {
   const rows: Row[] = month
     ? await q(
