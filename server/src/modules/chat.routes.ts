@@ -12,7 +12,7 @@ import {
   type ChatTurn,
   type OnAssistantEvent,
 } from './assistant.service.js';
-import { taskTitle, cleanNote } from '../lib/tasks.js';
+import { taskTitle, cleanNote, isStartReport } from '../lib/tasks.js';
 import { looksLikeQuestion } from '../lib/question.js';
 import { removeAccents } from '../lib/people.js';
 import { getCustomers } from './crm.repo.js';
@@ -226,7 +226,10 @@ async function runChat(
     if ((x.intent === 'start_task' || x.intent === 'log_task') && x.taskCode) {
       const item = await findCatalogItem(x.taskCode);
       if (item) {
-        const starting = x.intent === 'start_task';
+        // Câu mở đầu bằng "bắt đầu…", "đang làm…" LUÔN là báo bắt đầu, kể cả khi AI đoán
+        // là đã xong. Đoán sai chiều này tạo một dòng có điểm cho việc chưa làm xong —
+        // đúng lỗi đã làm bảng điểm phồng gấp đôi. Quy tắc: điểm chỉ tính lúc hoàn thành.
+        const starting = x.intent === 'start_task' || isStartReport(b.message);
         // Bỏ cụm hành động + phần lặp tên việc, giữ lại mô tả thật (thường là tên khách),
         // để bảng điểm không hiện những dòng kiểu "bắt đầu tối ưu quảng cáo".
         const note = cleanNote(x.note || '', item.name);

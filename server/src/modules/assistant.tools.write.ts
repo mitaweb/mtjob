@@ -36,6 +36,14 @@ import { newId } from '../util/id.js';
 
 const flat = (s: string) => removeAccents(String(s || '')).toLowerCase().trim();
 
+/**
+ * Cờ bật/tắt từ AI. Gemini hay trả chuỗi "true" thay vì boolean — so sánh `=== true`
+ * sẽ âm thầm bỏ qua, người dùng bảo "dọn đi" mà không dọn gì.
+ */
+function isTrue(v: unknown): boolean {
+  return v === true || String(v).toLowerCase() === 'true';
+}
+
 function currentMonth(): string {
   return nowTz().format('YYYY-MM');
 }
@@ -89,7 +97,7 @@ const ADD_ENTRY: ToolDef = {
     const month = /^\d{4}-\d{2}$/.test(String(a.month || '')) ? String(a.month) : date.slice(0, 7);
 
     // Chốt chặn trùng: nhắn lặp một câu KHÔNG được cộng doanh thu hai lần.
-    if (a.force !== true) {
+    if (!isTrue(a.force)) {
       const dup = (await getEntries(month)).find(
         (e) => e.kind === kind && e.amount === amount && flat(e.name) === flat(name),
       );
@@ -418,16 +426,42 @@ const DEDUPE_TOOL: ToolDef = {
     const report = await findDuplicateTasks(month);
     const scope = month ? `tháng ${month}` : 'toàn bộ dữ liệu';
     if (report.totalTasks === 0) return `Rà soát ${scope}: không thấy việc nào bị tính điểm hai lần.`;
-    const summary = report.byMember.map((m) => `${m.memberName}: ${m.tasks} việc, ${m.points}đ`).join('\n');
-    if (a.apply !== true) {
+
+    const summary = (rows: Array<{ memberName: string; tasks: number; points: number }>) =>
+      rows.map((m) => `${m.memberName}: bỏ ${m.tasks} việc, trừ ${m.points}đ`).join('\n');
+
+    if (!isTrue(a.apply)) {
+      const byReason = new Map<string, number>();
+      for (const it of report.items) byReason.set(it.reason, (byReason.get(it.reason) || 0) + 1);
       return [
         `Rà soát ${scope}: ${report.totalTasks} việc thừa, tổng ${report.totalPoints}đ tính dư.`,
-        summary,
-        'Hỏi người dùng có dọn không; nếu đồng ý thì gọi lại hàm này với apply=true.',
+        summary(report.byMember),
+        `Lý do: ${[...byReason].map(([r, n]) => `${n} dòng ${r}`).join('; ')}.`,
+        'CHƯA đụng gì vào dữ liệu. Hỏi người dùng có dọn không; đồng ý thì gọi lại với apply=true.',
       ].join('\n');
     }
-    const marked = await markDuplicates(report.items.map((i) => i.id));
-    return `Đã dọn ${marked} việc thừa, trừ ${report.totalPoints}đ tính dư:\n${summary}\n(Chỉ đánh dấu chứ chưa xoá — bảo "khôi phục điểm trùng" là lấy lại được hết.)`;
+
+    // Báo đúng những dòng ĐỔI ĐƯỢC THẬT — không báo con số dự kiến của lượt quét.
+    const markedIds = new Set(await markDuplicates(report.items.map((i) => i.id)));
+    const done = report.items.filter((i) => markedIds.has(i.id));
+    if (done.length === 0) {
+      return `Không dọn được dòng nào (${report.totalTasks} dòng tìm thấy nhưng không đổi được trạng thái). Bảng điểm giữ nguyên.`;
+    }
+    const byMember = new Map<string, { tasks: number; points: number }>();
+    for (const it of done) {
+      const cur = byMember.get(it.memberName) || { tasks: 0, points: 0 };
+      byMember.set(it.memberName, { tasks: cur.tasks + 1, points: cur.points + it.points });
+    }
+    const points = done.reduce((s, i) => s + i.points, 0);
+    const missed = report.totalTasks - done.length;
+    return [
+      `Đã dọn ${done.length} việc thừa, trừ ${points}đ khỏi bảng điểm:`,
+      summary([...byMember].map(([memberName, v]) => ({ memberName, ...v }))),
+      missed > 0 ? `(${missed} dòng không đổi được trạng thái — nói người dùng chạy lại lượt rà soát.)` : '',
+      'Chỉ đánh dấu chứ chưa xoá — bảo "khôi phục điểm trùng" là lấy lại được hết.',
+    ]
+      .filter(Boolean)
+      .join('\n');
   },
 };
 
