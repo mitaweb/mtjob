@@ -1,5 +1,25 @@
 import { describe, it, expect } from 'vitest';
-import { taskTitle, cleanNote } from './tasks.js';
+import { taskTitle, cleanNote, isStartReport } from './tasks.js';
+
+describe('isStartReport', () => {
+  it('nhận ra câu báo BẮT ĐẦU (không được tính điểm)', () => {
+    // Đúng những dòng đang làm bảng điểm phồng gấp đôi trong dữ liệu tháng 7.
+    expect(isStartReport('bắt đầu tối ưu quảng cáo')).toBe(true);
+    expect(isStartReport('bắt đầu lên ads')).toBe(true);
+    expect(isStartReport('bắt đầu chuẩn bị nội dung quảng cáo')).toBe(true);
+    expect(isStartReport('đang làm video')).toBe(true);
+    expect(isStartReport('BẮT ĐẦU LÊN ADS')).toBe(true);
+  });
+
+  it('không nhầm câu báo ĐÃ XONG là báo bắt đầu', () => {
+    expect(isStartReport('Tối ưu Quảng Cáo')).toBe(false);
+    expect(isStartReport('đã đăng bài page cho X Salon')).toBe(false);
+    expect(isStartReport('xong video quảng cáo')).toBe(false);
+    expect(isStartReport('')).toBe(false);
+    // "bắt đầu" nằm giữa câu là mô tả, không phải báo bắt đầu.
+    expect(isStartReport('báo cáo ads từ lúc bắt đầu chiến dịch')).toBe(false);
+  });
+});
 
 describe('cleanNote', () => {
   it('bỏ cụm hành động mở đầu, còn lại đúng bằng tên việc thì không giữ gì', () => {

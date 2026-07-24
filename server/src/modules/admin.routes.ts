@@ -291,8 +291,16 @@ adminRouter.post(
       res.json({ applied: false, ...report, items: report.items.slice(0, 200) });
       return;
     }
-    const marked = await markDuplicates(report.items.map((i) => i.id));
-    res.json({ applied: true, marked, totalPoints: report.totalPoints, byMember: report.byMember });
+    // Trả về số dòng ĐỔI ĐƯỢC THẬT và số điểm tương ứng — không phải con số của lượt quét.
+    const markedIds = new Set(await markDuplicates(report.items.map((i) => i.id)));
+    const done = report.items.filter((i) => markedIds.has(i.id));
+    res.json({
+      applied: true,
+      marked: done.length,
+      found: report.totalTasks,
+      totalPoints: done.reduce((s, i) => s + i.points, 0),
+      byMember: report.byMember,
+    });
   }),
 );
 

@@ -38,6 +38,18 @@ export function cleanNote(note: string, taskName = ''): string {
   return removeAccents(s).toLowerCase() === name ? '' : s;
 }
 
+// Cụm mở đầu cho biết câu đó là BÁO BẮT ĐẦU, không phải báo xong.
+const START_REPORT = /^(bat dau|bat tay|dang lam|chuan bi|sap lam|se lam|gio lam|vao viec)\b/;
+
+/**
+ * Câu này là báo BẮT ĐẦU việc chứ không phải báo đã xong?
+ * Dùng để chặn cộng điểm cho câu báo bắt đầu — theo quy tắc: một việc chỉ tính
+ * điểm ĐÚNG MỘT LẦN, lúc hoàn thành.
+ */
+export function isStartReport(note: string): boolean {
+  return START_REPORT.test(removeAccents(String(note || '')).toLowerCase().trim());
+}
+
 export function taskTitle(t: { taskName?: string; note?: string; source?: string }): string {
   const name = (t.taskName || '').trim();
   const note = (t.note || '').trim();
