@@ -90,24 +90,21 @@ export function pickDuplicates(rows: Row[]): DedupeReport {
     });
 
   for (const list of groups.values()) {
+    // Câu báo bắt đầu mà KHÔNG có giờ bắt đầu = chưa hề có việc nào được mở ra, chỉ là
+    // câu nói bị ghi thẳng thành việc xong. Điểm ghi ở lúc KẾT THÚC nên dòng này không
+    // được có điểm — bỏ bất kể nhóm có bao nhiêu dòng, kể cả khi nó đứng một mình.
+    const bogusStart = list.filter(
+      (r) => isStartReport(r.note || '') && (r.started_at || '').trim() === '',
+    );
+    bogusStart.forEach((r) => add(r, 'câu báo bắt đầu bị tính điểm'));
+
     if (list.length < 2) continue;
 
-    // Nửa BẮT ĐẦU và nửa KẾT THÚC của cùng một việc. Phân loại theo CÂU NGƯỜI TA VIẾT,
-    // không theo giờ bắt đầu: dòng "bắt đầu lên ads" dù có bấm nút vẫn chỉ là nửa đầu của
-    // việc mà nửa sau đã được ghi ở dòng khác.
-    const startHalf = list.filter((r) => isStartReport(r.note || ''));
-    const endHalf = list.filter((r) => !isStartReport(r.note || ''));
-
-    // Cả hai nửa cùng có điểm → nửa bắt đầu là thừa. Không có nửa kết thúc nào thì giữ
-    // nguyên: người mới kịp báo bắt đầu không đáng bị mất trắng công.
-    if (startHalf.length > 0 && endHalf.length > 0) {
-      startHalf.forEach((r) => add(r, 'câu báo bắt đầu bị tính điểm'));
-    }
-
-    // Còn lại: hai dòng kết thúc cho cùng một việc — một dòng bấm nút (có giờ bắt đầu),
-    // một dòng báo thẳng trong chat. Bỏ dòng báo thẳng, giữ dòng có giờ làm thật.
-    const startedRows = endHalf.filter((r) => (r.started_at || '').trim() !== '');
-    const loggedRows = endHalf.filter((r) => (r.started_at || '').trim() === '');
+    // Còn lại: hai dòng cho cùng một việc — một dòng bấm nút (có giờ bắt đầu), một dòng
+    // báo thẳng trong chat. Bỏ dòng báo thẳng, giữ dòng có giờ làm thật.
+    const rest = list.filter((r) => !bogusStart.includes(r));
+    const startedRows = rest.filter((r) => (r.started_at || '').trim() !== '');
+    const loggedRows = rest.filter((r) => (r.started_at || '').trim() === '');
     if (startedRows.length > 0 && loggedRows.length > 0) {
       loggedRows
         .sort((a, b) => (a.created_at < b.created_at ? 1 : -1)) // dòng báo lại thường tới sau
@@ -147,6 +144,40 @@ export async function markDuplicates(ids: string[]): Promise<string[]> {
     [ids],
   );
   return rows.map((r: { task_id: string }) => r.task_id);
+}
+
+/**
+ * Đổi nhãn những việc THẬT — có giờ bắt đầu, đã hoàn thành đàng hoàng — mà ghi chú vẫn
+ * là câu báo bắt đầu ("bắt đầu lên ads"). Dữ liệu cũ tạo trước khi có `cleanNote`.
+ *
+ * KHÔNG đụng tới điểm và giờ làm: đây là việc có thật, chỉ có cái nhãn đọc lên như thể
+ * đang tính điểm cho câu báo bắt đầu. Sau bước này bảng điểm không còn dòng nào mở đầu
+ * bằng "bắt đầu…" nữa — dòng nào sai thì đã bị bỏ, dòng nào thật thì hiện đúng tên việc.
+ */
+export async function relabelStartNotes(month?: string): Promise<number> {
+  const rows: Row[] = month
+    ? await q(
+        "SELECT * FROM tasks WHERE status = 'done' AND started_at <> '' AND note <> '' AND completed_at LIKE $1",
+        [`${month}%`],
+      )
+    : await q("SELECT * FROM tasks WHERE status = 'done' AND started_at <> '' AND note <> ''");
+
+  // Gom theo nhãn mới rồi cập nhật một lượt mỗi nhãn — mỗi query là một lượt HTTP tới
+  // Neon, sửa từng dòng một sẽ hết giờ hàm serverless trước khi chạy xong.
+  const byNewNote = new Map<string, string[]>();
+  for (const r of rows) {
+    if (!isStartReport(r.note || '')) continue;
+    const next = cleanNote(r.note || '', r.task_name || '');
+    if (next === r.note) continue;
+    byNewNote.set(next, [...(byNewNote.get(next) || []), r.task_id]);
+  }
+
+  let changed = 0;
+  for (const [note, ids] of byNewNote) {
+    const done = await q('UPDATE tasks SET note = $2 WHERE task_id = ANY($1) RETURNING task_id', [ids, note]);
+    changed += done.length;
+  }
+  return changed;
 }
 
 /** Khôi phục mọi việc đã đánh dấu trùng (phòng khi dọn nhầm). */
