@@ -57,26 +57,31 @@ describe('pickDuplicates', () => {
     expect(pickDuplicates(rows).totalTasks).toBe(0);
   });
 
-  it('nửa bắt đầu bị bỏ kể cả khi đã bấm nút (có giờ bắt đầu), vì nửa kết thúc đã có điểm', () => {
-    // Anh Tâm chốt: điểm ghi ở lúc KẾT THÚC. Dòng "bắt đầu lên ads" dù có giờ bắt đầu
-    // vẫn chỉ là nửa đầu của việc mà nửa sau đã được ghi ở dòng "Lên Ads".
+  it('bỏ câu báo bắt đầu dù nó ĐỨNG MỘT MÌNH trong ngày', () => {
+    // Ca thật ngày 22/07: "bắt đầu chuẩn bị nội dung quảng cáo" +25đ, không có dòng nào
+    // khác cùng loại. Điểm ghi ở lúc kết thúc nên dòng này không được có điểm.
     const rows = [
-      row({
-        task_code: 'LA',
-        task_name: 'Lên Ads',
-        note: 'bắt đầu lên ads',
-        points: 20,
-        started_at: '2026-07-23T02:00:00.000Z',
-      }),
-      row({ task_code: 'LA', task_name: 'Lên Ads', note: '', points: 20 }),
+      row({ task_code: 'CB', task_name: 'Chuẩn bị nội dung quảng cáo', note: 'bắt đầu chuẩn bị nội dung quảng cáo', points: 25 }),
     ];
     const r = pickDuplicates(rows);
     expect(r.totalTasks).toBe(1);
-    expect(r.items[0].note).toBe('bắt đầu lên ads');
+    expect(r.totalPoints).toBe(25);
   });
 
-  it('chỉ toàn dòng báo bắt đầu (không dòng kết thúc nào) thì KHÔNG bỏ gì', () => {
-    // Không có nửa kết thúc để đối chiếu → bỏ đi là nhân sự mất trắng công đã làm.
+  it('bỏ cả nhóm toàn câu báo bắt đầu, không cần có dòng báo xong để đối chiếu', () => {
+    // Ca thật ngày 22/07: "bắt đầu lên ads" ×2, mỗi dòng +20đ, không có dòng "Lên Ads" nào.
+    const rows = [
+      row({ task_code: 'LA', task_name: 'Lên Ads', note: 'bắt đầu lên ads', points: 20 }),
+      row({ task_code: 'LA', task_name: 'Lên Ads', note: 'bắt đầu lên ads', points: 20 }),
+    ];
+    const r = pickDuplicates(rows);
+    expect(r.totalTasks).toBe(2);
+    expect(r.totalPoints).toBe(40);
+  });
+
+  it('GIỮ việc thật đã bấm nút Bắt đầu rồi Kết thúc, dù ghi chú còn chữ "bắt đầu"', () => {
+    // Có giờ bắt đầu = việc có thật, có giờ làm thật. Xoá đi là nhân sự mất công.
+    // Nhãn xấu thì sửa bằng relabelStartNotes, không phải bằng cách trừ điểm.
     const rows = [
       row({
         task_code: 'LA',
@@ -96,13 +101,21 @@ describe('pickDuplicates', () => {
     expect(pickDuplicates(rows).totalTasks).toBe(0);
   });
 
-  it('người CHỈ kịp báo bắt đầu thì không bị mất trắng', () => {
-    // Không có dòng báo xong nào trong nhóm → chưa đủ căn cứ nói là trùng.
+  it('dòng bấm nút + dòng báo thẳng cùng một việc → bỏ dòng báo thẳng, giữ dòng có giờ làm', () => {
     const rows = [
-      row({ task_code: 'TU', task_name: 'Tối ưu Quảng Cáo', note: 'bắt đầu tối ưu quảng cáo', points: 35 }),
-      row({ task_code: 'TU', task_name: 'Tối ưu Quảng Cáo', note: 'bắt đầu tối ưu quảng cáo', points: 35 }),
+      row({
+        task_code: 'LA',
+        task_name: 'Lên Ads',
+        note: 'bắt đầu lên ads',
+        points: 20,
+        started_at: '2026-07-23T02:00:00.000Z',
+      }),
+      row({ task_code: 'LA', task_name: 'Lên Ads', note: '', points: 20 }),
     ];
-    expect(pickDuplicates(rows).totalTasks).toBe(0);
+    const r = pickDuplicates(rows);
+    expect(r.totalTasks).toBe(1);
+    expect(r.items[0].reason).toBe('báo thẳng trùng dòng đã bắt đầu');
+    expect(r.items[0].note).toBe(''); // giữ lại dòng có giờ bắt đầu
   });
 
   it('mỗi dòng chỉ bị đếm thừa MỘT lần dù khớp cả hai kiểu', () => {
@@ -118,10 +131,33 @@ describe('pickDuplicates', () => {
     expect(r.totalPoints).toBe(70);
   });
 
-  it('khác ngày / khác người / khác khách thì không gom chung', () => {
+  it('khác khách thì không gom chung — hai việc thật cho hai khách vẫn tính đủ', () => {
+    // Nếu gom nhầm, dòng báo thẳng của Y Salon sẽ bị coi là trùng với dòng đã bấm nút
+    // của X Spa, và Y Salon mất điểm oan.
     const rows = [
-      row({ task_code: 'TU', task_name: 'Tối ưu Quảng Cáo', note: 'X Spa', points: 35 }),
-      row({ task_code: 'TU', task_name: 'Tối ưu Quảng Cáo', note: 'bắt đầu tối ưu quảng cáo Y Salon', points: 35 }),
+      row({
+        task_code: 'TU',
+        task_name: 'Tối ưu Quảng Cáo',
+        note: 'X Spa',
+        points: 35,
+        started_at: '2026-07-23T02:00:00.000Z',
+      }),
+      row({ task_code: 'TU', task_name: 'Tối ưu Quảng Cáo', note: 'Y Salon', points: 35 }),
+    ];
+    expect(pickDuplicates(rows).totalTasks).toBe(0);
+  });
+
+  it('khác ngày thì không gom chung', () => {
+    const rows = [
+      row({
+        task_code: 'TU',
+        task_name: 'Tối ưu Quảng Cáo',
+        note: '',
+        points: 35,
+        started_at: '2026-07-22T02:00:00.000Z',
+        completed_at: '2026-07-22T10:00:00.000Z',
+      }),
+      row({ task_code: 'TU', task_name: 'Tối ưu Quảng Cáo', note: '', points: 35, completed_at: '2026-07-23T10:00:00.000Z' }),
     ];
     expect(pickDuplicates(rows).totalTasks).toBe(0);
   });

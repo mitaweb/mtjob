@@ -26,7 +26,7 @@ import {
   type Customer,
 } from './crm.repo.js';
 import { getReminders, setReminderActive } from './reminders.repo.js';
-import { findDuplicateTasks, markDuplicates, restoreDuplicates } from './tasks.dedupe.js';
+import { findDuplicateTasks, markDuplicates, restoreDuplicates, relabelStartNotes } from './tasks.dedupe.js';
 import { ingestInBackground, markCustomerDirty } from './brain.service.js';
 import { describeRule } from '../lib/reminder.js';
 import { parseVndAmount, formatVnd } from '../lib/money.js';
@@ -444,8 +444,12 @@ const DEDUPE_TOOL: ToolDef = {
     // Báo đúng những dòng ĐỔI ĐƯỢC THẬT — không báo con số dự kiến của lượt quét.
     const markedIds = new Set(await markDuplicates(report.items.map((i) => i.id)));
     const done = report.items.filter((i) => markedIds.has(i.id));
+    // Việc thật đã bấm nút nhưng nhãn còn chữ "bắt đầu" → sửa nhãn, giữ nguyên điểm.
+    const relabelled = await relabelStartNotes(month);
     if (done.length === 0) {
-      return `Không dọn được dòng nào (${report.totalTasks} dòng tìm thấy nhưng không đổi được trạng thái). Bảng điểm giữ nguyên.`;
+      return relabelled > 0
+        ? `Không có dòng nào phải bỏ điểm, nhưng đã sửa nhãn ${relabelled} việc thật cho hết chữ "bắt đầu".`
+        : `Không dọn được dòng nào (${report.totalTasks} dòng tìm thấy nhưng không đổi được trạng thái). Bảng điểm giữ nguyên.`;
     }
     const byMember = new Map<string, { tasks: number; points: number }>();
     for (const it of done) {
@@ -457,6 +461,9 @@ const DEDUPE_TOOL: ToolDef = {
     return [
       `Đã dọn ${done.length} việc thừa, trừ ${points}đ khỏi bảng điểm:`,
       summary([...byMember].map(([memberName, v]) => ({ memberName, ...v }))),
+      relabelled > 0
+        ? `Ngoài ra sửa nhãn ${relabelled} việc THẬT (đã bấm nút Bắt đầu rồi Kết thúc) cho hết chữ "bắt đầu" — điểm và giờ làm giữ nguyên.`
+        : '',
       missed > 0 ? `(${missed} dòng không đổi được trạng thái — nói người dùng chạy lại lượt rà soát.)` : '',
       'Chỉ đánh dấu chứ chưa xoá — bảo "khôi phục điểm trùng" là lấy lại được hết.',
     ]
