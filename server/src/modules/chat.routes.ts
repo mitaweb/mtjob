@@ -6,6 +6,7 @@ import { interpret } from '../gemini/chatNlu.js';
 import { getActiveCatalog, findCatalogItem, sortCatalogForTeam } from './catalog.repo.js';
 import { findById, findByLogin } from './members.repo.js';
 import { logTask, startTask, assignTask, canAssign } from './tasks.service.js';
+import { getDoingTasks } from './tasks.repo.js';
 import {
   answerDataQuestion,
   answerMemberQuestion,
@@ -233,15 +234,24 @@ async function runChat(
         // Bỏ cụm hành động + phần lặp tên việc, giữ lại mô tả thật (thường là tên khách),
         // để bảng điểm không hiện những dòng kiểu "bắt đầu tối ưu quảng cáo".
         const note = cleanNote(x.note || '', item.name);
-        const known = await matchCustomer(note);
 
-        // Chưa biết khách nào → hỏi lại trước, đừng ghi nhận việc mơ hồ.
-        // (Chọn xong, frontend tự dựng thẻ xác nhận nên không quay lại nhánh này.)
-        if (!known) {
+        // Báo xong việc đang làm dở → lấy lại tên khách đã khai lúc bấm Bắt đầu.
+        // Không có bước này thì "bắt đầu tối ưu quảng cáo cho Tiến Minh" rồi "xong tối ưu
+        // quảng cáo" lại bị hỏi khách lần nữa, dù đã khai rồi.
+        const carried = starting
+          ? ''
+          : (await getDoingTasks(memberId)).find((t) => t.taskCode === item.code)?.note?.trim() || '';
+        const forWhom = note || carried;
+        // Khớp được khách trong CRM thì lấy đúng tên chuẩn; không khớp vẫn dùng chữ họ gõ.
+        const label = (await matchCustomer(forWhom)) || forWhom;
+
+        // CHỈ hỏi khi thật sự chưa biết việc này làm cho ai. Họ gõ tên rồi mà vẫn hỏi
+        // (vì khách chưa có trong CRM) là bắt gõ hai lần — thừa một bước.
+        if (!forWhom) {
           send({
             reply: `"${item.name}" — việc này cho khách nào vậy?`,
             action: 'ask_customer',
-            suggestion: { taskCode: item.code, taskName: item.name, points: item.points, note },
+            suggestion: { taskCode: item.code, taskName: item.name, points: item.points, note: '' },
             starting,
             customers: await customerNames(),
           });
@@ -250,10 +260,10 @@ async function runChat(
 
         send({
           reply: starting
-            ? `Bắt đầu làm "${item.name}"${known ? ` cho ${known}` : ''} từ bây giờ? (+${item.points}đ khi hoàn thành)`
-            : `Bạn vừa hoàn thành "${item.name}"${known ? ` cho ${known}` : ''} (+${item.points}đ)? Bấm xác nhận để ghi nhận nhé.`,
+            ? `Bắt đầu làm "${item.name}" cho ${label} từ bây giờ? (+${item.points}đ khi hoàn thành)`
+            : `Bạn vừa hoàn thành "${item.name}" cho ${label} (+${item.points}đ)? Bấm xác nhận để ghi nhận nhé.`,
           action: starting ? 'confirm_start' : 'confirm_task',
-          suggestion: { taskCode: item.code, taskName: item.name, points: item.points, note },
+          suggestion: { taskCode: item.code, taskName: item.name, points: item.points, note: forWhom },
         });
         return;
       }
