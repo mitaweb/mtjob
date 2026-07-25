@@ -38,6 +38,14 @@ describe('cleanNote', () => {
     expect(cleanNote('bắt đầu lên ads', 'Lên Ads')).toBe('');
   });
 
+  it('làm sạch khi nhân viên dán lại bong bóng chat của app', () => {
+    // Ca thật trong DB: ghi chú bị nhét nguyên câu hiển thị "▶️ Bắt đầu: ...".
+    expect(cleanNote('▶️ Bắt đầu: Tối ưu Quảng Cáo — Quốc Phong', 'Tối ưu Quảng Cáo')).toBe('Quốc Phong');
+    expect(cleanNote('▶️ Bắt đầu: Lên Ads — Kienzo', 'Lên Ads')).toBe('Kienzo');
+    expect(cleanNote('✅ Đã hoàn thành Tối ưu Quảng Cáo', 'Tối ưu Quảng Cáo')).toBe('');
+    expect(cleanNote('▶️ Bắt đầu: Tối ưu Quảng Cáo', 'Tối ưu Quảng Cáo')).toBe('');
+  });
+
   it('giữ lại mô tả thật (tên khách) sau khi bỏ hành động và tên việc', () => {
     expect(cleanNote('đã đăng bài page cho X Salon', 'Đăng bài page')).toBe('X Salon');
     expect(cleanNote('bắt đầu lên ads Quốc Phong', 'Lên Ads')).toBe('Quốc Phong');
