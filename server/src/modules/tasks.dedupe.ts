@@ -190,31 +190,26 @@ export async function markDuplicates(ids: string[]): Promise<string[]> {
  * đang tính điểm cho câu báo bắt đầu. Sau bước này bảng điểm không còn dòng nào mở đầu
  * bằng "bắt đầu…" nữa — dòng nào sai thì đã bị bỏ, dòng nào thật thì hiện đúng tên việc.
  */
-/** Số việc THẬT đang có nhãn "bắt đầu…" cần sửa (chỉ đếm, không đổi). */
+/** Số việc có ghi chú "bẩn" (còn cụm hành động / emoji dán lại) cần làm sạch. */
 export async function countRelabelable(month?: string): Promise<number> {
   const rows: Row[] = month
-    ? await q(
-        "SELECT * FROM tasks WHERE status = 'done' AND started_at <> '' AND note <> '' AND completed_at LIKE $1",
-        [`${month}%`],
-      )
-    : await q("SELECT * FROM tasks WHERE status = 'done' AND started_at <> '' AND note <> ''");
-  return rows.filter((r) => isStartReport(r.note || '') && cleanNote(r.note || '', r.task_name || '') !== r.note)
-    .length;
+    ? await q("SELECT * FROM tasks WHERE status = 'done' AND note <> '' AND completed_at LIKE $1", [`${month}%`])
+    : await q("SELECT * FROM tasks WHERE status = 'done' AND note <> ''");
+  return rows.filter((r) => cleanNote(r.note || '', r.task_name || '') !== r.note).length;
 }
 
 export async function relabelStartNotes(month?: string): Promise<number> {
   const rows: Row[] = month
-    ? await q(
-        "SELECT * FROM tasks WHERE status = 'done' AND started_at <> '' AND note <> '' AND completed_at LIKE $1",
-        [`${month}%`],
-      )
-    : await q("SELECT * FROM tasks WHERE status = 'done' AND started_at <> '' AND note <> ''");
+    ? await q("SELECT * FROM tasks WHERE status = 'done' AND note <> '' AND completed_at LIKE $1", [`${month}%`])
+    : await q("SELECT * FROM tasks WHERE status = 'done' AND note <> ''");
 
+  // Chuẩn hoá mọi ghi chú về đúng thứ cleanNote sinh ra: bỏ cụm hành động ("bắt đầu…"),
+  // bỏ emoji dán lại ("▶️ Bắt đầu:"), giữ lại mô tả thật (tên khách). Dòng ghi chú đã
+  // sạch thì cleanNote trả về y nguyên nên không bị đụng.
   // Gom theo nhãn mới rồi cập nhật một lượt mỗi nhãn — mỗi query là một lượt HTTP tới
   // Neon, sửa từng dòng một sẽ hết giờ hàm serverless trước khi chạy xong.
   const byNewNote = new Map<string, string[]>();
   for (const r of rows) {
-    if (!isStartReport(r.note || '')) continue;
     const next = cleanNote(r.note || '', r.task_name || '');
     if (next === r.note) continue;
     byNewNote.set(next, [...(byNewNote.get(next) || []), r.task_id]);
