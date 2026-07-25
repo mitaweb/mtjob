@@ -19,7 +19,6 @@ interface ChatResponse {
   suggestion?: Suggestion;
   assignee?: { id: string; fullName: string };
   catalog?: CatalogItem[];
-  customers?: string[]; // khi action = ask_customer
   starting?: boolean; // true = đang bắt đầu việc, false = báo đã xong
 }
 interface Msg {
@@ -146,52 +145,35 @@ function ThinkingBubble({ stage }: { stage?: string }) {
   );
 }
 
-/** Chọn khách hàng cho việc đang ghi: bấm nút, lọc theo từ gõ, hoặc gõ tên tự do. */
-function CustomerPicker({ res, onPick }: { res: ChatResponse; onPick: (customer: string) => void }) {
+/**
+ * Nhập tên khách cho việc đang ghi — GÕ TỰ DO, không gợi ý từ danh sách CRM.
+ * Anh Tâm chốt: viết "x salon" hay "X-Salon" đều được, máy tự hiểu là một.
+ * Bắt buộc có tên: không còn lối "Không thuộc khách nào".
+ */
+function CustomerPicker({ onPick }: { onPick: (customer: string) => void }) {
   const [q, setQ] = useState('');
-  const all = res.customers || [];
-  const shown = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    const list = needle ? all.filter((c) => c.toLowerCase().includes(needle)) : all;
-    return list.slice(0, 8);
-  }, [q, all]);
+  const ok = q.trim().length > 0;
 
   return (
-    <div className="mt-2 space-y-2">
-      {all.length > 6 && (
+    <div className="mt-2 space-y-1.5">
+      <div className="flex gap-1.5">
         <input
           className="input py-1 text-sm"
-          placeholder="Gõ để lọc hoặc nhập tên khách mới…"
+          placeholder="Tên khách (vd: X Salon)…"
           value={q}
+          autoFocus
           onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && q.trim() && onPick(q.trim())}
+          onKeyDown={(e) => e.key === 'Enter' && ok && onPick(q.trim())}
         />
-      )}
-      <div className="flex flex-wrap gap-1.5">
-        {shown.map((c) => (
-          <button
-            key={c}
-            className="rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 text-sm text-brand-700 hover:bg-brand-100"
-            onClick={() => onPick(c)}
-          >
-            {c}
-          </button>
-        ))}
-        {q.trim() && !all.some((c) => c.toLowerCase() === q.trim().toLowerCase()) && (
-          <button
-            className="rounded-lg border border-slate-300 px-2.5 py-1 text-sm text-slate-600 hover:bg-slate-50"
-            onClick={() => onPick(q.trim())}
-          >
-            + {q.trim()}
-          </button>
-        )}
         <button
-          className="rounded-lg border border-slate-300 px-2.5 py-1 text-sm text-slate-500 hover:bg-slate-50"
-          onClick={() => onPick('')}
+          className="btn-primary shrink-0 px-3 py-1 text-sm disabled:opacity-40"
+          disabled={!ok}
+          onClick={() => onPick(q.trim())}
         >
-          Không thuộc khách nào
+          Xác nhận
         </button>
       </div>
+      {!ok && <div className="text-xs text-slate-500">Hãy nhập việc + tên khách hàng mới được.</div>}
     </div>
   );
 }
@@ -494,7 +476,7 @@ export default function Chat() {
 
               {/* Việc này cho khách nào? */}
               {m.res?.action === 'ask_customer' && m.res.suggestion && (
-                <CustomerPicker res={m.res} onPick={(c) => pickCustomer(m.res!, c)} />
+                <CustomerPicker onPick={(c) => pickCustomer(m.res!, c)} />
               )}
 
               {/* Chốt câu trả lời vào kho tri thức — lần sau khỏi hỏi lại */}

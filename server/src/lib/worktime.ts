@@ -61,6 +61,38 @@ export function taskIntervalsForDay(
   return out;
 }
 
+/**
+ * ID những việc có khoảng thời gian CHỒNG LẤN với ít nhất một việc khác.
+ *
+ * Mở nhiều việc cùng lúc rồi đóng cùng lúc khiến một khoảng thời gian được tính điểm
+ * nhiều lần — giám đốc cần nhìn thấy để đối chiếu điểm với giờ làm thật.
+ * Việc chưa có giờ bắt đầu/kết thúc thì bỏ qua (không đủ dữ liệu để kết luận).
+ * Chạm đầu-đuôi đúng bằng nhau KHÔNG tính là chồng: xong việc này rồi mở việc kia.
+ */
+export function overlappingIds(
+  tasks: Array<{ id: string; startedAt?: string; completedAt?: string }>,
+): string[] {
+  const valid = tasks
+    .map((t) => ({ id: t.id, start: Date.parse(t.startedAt || ''), end: Date.parse(t.completedAt || '') }))
+    .filter((t) => Number.isFinite(t.start) && Number.isFinite(t.end) && t.end > t.start)
+    .sort((a, b) => a.start - b.start);
+
+  const hit = new Set<string>();
+  let maxEnd = Number.NEGATIVE_INFINITY;
+  let maxEndId = '';
+  for (const t of valid) {
+    if (t.start < maxEnd) {
+      hit.add(t.id);
+      if (maxEndId) hit.add(maxEndId); // dòng đang phủ lên nó cũng là một nửa của cặp
+    }
+    if (t.end > maxEnd) {
+      maxEnd = t.end;
+      maxEndId = t.id;
+    }
+  }
+  return [...hit];
+}
+
 /** Format minutes as Vietnamese short duration: 195 → "3g15p", 45 → "45p". */
 export function formatMinutes(min: number): string {
   const m = Math.max(0, Math.round(min));

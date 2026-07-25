@@ -243,7 +243,7 @@ export default function Brain() {
     <div className="space-y-4">
       <PageHeader
         title="🧠 Kho tri thức"
-        desc="Những gì trợ lý AI đang ghi nhớ — tự thu thập từ lưu ý khách hàng, CRM, công việc, và tài liệu bạn tải lên."
+        desc="Những gì trợ lý AI đang ghi nhớ — tự thu thập từ lưu ý khách hàng, CRM, lịch hẹn, và tài liệu bạn tải lên."
         action={
           stats?.enabled && stats.remaining > 0 ? (
             <AsyncButton className="btn-ghost" onClick={sweepNow} busyLabel="Đang nạp…">
@@ -371,7 +371,7 @@ export default function Brain() {
         <div className="card">
           <h2 className="font-semibold">📋 Hồ sơ khách hàng ({profiles.length})</h2>
           <p className="mb-2 text-sm text-slate-500">
-            Bản tổng hợp tự động từ lưu ý, CRM, lịch hẹn và công việc đã làm.
+            Bản tổng hợp tự động từ lưu ý khách hàng, CRM và lịch hẹn.
           </p>
           <ul className="divide-y">
             {profiles.map((p) => (
@@ -417,7 +417,7 @@ export default function Brain() {
         <div className="card">
           <EmptyState
             icon="🧠"
-            text={keyword ? 'Không tìm thấy mục nào khớp.' : 'Kho chưa có gì. Cứ lưu lưu ý khách hàng hoặc ghi chú công việc — kho sẽ tự đầy.'}
+            text={keyword ? 'Không tìm thấy mục nào khớp.' : 'Kho chưa có gì. Cứ lưu lưu ý khách hàng hoặc tải tài liệu lên — kho sẽ tự đầy.'}
           />
         </div>
       )}

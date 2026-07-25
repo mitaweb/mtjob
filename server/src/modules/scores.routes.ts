@@ -5,8 +5,8 @@ import { memberScore, ranking } from './scores.service.js';
 import { findById, membersInTeam } from './members.repo.js';
 import { getDoneTasksForMemberRange } from './tasks.repo.js';
 import { taskTitle } from '../lib/tasks.js';
-import { unionMinutes, taskIntervalsForDay } from '../lib/worktime.js';
-import { nowTz, monthRange, dayBoundsMs } from '../lib/datetime.js';
+import { unionMinutes, taskIntervalsForDay, overlappingIds } from '../lib/worktime.js';
+import { nowTz, monthRange, dayBoundsMs, fmtHm } from '../lib/datetime.js';
 
 export const scoresRouter = Router();
 scoresRouter.use(requireAuth);
@@ -83,16 +83,32 @@ scoresRouter.get(
       .sort((a, b) => (a[0] < b[0] ? 1 : -1)) // mới nhất trước
       .map(([date, list]) => {
         const { startMs, endMs } = dayBoundsMs(date);
+        // Đánh dấu việc chồng giờ để giám đốc đối chiếu điểm với giờ làm thật.
+        const overlaps = new Set(overlappingIds(list));
         return {
           date,
           points: list.reduce((s, t) => s + (Number(t.points) || 0), 0),
+          // Giờ làm ĐÃ GỘP khoảng chồng lấn — tổng thời lượng từng việc có thể lớn hơn.
           minutes: unionMinutes(taskIntervalsForDay(list, startMs, endMs, nowMs)),
-          tasks: list.map((t) => ({
-            id: t.id,
-            title: taskTitle(t), // kèm ghi chú / tên khách
-            points: t.points,
-            completedAt: t.completedAt,
-          })),
+          noTimeCount: list.filter((t) => !t.startedAt).length,
+          tasks: list.map((t) => {
+            const span =
+              t.startedAt && t.completedAt
+                ? Math.max(0, Math.round((Date.parse(t.completedAt) - Date.parse(t.startedAt)) / 60000))
+                : null;
+            return {
+              id: t.id,
+              title: taskTitle(t), // kèm ghi chú / tên khách
+              points: t.points,
+              completedAt: t.completedAt,
+              // Định dạng giờ ở MÁY CHỦ theo giờ VN — máy người xem có thể ở múi giờ khác.
+              startHm: t.startedAt ? fmtHm(t.startedAt) : '',
+              endHm: t.completedAt ? fmtHm(t.completedAt) : '',
+              minutes: span,
+              overlap: overlaps.has(t.id),
+              crossDay: !!t.startedAt && t.startedAt.slice(0, 10) !== date,
+            };
+          }),
         };
       });
 

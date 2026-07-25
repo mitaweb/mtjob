@@ -313,14 +313,19 @@ export function markCustomerDirty(customer: string): void {
   );
 }
 
-/** Gom MỌI dữ liệu đang có về một khách hàng thành văn bản thô. */
+/**
+ * Gom MỌI dữ liệu đang có về một khách hàng thành văn bản thô.
+ *
+ * CỐ Ý không đọc bảng `tasks`: anh Tâm chốt 25/7/2026 bỏ mục "công việc đã làm" khỏi
+ * hồ sơ khách. Ghi chú việc là dữ liệu vận hành để soi giờ làm, không phải tri thức
+ * về khách — và nó từng kéo cả những chuỗi rác kiểu "bắt đầu tối ưu quảng cáo" vào đây.
+ */
 async function gatherCustomerData(customer: string): Promise<string> {
   const like = `%${customer.trim()}%`;
-  const [notes, crm, appts, tasks] = await Promise.all([
+  const [notes, crm, appts] = await Promise.all([
     q('SELECT content, updated_at, created_at FROM customer_notes WHERE customer ILIKE $1 ORDER BY updated_at DESC LIMIT 20', [like]),
     q('SELECT name, status, info, note, assigned_to FROM customers WHERE name ILIKE $1 LIMIT 5', [like]),
     q('SELECT at, note, done FROM appointments WHERE customer_name ILIKE $1 ORDER BY at DESC LIMIT 20', [like]),
-    q("SELECT task_name, note, member_name, completed_at FROM tasks WHERE note ILIKE $1 AND status = 'done' ORDER BY completed_at DESC LIMIT 30", [like]),
   ]);
 
   const parts: string[] = [];
@@ -345,12 +350,6 @@ async function gatherCustomerData(customer: string): Promise<string> {
     parts.push(
       'LỊCH HẸN:\n' +
         appts.map((r) => `[${String(r.at || '').slice(0, 16).replace('T', ' ')}]${r.done ? ' (đã xong)' : ''} ${r.note || ''}`).join('\n'),
-    );
-  }
-  if (tasks.length) {
-    parts.push(
-      'CÔNG VIỆC ĐÃ LÀM:\n' +
-        tasks.map((r) => `[${String(r.completed_at || '').slice(0, 10)}] ${r.member_name}: ${r.task_name} — ${r.note || ''}`).join('\n'),
     );
   }
   return parts.join('\n\n');
@@ -379,7 +378,6 @@ export async function rebuildProfile(key: string, customer: string): Promise<boo
     '- Tình trạng & người phụ trách',
     '- Nhu cầu / dịch vụ quan tâm / ngân sách',
     '- Diễn biến chính theo thời gian (ngày → sự việc)',
-    '- Công việc đã làm cho khách',
     '- Điểm cần lưu ý / việc cần theo dõi tiếp',
     'Tối đa khoảng 250 từ. Giữ nguyên con số và ngày tháng có trong dữ liệu.',
     '',

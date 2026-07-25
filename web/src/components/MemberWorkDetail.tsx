@@ -12,12 +12,18 @@ interface DetailTask {
   title: string;
   points: number;
   completedAt: string;
+  startHm: string; // '' = không bấm nút Bắt đầu, báo thẳng qua chat
+  endHm: string;
+  minutes: number | null; // null = không đo được thời gian làm
+  overlap: boolean; // chồng giờ với việc khác trong ngày
+  crossDay: boolean; // bắt đầu từ hôm trước
 }
 
 interface DayBlock {
   date: string;
   points: number;
   minutes: number;
+  noTimeCount: number;
   tasks: DetailTask[];
 }
 
@@ -119,16 +125,43 @@ export default function MemberWorkDetail({
                 <span className="text-xs text-slate-500">
                   {d.tasks.length} việc · <b className="text-brand-600">+{d.points}đ</b>
                   {d.minutes > 0 && ` · ⏱ ${fmtMin(d.minutes)}`}
+                  {d.noTimeCount > 0 && (
+                    <span className="text-amber-600"> · ⚠️ {d.noTimeCount} việc không có giờ</span>
+                  )}
                 </span>
               </div>
-              <ul className="mt-1.5 space-y-1">
+              <ul className="mt-1.5 space-y-1.5">
                 {d.tasks.map((t) => (
-                  <li key={t.id} className="flex items-start justify-between gap-2 text-sm">
-                    <span className="text-slate-700">• {t.title}</span>
-                    <span className="whitespace-nowrap text-xs text-slate-400">+{t.points}đ</span>
+                  <li
+                    key={t.id}
+                    className={t.overlap ? 'border-l-2 border-amber-400 pl-2' : 'pl-2'}
+                  >
+                    <div className="flex items-start justify-between gap-2 text-sm">
+                      <span className="text-slate-700">{t.title}</span>
+                      <span className="whitespace-nowrap text-xs text-slate-400">+{t.points}đ</span>
+                    </div>
+                    {/* Giờ làm là dữ liệu gốc để đối chiếu điểm — hiện rõ từng việc. */}
+                    <div className="text-xs text-slate-400">
+                      {t.minutes === null ? (
+                        <span className="text-amber-600">⚠️ không có giờ làm (báo thẳng)</span>
+                      ) : (
+                        <>
+                          ⏱ {t.crossDay && <span className="text-slate-400">(hôm trước) </span>}
+                          {t.startHm} → {t.endHm} · {fmtMin(t.minutes)}
+                          {t.minutes < 1 && <span className="text-amber-600"> · ⚠️ dưới 1 phút</span>}
+                        </>
+                      )}
+                      {t.overlap && <span className="text-amber-600"> · ⚠️ chồng giờ</span>}
+                    </div>
                   </li>
                 ))}
               </ul>
+              {d.tasks.some((t) => t.overlap) && (
+                <p className="mt-1.5 text-xs text-slate-400">
+                  ⏱ ở trên là giờ làm đã gộp khoảng chồng lấn, nên tổng thời lượng từng việc có
+                  thể lớn hơn — không phải lỗi.
+                </p>
+              )}
             </div>
           ))}
       </div>
