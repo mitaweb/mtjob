@@ -58,6 +58,83 @@ export function isStartReport(note: string): boolean {
   return START_REPORT.test(removeAccents(String(note || '')).toLowerCase().trim());
 }
 
+/**
+ * Khoá nhận diện KHÁCH HÀNG của một việc, để biết hai dòng có phải cùng một việc không.
+ * Anh Tâm chốt 25/7/2026: "x salon" hay "X-Salon" đều là một, không quan tâm cách viết.
+ *
+ * CỐ Ý KHÔNG đặt tên `customerKey`: `brain.service.ts` đã có hàm tên đó và giá trị của nó
+ * là KHOÁ CHÍNH bảng `brain_profiles` — trùng tên rồi sửa nhầm là mồ côi toàn bộ hồ sơ khách.
+ */
+export function taskCustomerKey(note: string): string {
+  const s = String(note || '').trim();
+  // Ghi chú hệ thống ("Giao bởi Tâm") không phải tên khách — coi như chưa khai, để lúc
+  // báo xong nhân viên khai bổ sung được, không thì việc leader giao sẽ treo mãi.
+  if (SYSTEM_NOTE.test(s)) return '';
+  return removeAccents(s)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ') // "-", ":", "_", emoji, dấu câu → khoảng trắng
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Dòng việc đang làm dở, rút gọn còn những gì cần để so khớp. */
+export interface DoingLike {
+  id: string;
+  taskCode: string;
+  note?: string;
+  startedAt?: string;
+}
+
+/** Các dòng doing cùng loại việc, cũ nhất trước (getDoingTasks đã sắp theo started_at). */
+function sameCode<T extends DoingLike>(doing: T[], taskCode: string): T[] {
+  return doing.filter((t) => t.taskCode === taskCode);
+}
+
+/**
+ * Câu báo XONG này nên đóng việc đang làm dở nào? `null` = không có, tạo dòng mới.
+ *
+ * Khoá rỗng là KÝ TỰ ĐẠI DIỆN ở chiều đóng việc: dữ liệu cũ có dòng doing chưa ghi khách,
+ * khớp cứng sẽ treo chúng vĩnh viễn. Ngược lại, câu có tên khách khớp được dòng chưa có tên
+ * (khai bổ sung lúc kết thúc). Nhưng KHÁC khách thì trả `null` — tuyệt đối không đụng,
+ * vì đó chính là lỗi từng làm mất một việc thật và gán nhầm khách cho việc khác.
+ */
+export function pickDoingToComplete<T extends DoingLike>(
+  doing: T[],
+  taskCode: string,
+  note: string,
+): T | null {
+  const cands = sameCode(doing, taskCode);
+  if (cands.length === 0) return null;
+
+  const key = taskCustomerKey(note);
+  const blanks = cands.filter((t) => taskCustomerKey(t.note || '') === '');
+
+  if (key) {
+    const exact = cands.find((t) => taskCustomerKey(t.note || '') === key);
+    if (exact) return exact;
+    return blanks[0] || null; // khai bổ sung tên khách cho dòng chưa ghi
+  }
+  // Không nhắc khách nào: ưu tiên dòng cũng chưa ghi khách, không có thì lấy dòng cũ nhất
+  // — đã có việc dở cùng loại thì đừng sinh thêm dòng mồ côi.
+  return blanks[0] || cands[0];
+}
+
+/**
+ * Đã có việc cùng (loại việc + khách) đang mở chưa? Khớp CỨNG, rỗng khớp rỗng.
+ *
+ * Bấm "bắt đầu Tối ưu QC" hai lần mà không khai khách gần như chắc chắn là bấm nhầm —
+ * đây đúng là nguồn của các cụm mở hàng loạt rồi đóng hàng loạt trong dữ liệu tháng 7.
+ * Nhưng khác khách thì KHÔNG chặn: "Tối ưu QC — X Salon" và "— Quốc Phong" là hai việc thật.
+ */
+export function findOpenDuplicate<T extends DoingLike>(
+  doing: T[],
+  taskCode: string,
+  note: string,
+): T | null {
+  const key = taskCustomerKey(note);
+  return sameCode(doing, taskCode).find((t) => taskCustomerKey(t.note || '') === key) || null;
+}
+
 export function taskTitle(t: { taskName?: string; note?: string; source?: string }): string {
   const name = (t.taskName || '').trim();
   const note = (t.note || '').trim();

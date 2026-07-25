@@ -13,10 +13,8 @@ import {
   type ChatTurn,
   type OnAssistantEvent,
 } from './assistant.service.js';
-import { taskTitle, cleanNote, isStartReport } from '../lib/tasks.js';
+import { taskTitle, cleanNote, isStartReport, taskCustomerKey } from '../lib/tasks.js';
 import { looksLikeQuestion } from '../lib/question.js';
-import { removeAccents } from '../lib/people.js';
-import { getCustomers } from './crm.repo.js';
 import { memberScore } from './scores.service.js';
 import { formatVnd } from '../lib/money.js';
 import { formatMinutes } from '../lib/worktime.js';
@@ -53,26 +51,6 @@ function parseMentions(message: string): string[] {
   return [...message.matchAll(/@([a-zA-Z0-9_.]+)/g)].map((m) => m[1]!.toLowerCase());
 }
 
-
-/** Tên các khách đang hoạt động (dùng cho bước hỏi "việc này cho khách nào"). */
-async function customerNames(): Promise<string[]> {
-  try {
-    return (await getCustomers()).map((c) => c.name).filter(Boolean);
-  } catch {
-    return [];
-  }
-}
-
-/** Ghi chú việc đã nhắc tên khách nào chưa? Trả về tên khách khớp, hoặc null. */
-async function matchCustomer(note: string): Promise<string | null> {
-  const hay = removeAccents(note || '').toLowerCase();
-  if (!hay) return null;
-  for (const name of await customerNames()) {
-    const needle = removeAccents(name).toLowerCase().trim();
-    if (needle.length >= 3 && hay.includes(needle)) return name;
-  }
-  return null;
-}
 
 /** Payload trả về cho frontend (mọi lối ra của handler). */
 interface ChatReply {
@@ -235,33 +213,33 @@ async function runChat(
         // để bảng điểm không hiện những dòng kiểu "bắt đầu tối ưu quảng cáo".
         const note = cleanNote(x.note || '', item.name);
 
-        // Báo xong việc đang làm dở → lấy lại tên khách đã khai lúc bấm Bắt đầu.
-        // Không có bước này thì "bắt đầu tối ưu quảng cáo cho Tiến Minh" rồi "xong tối ưu
-        // quảng cáo" lại bị hỏi khách lần nữa, dù đã khai rồi.
-        const carried = starting
-          ? ''
-          : (await getDoingTasks(memberId)).find((t) => t.taskCode === item.code)?.note?.trim() || '';
+        // Báo xong việc đang làm dở → lấy lại tên khách đã khai lúc bấm Bắt đầu, để khỏi
+        // hỏi lần nữa. CHỈ mang khi đang mở đúng MỘT khách cho loại việc này; từ hai khách
+        // trở lên thì thà hỏi thêm một câu còn hơn ghi nhầm khách.
+        let carried = '';
+        if (!starting && !note) {
+          const open = (await getDoingTasks(memberId))
+            .map((t) => (t.taskCode === item.code ? (t.note || '').trim() : ''))
+            .filter(Boolean);
+          if (new Set(open.map(taskCustomerKey)).size === 1) carried = open[0]!;
+        }
         const forWhom = note || carried;
-        // Khớp được khách trong CRM thì lấy đúng tên chuẩn; không khớp vẫn dùng chữ họ gõ.
-        const label = (await matchCustomer(forWhom)) || forWhom;
 
-        // CHỈ hỏi khi thật sự chưa biết việc này làm cho ai. Họ gõ tên rồi mà vẫn hỏi
-        // (vì khách chưa có trong CRM) là bắt gõ hai lần — thừa một bước.
-        if (!forWhom) {
+        // Bắt buộc có tên khách — anh Tâm chốt 25/7/2026. Không có thì hỏi, không ghi mò.
+        if (!taskCustomerKey(forWhom)) {
           send({
             reply: `"${item.name}" — việc này cho khách nào vậy?`,
             action: 'ask_customer',
             suggestion: { taskCode: item.code, taskName: item.name, points: item.points, note: '' },
             starting,
-            customers: await customerNames(),
           });
           return;
         }
 
         send({
           reply: starting
-            ? `Bắt đầu làm "${item.name}" cho ${label} từ bây giờ? (+${item.points}đ khi hoàn thành)`
-            : `Bạn vừa hoàn thành "${item.name}" cho ${label} (+${item.points}đ)? Bấm xác nhận để ghi nhận nhé.`,
+            ? `Bắt đầu làm "${item.name}" cho ${forWhom} từ bây giờ? (+${item.points}đ khi hoàn thành)`
+            : `Bạn vừa hoàn thành "${item.name}" cho ${forWhom} (+${item.points}đ)? Bấm xác nhận để ghi nhận nhé.`,
           action: starting ? 'confirm_start' : 'confirm_task',
           suggestion: { taskCode: item.code, taskName: item.name, points: item.points, note: forWhom },
         });

@@ -1,4 +1,36 @@
 import { describe, it, expect } from 'vitest';
+import { overlappingIds } from './worktime.js';
+
+describe('overlappingIds', () => {
+  const t = (id: string, from: string, to: string) => ({
+    id,
+    startedAt: `2026-07-15T${from}:00.000Z`,
+    completedAt: `2026-07-15T${to}:00.000Z`,
+  });
+
+  it('việc làm nối tiếp nhau thì không chồng', () => {
+    expect(overlappingIds([t('A', '06:36', '08:55'), t('B', '08:55', '09:37')])).toEqual([]);
+  });
+
+  it('bắt cả cụm mở hàng loạt rồi đóng hàng loạt — ca thật ngày 15/07', () => {
+    const ids = overlappingIds([
+      t('A', '01:35', '03:32'),
+      t('B', '01:35', '03:32'),
+      t('C', '01:35', '03:31'),
+    ]).sort();
+    expect(ids).toEqual(['A', 'B', 'C']);
+  });
+
+  it('việc lồng hoàn toàn trong việc khác cũng bị bắt', () => {
+    expect(overlappingIds([t('A', '08:00', '12:00'), t('B', '09:00', '10:00')]).sort()).toEqual(['A', 'B']);
+  });
+
+  it('bỏ qua việc thiếu giờ — không đủ dữ liệu để kết luận', () => {
+    expect(overlappingIds([{ id: 'A' }, { id: 'B', completedAt: '2026-07-15T09:00:00.000Z' }])).toEqual([]);
+    // Việc có giờ nằm cạnh việc thiếu giờ vẫn không bị gắn cờ oan.
+    expect(overlappingIds([t('A', '08:00', '09:00'), { id: 'B' }])).toEqual([]);
+  });
+});
 import { unionMinutes, taskIntervalsForDay, formatMinutes } from './worktime.js';
 
 const T = (h: number, m = 0) => Date.UTC(2026, 5, 12, h, m); // 2026-06-12 UTC

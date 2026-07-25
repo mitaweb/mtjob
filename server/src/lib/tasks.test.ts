@@ -1,5 +1,103 @@
 import { describe, it, expect } from 'vitest';
-import { taskTitle, cleanNote, isStartReport } from './tasks.js';
+import {
+  taskTitle,
+  cleanNote,
+  isStartReport,
+  taskCustomerKey,
+  pickDoingToComplete,
+  findOpenDuplicate,
+  type DoingLike,
+} from './tasks.js';
+
+describe('taskCustomerKey', () => {
+  it('mọi cách viết của cùng một khách ra cùng khoá', () => {
+    // Anh Tâm: "quảng cáo x salon hay x-salon đều là 1, anh không quan tâm cách viết".
+    for (const v of ['X Salon', 'x salon', 'X-Salon', 'X  Salon', 'X_Salon', ' x salon. ']) {
+      expect(taskCustomerKey(v)).toBe('x salon');
+    }
+    expect(taskCustomerKey('Quốc Phong')).toBe(taskCustomerKey('quoc phong'));
+    expect(taskCustomerKey('Đức Anh')).toBe('duc anh');
+  });
+
+  it('chuỗi không có chữ/số nào ra khoá rỗng', () => {
+    expect(taskCustomerKey('')).toBe('');
+    expect(taskCustomerKey('   ')).toBe('');
+    expect(taskCustomerKey('—')).toBe('');
+    expect(taskCustomerKey('✅')).toBe('');
+  });
+
+  it('KHÔNG gộp nhầm hai khách khác nhau', () => {
+    expect(taskCustomerKey('X Salon')).not.toBe(taskCustomerKey('Y Salon'));
+    expect(taskCustomerKey('Salon 5')).not.toBe(taskCustomerKey('Salon 6'));
+  });
+
+  it('ghi chú hệ thống không phải tên khách', () => {
+    // Việc leader giao có note "Giao bởi X"; nếu coi đó là khách thì lúc nhân viên báo
+    // xong sẽ không khớp được và việc treo mãi ở trạng thái đang làm.
+    expect(taskCustomerKey('Giao bởi Minh Tâm')).toBe('');
+    expect(taskCustomerKey('Backfill 20/7')).toBe('');
+  });
+});
+
+// Dựng danh sách việc đang làm dở, cũ nhất trước — đúng thứ tự getDoingTasks trả về.
+const doing = (...rows: Array<[string, string, string]>): DoingLike[] =>
+  rows.map(([id, taskCode, note]) => ({ id, taskCode, note }));
+
+describe('pickDoingToComplete', () => {
+  it('KHÔNG đụng việc của khách khác — ca lỗi từng làm mất một việc thật', () => {
+    // Bắt đầu "Tối ưu QC — X Salon" rồi báo xong "Tối ưu QC — Quốc Phong":
+    // code cũ đóng dòng X Salon và ghi đè tên khách thành Quốc Phong.
+    const list = doing(['T1', 'ADS13', 'X Salon']);
+    expect(pickDoingToComplete(list, 'ADS13', 'Quốc Phong')).toBeNull();
+  });
+
+  it('khớp đúng khách dù viết khác cách', () => {
+    const list = doing(['T1', 'ADS13', 'X Salon']);
+    expect(pickDoingToComplete(list, 'ADS13', 'x-salon')?.id).toBe('T1');
+  });
+
+  it('nhiều khách đang mở thì chọn đúng khách được nhắc', () => {
+    const list = doing(['T1', 'ADS13', 'X Salon'], ['T2', 'ADS13', 'Quốc Phong']);
+    expect(pickDoingToComplete(list, 'ADS13', 'Quốc Phong')?.id).toBe('T2');
+    expect(pickDoingToComplete(list, 'ADS13', 'X Salon')?.id).toBe('T1');
+  });
+
+  it('khai bổ sung tên khách cho dòng chưa ghi', () => {
+    const list = doing(['T1', 'ADS13', '']);
+    expect(pickDoingToComplete(list, 'ADS13', 'X Salon')?.id).toBe('T1');
+  });
+
+  it('báo xong không nhắc khách thì vẫn đóng được việc dở', () => {
+    // Rỗng là ký tự đại diện ở chiều ĐÓNG — nếu không, dòng doing treo vĩnh viễn.
+    expect(pickDoingToComplete(doing(['T1', 'ADS13', 'X Salon']), 'ADS13', '')?.id).toBe('T1');
+    // Ưu tiên dòng cũng chưa ghi khách.
+    const mixed = doing(['T1', 'ADS13', 'X Salon'], ['T2', 'ADS13', '']);
+    expect(pickDoingToComplete(mixed, 'ADS13', '')?.id).toBe('T2');
+    // Không có dòng trống thì lấy dòng cũ nhất, đừng sinh dòng mồ côi.
+    const both = doing(['T1', 'ADS13', 'X Salon'], ['T2', 'ADS13', 'Quốc Phong']);
+    expect(pickDoingToComplete(both, 'ADS13', '')?.id).toBe('T1');
+  });
+
+  it('khác loại việc thì không khớp', () => {
+    expect(pickDoingToComplete(doing(['T1', 'ADS01', 'X Salon']), 'ADS13', 'X Salon')).toBeNull();
+    expect(pickDoingToComplete([], 'ADS13', 'X Salon')).toBeNull();
+  });
+});
+
+describe('findOpenDuplicate', () => {
+  it('bắt đầu hai lần cùng khách là trùng', () => {
+    expect(findOpenDuplicate(doing(['T1', 'ADS13', 'X Salon']), 'ADS13', 'X-Salon')?.id).toBe('T1');
+    // Bấm hai lần không khai khách — nguồn của các cụm mở hàng loạt tháng 7.
+    expect(findOpenDuplicate(doing(['T1', 'ADS13', '']), 'ADS13', '')?.id).toBe('T1');
+  });
+
+  it('cùng loại việc KHÁC khách thì cho phép — quyết định của anh Tâm', () => {
+    expect(findOpenDuplicate(doing(['T1', 'ADS13', 'X Salon']), 'ADS13', 'Quốc Phong')).toBeNull();
+    // Khớp cứng: đang mở "X Salon", bắt đầu việc chưa khai khách → cho qua.
+    // Thà cho mở thừa còn hơn chặn oan một việc cho khách khác.
+    expect(findOpenDuplicate(doing(['T1', 'ADS13', 'X Salon']), 'ADS13', '')).toBeNull();
+  });
+});
 
 describe('isStartReport', () => {
   it('nhận ra câu báo BẮT ĐẦU (không được tính điểm)', () => {
