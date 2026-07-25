@@ -21,6 +21,18 @@ function touchCustomerFromTask(task: TaskRow): void {
   if (note) markCustomerDirty(note);
 }
 
+/**
+ * Thời gian làm TỐI THIỂU để một việc được tính hoàn thành. Anh Tâm chốt 25/7/2026:
+ * bấm Bắt đầu rồi bấm Kết thúc trong vòng 1 phút là bấm khống — không có việc gì
+ * xong nổi trong vài giây, và dữ liệu thật cho thấy toàn các ca 4-6 giây.
+ */
+const MIN_WORK_MS = 60_000;
+
+function tooFast(startedAt: string): boolean {
+  const ms = Date.now() - new Date(startedAt).getTime();
+  return Number.isFinite(ms) && ms >= 0 && ms < MIN_WORK_MS;
+}
+
 /** Báo cho leader của team khi một thành viên hoàn thành task. Không làm hỏng luồng chính nếu lỗi. */
 async function notifyLeaderOnComplete(task: TaskRow): Promise<void> {
   try {
@@ -78,6 +90,12 @@ export async function logTask(input: LogTaskInput): Promise<{ task: TaskRow; poi
   // Việc cùng loại đang làm dở → chốt luôn việc đó, khỏi sinh việc trùng.
   const doing = (await getDoingTasks(member.id)).find((t) => t.taskCode === item.code);
   if (doing) {
+    if (tooFast(doing.startedAt)) {
+      throw new ApiError(
+        400,
+        `"${item.name}" mới bắt đầu chưa đầy 1 phút — làm xong thật rồi hãy báo hoàn thành nhé.`,
+      );
+    }
     const finished = await completeTaskRow(doing.id, member.id, now, input.note?.trim() || undefined);
     if (finished) {
       touchCustomerFromTask(finished);
@@ -214,6 +232,11 @@ export async function completeTask(
   memberId: string,
   taskId: string,
 ): Promise<{ task: TaskRow; points: number }> {
+  // Chặn bấm khống: Bắt đầu xong bấm Kết thúc luôn thì KHÔNG được tính điểm.
+  const doing = (await getDoingTasks(memberId)).find((t) => t.id === taskId);
+  if (doing && tooFast(doing.startedAt)) {
+    throw new ApiError(400, 'Vừa bấm bắt đầu chưa đầy 1 phút — làm xong thật rồi hãy bấm hoàn thành nhé.');
+  }
   const now = nowTz().toISOString();
   const task = await completeTaskRow(taskId, memberId, now);
   if (!task) throw new ApiError(404, 'Không tìm thấy task đang làm (có thể đã hoàn thành rồi)');

@@ -30,7 +30,10 @@ export interface DupItem {
   note: string;
   points: number;
   /** Vì sao dòng này bị coi là thừa — để anh soi lại được từng dòng. */
-  reason: 'báo thẳng trùng dòng đã bắt đầu' | 'câu báo bắt đầu bị tính điểm';
+  reason:
+    | 'báo thẳng trùng dòng đã bắt đầu'
+    | 'câu báo bắt đầu bị tính điểm'
+    | 'bấm kết thúc ngay sau khi bắt đầu (dưới 1 phút)';
 }
 
 export interface DedupeReport {
@@ -125,6 +128,15 @@ export function pickDuplicates(rows: Row[]): DedupeReport {
       reason,
     });
 
+  // Bấm Bắt đầu rồi bấm Kết thúc trong vòng 1 phút = bấm khống (dữ liệu thật toàn ca
+  // 4-6 giây). Anh Tâm chốt 25/7: các dòng này bị bỏ điểm. Luật chạy trên TỪNG dòng,
+  // không cần nhóm — đứng một mình vẫn bị bắt.
+  const instant = (r: Row): boolean => {
+    if ((r.started_at || '').trim() === '' || (r.completed_at || '').trim() === '') return false;
+    const ms = new Date(r.completed_at).getTime() - new Date(r.started_at).getTime();
+    return Number.isFinite(ms) && ms >= 0 && ms < 60_000;
+  };
+
   for (const list of groups.values()) {
     // Câu báo bắt đầu mà KHÔNG có giờ bắt đầu = chưa hề có việc nào được mở ra, chỉ là
     // câu nói bị ghi thẳng thành việc xong. Điểm ghi ở lúc KẾT THÚC nên dòng này không
@@ -134,11 +146,15 @@ export function pickDuplicates(rows: Row[]): DedupeReport {
     );
     bogusStart.forEach((r) => add(r, 'câu báo bắt đầu bị tính điểm'));
 
+    const fastRows = list.filter((r) => !bogusStart.includes(r) && instant(r));
+    fastRows.forEach((r) => add(r, 'bấm kết thúc ngay sau khi bắt đầu (dưới 1 phút)'));
+
     if (list.length < 2) continue;
 
     // Còn lại: hai dòng cho cùng một việc — một dòng bấm nút (có giờ bắt đầu), một dòng
     // báo thẳng trong chat. Bỏ dòng báo thẳng, giữ dòng có giờ làm thật.
-    const rest = list.filter((r) => !bogusStart.includes(r));
+    // Dòng bấm khống không được đứng ra "làm chứng" cho cặp trùng — nó sắp bị bỏ rồi.
+    const rest = list.filter((r) => !bogusStart.includes(r) && !fastRows.includes(r));
     const startedRows = rest.filter((r) => (r.started_at || '').trim() !== '');
     const loggedRows = rest.filter((r) => (r.started_at || '').trim() === '');
     if (startedRows.length > 0 && loggedRows.length > 0) {

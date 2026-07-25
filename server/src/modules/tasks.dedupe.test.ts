@@ -163,6 +163,55 @@ describe('pickDuplicates', () => {
     expect(pickDuplicates(rows).totalTasks).toBe(0);
   });
 
+  it('bỏ dòng bấm Kết thúc ngay sau Bắt đầu (dưới 1 phút) — kể cả đứng một mình', () => {
+    // Ca thật: "Chuẩn bị nội dung quảng cáo" 07:39:48 → 07:39:52 (+25đ trong 4 giây).
+    const rows = [
+      row({
+        task_code: 'CB',
+        task_name: 'Chuẩn bị nội dung quảng cáo',
+        note: '',
+        points: 25,
+        started_at: '2026-07-23T07:39:48.000Z',
+        completed_at: '2026-07-23T07:39:52.000Z',
+      }),
+    ];
+    const r = pickDuplicates(rows);
+    expect(r.totalTasks).toBe(1);
+    expect(r.items[0].reason).toBe('bấm kết thúc ngay sau khi bắt đầu (dưới 1 phút)');
+  });
+
+  it('KHÔNG đụng việc làm từ 1 phút trở lên', () => {
+    const rows = [
+      row({
+        task_code: 'LA',
+        task_name: 'Lên Ads',
+        note: '',
+        points: 20,
+        started_at: '2026-07-23T07:00:00.000Z',
+        completed_at: '2026-07-23T07:01:00.000Z', // đúng 60 giây — đủ chuẩn
+      }),
+    ];
+    expect(pickDuplicates(rows).totalTasks).toBe(0);
+  });
+
+  it('dòng bấm khống không được làm chứng cho cặp trùng — dòng báo thẳng thật vẫn giữ', () => {
+    const rows = [
+      row({
+        task_code: 'LA',
+        task_name: 'Lên Ads',
+        note: '',
+        points: 20,
+        started_at: '2026-07-23T07:00:00.000Z',
+        completed_at: '2026-07-23T07:00:05.000Z', // bấm khống 5 giây
+      }),
+      row({ task_code: 'LA', task_name: 'Lên Ads', note: '', points: 20 }), // báo thẳng
+    ];
+    const r = pickDuplicates(rows);
+    // Chỉ bỏ dòng bấm khống; dòng báo thẳng không bị coi là trùng với nó.
+    expect(r.totalTasks).toBe(1);
+    expect(r.items[0].reason).toBe('bấm kết thúc ngay sau khi bắt đầu (dưới 1 phút)');
+  });
+
   it('gộp điểm theo từng người để đối chiếu với bảng xếp hạng', () => {
     const rows = [
       row({ task_code: 'LA', task_name: 'Lên Ads', note: '', points: 20 }),
