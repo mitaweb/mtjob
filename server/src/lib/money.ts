@@ -9,14 +9,19 @@ export interface BonusConfig {
 export const DEFAULT_BONUS: BonusConfig = { threshold: 6000, step: 1000, amount: 800000 };
 
 /**
- * Monthly bonus. Only the points ABOVE `threshold` count; every full `step`
- * grants `amount` VND.
- *   6000 -> 0, 6999 -> 0, 7000 -> 800k, 8000 -> 1.6M, 12000 -> 4.8M
+ * Thưởng tháng. Chỉ điểm VƯỢT `threshold` mới được tính, ăn theo TỶ LỆ:
+ * mỗi `step` điểm dư tương ứng `amount` đồng, dư bao nhiêu ăn bấy nhiêu.
+ *
+ * Anh Tâm chốt 25/7/2026: "tính tiền ngay khi vượt mốc 6k điểm" — trước đây phải đủ
+ * trọn 1.000 điểm dư mới có đồng nào, nên 6.999đ vẫn trắng tay, quá thiệt cho người
+ * chỉ thiếu một chút.
+ *   6000 -> 0 · 6320 -> 256k · 6500 -> 400k · 7000 -> 800k · 8000 -> 1.6M
  */
 export function computeBonus(points: number, cfg: BonusConfig = DEFAULT_BONUS): number {
   if (!Number.isFinite(points) || points <= cfg.threshold) return 0;
-  const units = Math.floor((points - cfg.threshold) / cfg.step);
-  return Math.max(0, units) * cfg.amount;
+  if (!(cfg.step > 0)) return 0; // cấu hình hỏng thì trả 0, đừng chia cho 0
+  const extra = points - cfg.threshold;
+  return Math.round((extra / cfg.step) * cfg.amount);
 }
 
 export type BhxhMode = 'direct' | 'percent';

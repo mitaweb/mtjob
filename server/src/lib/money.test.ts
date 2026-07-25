@@ -2,22 +2,33 @@ import { describe, it, expect } from 'vitest';
 import { computeBonus, computeNetSalary, formatVnd, parseVndAmount } from './money.js';
 
 describe('computeBonus', () => {
-  it('is 0 at or below the 6000 threshold', () => {
+  it('chưa vượt mốc 6000 thì không có thưởng', () => {
     expect(computeBonus(0)).toBe(0);
     expect(computeBonus(5000)).toBe(0);
     expect(computeBonus(6000)).toBe(0);
-    expect(computeBonus(6999)).toBe(0);
   });
 
-  it('grants 800k per full 1000 above 6000', () => {
+  it('vượt mốc là có tiền ngay, ăn theo tỷ lệ điểm dư', () => {
+    // Anh Tâm chốt 25/7/2026 — trước đây 6999đ vẫn trắng tay vì chưa đủ trọn 1000 dư.
+    expect(computeBonus(6001)).toBe(800);
+    expect(computeBonus(6320)).toBe(256_000);
+    expect(computeBonus(6500)).toBe(400_000);
+    expect(computeBonus(6999)).toBe(799_200);
+  });
+
+  it('mốc tròn vẫn ra đúng số cũ', () => {
     expect(computeBonus(7000)).toBe(800_000);
-    expect(computeBonus(7999)).toBe(800_000);
     expect(computeBonus(8000)).toBe(1_600_000);
     expect(computeBonus(12000)).toBe(4_800_000);
   });
 
   it('honours a custom config', () => {
     expect(computeBonus(5000, { threshold: 4000, step: 500, amount: 100_000 })).toBe(200_000);
+    expect(computeBonus(4250, { threshold: 4000, step: 500, amount: 100_000 })).toBe(50_000);
+  });
+
+  it('cấu hình hỏng (step = 0) thì trả 0, không chia cho 0', () => {
+    expect(computeBonus(9000, { threshold: 6000, step: 0, amount: 800_000 })).toBe(0);
   });
 });
 
