@@ -1,6 +1,58 @@
 import { describe, it, expect } from 'vitest';
-import { inRange, sumPointsForMember, aggregateByMember, rankMembers } from './scores.js';
-import type { ScoreTask } from './scores.js';
+import {
+  inRange,
+  sumPointsForMember,
+  aggregateByMember,
+  rankMembers,
+  summarizePointChanges,
+} from './scores.js';
+import type { ScoreTask, PointChange } from './scores.js';
+
+describe('summarizePointChanges', () => {
+  // Ca thật: anh Tâm hạ "Báo cáo Ads" từ 35đ xuống 10đ.
+  const ch = (memberName: string, taskName: string, cu: number, moi: number): PointChange => ({
+    memberName,
+    taskName,
+    cu,
+    moi,
+  });
+
+  it('gom theo người, chênh lệch âm khi hạ điểm', () => {
+    const r = summarizePointChanges([
+      ch('Anh Tú', 'Báo cáo Ads', 35, 10),
+      ch('Anh Tú', 'Báo cáo Ads', 35, 10),
+      ch('Thảo Nhiên', 'Báo cáo Ads', 35, 10),
+    ]);
+    expect(r.updated).toBe(3);
+    expect(r.byMember).toEqual([
+      { memberName: 'Anh Tú', tasks: 2, delta: -50 },
+      { memberName: 'Thảo Nhiên', tasks: 1, delta: -25 },
+    ]);
+  });
+
+  it('người bị ảnh hưởng nặng nhất lên đầu, kể cả khi là tăng điểm', () => {
+    const r = summarizePointChanges([
+      ch('Ít', 'Lên Ads', 20, 25),
+      ...Array.from({ length: 5 }, () => ch('Nhiều', 'Lên Ads', 20, 40)),
+    ]);
+    expect(r.byMember[0]).toEqual({ memberName: 'Nhiều', tasks: 5, delta: 100 });
+  });
+
+  it('tách riêng khi cùng loại việc đổi từ nhiều mức cũ khác nhau', () => {
+    const r = summarizePointChanges([
+      ch('A', 'Báo cáo Ads', 35, 10),
+      ch('A', 'Báo cáo Ads', 20, 10),
+    ]);
+    expect(r.byTask).toEqual([
+      { taskName: 'Báo cáo Ads', cu: 35, moi: 10, tasks: 1 },
+      { taskName: 'Báo cáo Ads', cu: 20, moi: 10, tasks: 1 },
+    ]);
+  });
+
+  it('không có gì đổi thì báo cáo rỗng', () => {
+    expect(summarizePointChanges([])).toEqual({ updated: 0, byMember: [], byTask: [] });
+  });
+});
 
 const tasks: ScoreTask[] = [
   { memberId: 'm1', points: 100, completedAt: '2026-06-01T09:00:00' },
