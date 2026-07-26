@@ -5,15 +5,14 @@ import { requireAuth } from '../auth/middleware.js';
 import { interpret } from '../gemini/chatNlu.js';
 import { getActiveCatalog, findCatalogItem, sortCatalogForTeam } from './catalog.repo.js';
 import { findById, findByLogin } from './members.repo.js';
-import { logTask, startTask, assignTask, canAssign } from './tasks.service.js';
-import { getDoingTasks } from './tasks.repo.js';
+import { startTask, assignTask, canAssign } from './tasks.service.js';
 import {
   answerDataQuestion,
   answerMemberQuestion,
   type ChatTurn,
   type OnAssistantEvent,
 } from './assistant.service.js';
-import { taskTitle, cleanNote, isStartReport, taskCustomerKey } from '../lib/tasks.js';
+import { taskTitle, cleanNote, taskCustomerKey } from '../lib/tasks.js';
 import { looksLikeQuestion } from '../lib/question.js';
 import { memberScore } from './scores.service.js';
 import { formatVnd } from '../lib/money.js';
@@ -30,7 +29,7 @@ chatRouter.use(requireAuth);
 
 const bodySchema = z.object({
   message: z.string().optional().default(''),
-  confirmTaskCode: z.string().optional(),
+  // Chỉ còn đường BẮT ĐẦU việc; đường "báo thẳng đã xong" đã bỏ (sinh dòng không giờ làm).
   confirmStartTaskCode: z.string().optional(),
   note: z.string().optional(), // mô tả cụ thể của việc (vd "X Salon") — hiện ở báo cáo
   confirmAssign: z.boolean().optional(),
@@ -97,6 +96,33 @@ function saveChatTurn(memberId: string, userText: string, payload: ChatReply): v
 type ChatBody = z.infer<typeof bodySchema>;
 
 /**
+ * Mở một việc từ chat và báo lại giờ bắt đầu.
+ *
+ * Dùng chung cho hai đường vào: gõ thẳng có sẵn tên khách, và gõ trống rồi chọn khách.
+ * `startTask` có thể từ chối (đang làm dở đúng việc đó cho đúng khách, hoặc thiếu tên
+ * khách) — bắt lại để trả thành câu nhắc trong bong bóng chat, không phải lỗi đỏ.
+ */
+async function beginFromChat(
+  memberId: string,
+  taskCode: string,
+  note: string,
+  send: (payload: ChatReply) => void,
+): Promise<void> {
+  try {
+    const { task } = await startTask({ memberId, taskCode, note, source: 'chat' });
+    send({
+      reply:
+        `▶️ Đã bắt đầu "${taskTitle(task)}" lúc ${fmtHm(task.startedAt)}. ` +
+        `Làm xong bấm "⏳ Đang làm" bên dưới → Hoàn thành để nhận +${task.points}đ nhé.`,
+      action: 'task_started',
+      task,
+    });
+  } catch (e) {
+    send({ reply: `⚠️ ${(e as Error).message}`, action: 'help' });
+  }
+}
+
+/**
  * Toàn bộ logic chat, dùng chung cho cả hai đường:
  *  - POST /api/chat        → gom lại rồi trả JSON một lần
  *  - POST /api/chat/stream → phát sự kiện SSE, chữ hiện dần
@@ -117,21 +143,11 @@ async function runChat(
       sweepRemindersOpportunistic(); // lối lui khi chưa gắn cron ngoài cho nhắc hẹn
     };
 
-    // 1a) Người dùng xác nhận HOÀN THÀNH NGAY một task được gợi ý.
-    if (b.confirmTaskCode) {
-      const { task, points } = await logTask({ memberId, taskCode: b.confirmTaskCode, note: b.note, source: 'chat' });
-      send({ reply: `Đã ghi nhận "${taskTitle(task)}" (+${points}đ). 💪`, action: 'task_logged', task });
-      return;
-    }
-
-    // 1b) Người dùng xác nhận BẮT ĐẦU một task.
+    // 1a) Bắt đầu một việc — đường DUY NHẤT để ghi việc từ chat.
+    // Anh Tâm chốt 26/7/2026: chat tên việc là bắt đầu luôn, xong mới bấm hoàn thành.
+    // Không còn đường "báo thẳng đã xong" vì nó sinh dòng không có giờ làm.
     if (b.confirmStartTaskCode) {
-      const { task } = await startTask({ memberId, taskCode: b.confirmStartTaskCode, note: b.note, source: 'chat' });
-      send({
-        reply: `▶️ Đã bắt đầu "${taskTitle(task)}" lúc ${fmtHm(task.startedAt)}. Xong việc bấm nút "⏳ Đang làm" bên dưới để hoàn thành & nhận +${task.points}đ nhé.`,
-        action: 'task_started',
-        task,
-      });
+      await beginFromChat(memberId, b.confirmStartTaskCode, b.note || '', send);
       return;
     }
 
@@ -201,48 +217,25 @@ async function runChat(
 
     const x = await interpret(b.message, catalog, me?.teamId || '');
 
-    // 2+3) Ghi việc (bắt đầu / đã xong) — phải rõ việc này làm cho KHÁCH NÀO.
+    // 2) Ghi việc — chat tên việc là BẮT ĐẦU LUÔN, phải rõ làm cho KHÁCH NÀO.
+    // Anh Tâm chốt 26/7/2026: giờ bắt đầu tính từ lúc nhắn, không qua bước xác nhận.
     if ((x.intent === 'start_task' || x.intent === 'log_task') && x.taskCode) {
       const item = await findCatalogItem(x.taskCode);
       if (item) {
-        // Câu mở đầu bằng "bắt đầu…", "đang làm…" LUÔN là báo bắt đầu, kể cả khi AI đoán
-        // là đã xong. Đoán sai chiều này tạo một dòng có điểm cho việc chưa làm xong —
-        // đúng lỗi đã làm bảng điểm phồng gấp đôi. Quy tắc: điểm chỉ tính lúc hoàn thành.
-        const starting = x.intent === 'start_task' || isStartReport(b.message);
-        // Bỏ cụm hành động + phần lặp tên việc, giữ lại mô tả thật (thường là tên khách),
-        // để bảng điểm không hiện những dòng kiểu "bắt đầu tối ưu quảng cáo".
+        // Bỏ cụm hành động + phần lặp tên việc, giữ lại mô tả thật (thường là tên khách).
         const note = cleanNote(x.note || '', item.name);
 
-        // Báo xong việc đang làm dở → lấy lại tên khách đã khai lúc bấm Bắt đầu, để khỏi
-        // hỏi lần nữa. CHỈ mang khi đang mở đúng MỘT khách cho loại việc này; từ hai khách
-        // trở lên thì thà hỏi thêm một câu còn hơn ghi nhầm khách.
-        let carried = '';
-        if (!starting && !note) {
-          const open = (await getDoingTasks(memberId))
-            .map((t) => (t.taskCode === item.code ? (t.note || '').trim() : ''))
-            .filter(Boolean);
-          if (new Set(open.map(taskCustomerKey)).size === 1) carried = open[0]!;
-        }
-        const forWhom = note || carried;
-
         // Bắt buộc có tên khách — anh Tâm chốt 25/7/2026. Không có thì hỏi, không ghi mò.
-        if (!taskCustomerKey(forWhom)) {
+        if (!taskCustomerKey(note)) {
           send({
             reply: `"${item.name}" — việc này cho khách nào vậy?`,
             action: 'ask_customer',
             suggestion: { taskCode: item.code, taskName: item.name, points: item.points, note: '' },
-            starting,
           });
           return;
         }
 
-        send({
-          reply: starting
-            ? `Bắt đầu làm "${item.name}" cho ${forWhom} từ bây giờ? (+${item.points}đ khi hoàn thành)`
-            : `Bạn vừa hoàn thành "${item.name}" cho ${forWhom} (+${item.points}đ)? Bấm xác nhận để ghi nhận nhé.`,
-          action: starting ? 'confirm_start' : 'confirm_task',
-          suggestion: { taskCode: item.code, taskName: item.name, points: item.points, note: forWhom },
-        });
+        await beginFromChat(memberId, item.code, note, send);
         return;
       }
     }

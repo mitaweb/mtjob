@@ -1,10 +1,11 @@
-import { getScoringTasks } from './tasks.repo.js';
+import { getScoringTasks, getDoneTasksForMemberRange } from './tasks.repo.js';
 import { getActiveMembers, findById } from './members.repo.js';
 import { sumPointsForMember, aggregateByMember, rankMembers } from '../lib/scores.js';
 import { computeBonus, type BonusConfig } from '../lib/money.js';
-import { unionMinutes, taskIntervalsForDay } from '../lib/worktime.js';
+import { unionMinutes, taskIntervalsForDay, overlappingIds } from '../lib/worktime.js';
+import { taskTitle } from '../lib/tasks.js';
 import { getConfig } from '../config.js';
-import { nowTz, monthRange, todayIso, dayBoundsMs } from '../lib/datetime.js';
+import { nowTz, monthRange, todayIso, dayBoundsMs, fmtHm } from '../lib/datetime.js';
 import type { TaskRow } from '../types.js';
 
 async function bonusCfg(): Promise<BonusConfig> {
@@ -103,6 +104,61 @@ export function withRanks(scores: MemberScore[]): RankedMemberScore[] {
   return scores
     .map((s) => ({ ...s, rank: rankByMember.get(s.memberId) || 0 }))
     .sort((a, b) => a.rank - b.rank);
+}
+
+/**
+ * Chi tiết công việc THEO NGÀY của một người trong tháng.
+ *
+ * Dùng chung cho hai màn hình: giám đốc soi nhân sự, và nhân viên tự xem mình.
+ * Giờ làm là dữ liệu gốc để đối chiếu điểm, nên mỗi việc trả kèm khung giờ,
+ * thời lượng, và cờ cảnh báo (chồng giờ / không có giờ / vắt qua ngày).
+ */
+export async function memberWorkDetail(memberId: string, year: number, month: number) {
+  const { start, end } = monthRange(year, month);
+  const [tasks, score, rank] = await Promise.all([
+    getDoneTasksForMemberRange(memberId, start, end),
+    memberScore(memberId, year, month),
+    ranking(year, month).then((r) => r.find((x) => x.memberId === memberId)?.rank ?? 0),
+  ]);
+
+  const byDay = new Map<string, typeof tasks>();
+  for (const t of tasks) {
+    const day = (t.completedAt || t.createdAt || '').slice(0, 10);
+    if (!day) continue;
+    byDay.set(day, [...(byDay.get(day) || []), t]);
+  }
+
+  const nowMs = Date.now();
+  const days = [...byDay.entries()]
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1)) // mới nhất trước
+    .map(([date, list]) => {
+      const { startMs, endMs } = dayBoundsMs(date);
+      const overlaps = new Set(overlappingIds(list));
+      return {
+        date,
+        points: list.reduce((s, t) => s + (Number(t.points) || 0), 0),
+        // Giờ làm ĐÃ GỘP khoảng chồng lấn — tổng thời lượng từng việc có thể lớn hơn.
+        minutes: unionMinutes(taskIntervalsForDay(list, startMs, endMs, nowMs)),
+        noTimeCount: list.filter((t) => !t.startedAt).length,
+        tasks: list.map((t) => ({
+          id: t.id,
+          title: taskTitle(t), // kèm ghi chú / tên khách
+          points: t.points,
+          completedAt: t.completedAt,
+          // Định dạng giờ ở MÁY CHỦ theo giờ VN — máy người xem có thể ở múi giờ khác.
+          startHm: t.startedAt ? fmtHm(t.startedAt) : '',
+          endHm: t.completedAt ? fmtHm(t.completedAt) : '',
+          minutes:
+            t.startedAt && t.completedAt
+              ? Math.max(0, Math.round((Date.parse(t.completedAt) - Date.parse(t.startedAt)) / 60000))
+              : null,
+          overlap: overlaps.has(t.id),
+          crossDay: !!t.startedAt && t.startedAt.slice(0, 10) !== date,
+        })),
+      };
+    });
+
+  return { year, month, score: { monthPoints: score.monthPoints, bonus: score.bonus, rank }, days };
 }
 
 /** Ranked month scores — CHỈ nhân viên (admin/leader/giám đốc không vào bảng xếp hạng). */
