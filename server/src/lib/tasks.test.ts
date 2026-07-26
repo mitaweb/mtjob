@@ -136,6 +136,29 @@ describe('cleanNote', () => {
     expect(cleanNote('bắt đầu lên ads', 'Lên Ads')).toBe('');
   });
 
+  it('bóc cụm "ghi nhận task" — chữ thừa, phía sau luôn là việc + tên khách', () => {
+    // Ca thật của anh Tú ngày 21/07. Việc CÓ THẬT, chỉ ghi chú thừa chữ → giữ điểm, sửa chữ.
+    expect(cleanNote('ghi nhận task : chuẩn bị nội dung quảng cáo', 'Chuẩn bị nội dung quảng cáo')).toBe('');
+    expect(cleanNote('ghi nhận task : chuẩn bị nội dung quảng cáo 2', 'Chuẩn bị nội dung quảng cáo')).toBe('2');
+    expect(cleanNote('ghi nhận tối ưu quảng cáo Topaz', 'Tối ưu Quảng Cáo')).toBe('Topaz');
+  });
+
+  it('KHÔNG xén mất chữ khi tên loại việc viết tắt — ca thật trong DB', () => {
+    // Loại việc "Xây dựng chân dung KH" là tiền tố của ghi chú viết đầy đủ;
+    // cắt theo độ dài sẽ xén giữa chữ "khách" và để lại "ách hàng".
+    const note = 'Xây dựng chân dung khách hàng : add page , hướng dẫn';
+    expect(cleanNote(note, 'Xây dựng chân dung KH')).toBe(note);
+    // Dừng đúng ranh giới từ thì vẫn cắt bình thường.
+    expect(cleanNote('Xây dựng chân dung KH : add page', 'Xây dựng chân dung KH')).toBe('add page');
+  });
+
+  it('KHÔNG bóc quá tay khi tên loại việc bắt đầu bằng một từ hành động', () => {
+    // "Chuẩn bị nội dung quảng cáo" là TÊN VIỆC — bóc tiếp sẽ ra "nội dung quảng cáo" cụt.
+    expect(cleanNote('chuẩn bị nội dung quảng cáo', 'Chuẩn bị nội dung quảng cáo')).toBe('');
+    expect(cleanNote('chuẩn bị nội dung quảng cáo cho Kienzo', 'Chuẩn bị nội dung quảng cáo')).toBe('Kienzo');
+    expect(cleanNote('bắt đầu chuẩn bị nội dung quảng cáo', 'Chuẩn bị nội dung quảng cáo')).toBe('');
+  });
+
   it('làm sạch khi nhân viên dán lại bong bóng chat của app', () => {
     // Ca thật trong DB: ghi chú bị nhét nguyên câu hiển thị "▶️ Bắt đầu: ...".
     expect(cleanNote('▶️ Bắt đầu: Tối ưu Quảng Cáo — Quốc Phong', 'Tối ưu Quảng Cáo')).toBe('Quốc Phong');

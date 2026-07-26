@@ -6,8 +6,10 @@ const SYSTEM_NOTE = /^(Giao bởi|Backfill|Sửa bởi)/i;
 
 // Cụm mở đầu chỉ nói HÀNH ĐỘNG, không phải mô tả việc — "bắt đầu lên ads" thì "bắt đầu" là thừa.
 // Cho phép dấu ":" ngay sau (vd "Bắt đầu:") vì nhân viên hay dán lại bong bóng chat của app.
+// Cụm dài phải đứng TRƯỚC cụm ngắn trùng đầu ("ghi nhận task" trước "ghi nhận"),
+// nếu không regex khớp cụm ngắn rồi bỏ sót phần còn lại.
 const ACTION_PREFIX =
-  /^(đã|da|đang|dang|vừa|vua|bắt đầu|bat dau|bắt tay|bat tay|chuẩn bị|chuan bi|sẽ|se|giờ|gio|xong|hoàn thành|hoan thanh|làm|lam)[\s:]+/i;
+  /^(đã|da|đang|dang|vừa|vua|bắt đầu|bat dau|bắt tay|bat tay|ghi nhận task|ghi nhan task|ghi nhận|ghi nhan|chuẩn bị|chuan bi|sẽ|se|giờ|gio|xong|hoàn thành|hoan thanh|làm|lam)[\s:]+/i;
 const CONNECTOR = /^(cho|của|cua|với|voi|-|–|—|:)\s*/i;
 // Emoji/ký hiệu đầu câu do dán lại tin nhắn app ("▶️ Bắt đầu:", "✅ Đã hoàn thành").
 const LEAD_SYMBOL = /^[\p{Extended_Pictographic}️\s]+/u;
@@ -22,21 +24,31 @@ export function cleanNote(note: string, taskName = ''): string {
   let s = String(note || '').trim();
   if (!s) return '';
 
-  // Bóc dần vì người dùng hay ghép nhiều cụm: "▶️ Bắt đầu: ...", "vừa xong ...", "đã làm ...".
-  // Mỗi vòng: gỡ emoji/ký hiệu đầu câu rồi gỡ một cụm hành động — chịu được cả khi
-  // nhân viên dán nguyên bong bóng chat "▶️ Bắt đầu: Tối ưu Quảng Cáo — Quốc Phong".
+  // removeAccents giữ nguyên số ký tự nên cắt theo độ dài tên việc là an toàn.
+  const name = removeAccents(taskName).toLowerCase().trim();
+
+  // Bóc dần vì người dùng hay ghép nhiều cụm: "▶️ Bắt đầu: ...", "ghi nhận task : ...",
+  // "vừa xong ...". Mỗi vòng gỡ emoji/ký hiệu đầu câu rồi gỡ một cụm hành động.
   for (let i = 0; i < 5; i++) {
+    // DỪNG khi phần còn lại đã bắt đầu bằng tên loại việc — nếu không sẽ bóc quá tay:
+    // "Chuẩn bị nội dung quảng cáo" là TÊN VIỆC, chữ "chuẩn bị" trong đó không phải
+    // cụm hành động, bóc tiếp sẽ ra "nội dung quảng cáo" cụt lủn.
+    if (name && removeAccents(s).toLowerCase().startsWith(name)) break;
     const next = s.replace(LEAD_SYMBOL, '').replace(ACTION_PREFIX, '').trim();
     if (next === s) break;
     s = next;
   }
 
-  // removeAccents giữ nguyên số ký tự nên cắt theo độ dài tên việc là an toàn.
-  const name = removeAccents(taskName).toLowerCase().trim();
   if (name) {
     const flat = removeAccents(s).toLowerCase();
     if (flat === name) return '';
-    if (flat.startsWith(name)) s = s.slice(taskName.trim().length).trim();
+    if (flat.startsWith(name)) {
+      const rest = s.slice(taskName.trim().length);
+      // CHỈ cắt khi dừng đúng ranh giới từ. Loại việc "Xây dựng chân dung KH" là tiền tố
+      // của ghi chú "Xây dựng chân dung khách hàng" — cắt theo độ dài sẽ xén mất "kh"
+      // và để lại "ách hàng". Không chắc thì giữ nguyên, thà thừa còn hơn mất chữ.
+      if (rest === '' || /^[\s:,.\-–—]/.test(rest)) s = rest.trim();
+    }
   }
 
   s = s.replace(CONNECTOR, '').trim();
