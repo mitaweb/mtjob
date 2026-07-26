@@ -2,6 +2,8 @@ import { generateJson, geminiAvailable } from './client.js';
 import { removeAccents } from '../lib/people.js';
 import type { TaskCatalogItem } from '../types.js';
 
+// `log_task` giữ lại trong kiểu để chịu được dữ liệu cũ, nhưng KHÔNG còn trong schema —
+// mọi việc nhắc trong chat đều là BẮT ĐẦU, hoàn thành thì bấm nút ở mục "Đang làm".
 export type ChatIntent = 'log_task' | 'start_task' | 'query_stats' | 'help';
 
 export interface ChatExtraction {
@@ -14,7 +16,7 @@ export interface ChatExtraction {
 const SCHEMA = {
   type: 'OBJECT',
   properties: {
-    intent: { type: 'STRING', enum: ['log_task', 'start_task', 'query_stats', 'help'] },
+    intent: { type: 'STRING', enum: ['start_task', 'query_stats', 'help'] },
     taskCode: { type: 'STRING' },
     note: { type: 'STRING' },
     reply: { type: 'STRING' },
@@ -22,10 +24,12 @@ const SCHEMA = {
   required: ['intent'],
 };
 
-const START_WORDS = /(bat dau|dang lam|bat tay|chuan bi lam|se lam|vao viec)/;
-const DONE_WORDS = /(xong|hoan thanh|da lam|da dang|da viet|da thiet ke|vua lam|vua xong|da len)/;
-
-/** Keyword fallback when Gemini isn't configured/available. */
+/**
+ * Keyword fallback when Gemini isn't configured/available.
+ *
+ * Nhắc tới một loại việc là BẮT ĐẦU việc đó — không còn phân biệt bắt đầu/đã xong.
+ * Anh Tâm chốt 26/7/2026: mọi việc đi qua Bắt đầu → Hoàn thành để có giờ làm thật.
+ */
 export function heuristic(message: string, catalog: TaskCatalogItem[]): ChatExtraction {
   const m = removeAccents(message).toLowerCase();
   if (/(diem|xep hang|thu hang|luong|bonus|thuong|gio lam)/.test(m)) return { intent: 'query_stats' };
@@ -33,8 +37,7 @@ export function heuristic(message: string, catalog: TaskCatalogItem[]): ChatExtr
     const code = c.code.toLowerCase();
     const nameNoAccent = removeAccents(c.name).toLowerCase();
     if (m.includes(code) || (nameNoAccent.length > 3 && m.includes(nameNoAccent))) {
-      const intent: ChatIntent = START_WORDS.test(m) && !DONE_WORDS.test(m) ? 'start_task' : 'log_task';
-      return { intent, taskCode: c.code, note: message };
+      return { intent: 'start_task', taskCode: c.code, note: message };
     }
   }
   return { intent: 'help' };
@@ -61,8 +64,9 @@ export async function interpret(
     `Tin nhắn của nhân sự: "${message}"`,
     '',
     'Phân loại intent:',
-    '- start_task: báo BẮT ĐẦU/đang bắt tay vào làm 1 task (vd "bắt đầu lên ads", "giờ em làm video") → chọn taskCode khớp nhất.',
-    '- log_task: báo ĐÃ HOÀN THÀNH 1 task (vd "đã đăng bài page", "xong video quảng cáo") → chọn taskCode khớp nhất.',
+    '- start_task: nhắc tới MỘT loại việc trong danh mục — dù nói là sắp làm, đang làm hay đã xong.',
+    '  Nhân sự bấm hoàn thành ở nơi khác nên ở đây chỉ cần nhận ra ĐANG NÓI VỀ VIỆC NÀO.',
+    '  → chọn taskCode khớp nhất.',
     '  note = phần MÔ TẢ CỤ THỂ kèm theo (tên khách hàng / dự án / nội dung), KHÔNG lặp lại loại việc.',
     '  Vd "đăng post X Salon" → taskCode = (đăng post), note = "X Salon". Không có mô tả riêng thì để note rỗng.',
     '- query_stats: hỏi điểm/thứ hạng/thưởng/lương/giờ làm của bản thân.',
@@ -70,11 +74,11 @@ export async function interpret(
     '',
     'Ví dụ (tên việc → chọn taskCode tương ứng trong danh mục ở trên):',
     '- "bắt đầu lên ads cho X Spa" → start_task, taskCode của "Lên Ads", note="X Spa".',
-    '- "đã đăng bài page" → log_task, taskCode của "Đăng bài page", note="".',
-    '- "dg xog bai page cho Y Coffee" (viết tắt/sai chính tả) → vẫn hiểu: log_task, taskCode của "Đăng bài page", note="Y Coffee".',
-    '- "xong post 1 ảnh với cả content cho Z Shop" (nhiều việc 1 câu) → chọn việc CHÍNH nhắc ĐẦU TIÊN: log_task, taskCode của "Thiết kế post 1 ảnh", note="Z Shop".',
+    '- "đăng bài page cho Y Coffee" → start_task, taskCode của "Đăng bài page", note="Y Coffee".',
+    '- "dg bai page cho Y Coffee" (viết tắt/sai chính tả) → vẫn hiểu: start_task, taskCode của "Đăng bài page", note="Y Coffee".',
+    '- "post 1 ảnh với cả content cho Z Shop" (nhiều việc 1 câu) → chọn việc CHÍNH nhắc ĐẦU TIÊN: start_task, taskCode của "Thiết kế post 1 ảnh", note="Z Shop".',
     '- "cách lên ads thế nào?" → help (hỏi CÁCH làm, không phải báo việc — đừng nhầm với start_task).',
-    '- "đã đăng bài page cho X chưa?" → help (CÂU HỎI, không phải báo đã làm).',
+    '- "đã đăng bài page cho X chưa?" → help (CÂU HỎI, không phải báo việc).',
     '- "viết giúp em caption cho bài spa" → help (nhờ hỗ trợ chuyên môn).',
     'QUAN TRỌNG: câu có dấu ? hoặc từ để hỏi (ai/gì/sao/bao nhiêu/khi nào/chưa/không) LUÔN là help,',
     'kể cả khi trong câu có nhắc tên một loại việc.',

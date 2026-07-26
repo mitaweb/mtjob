@@ -19,7 +19,6 @@ interface ChatResponse {
   suggestion?: Suggestion;
   assignee?: { id: string; fullName: string };
   catalog?: CatalogItem[];
-  starting?: boolean; // true = đang bắt đầu việc, false = báo đã xong
 }
 interface Msg {
   role: 'user' | 'bot';
@@ -57,7 +56,7 @@ function greeting(role?: string): string {
     return 'Chào sếp! Em giúp được:\n📊 Hỏi dữ liệu — "hôm nay ai chưa chấm công?", "ai điểm cao nhất tháng này?", "tổng phải thu bao nhiêu?"\n🧠 Thông tin khách — "khách X Salon tình hình sao rồi?"\n✍️ Tư vấn chuyên môn — "X Salon ngày mai nên đăng bài gì?", "kế hoạch content tháng 8"\n📌 Giao việc — gõ @tên người + mô tả việc';
   if (role === 'leader')
     return 'Chào bạn! 📌 Giao việc: gõ @tên người + mô tả việc. ▶️ Ghi nhận task. 💬 Hỏi mình bất cứ điều gì: dữ liệu của bạn, thông tin khách hàng, hay nhờ viết content/ý tưởng quảng cáo.';
-  return 'Chào bạn! Mình giúp được:\n▶️ Ghi nhận việc — "bắt đầu lên ads", "đã đăng bài page"\n📊 Dữ liệu của bạn — "tháng trước tôi được bao nhiêu điểm?", "đơn nghỉ duyệt chưa?"\n🧠 Thông tin khách — "khách Ba Spa cần gì?"\n✍️ Hỗ trợ chuyên môn — "viết giúp caption cho bài spa", "ý tưởng content tháng 8"\nBạn cần gì?';
+  return 'Chào bạn! Mình giúp được:\n▶️ Bắt đầu việc — gõ tên việc + tên khách, vd "lên ads X Salon". Xong thì bấm "⏳ Đang làm" → Hoàn thành.\n📊 Dữ liệu của bạn — "tháng trước tôi được bao nhiêu điểm?", "đơn nghỉ duyệt chưa?"\n🧠 Thông tin khách — "khách Ba Spa cần gì?"\n✍️ Hỗ trợ chuyên môn — "viết giúp caption cho bài spa", "ý tưởng content tháng 8"\nBạn cần gì?';
 }
 
 /** Chữ in đậm **…** và nghiêng *…* trong một dòng. */
@@ -365,40 +364,15 @@ export default function Chat() {
     }
   }
 
-  async function confirmTask(s: Suggestion) {
-    setMsgs((m) => [...m, { role: 'user', text: `✔️ Xác nhận hoàn thành: ${s.taskName}` }]);
-    await send('', { confirmTaskCode: s.taskCode, note: s.note });
-  }
-
-  async function confirmStart(s: Suggestion) {
-    setMsgs((m) => [...m, { role: 'user', text: `▶️ Bắt đầu: ${s.taskName}` }]);
-    await send('', { confirmStartTaskCode: s.taskCode, note: s.note });
-  }
-
   /**
-   * Chọn khách cho việc đang ghi. Đã biết đủ loại việc + bắt đầu hay đã xong nên
-   * dựng thẳng thẻ xác nhận tại đây, khỏi tốn thêm một vòng gọi máy chủ.
+   * Chọn khách cho việc đang ghi → BẮT ĐẦU luôn, không qua thẻ xác nhận.
+   * Giờ bắt đầu do máy chủ ghi (máy nhân viên sửa được, mà giờ làm là thứ cần tin).
    */
-  function pickCustomer(res: ChatResponse, customer: string) {
+  async function pickCustomer(res: ChatResponse, customer: string) {
     const s = res.suggestion;
     if (!s) return;
-    const note = [s.note, customer].filter(Boolean).join(' — ');
-    const next: Suggestion = { ...s, note };
-    setMsgs((m) => [
-      ...m,
-      { role: 'user', text: customer || 'Không thuộc khách nào' },
-      {
-        role: 'bot',
-        text: res.starting
-          ? `Bắt đầu làm "${s.taskName}"${customer ? ` cho ${customer}` : ''} từ bây giờ? (+${s.points}đ khi hoàn thành)`
-          : `Bạn vừa hoàn thành "${s.taskName}"${customer ? ` cho ${customer}` : ''} (+${s.points}đ)? Bấm xác nhận để ghi nhận nhé.`,
-        res: {
-          reply: '',
-          action: res.starting ? 'confirm_start' : 'confirm_task',
-          suggestion: next,
-        },
-      },
-    ]);
+    setMsgs((m) => [...m, { role: 'user', text: customer }]);
+    await send('', { confirmStartTaskCode: s.taskCode, note: [s.note, customer].filter(Boolean).join(' — ') });
   }
 
   async function confirmAssign(s: Suggestion, assignee: { id: string; fullName: string }) {
@@ -429,7 +403,7 @@ export default function Chat() {
         ...m,
         {
           role: 'bot',
-          text: `✅ Đã hoàn thành "${t.title || t.taskName}" sau ${fmtMin(t.elapsedMinutes)} (+${r.points}đ). 💪`,
+          text: `✅ Đã hoàn thành "${t.title || t.taskName}" (+${r.points}đ). 💪`,
         },
       ]);
       await loadDoing();
@@ -455,16 +429,6 @@ export default function Chat() {
             >
               {/* Người dùng: giữ nguyên chữ thô. Bot: AI trả lời kiểu markdown nên phải dựng lại. */}
               {m.role === 'user' ? m.text : <RichText text={m.text} />}
-              {m.res?.action === 'confirm_task' && m.res.suggestion && (
-                <button className="btn-primary mt-2 w-full" onClick={() => confirmTask(m.res!.suggestion!)}>
-                  ✅ Xác nhận hoàn thành (+{m.res.suggestion.points}đ)
-                </button>
-              )}
-              {m.res?.action === 'confirm_start' && m.res.suggestion && (
-                <button className="btn-primary mt-2 w-full" onClick={() => confirmStart(m.res!.suggestion!)}>
-                  ▶️ Bắt đầu làm (+{m.res.suggestion.points}đ khi xong)
-                </button>
-              )}
               {m.res?.action === 'confirm_assign' && m.res.suggestion && m.res.assignee && (
                 <button
                   className="btn-primary mt-2 w-full"
@@ -575,8 +539,8 @@ export default function Chat() {
             className="input"
             placeholder={
               canAssign
-                ? 'Giao việc: "@nam lên ads cho SP A" · hoặc "bắt đầu lên ads", "điểm của tôi"'
-                : 'Vd: "bắt đầu lên ads" · "đã đăng bài page" · "điểm của tôi"'
+                ? 'Giao việc: "@nam lên ads cho SP A" · hoặc "lên ads X Salon", "điểm của tôi"'
+                : 'Vd: "lên ads X Salon" · "tối ưu quảng cáo Lux" · "điểm của tôi"'
             }
             value={input}
             onChange={(e) => setInput(e.target.value)}
