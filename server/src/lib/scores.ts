@@ -65,3 +65,48 @@ export function rankMembers(scores: Map<string, number> | Array<[string, number]
   });
   return out;
 }
+
+// ── Đồng bộ điểm việc cũ theo bảng điểm mới ──
+
+/** Một dòng việc sắp đổi điểm: `cu` là điểm đang lưu, `moi` là điểm trong danh mục. */
+export interface PointChange {
+  memberName: string;
+  taskName: string;
+  cu: number;
+  moi: number;
+}
+
+export interface PointChangeSummary {
+  updated: number;
+  /** Ai bị ảnh hưởng nặng nhất lên đầu — `delta` âm là bị trừ điểm. */
+  byMember: Array<{ memberName: string; tasks: number; delta: number }>;
+  byTask: Array<{ taskName: string; cu: number; moi: number; tasks: number }>;
+}
+
+/**
+ * Gom danh sách việc đổi điểm thành báo cáo cho giám đốc xem.
+ * Thuần, không đụng DB — vì con số này ăn thẳng vào thưởng nên phải kiểm được bằng test.
+ */
+export function summarizePointChanges(rows: PointChange[]): PointChangeSummary {
+  const byMember = new Map<string, { tasks: number; delta: number }>();
+  const byTask = new Map<string, { taskName: string; cu: number; moi: number; tasks: number }>();
+
+  for (const r of rows) {
+    const cu = Number(r.cu) || 0;
+    const moi = Number(r.moi) || 0;
+    const m = byMember.get(r.memberName) || { tasks: 0, delta: 0 };
+    byMember.set(r.memberName, { tasks: m.tasks + 1, delta: m.delta + (moi - cu) });
+    // Cùng loại việc có thể đổi từ nhiều mức cũ khác nhau → tách theo cặp (cũ → mới).
+    const key = `${r.taskName}|${cu}|${moi}`;
+    const t = byTask.get(key) || { taskName: r.taskName, cu, moi, tasks: 0 };
+    byTask.set(key, { ...t, tasks: t.tasks + 1 });
+  }
+
+  return {
+    updated: rows.length,
+    byMember: [...byMember.entries()]
+      .map(([memberName, v]) => ({ memberName, ...v }))
+      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)),
+    byTask: [...byTask.values()].sort((a, b) => b.tasks - a.tasks),
+  };
+}

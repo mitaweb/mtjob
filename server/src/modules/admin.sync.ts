@@ -5,6 +5,8 @@ import { getAllMembers, upsertMember } from './members.repo.js';
 import { upsertTeam } from './teams.repo.js';
 import { upsertCatalogItem } from './catalog.repo.js';
 import { parseHrRow, vnUsername, type HrPerson } from '../lib/people.js';
+import { summarizePointChanges, type PointChange, type PointChangeSummary } from '../lib/scores.js';
+import { q } from '../db/client.js';
 import { newId } from '../util/id.js';
 import { ApiError } from '../util/errors.js';
 
@@ -167,6 +169,59 @@ export async function syncMembersFromSource(selfId?: string): Promise<SyncResult
 export interface CatalogSyncResult {
   updated: number;
   tabs: string[];
+  /** Kết quả áp bảng điểm mới lên việc đã ghi — xem `applyCatalogPoints`. */
+  points: PointSyncResult;
+}
+
+export interface PointSyncResult extends PointChangeSummary {
+  /** Có lý do thì KHÔNG đụng gì vào dữ liệu — vd bảng điểm có mục 0đ (Sheet hỏng). */
+  skipped?: string;
+  /** Tháng đã khoá lương, được giữ nguyên. */
+  lockedMonths: string[];
+}
+
+/**
+ * Áp bảng điểm hiện tại lên những việc ĐÃ GHI.
+ *
+ * Điểm vốn được copy một lần vào từng việc lúc ghi, nên sửa bảng điểm chỉ ăn với việc
+ * ghi từ đó về sau. Anh Tâm chốt 26/7/2026: sửa bảng điểm thì việc cũ phải đổi theo.
+ *
+ * CHỈ đụng tháng CHƯA khoá lương. Lưu ý `isMonthLocked` (payroll.service) chỉ bảo vệ
+ * công/lương — bảng điểm luôn tính lại live từ `tasks.points`, nên phải tự chặn ở đây.
+ */
+export async function applyCatalogPoints(): Promise<PointSyncResult> {
+  const locked = (await q('SELECT year, month FROM payroll_locks')).map(
+    (r: { year: number; month: number }) => `${String(r.year).padStart(4, '0')}-${String(r.month).padStart(2, '0')}`,
+  );
+  const empty = { ...summarizePointChanges([]), lockedMonths: locked };
+
+  // Chốt chặn: một ô sai trong Google Sheet là cả bảng điểm bay. Thà không làm gì.
+  const bad = await q('SELECT task_code, task_name FROM task_catalog WHERE points IS NULL OR points <= 0 LIMIT 5');
+  if (bad.length > 0) {
+    const ten = bad.map((r: { task_name: string }) => r.task_name).join(', ');
+    return { ...empty, skipped: `Bảng điểm có mục 0đ (${ten}) — không đổi điểm việc cũ. Kiểm tra lại Google Sheet.` };
+  }
+
+  // Tháng của việc: lấy theo ngày hoàn thành, chưa xong thì theo ngày tạo.
+  // Việc leader giao chưa chọn loại (task_code rỗng) thì bỏ qua.
+  const WHERE = `
+    t.task_code <> '' AND t.points <> c.points
+    AND substring(COALESCE(NULLIF(t.completed_at, ''), t.created_at), 1, 7) <> ALL($1::text[])`;
+
+  const rows: PointChange[] = await q(
+    `SELECT t.member_name AS "memberName", c.task_name AS "taskName", t.points AS cu, c.points AS moi
+     FROM tasks t JOIN task_catalog c ON c.task_code = t.task_code
+     WHERE ${WHERE}`,
+    [locked],
+  );
+  if (rows.length === 0) return empty;
+
+  await q(
+    `UPDATE tasks t SET points = c.points
+     FROM task_catalog c WHERE c.task_code = t.task_code AND ${WHERE}`,
+    [locked],
+  );
+  return { ...summarizePointChanges(rows), lockedMonths: locked };
 }
 
 /**
@@ -218,5 +273,6 @@ export async function syncCatalogFromSource(): Promise<CatalogSyncResult> {
     }
     tabs.push(`${prefix} (gid=${gid})`);
   }
-  return { updated, tabs };
+  // Đặt trong hàm này (không phải trong route) để CLI `npm run sync-catalog` cũng được hưởng.
+  return { updated, tabs, points: await applyCatalogPoints() };
 }

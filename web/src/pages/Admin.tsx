@@ -85,6 +85,7 @@ export default function Admin() {
   const [claudeBaseUrl, setClaudeBaseUrl] = useState('');
   const [autoCapture, setAutoCapture] = useState(true);
   const [checks, setChecks] = useState<Check[] | null>(null);
+  const [pointSync, setPointSync] = useState<PointSync | null>(null);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [modelsError, setModelsError] = useState('');
   const [loadingModels, setLoadingModels] = useState(false);
@@ -99,6 +100,21 @@ export default function Admin() {
   interface ModelOption {
     id: string;
     label: string;
+  }
+
+  /** Kết quả áp bảng điểm mới lên việc đã ghi (trả kèm khi đồng bộ bảng điểm). */
+  interface PointSync {
+    updated: number;
+    byMember: Array<{ memberName: string; tasks: number; delta: number }>;
+    byTask: Array<{ taskName: string; cu: number; moi: number; tasks: number }>;
+    lockedMonths: string[];
+    skipped?: string;
+  }
+
+  interface CatalogSync {
+    updated: number;
+    tabs: string[];
+    points: PointSync;
   }
 
   interface AiInfo {
@@ -251,8 +267,10 @@ export default function Admin() {
 
   async function syncCatalog() {
     try {
-      const r = await api<{ updated: number; tabs: string[] }>('/admin/sync-catalog', { method: 'POST' });
+      const r = await api<CatalogSync>('/admin/sync-catalog', { method: 'POST' });
       toast.success(`Đã cập nhật ${r.updated} đầu việc từ: ${r.tabs.join(', ')}`);
+      // Điểm ăn thẳng vào thưởng — kết quả phải nằm lại trên màn hình, không trôi theo toast.
+      setPointSync(r.points);
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -397,6 +415,79 @@ export default function Admin() {
           </AsyncButton>
         </div>
       </div>
+
+      {/* Kết quả áp bảng điểm mới lên việc cũ */}
+      {pointSync && (
+        <div className="card">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h2 className="font-semibold">Điểm việc cũ theo bảng điểm mới</h2>
+            <button className="text-xs text-slate-400 underline" onClick={() => setPointSync(null)}>
+              đóng
+            </button>
+          </div>
+
+          {pointSync.skipped ? (
+            <p className="text-sm text-rose-600">⚠️ {pointSync.skipped}</p>
+          ) : pointSync.updated === 0 ? (
+            <p className="text-sm text-emerald-600">Điểm việc cũ đã khớp bảng điểm ✓</p>
+          ) : (
+            <>
+              <p className="text-sm text-slate-600">
+                Đã đổi điểm <b>{pointSync.updated}</b> việc cũ theo bảng điểm mới.
+              </p>
+
+              <table className="mt-3 w-full text-sm">
+                <thead className="text-left text-slate-500">
+                  <tr>
+                    <th className="py-1">Loại việc</th>
+                    <th className="text-right">Điểm</th>
+                    <th className="text-right">Số việc</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pointSync.byTask.map((t) => (
+                    <tr key={`${t.taskName}-${t.cu}-${t.moi}`} className="border-t">
+                      <td className="py-1">{t.taskName}</td>
+                      <td className="text-right whitespace-nowrap">
+                        {t.cu}đ → <b className={t.moi < t.cu ? 'text-rose-600' : 'text-emerald-600'}>{t.moi}đ</b>
+                      </td>
+                      <td className="text-right">{t.tasks}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <table className="mt-3 w-full text-sm">
+                <thead className="text-left text-slate-500">
+                  <tr>
+                    <th className="py-1">Nhân sự</th>
+                    <th className="text-right">Việc đổi</th>
+                    <th className="text-right">Điểm thay đổi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pointSync.byMember.map((m) => (
+                    <tr key={m.memberName} className="border-t">
+                      <td className="py-1">{m.memberName}</td>
+                      <td className="text-right">{m.tasks}</td>
+                      <td className={`text-right ${m.delta < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                        {m.delta > 0 ? '+' : ''}
+                        {m.delta}đ
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {pointSync.lockedMonths.length > 0 && (
+            <p className="mt-2 text-xs text-slate-500">
+              Tháng đã khoá lương ({pointSync.lockedMonths.join(', ')}) giữ nguyên, không bị đụng tới.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Kết quả kiểm tra kết nối */}
       {checks && (
