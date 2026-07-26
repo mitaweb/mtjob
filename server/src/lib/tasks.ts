@@ -15,17 +15,49 @@ const CONNECTOR = /^(cho|của|cua|với|voi|-|–|—|:)\s*/i;
 const LEAD_SYMBOL = /^[\p{Extended_Pictographic}️\s]+/u;
 
 /**
+ * Viết tắt trong DANH MỤC NHIỆM VỤ ↔ cách viết đầy đủ nhân sự hay gõ.
+ * Danh mục có "Xây dựng chân dung KH" (ADS04) nhưng nhân sự gõ "…chân dung khách hàng",
+ * nên phải khớp được cả hai chiều mới bóc đúng phần tên việc.
+ */
+const CATALOG_ALIAS: Record<string, string> = {
+  kh: 'khach hang',
+  qc: 'quang cao',
+  tkqc: 'tai khoan quang cao',
+};
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Regex khớp phần MỞ ĐẦU đúng bằng tên loại việc, chấp nhận cả dạng viết tắt lẫn đầy đủ.
+ * So theo TỪ (`\s+` giữa các từ) nên "Tối ưu  Quảng Cáo" thừa khoảng trắng vẫn khớp.
+ */
+function taskNamePattern(taskName: string): RegExp | null {
+  const toks = removeAccents(taskName).toLowerCase().trim().split(/\s+/).filter(Boolean);
+  if (toks.length === 0) return null;
+  const body = toks
+    .map((t) => {
+      const full = CATALOG_ALIAS[t];
+      return full ? `(?:${escapeRe(full).replace(/ /g, '\\s+')}|${escapeRe(t)})` : escapeRe(t);
+    })
+    .join('\\s+');
+  return new RegExp(`^${body}`, 'i');
+}
+
+/**
  * Làm sạch ghi chú do người dùng gõ trong chat: bỏ cụm hành động mở đầu và phần lặp lại
  * tên loại việc, chỉ giữ mô tả thật (thường là tên khách).
  * "bắt đầu tối ưu quảng cáo" + loại "Tối ưu Quảng Cáo" → "" (không có mô tả riêng)
  * "đã đăng bài page cho X Salon" + loại "Đăng bài page" → "X Salon"
+ * "Xây dựng chân dung khách hàng : add page" + loại "Xây dựng chân dung KH" → "add page"
  */
 export function cleanNote(note: string, taskName = ''): string {
   let s = String(note || '').trim();
   if (!s) return '';
 
-  // removeAccents giữ nguyên số ký tự nên cắt theo độ dài tên việc là an toàn.
-  const name = removeAccents(taskName).toLowerCase().trim();
+  const pattern = taskNamePattern(taskName);
+  // removeAccents giữ nguyên số ký tự nên độ dài khớp trên chuỗi không dấu cắt được
+  // đúng vị trí trên chuỗi gốc.
+  const nameLen = (str: string) => pattern?.exec(removeAccents(str).toLowerCase())?.[0].length ?? -1;
 
   // Bóc dần vì người dùng hay ghép nhiều cụm: "▶️ Bắt đầu: ...", "ghi nhận task : ...",
   // "vừa xong ...". Mỗi vòng gỡ emoji/ký hiệu đầu câu rồi gỡ một cụm hành động.
@@ -33,26 +65,22 @@ export function cleanNote(note: string, taskName = ''): string {
     // DỪNG khi phần còn lại đã bắt đầu bằng tên loại việc — nếu không sẽ bóc quá tay:
     // "Chuẩn bị nội dung quảng cáo" là TÊN VIỆC, chữ "chuẩn bị" trong đó không phải
     // cụm hành động, bóc tiếp sẽ ra "nội dung quảng cáo" cụt lủn.
-    if (name && removeAccents(s).toLowerCase().startsWith(name)) break;
+    if (nameLen(s) >= 0) break;
     const next = s.replace(LEAD_SYMBOL, '').replace(ACTION_PREFIX, '').trim();
     if (next === s) break;
     s = next;
   }
 
-  if (name) {
-    const flat = removeAccents(s).toLowerCase();
-    if (flat === name) return '';
-    if (flat.startsWith(name)) {
-      const rest = s.slice(taskName.trim().length);
-      // CHỈ cắt khi dừng đúng ranh giới từ. Loại việc "Xây dựng chân dung KH" là tiền tố
-      // của ghi chú "Xây dựng chân dung khách hàng" — cắt theo độ dài sẽ xén mất "kh"
-      // và để lại "ách hàng". Không chắc thì giữ nguyên, thà thừa còn hơn mất chữ.
-      if (rest === '' || /^[\s:,.\-–—]/.test(rest)) s = rest.trim();
-    }
+  const len = nameLen(s);
+  if (len >= 0) {
+    const rest = s.slice(len);
+    // CHỈ cắt khi dừng đúng ranh giới từ — tên việc có thể là tiền tố của một từ dài hơn
+    // trong ghi chú, cắt bừa sẽ xén mất chữ.
+    if (rest === '' || /^[\s:,.\-–—]/.test(rest)) s = rest.trim();
   }
 
   s = s.replace(CONNECTOR, '').trim();
-  return removeAccents(s).toLowerCase() === name ? '' : s;
+  return !s || nameLen(s) === s.length ? '' : s;
 }
 
 // Cụm mở đầu cho biết câu đó là BÁO BẮT ĐẦU, không phải báo xong.

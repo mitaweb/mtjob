@@ -143,13 +143,17 @@ describe('cleanNote', () => {
     expect(cleanNote('ghi nhận tối ưu quảng cáo Topaz', 'Tối ưu Quảng Cáo')).toBe('Topaz');
   });
 
-  it('KHÔNG xén mất chữ khi tên loại việc viết tắt — ca thật trong DB', () => {
-    // Loại việc "Xây dựng chân dung KH" là tiền tố của ghi chú viết đầy đủ;
-    // cắt theo độ dài sẽ xén giữa chữ "khách" và để lại "ách hàng".
-    const note = 'Xây dựng chân dung khách hàng : add page , hướng dẫn';
-    expect(cleanNote(note, 'Xây dựng chân dung KH')).toBe(note);
-    // Dừng đúng ranh giới từ thì vẫn cắt bình thường.
+  it('hiểu viết tắt trong danh mục — "KH" và "khách hàng" là một (ca thật ADS04)', () => {
+    // Danh mục ghi "Xây dựng chân dung KH", nhân sự gõ đầy đủ "…chân dung khách hàng".
+    expect(cleanNote('Xây dựng chân dung khách hàng : add page , hướng dẫn', 'Xây dựng chân dung KH'))
+      .toBe('add page , hướng dẫn');
     expect(cleanNote('Xây dựng chân dung KH : add page', 'Xây dựng chân dung KH')).toBe('add page');
+    expect(cleanNote('xây dựng chân dung khách hàng', 'Xây dựng chân dung KH')).toBe('');
+  });
+
+  it('KHÔNG xén mất chữ khi tên việc là tiền tố của một từ dài hơn', () => {
+    // "Seeding" vs ghi chú "Seedinger Corp" — cắt theo độ dài sẽ để lại "er Corp".
+    expect(cleanNote('Seedinger Corp', 'Seeding')).toBe('Seedinger Corp');
   });
 
   it('KHÔNG bóc quá tay khi tên loại việc bắt đầu bằng một từ hành động', () => {
