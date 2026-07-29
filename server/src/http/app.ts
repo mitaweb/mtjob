@@ -18,6 +18,7 @@ import { crmRouter } from '../modules/crm.routes.js';
 import { customerNotesRouter } from '../modules/customerNotes.routes.js';
 import { brainRouter } from '../modules/brain.routes.js';
 import { remindersRouter } from '../modules/reminders.routes.js';
+import { projectsRouter } from '../modules/projects.routes.js';
 
 export function createApp() {
   const app = express();
@@ -56,6 +57,7 @@ export function createApp() {
   app.use('/api/customer-notes', customerNotesRouter);
   app.use('/api/brain', brainRouter);
   app.use('/api/reminders', remindersRouter);
+  app.use('/api/projects', projectsRouter);
   app.use('/api/oauth2', oauthRouter);
   app.use('/api/jobs', jobsRouter);
 

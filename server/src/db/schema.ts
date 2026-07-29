@@ -274,6 +274,55 @@ CREATE TABLE IF NOT EXISTS reminders (
   created_at  text DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS reminders_member_idx ON reminders (member_id, active);
+
+-- Dự án: theo dõi KẾT QUẢ cam kết với khách (bao nhiêu tin nhắn, bao nhiêu khách mới),
+-- khác với bảng tasks vốn đo công sức bỏ ra. Khách hàng là tuỳ chọn — có dự án nội bộ.
+CREATE TABLE IF NOT EXISTS projects (
+  project_id    text PRIMARY KEY,
+  name          text NOT NULL,
+  customer_id   text DEFAULT '',
+  customer_name text DEFAULT '',      -- snapshot: xoá khách khỏi CRM vẫn còn tên trên dự án
+  status        text DEFAULT 'active', -- active | paused | done
+  start_date    text DEFAULT '',
+  end_date      text DEFAULT '',
+  note          text DEFAULT '',
+  created_by    text DEFAULT '',
+  created_at    text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS projects_status_idx ON projects (status);
+
+-- Chỉ số của một dự án. Gắn PHÒNG BAN chứ không gắn người: ai trong phòng cũng nhập được.
+-- period: day | week | month | total (total = chỉ tiêu cho cả dự án, vd "giao 50 bài").
+CREATE TABLE IF NOT EXISTS project_kpis (
+  kpi_id     text PRIMARY KEY,
+  project_id text NOT NULL,
+  team_id    text NOT NULL,          -- Ads | Content | SEO
+  name       text NOT NULL,
+  unit       text DEFAULT '',        -- tin, khách, bài…
+  period     text DEFAULT 'month',
+  target     integer DEFAULT 0,
+  active     boolean DEFAULT true,
+  sort_order integer DEFAULT 0,
+  created_at text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS project_kpis_project_idx ON project_kpis (project_id);
+CREATE INDEX IF NOT EXISTS project_kpis_team_idx ON project_kpis (team_id, active);
+
+-- Số nhập theo NGÀY. Mỗi KPI mỗi ngày đúng MỘT dòng (ghi đè, không cộng dồn) — cộng dồn
+-- thì hai người cùng phòng nhập sẽ nhân đôi số.
+-- late = số do giám đốc nhập bù sau khi đã quá hạn sửa.
+CREATE TABLE IF NOT EXISTS kpi_entries (
+  kpi_id      text NOT NULL,
+  date        text NOT NULL,          -- YYYY-MM-DD giờ VN
+  value       integer DEFAULT 0,
+  member_id   text DEFAULT '',        -- ai nhập gần nhất
+  member_name text DEFAULT '',
+  late        boolean DEFAULT false,
+  updated_at  text DEFAULT '',
+  PRIMARY KEY (kpi_id, date)
+);
+-- PK dẫn đầu bằng kpi_id nên lọc theo ngày (bảng nhập hôm nay) cần index riêng.
+CREATE INDEX IF NOT EXISTS kpi_entries_date_idx ON kpi_entries (date);
 `;
 
 /**

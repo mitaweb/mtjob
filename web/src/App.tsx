@@ -16,6 +16,7 @@ const AdminPayroll = lazy(() => import('./pages/AdminPayroll'));
 const Finance = lazy(() => import('./pages/Finance'));
 const CRM = lazy(() => import('./pages/CRM'));
 const CustomerNotes = lazy(() => import('./pages/CustomerNotes'));
+const Projects = lazy(() => import('./pages/Projects'));
 const Brain = lazy(() => import('./pages/Brain'));
 const Requests = lazy(() => import('./pages/Requests'));
 const Approvals = lazy(() => import('./pages/Approvals'));
@@ -93,6 +94,14 @@ export default function App() {
           element={
             <Protected roles={['sale', 'director', 'admin']}>
               <CRM />
+            </Protected>
+          }
+        />
+        <Route
+          path="/projects"
+          element={
+            <Protected roles={['member', 'leader', 'director', 'admin', 'sale']}>
+              <Projects />
             </Protected>
           }
         />

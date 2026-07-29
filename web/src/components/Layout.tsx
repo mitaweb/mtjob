@@ -6,6 +6,7 @@ import {
   CalendarCheck,
   CheckSquare,
   FileText,
+  FolderKanban,
   Landmark,
   LayoutDashboard,
   MessageCircle,
@@ -38,6 +39,7 @@ const NAV: NavItem[] = [
   { to: '/payroll-admin', label: 'Bảng lương', icon: Banknote, roles: ['director', 'admin'] },
   { to: '/finance', label: 'Tài chính', icon: Landmark, roles: ['director', 'admin', 'accountant'] },
   { to: '/crm', label: 'Khách hàng', icon: Users, roles: ['sale', 'director', 'admin'] },
+  { to: '/projects', label: 'Dự án', icon: FolderKanban, roles: ['member', 'leader', 'director', 'admin', 'sale'] },
   { to: '/customer-notes', label: 'Lưu ý KH', icon: StickyNote },
   { to: '/brain', label: 'Kho tri thức', icon: Brain },
   // Giám đốc không nộp đơn cho ai duyệt → ẩn Đơn từ, chỉ giữ Duyệt đơn.
