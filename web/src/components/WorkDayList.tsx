@@ -15,7 +15,11 @@ export interface DetailTask {
   minutes: number | null; // null = không đo được thời gian làm
   overlap: boolean; // chồng giờ với việc khác trong ngày
   crossDay: boolean; // bắt đầu từ hôm trước
+  adjusted?: boolean; // điểm giám đốc nhập bù, không phải việc làm thật
 }
+
+/** Điểm có dấu — dòng bù có thể âm, viết "+-300đ" thì đọc không ra. */
+const signed = (n: number) => `${n >= 0 ? '+' : ''}${n}đ`;
 
 export interface DayBlock {
   date: string;
@@ -41,7 +45,7 @@ export default function WorkDayList({ days, emptyText }: { days: DayBlock[]; emp
           <div className="flex items-center justify-between gap-2 text-sm">
             <span className="font-medium text-slate-800">📅 {fmtDay(d.date)}</span>
             <span className="text-xs text-slate-500">
-              {d.tasks.length} việc · <b className="text-brand-600">+{d.points}đ</b>
+              {d.tasks.length} việc · <b className="text-brand-600">{signed(d.points)}</b>
               {d.minutes > 0 && ` · ⏱ ${fmtMin(d.minutes)}`}
               {d.noTimeCount > 0 && (
                 <span className="text-amber-600"> · ⚠️ {d.noTimeCount} việc không có giờ</span>
@@ -54,11 +58,14 @@ export default function WorkDayList({ days, emptyText }: { days: DayBlock[]; emp
               <li key={t.id} className={t.overlap ? 'border-l-2 border-amber-400 pl-2' : 'pl-2'}>
                 <div className="flex items-start justify-between gap-2 text-sm">
                   <span className="text-slate-700">{t.title}</span>
-                  <span className="whitespace-nowrap text-xs text-slate-400">+{t.points}đ</span>
+                  <span className="whitespace-nowrap text-xs text-slate-400">{signed(t.points)}</span>
                 </div>
                 {/* Giờ làm là dữ liệu gốc để đối chiếu điểm — hiện rõ từng việc. */}
                 <div className="text-xs text-slate-400">
-                  {t.minutes === null ? (
+                  {t.adjusted ? (
+                    // Dòng nhập tay: không có giờ là ĐÚNG, đừng gắn cảnh báo làm anh tưởng lỗi.
+                    <span className="text-brand-600">✎ điểm nhập bù</span>
+                  ) : t.minutes === null ? (
                     <span className="text-amber-600">⚠️ không có giờ làm (báo thẳng)</span>
                   ) : (
                     <>

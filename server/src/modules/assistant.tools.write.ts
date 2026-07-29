@@ -34,11 +34,14 @@ import {
   countRelabelable,
   inspectTasks,
 } from './tasks.dedupe.js';
+import { addAdjustment, listAdjustments, deleteAdjustment, describeAdjust } from './scores.adjust.js';
+import { getActiveMembers } from './members.repo.js';
 import { isStartReport } from '../lib/tasks.js';
+import type { Member } from '../types.js';
 import { ingestInBackground, markCustomerDirty } from './brain.service.js';
 import { describeRule } from '../lib/reminder.js';
 import { parseVndAmount, formatVnd } from '../lib/money.js';
-import { nowTz, todayIso, toIsoVn } from '../lib/datetime.js';
+import { nowTz, todayIso, toIsoVn, parseVnDate } from '../lib/datetime.js';
 import { removeAccents } from '../lib/people.js';
 import { newId } from '../util/id.js';
 
@@ -557,4 +560,138 @@ const INSPECT_TOOL: ToolDef = {
 /** Bộ công cụ soi/dọn/khôi phục điểm tính hai lần. Chỉ cấp cho giám đốc/admin. */
 export function dedupeTools(): ToolDef[] {
   return [INSPECT_TOOL, DEDUPE_TOOL, RESTORE_TOOL];
+}
+
+// ── Bù điểm cho ngày nhân sự quên ghi việc ──
+//
+// Anh Tâm 29/7/2026 nhắn "ngày 1 tháng 7 em nhập cho An Thùy 300 điểm" và trợ lý phải
+// trả lời là không có công cụ nào làm được. Đây là công cụ đó.
+//
+// Đi thành bộ ba ghi/liệt kê/gỡ như các nhóm ghi khác: bù điểm ăn thẳng vào thưởng nên
+// đường lui phải nằm ngay cạnh.
+
+/** Tìm nhân sự theo tên gõ tự nhiên. Trả về người, hoặc câu hỏi lại khi chưa chắc. */
+async function resolveMember(nameRaw: string): Promise<{ member?: Member; error?: string }> {
+  const key = flat(nameRaw);
+  if (!key) return { error: 'Chưa rõ bù điểm cho ai.' };
+
+  const members = await getActiveMembers();
+  const exact = members.filter((m) => flat(m.fullName) === key);
+  const hits = exact.length > 0 ? exact : members.filter((m) => flat(m.fullName).includes(key));
+
+  if (hits.length === 0) return { error: `Không tìm thấy nhân sự nào tên "${nameRaw}".` };
+  // Trùng tên thì HỎI LẠI chứ không đoán — cộng nhầm điểm sang người khác rất khó phát hiện.
+  if (hits.length > 1) {
+    return { error: `Có ${hits.length} người khớp "${nameRaw}": ${hits.map((m) => m.fullName).join(', ')}. Nhắn rõ tên đầy đủ giúp em.` };
+  }
+  return { member: hits[0]! };
+}
+
+/** Ngày AI truyền vào: nhận cả 2026-07-01 lẫn 1/7/2026. */
+function argDate(v: unknown): string {
+  const s = String(v || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  return parseVnDate(s) || '';
+}
+
+/**
+ * Tháng để LỌC — khác `argYm`: không truyền thì trả undefined (xem tất cả), chứ không
+ * âm thầm rơi về tháng này rồi báo "chưa có dòng nào" trong khi tháng trước đầy dòng.
+ */
+function argYmOptional(v: unknown): string | undefined {
+  const s = String(v || '');
+  return /^\d{4}-\d{2}$/.test(s) ? s : undefined;
+}
+
+const adjustPointsTool = (actorName: string): ToolDef => ({
+  declaration: {
+    name: 'adjust_points',
+    description:
+      'Cộng hoặc trừ điểm bù cho một nhân sự vào một NGÀY CỤ THỂ đã qua. Dùng khi người dùng nói ' +
+      '"nhập bù 300 điểm cho An Thùy ngày 1/7", "bạn ấy quên ghi việc hôm qua, cộng thêm điểm", ' +
+      '"trừ bớt điểm ghi dư". Điểm âm = trừ. Ghi thẳng, không cần hỏi xác nhận.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        member: { type: 'STRING', description: 'Tên nhân sự, vd "An Thùy".' },
+        date: { type: 'STRING', description: 'Ngày cần bù, dạng YYYY-MM-DD.' },
+        points: { type: 'NUMBER', description: 'Số điểm; số âm là trừ bớt.' },
+        reason: { type: 'STRING', description: 'Lý do, vd "nhập bổ sung". Bắt buộc.' },
+      },
+      required: ['member', 'date', 'points', 'reason'],
+    },
+  },
+  run: async (a) => {
+    const { member, error } = await resolveMember(String(a.member || ''));
+    if (error) return error;
+
+    const date = argDate(a.date);
+    if (!date) return `Chưa hiểu ngày "${a.date}". Nhắn lại dạng ngày/tháng/năm giúp em.`;
+
+    const row = await addAdjustment({
+      memberId: member!.id,
+      date,
+      points: Math.trunc(Number(a.points)),
+      reason: String(a.reason || '').trim(),
+      byName: actorName,
+    });
+    return (
+      `Đã ghi: ${describeAdjust(row)}.\n` +
+      'Dòng này hiện trong bảng điểm của bạn ấy như một việc thường. Muốn bỏ thì bảo "gỡ dòng bù điểm".'
+    );
+  },
+});
+
+const LIST_ADJUST_TOOL: ToolDef = {
+  declaration: {
+    name: 'list_point_adjustments',
+    description:
+      'Liệt kê các dòng ĐIỂM BÙ đã nhập tay (không phải việc nhân sự tự ghi). ' +
+      'Dùng khi người dùng hỏi "đã bù điểm cho ai", "xem lại các dòng nhập bù", hoặc trước khi gỡ.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        member: { type: 'STRING', description: 'Lọc theo tên nhân sự.' },
+        month: { type: 'STRING', description: 'Lọc theo tháng, dạng YYYY-MM.' },
+      },
+    },
+  },
+  run: async (a) => {
+    let memberId: string | undefined;
+    if (String(a.member || '').trim()) {
+      const { member, error } = await resolveMember(String(a.member));
+      if (error) return error;
+      memberId = member!.id;
+    }
+    const rows = await listAdjustments({ memberId, month: argYmOptional(a.month) });
+    if (rows.length === 0) return 'Chưa có dòng điểm bù nào khớp.';
+    return [
+      `${rows.length} dòng điểm bù:`,
+      ...rows.map((r) => `${r.id} · ${describeAdjust(r)}`),
+      'Muốn bỏ dòng nào thì đọc mã T-… của dòng đó.',
+    ].join('\n');
+  },
+};
+
+const DELETE_ADJUST_TOOL: ToolDef = {
+  declaration: {
+    name: 'delete_point_adjustment',
+    description:
+      'Gỡ một dòng điểm bù đã nhập tay, trả điểm về như trước. Cần mã dòng lấy từ list_point_adjustments. ' +
+      'Chỉ gỡ được dòng nhập tay, không đụng được vào việc nhân sự tự ghi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: { id: { type: 'STRING', description: 'Mã dòng, dạng T-xxxxxxxxxx.' } },
+      required: ['id'],
+    },
+  },
+  run: async (a) => {
+    const row = await deleteAdjustment(String(a.id || '').trim());
+    return `Đã gỡ: ${describeAdjust(row)}. Điểm trở lại như trước khi bù.`;
+  },
+};
+
+/** Bộ công cụ bù điểm. Chỉ cấp cho giám đốc/admin — leader không tự cộng điểm cho team mình. */
+export function pointAdjustTools(actorName: string): ToolDef[] {
+  return [adjustPointsTool(actorName), LIST_ADJUST_TOOL, DELETE_ADJUST_TOOL];
 }
