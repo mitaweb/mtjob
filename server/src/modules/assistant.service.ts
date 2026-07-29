@@ -15,7 +15,7 @@ import { getCustomers } from './crm.repo.js';
 import { addReminder } from './reminders.repo.js';
 import { previewDirectorReport } from '../jobs/dailyReport.js';
 import { describeRule, type RepeatKind } from '../lib/reminder.js';
-import { moneyWriteTools, crmWriteTools, reminderManageTools, dedupeTools } from './assistant.tools.write.js';
+import { moneyWriteTools, crmWriteTools, reminderManageTools, dedupeTools, pointAdjustTools } from './assistant.tools.write.js';
 import { newId } from '../util/id.js';
 import type { GeminiContent, GeminiPart } from '../gemini/client.js';
 import { todayIso, nowTz, monthRange } from '../lib/datetime.js';
@@ -604,6 +604,7 @@ export async function answerDataQuestion(
     ...crmWriteTools(memberId),
     ...reminderManageTools(memberId),
     ...dedupeTools(),
+    ...pointAdjustTools(members.find((m) => m.id === memberId)?.fullName || ''),
   ];
 
   const system = [
@@ -620,6 +621,9 @@ export async function answerDataQuestion(
     '   - Khách hàng mới, đổi tình trạng, số điện thoại, ghi chú về khách → add_customer.',
     '   - Hẹn gặp: nếu là KHÁCH HÀNG trong CRM thì create_appointment; nếu là người quen/việc riêng',
     '     ("chị Hằng hẹn gặp anh lúc 2h") thì create_reminder một lần vào đúng ngày giờ đó.',
+    '   - Bù điểm cho nhân sự ("ngày 1/7 nhập cho An Thùy 300 điểm", "bạn ấy quên ghi việc hôm qua")',
+    '     → adjust_points. Điểm âm là trừ bớt khi ghi dư. Xem lại/gỡ: list_point_adjustments rồi',
+    '     delete_point_adjustment.',
     '   - Ghi xong PHẢI nói rõ đã ghi CÁI GÌ: số tiền dạng 20.000.000đ, tên, ngày giờ. Có sai anh ấy thấy ngay.',
     '   - Sửa/xoá: list_finance_entries rồi delete_finance_entry; list_reminders rồi cancel_reminder.',
     '   - GIỜ TIẾNG VIỆT: "2h", "3h" nói về hẹn gặp trong giờ làm việc là BUỔI CHIỀU (14:00, 15:00),',

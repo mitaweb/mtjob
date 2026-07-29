@@ -4,6 +4,7 @@ import { sumPointsForMember, aggregateByMember, rankMembers } from '../lib/score
 import { computeBonus, type BonusConfig } from '../lib/money.js';
 import { unionMinutes, taskIntervalsForDay, overlappingIds } from '../lib/worktime.js';
 import { taskTitle } from '../lib/tasks.js';
+import { ADJUST_SOURCE } from '../lib/adjust.js';
 import { getConfig } from '../config.js';
 import { nowTz, monthRange, todayIso, dayBoundsMs, fmtHm } from '../lib/datetime.js';
 import type { TaskRow } from '../types.js';
@@ -139,11 +140,14 @@ export async function memberWorkDetail(memberId: string, year: number, month: nu
         points: list.reduce((s, t) => s + (Number(t.points) || 0), 0),
         // Giờ làm ĐÃ GỘP khoảng chồng lấn — tổng thời lượng từng việc có thể lớn hơn.
         minutes: unionMinutes(taskIntervalsForDay(list, startMs, endMs, nowMs)),
-        noTimeCount: list.filter((t) => !t.startedAt).length,
+        // Dòng bù điểm không tính vào cảnh báo "việc không có giờ": nó không phải việc
+        // ai đó quên bấm giờ, mà là điểm giám đốc nhập tay — có giờ mới là sai.
+        noTimeCount: list.filter((t) => !t.startedAt && t.source !== ADJUST_SOURCE).length,
         tasks: list.map((t) => ({
           id: t.id,
           title: taskTitle(t), // kèm ghi chú / tên khách
           points: t.points,
+          adjusted: t.source === ADJUST_SOURCE,
           completedAt: t.completedAt,
           // Định dạng giờ ở MÁY CHỦ theo giờ VN — máy người xem có thể ở múi giờ khác.
           startHm: t.startedAt ? fmtHm(t.startedAt) : '',

@@ -1,8 +1,10 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { asyncHandler, ApiError } from '../util/errors.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
 import { memberScore, ranking, memberWorkDetail } from './scores.service.js';
 import { findById, membersInTeam } from './members.repo.js';
+import { addAdjustment, listAdjustments, deleteAdjustment } from './scores.adjust.js';
 import { nowTz } from '../lib/datetime.js';
 
 export const scoresRouter = Router();
@@ -88,5 +90,49 @@ scoresRouter.get(
       member: { id: me.id, fullName: me.fullName, teamId: me.teamId },
       ...(await memberWorkDetail(me.id, year, month)),
     });
+  }),
+);
+
+// ── Bù điểm cho ngày đã qua ──
+//
+// Chỉ giám đốc/admin. Leader KHÔNG có quyền này: bù điểm là đụng thẳng vào thưởng và
+// xếp hạng, không nên để người cùng cạnh tranh trong bảng tự cộng cho nhau.
+
+const adjustSchema = z.object({
+  memberId: z.string().min(1),
+  date: z.string().min(1),
+  points: z.number(),
+  reason: z.string().min(1),
+});
+
+scoresRouter.post(
+  '/adjust',
+  requireRole('director', 'admin'),
+  asyncHandler(async (req, res) => {
+    const b = adjustSchema.parse(req.body);
+    const row = await addAdjustment({ ...b, byName: req.user!.name });
+    res.json({ ok: true, adjustment: row });
+  }),
+);
+
+scoresRouter.get(
+  '/adjustments',
+  requireRole('director', 'admin'),
+  asyncHandler(async (req, res) => {
+    const month = String(req.query.month || '');
+    res.json({
+      adjustments: await listAdjustments({
+        memberId: String(req.query.memberId || '') || undefined,
+        month: /^\d{4}-\d{2}$/.test(month) ? month : undefined,
+      }),
+    });
+  }),
+);
+
+scoresRouter.delete(
+  '/adjust/:id',
+  requireRole('director', 'admin'),
+  asyncHandler(async (req, res) => {
+    res.json({ ok: true, adjustment: await deleteAdjustment(String(req.params.id)) });
   }),
 );
