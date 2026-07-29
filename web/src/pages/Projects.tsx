@@ -80,6 +80,22 @@ const blankKpi = (teamId: string) => ({
   active: true,
 });
 
+type KpiDraft = ReturnType<typeof blankKpi>;
+
+/**
+ * Chỉ số hay dùng của từng phòng — bấm một cái là điền sẵn tên/đơn vị/kỳ, leader chỉ
+ * còn phải gõ con số mục tiêu. Vẫn tự gõ tên khác được.
+ */
+const KPI_PRESETS: Array<Omit<KpiDraft, 'id' | 'active'>> = [
+  { teamId: 'Ads', name: 'Tin nhắn khách inbox', unit: 'tin', period: 'week', target: 0 },
+  { teamId: 'Ads', name: 'Khách mới', unit: 'khách', period: 'month', target: 0 },
+  { teamId: 'Ads', name: 'Lượt tiếp cận', unit: 'lượt', period: 'week', target: 0 },
+  { teamId: 'Content', name: 'Bài đăng', unit: 'bài', period: 'week', target: 0 },
+  { teamId: 'Content', name: 'Video / Reels', unit: 'video', period: 'month', target: 0 },
+  { teamId: 'SEO', name: 'Từ khoá lên top 10', unit: 'từ khoá', period: 'month', target: 0 },
+  { teamId: 'SEO', name: 'Bài chuẩn SEO', unit: 'bài', period: 'month', target: 0 },
+];
+
 /** Thanh tiến độ. Vượt mục tiêu vẫn hiện đầy nhưng đổi màu để thấy ngay là dư. */
 function Bar100({ percent }: { percent: number }) {
   const w = Math.min(100, Math.max(0, percent));
@@ -102,7 +118,12 @@ export default function Projects() {
   const [customers, setCustomers] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
 
+  // Phòng của người đang tạo — gợi ý sẵn cho dòng chỉ số đầu tiên.
+  const myTeam = user?.teamId && TEAMS.includes(user.teamId) ? user.teamId : TEAMS[0]!;
+
   const [edit, setEdit] = useState<ReturnType<typeof blankProject> | null>(null);
+  // Chỉ số nhập kèm ngay trong form dự án mới (dự án đã có thì sửa ở phần chi tiết).
+  const [kpiRows, setKpiRows] = useState<KpiDraft[]>([]);
   const [open, setOpen] = useState<{ project: ProjectRow; kpis: Kpi[] } | null>(null);
   const [kpiEdit, setKpiEdit] = useState<ReturnType<typeof blankKpi> | null>(null);
   const [chartKpi, setChartKpi] = useState<Kpi | null>(null);
@@ -120,10 +141,13 @@ export default function Projects() {
     Promise.all([loadProjects(), loadToday()])
       .catch((e) => toast.error((e as Error).message))
       .finally(() => setLoading(false));
-    // Khách hàng chỉ để chọn khi tạo dự án; vai không vào được CRM thì bỏ qua im lặng.
-    api<{ customers: Array<{ id: string; name: string }> }>('/crm/customers')
-      .then((r) => setCustomers(r.customers))
-      .catch(() => setCustomers([]));
+    // Danh sách khách rút gọn (chỉ tên) — leader không vào được CRM nhưng vẫn cần gắn khách
+    // vào dự án. Vai không tạo được dự án thì gọi hỏng, bỏ qua im lặng.
+    if (canManage) {
+      api<{ customers: Array<{ id: string; name: string }> }>('/projects/customer-options')
+        .then((r) => setCustomers(r.customers))
+        .catch(() => setCustomers([]));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -136,15 +160,31 @@ export default function Projects() {
     }
   }
 
+  function newProject() {
+    setKpiRows([blankKpi(myTeam)]);
+    setEdit(blankProject());
+  }
+
+  function closeProjectForm() {
+    setEdit(null);
+    setKpiRows([]);
+  }
+
   async function saveProject() {
     if (!edit?.name.trim()) return toast.error('Nhập tên dự án.');
+    // Dòng chỉ số bỏ trống tên coi như không nhập — không bắt anh phải xoá từng dòng thừa.
+    const rows = kpiRows.filter((k) => k.name.trim());
     try {
-      await api('/projects', { body: edit });
-      toast.success('Đã lưu dự án.');
-      setEdit(null);
-      await loadProjects();
+      const r = await api<{ id: string }>('/projects', { body: edit });
+      // Chỉ số phải gắn sau vì cần mã dự án; lưu tuần tự để lỗi dòng nào biết dòng đó.
+      for (const k of rows) await api(`/projects/${r.id}/kpis`, { body: { ...k, name: k.name.trim() } });
+      toast.success(rows.length ? `Đã lưu dự án và ${rows.length} chỉ số.` : 'Đã lưu dự án.');
+      closeProjectForm();
+      await Promise.all([loadProjects(), loadToday()]);
     } catch (e) {
+      // Dự án có thể đã tạo xong rồi mới hỏng ở phần chỉ số — nạp lại để thấy đúng thực tế.
       toast.error((e as Error).message);
+      await Promise.all([loadProjects(), loadToday()]).catch(() => undefined);
     }
   }
 
@@ -212,7 +252,7 @@ export default function Projects() {
           </p>
         </div>
         {canManage && (
-          <button className="btn-primary" onClick={() => setEdit(blankProject())}>
+          <button className="btn-primary" onClick={newProject}>
             + Dự án mới
           </button>
         )}
@@ -445,8 +485,8 @@ export default function Projects() {
 
       {/* Form dự án */}
       {edit && (
-        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4" onClick={() => setEdit(null)}>
-          <div className="card my-8 w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4" onClick={closeProjectForm}>
+          <div className="card my-8 w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
             <h2 className="mb-3 font-semibold">{edit.id ? 'Sửa dự án' : 'Dự án mới'}</h2>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="sm:col-span-2">
@@ -483,9 +523,103 @@ export default function Projects() {
                 <textarea className="input" rows={2} value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} />
               </div>
             </div>
+
+            {/* Chỉ số đặt luôn ở đây: tạo dự án xong là các phòng có ô để nhập ngay hôm sau. */}
+            {!edit.id && (
+              <div className="mt-5 border-t border-slate-100 pt-4">
+                <h3 className="font-semibold">Chỉ số KPI của dự án</h3>
+                <p className="mb-3 text-xs text-slate-500">
+                  Mỗi chỉ số gắn một phòng — chỉ người phòng đó nhập số. Bỏ trống cũng được, thêm sau
+                  trong phần chi tiết dự án.
+                </p>
+
+                <div className="mb-3 flex flex-wrap gap-1.5">
+                  {KPI_PRESETS.map((p) => (
+                    <button
+                      key={`${p.teamId}-${p.name}`}
+                      type="button"
+                      className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
+                      onClick={() => setKpiRows((rows) => [...rows, { ...p, id: '', active: true }])}
+                    >
+                      + {p.teamId}: {p.name}
+                    </button>
+                  ))}
+                </div>
+
+                {kpiRows.length > 0 && (
+                  <div className="hidden gap-2 px-1 pb-1 text-xs text-slate-400 sm:grid sm:grid-cols-12">
+                    <span className="sm:col-span-2">Phòng</span>
+                    <span className="sm:col-span-4">Tên chỉ số</span>
+                    <span className="sm:col-span-2">Đơn vị</span>
+                    <span className="sm:col-span-2">Tính theo</span>
+                    <span className="sm:col-span-2">Mục tiêu</span>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  {kpiRows.map((k, i) => {
+                    const set = (patch: Partial<KpiDraft>) =>
+                      setKpiRows((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+                    return (
+                      <div key={i} className="grid gap-2 rounded-xl border border-slate-100 p-2 sm:grid-cols-12 sm:items-center sm:border-0 sm:p-0">
+                        <select className="input py-1.5 text-sm sm:col-span-2" value={k.teamId} onChange={(e) => set({ teamId: e.target.value })}>
+                          {TEAMS.map((t) => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                        <input
+                          className="input py-1.5 text-sm sm:col-span-4"
+                          placeholder="vd: Tin nhắn khách inbox"
+                          value={k.name}
+                          onChange={(e) => set({ name: e.target.value })}
+                        />
+                        <input
+                          className="input py-1.5 text-sm sm:col-span-2"
+                          placeholder="tin, khách…"
+                          value={k.unit}
+                          onChange={(e) => set({ unit: e.target.value })}
+                        />
+                        <select className="input py-1.5 text-sm sm:col-span-2" value={k.period} onChange={(e) => set({ period: e.target.value as Period })}>
+                          {PERIODS.map((p) => (
+                            <option key={p.value} value={p.value}>{p.label}</option>
+                          ))}
+                        </select>
+                        <div className="flex items-center gap-1 sm:col-span-2">
+                          <input
+                            className="input py-1.5 text-sm"
+                            type="number"
+                            min={0}
+                            placeholder="mục tiêu"
+                            value={k.target || ''}
+                            onChange={(e) => set({ target: Number(e.target.value) })}
+                          />
+                          <button
+                            type="button"
+                            className="shrink-0 rounded-lg px-2 py-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                            aria-label={`Bỏ chỉ số ${k.name || 'chưa đặt tên'}`}
+                            onClick={() => setKpiRows((rows) => rows.filter((_, j) => j !== i))}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  className="btn-ghost mt-2 text-sm"
+                  onClick={() => setKpiRows((rows) => [...rows, blankKpi(myTeam)])}
+                >
+                  + Thêm dòng trống
+                </button>
+              </div>
+            )}
+
             <div className="mt-4 flex gap-2">
               <AsyncButton className="btn-primary" onClick={saveProject} busyLabel="Đang lưu…">Lưu</AsyncButton>
-              <button className="btn-ghost" onClick={() => setEdit(null)}>Huỷ</button>
+              <button className="btn-ghost" onClick={closeProjectForm}>Huỷ</button>
             </div>
           </div>
         </div>

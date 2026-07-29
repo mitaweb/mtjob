@@ -18,7 +18,7 @@ import {
   type ProjectKpi,
 } from './projects.repo.js';
 import { findById } from './members.repo.js';
-import { findCustomer } from './crm.repo.js';
+import { findCustomer, getCustomers } from './crm.repo.js';
 import { progressOf, seriesFor, canWriteEntry, entryWindowOpen, type KpiPeriod } from '../lib/kpi.js';
 import { newId } from '../util/id.js';
 import { nowTz, todayIso, fmtDate } from '../lib/datetime.js';
@@ -107,6 +107,22 @@ projectsRouter.get(
           yesterday: entries.find((e) => e.kpiId === k.id && e.date === yesterday)?.value ?? null,
         })),
     });
+  }),
+);
+
+// ── Danh sách khách để gắn vào dự án ──
+
+/**
+ * Leader không vào được /api/crm (chỉ sale/giám đốc/admin) nhưng vẫn cần chọn khách khi
+ * tạo dự án. Trả về ĐÚNG tên + mã, không kèm điện thoại hay ghi chú — nhân sự không có
+ * việc gì phải thấy thông tin liên hệ của khách.
+ */
+projectsRouter.get(
+  '/customer-options',
+  canManage,
+  asyncHandler(async (_req, res) => {
+    const customers = await getCustomers();
+    res.json({ customers: customers.map((c) => ({ id: c.id, name: c.name })) });
   }),
 );
 
