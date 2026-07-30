@@ -412,6 +412,25 @@ export default function Chat() {
     }
   }
 
+  /**
+   * Bỏ một việc đang làm — dùng khi trợ lý gán nhầm loại việc (nhầm loại là nhầm điểm).
+   * Việc chưa hoàn thành nên chưa có điểm nào bị đụng tới.
+   */
+  async function dropDoing(t: DoingTask) {
+    const name = t.title || t.taskName;
+    if (!window.confirm(`Bỏ việc "${name}"? Việc này chưa tính điểm nên xoá là hết, không lưu lại gì.`)) return;
+    try {
+      await api(`/tasks/${t.id}`, { method: 'DELETE' });
+      setMsgs((m) => [
+        ...m,
+        { role: 'bot', text: `🗑 Đã bỏ "${name}". Nhắn lại tên việc cho đúng nhé, mình ghi lại từ đầu.` },
+      ]);
+      await loadDoing();
+    } catch (e) {
+      setMsgs((m) => [...m, { role: 'bot', text: `⚠️ ${(e as Error).message}` }]);
+    }
+  }
+
   const hm = (iso: string) =>
     new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 
@@ -638,15 +657,26 @@ export default function Chat() {
             <ul className="divide-y">
               {doing.map((t) => (
                 <li key={t.id} className="py-2 flex items-center justify-between gap-2">
-                  <div>
+                  <div className="min-w-0">
                     <div className="font-medium text-sm">{t.title || t.taskName}</div>
                     <div className="text-xs text-slate-500">
                       Bắt đầu {hm(t.startedAt)} · đã {fmtMin(t.elapsedMinutes)} · +{t.points}đ khi xong
                     </div>
                   </div>
-                  <button className="btn-primary whitespace-nowrap text-sm" onClick={() => completeDoing(t)}>
-                    ✅ Hoàn thành
-                  </button>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button className="btn-primary whitespace-nowrap text-sm" onClick={() => completeDoing(t)}>
+                      ✅ Hoàn thành
+                    </button>
+                    {/* Trợ lý gán nhầm loại việc là gán nhầm điểm — phải có đường tự bỏ. */}
+                    <button
+                      className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                      title="Bỏ việc này (chọn sai loại việc)"
+                      aria-label={`Bỏ việc ${t.title || t.taskName}`}
+                      onClick={() => dropDoing(t)}
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>

@@ -1,11 +1,18 @@
-import { addTask, completeTaskRow, startTodoTask, getDoingTasks } from './tasks.repo.js';
+import {
+  addTask,
+  completeTaskRow,
+  startTodoTask,
+  getDoingTasks,
+  findTask,
+  deleteOwnTaskRow,
+} from './tasks.repo.js';
 import { findById } from './members.repo.js';
 import { findCatalogItem } from './catalog.repo.js';
 import { teamLeaderId } from './teams.repo.js';
 import { notify } from './notifications.service.js';
 import { ApiError } from '../util/errors.js';
 import { newId } from '../util/id.js';
-import { nowTz, fmtHm } from '../lib/datetime.js';
+import { nowTz, fmtHm, todayIso, dateOfVn } from '../lib/datetime.js';
 import {
   taskTitle,
   isStartReport,
@@ -13,6 +20,7 @@ import {
   taskCustomerKey,
   pickDoingToComplete,
   findOpenDuplicate,
+  taskDeleteBlock,
 } from '../lib/tasks.js';
 import type { Member, TaskRow } from '../types.js';
 
@@ -282,4 +290,24 @@ export async function completeTask(
   if (!task) throw new ApiError(404, 'Không tìm thấy task đang làm (có thể đã hoàn thành rồi)');
   await notifyLeaderOnComplete(task);
   return { task, points: task.points };
+}
+
+/**
+ * Nhân viên tự xoá một dòng việc của mình khi trợ lý gán nhầm loại việc.
+ *
+ * Trợ lý đọc câu chat rồi đoán loại việc trong danh mục — đoán sai là điểm sai. Trước
+ * đây không có đường nào tự sửa, phải nhờ giám đốc. Luật xoá nằm ở `taskDeleteBlock`.
+ */
+export async function deleteOwnTask(memberId: string, taskId: string): Promise<TaskRow> {
+  const task = await findTask(taskId);
+  // Không phân biệt "không tồn tại" với "của người khác": trả lời khác nhau là để lộ
+  // việc mã đó có thật hay không.
+  if (!task || task.memberId !== memberId) throw new ApiError(404, 'Không tìm thấy việc này của bạn');
+
+  const blocked = taskDeleteBlock(task.status, task.completedAt ? dateOfVn(task.completedAt) : '', todayIso());
+  if (blocked) throw new ApiError(403, blocked);
+
+  const n = await deleteOwnTaskRow(taskId, memberId);
+  if (n === 0) throw new ApiError(404, 'Không tìm thấy việc này của bạn');
+  return task;
 }

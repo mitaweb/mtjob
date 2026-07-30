@@ -6,6 +6,7 @@ import {
   taskCustomerKey,
   pickDoingToComplete,
   findOpenDuplicate,
+  taskDeleteBlock,
   type DoingLike,
 } from './tasks.js';
 
@@ -208,5 +209,31 @@ describe('taskTitle', () => {
   it('việc được giao: taskName đã đầy đủ, bỏ note "Giao bởi"', () => {
     expect(taskTitle({ taskName: 'Đăng post X Salon', note: 'Giao bởi Nam', source: 'assign' })).toBe('Đăng post X Salon');
     expect(taskTitle({ taskName: 'Viết bài', note: 'Giao bởi Lan' })).toBe('Viết bài');
+  });
+});
+
+describe('taskDeleteBlock', () => {
+  it('việc đang làm xoá được bất cứ lúc nào — chưa có điểm', () => {
+    expect(taskDeleteBlock('doing', '', '2026-07-29')).toBe('');
+  });
+
+  it('việc xong TRONG NGÀY xoá được', () => {
+    expect(taskDeleteBlock('done', '2026-07-29', '2026-07-29')).toBe('');
+  });
+
+  it('việc xong hôm trước thì khoá, chỉ còn đường nhờ giám đốc trừ bù', () => {
+    expect(taskDeleteBlock('done', '2026-07-28', '2026-07-29')).toMatch(/giám đốc/);
+  });
+
+  it('việc cấp trên giao thì người nhận không tự xoá', () => {
+    expect(taskDeleteBlock('todo', '', '2026-07-29')).toMatch(/cấp trên giao/);
+  });
+
+  it('dòng đã đánh dấu trùng không xoá qua đường này', () => {
+    expect(taskDeleteBlock('duplicate', '2026-07-29', '2026-07-29')).toMatch(/không xoá được/);
+  });
+
+  it('việc done mà thiếu ngày hoàn thành thì khoá, không đoán bừa là hôm nay', () => {
+    expect(taskDeleteBlock('done', '', '2026-07-29')).toMatch(/giám đốc/);
   });
 });
