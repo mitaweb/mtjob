@@ -140,3 +140,22 @@ export async function completeTaskRow(
       );
   return rows.length ? rowToTask(rows[0]) : null;
 }
+
+/** Một task bất kỳ theo mã (không lọc chủ sở hữu — người gọi tự kiểm quyền). */
+export async function findTask(taskId: string): Promise<TaskRow | null> {
+  const rows = await q('SELECT * FROM tasks WHERE task_id = $1 LIMIT 1', [taskId]);
+  return rows.length ? rowToTask(rows[0]) : null;
+}
+
+/**
+ * Xoá hẳn một task CỦA CHÍNH MÌNH. Điều kiện member_id nằm trong câu lệnh chứ không chỉ
+ * kiểm ở tầng trên: gọi nhầm mã task của người khác vào đây cũng không xoá được gì.
+ * Trả về số dòng đã xoá.
+ */
+export async function deleteOwnTaskRow(taskId: string, memberId: string): Promise<number> {
+  const rows = await q('DELETE FROM tasks WHERE task_id = $1 AND member_id = $2 RETURNING task_id', [
+    taskId,
+    memberId,
+  ]);
+  return rows.length;
+}

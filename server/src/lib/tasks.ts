@@ -187,3 +187,32 @@ export function taskTitle(t: { taskName?: string; note?: string; source?: string
   if (ml.includes(nl)) return name;
   return `${name} — ${note}`;
 }
+
+/**
+ * Nhân viên có được tự xoá dòng việc này không? Trả câu lý do, hoặc '' nếu được.
+ *
+ * Anh Tâm 29/7/2026: "chat với AI đôi khi bị sai công việc, thêm nút X để xoá task nếu
+ * chọn sai." Trợ lý gán nhầm LOẠI việc là gán nhầm điểm, nên phải có đường tự sửa.
+ *
+ * @param doneDate ngày hoàn thành theo giờ VN (YYYY-MM-DD), '' nếu chưa xong
+ * @param today    hôm nay theo giờ VN
+ */
+export function taskDeleteBlock(status: string, doneDate: string, today: string): string {
+  // Chưa xong = chưa có điểm, xoá thoải mái. Đây là ca thường gặp: vừa chat xong thấy
+  // trợ lý chọn sai loại việc, xoá rồi nhắn lại.
+  if (status === 'doing') return '';
+
+  // Việc cấp trên giao: xoá là mất luôn đầu việc bên giao đang chờ, không phải chuyện
+  // của người nhận. Muốn bỏ thì báo người giao.
+  if (status === 'todo') return 'Việc này do cấp trên giao nên bạn không tự xoá được. Báo người giao việc giúp nhé.';
+
+  if (status === 'done') {
+    // Qua ngày là điểm đã vào bảng xếp hạng và thưởng của tháng — để nhân viên tự rút
+    // lại lúc đó thì số liệu đổi sau lưng giám đốc.
+    return doneDate && doneDate === today
+      ? ''
+      : 'Việc đã xong từ hôm trước nên không tự xoá được nữa. Nhờ giám đốc trừ bù giúp nhé.';
+  }
+
+  return 'Dòng việc này không xoá được.';
+}
