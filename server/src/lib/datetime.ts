@@ -72,16 +72,6 @@ export function fmtDate(iso: string): string {
 }
 
 /**
- * Ngày (YYYY-MM-DD) THẬT theo giờ VN của một mốc ISO.
- *
- * Khác `iso.slice(0, 10)` — cắt chuỗi là lấy ngày UTC, nên việc làm lúc 0h30 sáng giờ VN
- * sẽ ra ngày hôm trước. Dùng hàm này ở chỗ nào ngày sai một hôm là sai nghiệp vụ.
- */
-export function dateOfVn(iso: string): string {
-  return dayjs(iso).tz(TZ).format('YYYY-MM-DD');
-}
-
-/**
  * datetime-local 'YYYY-MM-DDTHH:mm' (giờ VN) → ISO UTC; nếu đã là ISO thì giữ nguyên.
  * Dùng chung cho form lịch hẹn và cho trợ lý AI đặt hẹn — một cách hiểu giờ duy nhất.
  */

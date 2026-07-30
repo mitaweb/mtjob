@@ -213,27 +213,24 @@ describe('taskTitle', () => {
 });
 
 describe('taskDeleteBlock', () => {
-  it('việc đang làm xoá được bất cứ lúc nào — chưa có điểm', () => {
-    expect(taskDeleteBlock('doing', '', '2026-07-29')).toBe('');
+  it('việc đang làm xoá được — chưa có điểm nào bị đụng tới', () => {
+    expect(taskDeleteBlock('doing')).toBe('');
   });
 
-  it('việc xong TRONG NGÀY xoá được', () => {
-    expect(taskDeleteBlock('done', '2026-07-29', '2026-07-29')).toBe('');
-  });
-
-  it('việc xong hôm trước thì khoá, chỉ còn đường nhờ giám đốc trừ bù', () => {
-    expect(taskDeleteBlock('done', '2026-07-28', '2026-07-29')).toMatch(/giám đốc/);
+  // Anh Tâm chốt 29/7/2026: "không cho xóa việc đã làm, chỉ cho xóa việc đang làm."
+  it('việc đã hoàn thành thì KHOÁ, kể cả vừa xong xong', () => {
+    expect(taskDeleteBlock('done')).toMatch(/giám đốc/);
   });
 
   it('việc cấp trên giao thì người nhận không tự xoá', () => {
-    expect(taskDeleteBlock('todo', '', '2026-07-29')).toMatch(/cấp trên giao/);
+    expect(taskDeleteBlock('todo')).toMatch(/cấp trên giao/);
   });
 
   it('dòng đã đánh dấu trùng không xoá qua đường này', () => {
-    expect(taskDeleteBlock('duplicate', '2026-07-29', '2026-07-29')).toMatch(/không xoá được/);
+    expect(taskDeleteBlock('duplicate')).toMatch(/không xoá được/);
   });
 
-  it('việc done mà thiếu ngày hoàn thành thì khoá, không đoán bừa là hôm nay', () => {
-    expect(taskDeleteBlock('done', '', '2026-07-29')).toMatch(/giám đốc/);
+  it('trạng thái lạ thì mặc định KHOÁ, không mở nhầm', () => {
+    expect(taskDeleteBlock('')).toMatch(/không xoá được/);
   });
 });

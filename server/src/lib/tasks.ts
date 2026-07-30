@@ -194,10 +194,10 @@ export function taskTitle(t: { taskName?: string; note?: string; source?: string
  * Anh Tâm 29/7/2026: "chat với AI đôi khi bị sai công việc, thêm nút X để xoá task nếu
  * chọn sai." Trợ lý gán nhầm LOẠI việc là gán nhầm điểm, nên phải có đường tự sửa.
  *
- * @param doneDate ngày hoàn thành theo giờ VN (YYYY-MM-DD), '' nếu chưa xong
- * @param today    hôm nay theo giờ VN
+ * Anh Tâm chốt tiếp: CHỈ việc đang làm. Việc đã hoàn thành là đã tính điểm — mọi thay
+ * đổi từ đó trở đi phải đi qua giám đốc, không để nhân viên tự rút điểm của mình.
  */
-export function taskDeleteBlock(status: string, doneDate: string, today: string): string {
+export function taskDeleteBlock(status: string): string {
   // Chưa xong = chưa có điểm, xoá thoải mái. Đây là ca thường gặp: vừa chat xong thấy
   // trợ lý chọn sai loại việc, xoá rồi nhắn lại.
   if (status === 'doing') return '';
@@ -207,11 +207,7 @@ export function taskDeleteBlock(status: string, doneDate: string, today: string)
   if (status === 'todo') return 'Việc này do cấp trên giao nên bạn không tự xoá được. Báo người giao việc giúp nhé.';
 
   if (status === 'done') {
-    // Qua ngày là điểm đã vào bảng xếp hạng và thưởng của tháng — để nhân viên tự rút
-    // lại lúc đó thì số liệu đổi sau lưng giám đốc.
-    return doneDate && doneDate === today
-      ? ''
-      : 'Việc đã xong từ hôm trước nên không tự xoá được nữa. Nhờ giám đốc trừ bù giúp nhé.';
+    return 'Việc đã hoàn thành thì không tự xoá được — điểm đã tính rồi. Nhờ giám đốc trừ bù giúp nhé.';
   }
 
   return 'Dòng việc này không xoá được.';

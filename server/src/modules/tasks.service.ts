@@ -12,7 +12,7 @@ import { teamLeaderId } from './teams.repo.js';
 import { notify } from './notifications.service.js';
 import { ApiError } from '../util/errors.js';
 import { newId } from '../util/id.js';
-import { nowTz, fmtHm, todayIso, dateOfVn } from '../lib/datetime.js';
+import { nowTz, fmtHm } from '../lib/datetime.js';
 import {
   taskTitle,
   isStartReport,
@@ -304,7 +304,7 @@ export async function deleteOwnTask(memberId: string, taskId: string): Promise<T
   // việc mã đó có thật hay không.
   if (!task || task.memberId !== memberId) throw new ApiError(404, 'Không tìm thấy việc này của bạn');
 
-  const blocked = taskDeleteBlock(task.status, task.completedAt ? dateOfVn(task.completedAt) : '', todayIso());
+  const blocked = taskDeleteBlock(task.status);
   if (blocked) throw new ApiError(403, blocked);
 
   const n = await deleteOwnTaskRow(taskId, memberId);
