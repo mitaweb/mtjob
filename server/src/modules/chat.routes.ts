@@ -20,7 +20,6 @@ import { formatMinutes } from '../lib/worktime.js';
 import { fmtHm, nowTz } from '../lib/datetime.js';
 import { addChatMessages, getChatMessages, type ChatMessageRow } from './chat.repo.js';
 import { autoBackfill, autoCaptureKnowledge } from './brain.service.js';
-import { sweepRemindersOpportunistic } from './reminders.service.js';
 import { newId } from '../util/id.js';
 import { runInBackground } from '../util/background.js';
 
@@ -140,7 +139,6 @@ async function runChat(
       emit(payload);
       saveChatTurn(memberId, b.message, payload);
       autoBackfill(); // kho tự đầy dần khi mọi người dùng app — không ai phải bấm nút
-      sweepRemindersOpportunistic(); // lối lui khi chưa gắn cron ngoài cho nhắc hẹn
     };
 
     // 1a) Bắt đầu một việc — đường DUY NHẤT để ghi việc từ chat.

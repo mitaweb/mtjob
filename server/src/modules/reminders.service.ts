@@ -3,7 +3,10 @@
 // Vercel gói hiện tại chỉ chạy lịch tự động 1 lần/ngày, trong khi nhắc hẹn cần độ phân giải
 // theo giờ. Nên bắn theo HAI đường bổ trợ nhau:
 //   1. GET /api/jobs/reminders — gọi từ dịch vụ cron ngoài (vài phút/lần) → đúng giờ.
-//   2. sweepRemindersOpportunistic() — chạy khi có người dùng app (throttle 5 phút/instance).
+//   2. sweepRemindersOpportunistic() — móc ở middleware /api trong http/app.ts nên MỌI
+//      request đều thử quét (throttle 5 phút/instance).
+// Đường 2 chỉ vớt được trong cửa sổ bù 3 tiếng của isDue: hẹn 20h mà tối đó không ai mở
+// app thì sáng mai đã quá hạn, không bắn nữa. Muốn đúng giờ thì PHẢI có đường 1.
 // Cả hai đều idempotent nhờ cột last_fired, nên chạy chồng nhau cũng không gửi trùng.
 import {
   getActiveReminders,
