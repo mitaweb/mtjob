@@ -19,6 +19,7 @@ import { customerNotesRouter } from '../modules/customerNotes.routes.js';
 import { brainRouter } from '../modules/brain.routes.js';
 import { remindersRouter } from '../modules/reminders.routes.js';
 import { projectsRouter } from '../modules/projects.routes.js';
+import { sweepRemindersOpportunistic } from '../modules/reminders.service.js';
 
 export function createApp() {
   const app = express();
@@ -41,6 +42,18 @@ export function createApp() {
         gemini,
       },
     });
+  });
+
+  // Nhắc hẹn cần độ phân giải theo GIỜ, nhưng Vercel Cron gói hiện tại chỉ chạy 1 lần/ngày.
+  // Nên bám vào chính lưu lượng người dùng: mọi request đều thử quét một lượt.
+  //
+  // Trước đây chỉ móc ở /api/chat — hẹn buổi tối, lúc không ai chat, thì hết cửa sổ bù
+  // 3 tiếng là mất luôn. Giờ mở app, bấm chuông, đổi trang… đều kích hoạt.
+  // Rẻ và an toàn: throttle 5 phút mỗi instance, chạy nền không giữ response, và
+  // idempotent nhờ cột last_fired nên gọi chồng nhau cũng không gửi trùng.
+  app.use('/api', (_req, _res, next) => {
+    sweepRemindersOpportunistic();
+    next();
   });
 
   app.use('/api/auth', authRouter);
