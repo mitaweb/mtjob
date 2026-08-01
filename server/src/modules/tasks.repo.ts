@@ -26,11 +26,6 @@ function rowToTask(r: any): TaskRow {
   };
 }
 
-export async function getAllTasks(): Promise<TaskRow[]> {
-  const rows = await q('SELECT * FROM tasks ORDER BY completed_at DESC');
-  return rows.map(rowToTask);
-}
-
 /**
  * Tasks phục vụ tính điểm/giờ làm trong [start, end] (YYYY-MM-DD, inclusive):
  * task hoàn thành trong khoảng, task hoàn thành trong ngày `today` (điểm/giờ hôm nay

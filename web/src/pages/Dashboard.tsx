@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { vnd, fmtMin } from '../lib/format';
 import { Skeleton, SkeletonRows } from '../components/ui';
 import MemberWorkDetail from '../components/MemberWorkDetail';
 import type { MemberScore } from '../lib/types';
+
+// Thư viện biểu đồ nặng 360KB — tải riêng để bảng xếp hạng hiện ra trước, khỏi bắt chờ.
+const PointsBarChart = lazy(() => import('../components/charts/PointsBarChart'));
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -36,16 +38,9 @@ export default function Dashboard() {
         {loading ? (
           <Skeleton className="h-[260px] w-full" />
         ) : (
-          <div style={{ width: '100%', height: 260 }}>
-            <ResponsiveContainer>
-              <BarChart data={chartData}>
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip />
-                <Bar dataKey="points" fill="#7367f0" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <Suspense fallback={<Skeleton className="h-[260px] w-full" />}>
+            <PointsBarChart data={chartData} />
+          </Suspense>
         )}
       </div>
 

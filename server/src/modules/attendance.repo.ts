@@ -21,6 +21,14 @@ function rowToAttendance(r: any): AttendanceRow {
   };
 }
 
+/**
+ * Toàn bộ bảng chấm công.
+ *
+ * CHỈ dùng cho script bảo trì chạy tay (`scripts/audit-attendance`, `backfill-*`,
+ * `fix-backfill-joindate`) — chúng cần soi cả lịch sử. TUYỆT ĐỐI không gọi trong đường
+ * request: bảng này lớn dần theo từng ngày công của từng người. Trong app hãy dùng
+ * `getAttendanceBetween` hoặc `getForMemberRange`.
+ */
 export async function getAllAttendance(): Promise<AttendanceRow[]> {
   const rows = await q('SELECT * FROM attendance');
   return rows.map(rowToAttendance);
