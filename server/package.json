@@ -11,7 +11,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "setup-db": "tsx scripts/setup-db.ts",
-    "sync-members": "tsx scripts/sync-members.ts",
     "sync-catalog": "tsx scripts/sync-catalog.ts",
     "gemini-auth": "tsx scripts/gemini-auth.ts",
     "backfill-dayfraction": "tsx scripts/backfill-dayfraction.ts",

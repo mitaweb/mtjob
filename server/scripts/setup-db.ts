@@ -3,7 +3,7 @@ import { pool, closePool, q } from '../src/db/client.js';
 import { DDL, CONFIG_SEED, TASK_CATALOG_SEED, HOLIDAYS_2026_SEED } from '../src/db/schema.js';
 import { HR_SEED_ROWS } from '../src/db/seedMembers.js';
 import { parseHrRow, type HrPerson } from '../src/lib/people.js';
-import { upsertHrPeople, syncMembersFromSource } from '../src/modules/admin.sync.js';
+import { upsertHrPeople } from '../src/modules/admin.sync.js';
 import { findByLogin, upsertMember } from '../src/modules/members.repo.js';
 import { hashPassword } from '../src/auth/password.js';
 import { newId } from '../src/util/id.js';
@@ -29,16 +29,11 @@ async function main(): Promise<void> {
   }
   console.log('  - Đã seed config + danh mục task + ngày lễ.');
 
-  // Members: try the live sheet CSV first, fall back to the embedded snapshot.
-  try {
-    const r = await syncMembersFromSource();
-    console.log(`  - Đồng bộ ${r.imported} thành viên từ Google Sheet nguồn. Teams: ${r.teams.join(', ')}`);
-  } catch (e) {
-    console.warn(`  - Không đọc được sheet nguồn (${(e as Error).message})`);
-    const people = HR_SEED_ROWS.map((row) => parseHrRow(row)).filter((p): p is HrPerson => p !== null);
-    const r = await upsertHrPeople(people);
-    console.log(`  - Đã seed ${r.imported} thành viên từ snapshot nhúng sẵn. Teams: ${r.teams.join(', ')}`);
-  }
+  // Nhân sự: seed từ snapshot nhúng sẵn. Từ 29/7/2026 không đọc Google Sheet nữa —
+  // sau bước này anh Tâm thêm/sửa người trực tiếp trong màn Quản trị.
+  const people = HR_SEED_ROWS.map((row) => parseHrRow(row)).filter((p): p is HrPerson => p !== null);
+  const r = await upsertHrPeople(people);
+  console.log(`  - Đã seed ${r.imported} thành viên. Teams: ${r.teams.join(', ')}`);
 
   // Admin account.
   const password = process.env.ADMIN_PASSWORD || 'Admin@2026';

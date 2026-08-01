@@ -91,3 +91,42 @@ export async function upsertMember(m: Member): Promise<void> {
     ],
   );
 }
+
+export interface MemberFootprint {
+  tasks: number;
+  attendanceDays: number;
+  payrollMonths: number;
+}
+
+/** Người này để lại bao nhiêu dấu vết — để hộp xác nhận nói con số thật, không nói chung chung. */
+export async function memberFootprint(id: string): Promise<MemberFootprint> {
+  const [t, a, p] = await Promise.all([
+    q('SELECT count(*)::int AS n FROM tasks WHERE member_id = $1', [id]),
+    q('SELECT count(*)::int AS n FROM attendance WHERE member_id = $1', [id]),
+    q('SELECT count(*)::int AS n FROM payroll WHERE member_id = $1', [id]),
+  ]);
+  return {
+    tasks: Number(t[0]?.n || 0),
+    attendanceDays: Number(a[0]?.n || 0),
+    payrollMonths: Number(p[0]?.n || 0),
+  };
+}
+
+/**
+ * Xoá hẳn một nhân sự và dọn những gì đi theo họ.
+ *
+ * GIỮ LẠI việc đã làm, chấm công và bảng lương các tháng cũ: ba bảng đó đã lưu sẵn tên
+ * người (`tasks.member_name`, `attendance.name`, `payroll.full_name`) nên báo cáo tháng
+ * cũ vẫn đọc được, xoá đi là thủng lịch sử công ty.
+ *
+ * XOÁ những thứ chỉ có nghĩa với người còn làm: đăng ký nhận thông báo đẩy, hộp thư,
+ * nhắc hẹn cá nhân. Không có khoá ngoại nào trong DB nên phải tự dọn từng bảng.
+ */
+export async function purgeMember(id: string): Promise<void> {
+  await q('DELETE FROM push_subscriptions WHERE member_id = $1', [id]);
+  await q('DELETE FROM notifications WHERE member_id = $1', [id]);
+  await q('DELETE FROM reminders WHERE member_id = $1', [id]);
+  // Đang là leader của phòng nào thì gỡ ra, đừng để trỏ vào dòng vừa mất.
+  await q("UPDATE teams SET leader_member_id = '' WHERE leader_member_id = $1", [id]);
+  await q('DELETE FROM members WHERE member_id = $1', [id]);
+}

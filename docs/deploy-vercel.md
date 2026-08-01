@@ -40,7 +40,6 @@ Video chỉ dán link nên không tốn Blob; chỉ ảnh + PDF được tải l
 | `BLOB_READ_WRITE_TOKEN` | tự có khi tạo Blob store (xem bước 3b) — dùng cho "Lưu ý khách hàng" (ảnh/PDF) |
 | *(AI — tuỳ chọn)* `GEMINI_API_KEY` | key AI Studio (cách đơn giản nhất trên Vercel) |
 | *(AI — OAuth)* `GOOGLE_OAUTH_CLIENT_ID/SECRET`, `GEMINI_OAUTH_REFRESH_TOKEN`, `GOOGLE_OAUTH_REDIRECT` | redirect = `https://<domain>/api/oauth2/callback` |
-| *(tuỳ chọn)* `SHEET_HR_SOURCE_ID` / `SHEET_HR_SOURCE_GID` | cho nút "Đồng bộ nhân sự" (sheet phải share công khai) |
 
 > ⚠️ `GEMINI_BASE_URL` (cliproxyapi localhost trên Mac) **không dùng được trên Vercel**.
 > Không cấu hình AI thì chat chạy chế độ heuristic — vẫn ghi nhận task bình thường.

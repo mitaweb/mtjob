@@ -18,8 +18,8 @@ Script sẽ: tạo bảng → seed cấu hình (toạ độ, ca làm, công th�
 
 Sau đó vào app bằng admin → **Quản trị** → đặt mật khẩu cho từng thành viên.
 
-### Đồng bộ lại nhân sự từ Google Sheet (tuỳ chọn)
-Nút **"Đồng bộ nhân sự"** trong màn Quản trị (hoặc `npm run sync-members --prefix server`) đọc sheet nguồn qua **CSV công khai** — yêu cầu sheet được share **"Anyone with the link – Viewer"**. Không share thì quản lý thành viên trực tiếp trong app.
+### Quản lý nhân sự về sau
+Từ 29/7/2026 nhân sự và lương **nhập thẳng trong màn Quản trị** — bảng sửa tại chỗ, nút "+ Thêm nhân sự" cho người mới. Không còn đồng bộ từ Google Sheet: `setup-db` seed lần đầu, sau đó app là nguồn dữ liệu duy nhất.
 
 ## 3. Web Push (VAPID)
 

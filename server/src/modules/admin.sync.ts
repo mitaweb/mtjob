@@ -127,44 +127,12 @@ export function parseCsv(text: string): string[][] {
   return rows.filter((r) => r.some((c) => c.trim() !== ''));
 }
 
-function looksLikeHeader(row: string[]): boolean {
-  const j = row.join('|').toLowerCase();
-  return j.includes('họ tên') || j.includes('ho ten') || j.includes('chức vụ') || j.includes('bhxh');
-}
-
-/** Read the HR source sheet via its public CSV export and upsert members.
- *  `selfId`: member đang bấm đồng bộ — không bao giờ bị ẩn (tránh tự khoá mình). */
-export async function syncMembersFromSource(selfId?: string): Promise<SyncResult> {
-  const id = process.env.SHEET_HR_SOURCE_ID;
-  const gid = process.env.SHEET_HR_SOURCE_GID || '0';
-  if (!id) throw new ApiError(400, 'SHEET_HR_SOURCE_ID chưa được cấu hình');
-
-  const url = `https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gid}`;
-  const res = await fetch(url, { redirect: 'follow' });
-  if (!res.ok) {
-    throw new ApiError(
-      502,
-      `Không đọc được sheet nhân sự (HTTP ${res.status}). Hãy mở share sheet ở chế độ "Anyone with the link – Viewer", hoặc quản lý thành viên trong màn Quản trị.`,
-    );
-  }
-  const text = await res.text();
-  if (/<html/i.test(text.slice(0, 300))) {
-    throw new ApiError(502, 'Sheet nhân sự chưa share công khai — không tải được CSV.');
-  }
-
-  const rows = parseCsv(text);
-  if (rows.length === 0) throw new ApiError(400, 'Sheet nhân sự trống');
-  const start = looksLikeHeader(rows[0] ?? []) ? 1 : 0;
-  const people: HrPerson[] = [];
-  for (let i = start; i < rows.length; i++) {
-    const p = parseHrRow(rows[i] ?? []);
-    if (p) people.push(p);
-  }
-  return upsertHrPeople(people, {
-    deactivateMissing: true,
-    protectIds: selfId ? new Set([selfId]) : undefined,
-  });
-}
+// `syncMembersFromSource()` đã bị gỡ ngày 29/7/2026: nhân sự và lương nhập thẳng trong
+// màn Quản trị, không qua Google Sheet nữa (anh Tâm chốt).
+//
+// Gỡ chứ không để đó cho lành, vì nó chạy với `deactivateMissing: true`: sau khi thêm
+// người mới trong app, chỉ một cú bấm nhầm là mọi người không có trong Sheet đều bị cho
+// nghỉ việc. `upsertHrPeople` bên trên vẫn giữ — `setup-db` dùng để seed lần đầu.
 
 export interface CatalogSyncResult {
   updated: number;
