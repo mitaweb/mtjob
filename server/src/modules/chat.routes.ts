@@ -280,11 +280,16 @@ async function runChat(
 chatRouter.get(
   '/history',
   asyncHandler(async (req, res) => {
-    const limit = Math.min(Number(req.query.limit) || 60, 200);
-    const rows = await getChatMessages(req.user!.sub, limit);
+    const limit = Math.min(Number(req.query.limit) || 6, 50);
+    const before = String(req.query.before || '') || undefined;
+    // Lấy dư MỘT dòng để biết còn tin cũ hơn hay không, khỏi phải chạy thêm câu COUNT.
+    const rows = await getChatMessages(req.user!.sub, limit + 1, before);
+    const hasMore = rows.length > limit;
+
     res.json({
+      hasMore,
       messages: rows
-        .slice()
+        .slice(0, limit)
         .reverse() // repo trả mới nhất trước; màn hình cần cũ → mới
         .map((r) => ({ role: r.role, text: r.text, action: r.action, createdAt: r.createdAt })),
     });

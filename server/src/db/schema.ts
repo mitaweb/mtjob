@@ -52,6 +52,10 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 CREATE INDEX IF NOT EXISTS tasks_member_idx ON tasks (member_id);
 CREATE INDEX IF NOT EXISTS tasks_completed_idx ON tasks (completed_at DESC);
+-- getScoringTasks có nhánh lọc theo status = doing mà không index nào phục vụ, nên buộc
+-- quét cả bảng. Index một phần chỉ ghi mấy dòng đang làm dở nên rất nhẹ; getDoingTasks
+-- hưởng luôn.
+CREATE INDEX IF NOT EXISTS tasks_doing_idx ON tasks (member_id) WHERE status = 'doing';
 -- Migration cho DB đã tạo trước khi có luồng bắt đầu/hoàn thành:
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS started_at text DEFAULT '';
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS status text DEFAULT 'done';

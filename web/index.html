@@ -9,10 +9,26 @@
     <link rel="apple-touch-icon" href="/icon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!--
+      Chữ tải KHÔNG CHẶN: thẻ stylesheet thường sẽ giữ trang trắng cho tới khi Google trả
+      về. Mẹo media="print" khiến trình duyệt tải mà không chặn vẽ, onload đổi lại thành
+      "all" để áp dụng. Trang hiện ngay bằng chữ hệ thống rồi đổi sang chữ thật.
+
+      Chỉ giữ đúng những nét đang dùng: Inter cho toàn bộ nội dung, còn Montserrat 800 và
+      Playfair 500 nghiêng chỉ dùng ở logo (components/Brand.tsx) — trước đây tải dư 9 nét.
+    -->
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@700;800&family=Playfair+Display:ital,wght@1,500;1,600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@800&family=Playfair+Display:ital,wght@1,500&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@800&family=Playfair+Display:ital,wght@1,500&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
     <title>MTJOB — MT DIGITAL</title>
   </head>
   <body>

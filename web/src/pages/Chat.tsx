@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, apiStream, cachedGet } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
 import Reminders from '../components/Reminders';
@@ -20,6 +20,18 @@ interface ChatResponse {
   assignee?: { id: string; fullName: string };
   catalog?: CatalogItem[];
 }
+interface HistoryRow {
+  role: 'user' | 'model';
+  text: string;
+  action: string;
+  createdAt: string;
+}
+
+interface HistoryRes {
+  messages: HistoryRow[];
+  hasMore: boolean;
+}
+
 interface Msg {
   role: 'user' | 'bot';
   text: string;
@@ -199,6 +211,15 @@ export default function Chat() {
   const [saveCustomer, setSaveCustomer] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
 
+  // Lịch sử tải dần: mở trang chỉ lấy vài tin cuối, cuộn lên mới lấy thêm.
+  const [oldestAt, setOldestAt] = useState('');
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  /** Khoảng cách từ đáy trước khi chèn tin cũ — dùng để trả màn hình về đúng chỗ đang đọc. */
+  const keepFromBottom = useRef<number | null>(null);
+  const justPrepended = useRef(false);
+
   async function loadDoing() {
     try {
       const r = await api<{ tasks: DoingTask[] }>('/tasks/doing');
@@ -215,21 +236,54 @@ export default function Chat() {
       /* ignore */
     }
   }
-  /** Tải lại hội thoại cũ để F5 không mất — lịch sử được lưu ở máy chủ. */
-  async function loadHistory() {
-    const r = await api<{ messages: Array<{ role: 'user' | 'model'; text: string; action: string }> }>(
-      '/chat/history?limit=60',
-    );
-    if (r.messages.length === 0) return;
-    const restored: Msg[] = r.messages.map((m, i) => ({
+  /** Đổi dòng lịch sử từ máy chủ sang bong bóng chat. */
+  function toMsgs(rows: HistoryRow[]): Msg[] {
+    return rows.map((m, i) => ({
       role: m.role === 'user' ? 'user' : 'bot',
       text: m.text,
       // Chỉ giữ `action` để nút 📌 lưu vào kho còn dùng được; KHÔNG dựng lại thẻ xác nhận
       // (suggestion không được lưu, mà bấm xác nhận cũ cũng không còn đúng nữa).
       res: m.role === 'model' && m.action ? { reply: '', action: m.action } : undefined,
-      question: m.role === 'model' ? r.messages[i - 1]?.text : undefined,
+      question: m.role === 'model' ? rows[i - 1]?.text : undefined,
     }));
-    setMsgs((cur) => [...cur, ...restored]);
+  }
+
+  /**
+   * Tải lại hội thoại để F5 không mất. CHỈ lấy vài tin cuối: câu trả lời của trợ lý
+   * thường dài, kéo cả sáu mươi tin mỗi lần mở trang là cả trăm KB cho thứ không ai đọc.
+   */
+  async function loadHistory() {
+    const r = await api<HistoryRes>('/chat/history?limit=6');
+    if (r.messages.length === 0) return;
+    setHasMore(r.hasMore);
+    setOldestAt(r.messages[0]?.createdAt || '');
+    setMsgs((cur) => [...cur, ...toMsgs(r.messages)]);
+  }
+
+  /** Cuộn lên đầu thì nối thêm tin cũ hơn, chèn ngay sau lời chào. */
+  async function loadOlder() {
+    if (!hasMore || loadingMore || !oldestAt) return;
+    setLoadingMore(true);
+    // Đo TRƯỚC khi chèn: giữ khoảng cách tới đáy thì sau khi chèn chỉ việc tính ngược lại,
+    // không cần biết đám tin mới chèn cao bao nhiêu.
+    const el = scrollRef.current;
+    keepFromBottom.current = el ? el.scrollHeight - el.scrollTop : null;
+    try {
+      const r = await api<HistoryRes>(`/chat/history?limit=20&before=${encodeURIComponent(oldestAt)}`);
+      setHasMore(r.hasMore);
+      if (r.messages.length > 0) {
+        setOldestAt(r.messages[0]?.createdAt || '');
+        // cur[0] là lời chào — luôn giữ ở trên cùng.
+        setMsgs((cur) => [cur[0]!, ...toMsgs(r.messages), ...cur.slice(1)]);
+      } else {
+        keepFromBottom.current = null;
+      }
+    } catch (e) {
+      keepFromBottom.current = null;
+      toast.error((e as Error).message);
+    } finally {
+      setLoadingMore(false);
+    }
   }
 
   useEffect(() => {
@@ -248,7 +302,22 @@ export default function Chat() {
         .catch(() => setAssignees([]));
     }
   }, [canAssign]);
+  // Chèn tin cũ lên đầu sẽ đẩy nội dung xuống và làm mất chỗ đang đọc. Bù lại NGAY trong
+  // useLayoutEffect — chạy trước khi trình duyệt vẽ, nên mắt không thấy giật.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (keepFromBottom.current === null || !el) return;
+    el.scrollTop = el.scrollHeight - keepFromBottom.current;
+    keepFromBottom.current = null;
+    justPrepended.current = true;
+  }, [msgs]);
+
   useEffect(() => {
+    // Vừa nối tin cũ thì đứng yên; nhảy xuống đáy lúc này là ném anh khỏi chỗ đang đọc.
+    if (justPrepended.current) {
+      justPrepended.current = false;
+      return;
+    }
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [msgs, busy]);
 
@@ -436,7 +505,26 @@ export default function Chat() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-7rem)]">
-      <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto space-y-3 pr-1"
+        onScroll={(e) => {
+          // Gần chạm đầu thì nối thêm tin cũ. loadOlder tự bỏ qua khi đang tải hoặc đã hết.
+          if (e.currentTarget.scrollTop < 80) void loadOlder();
+        }}
+      >
+        {/* Nút vừa là chỉ báo còn tin cũ, vừa là lối đi cho ai không quen cuộn. */}
+        {hasMore && (
+          <div className="flex justify-center py-1">
+            <button
+              className="rounded-full px-3 py-1 text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+              disabled={loadingMore}
+              onClick={() => void loadOlder()}
+            >
+              {loadingMore ? 'Đang tải…' : '↑ Xem tin cũ hơn'}
+            </button>
+          </div>
+        )}
         {msgs.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div

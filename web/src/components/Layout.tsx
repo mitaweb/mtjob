@@ -69,13 +69,22 @@ export default function Layout() {
   const initial = (user?.fullName || '?').trim().charAt(0).toUpperCase();
 
   // Số thông báo chưa đọc trên chuông. Dùng endpoint đếm (chỉ trả về con số) thay vì
-  // tải cả danh sách. Tải lại khi đổi trang nên đọc xong ở Inbox quay ra là số tự cập nhật.
+  // tải cả danh sách.
+  //
+  // Trước đây phụ thuộc vào `location.pathname` nên BẤM MENU NÀO CŨNG gọi máy chủ một
+  // lượt. Giờ chỉ tải khi vào app, khi rời trang Thông báo (lúc đó số vừa đổi thật), và
+  // mỗi phút một nhịp.
+  const onInbox = location.pathname === '/inbox';
   useEffect(() => {
     if (!user) return;
-    api<{ total: number }>('/notifications/unread-counts')
-      .then((r) => setUnread(r.total || 0))
-      .catch(() => undefined);
-  }, [user, location.pathname]);
+    const load = () =>
+      api<{ total: number }>('/notifications/unread-counts')
+        .then((r) => setUnread(r.total || 0))
+        .catch(() => undefined);
+    load();
+    const timer = setInterval(load, 60_000);
+    return () => clearInterval(timer);
+  }, [user, onInbox]);
 
   const sidebar = (
     <div className="flex h-full flex-col bg-white">

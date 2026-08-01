@@ -116,11 +116,25 @@ export function withRanks(scores: MemberScore[]): RankedMemberScore[] {
  */
 export async function memberWorkDetail(memberId: string, year: number, month: number) {
   const { start, end } = monthRange(year, month);
-  const [tasks, score, rank] = await Promise.all([
+
+  // MỘT lần quét bảng task cho cả điểm lẫn thứ hạng. Trước đây gọi memberScore rồi lại
+  // gọi ranking — cả hai đều quét lại cả tháng, tốn gấp đôi cho cùng một dữ liệu.
+  const [tasks, members] = await Promise.all([
     getDoneTasksForMemberRange(memberId, start, end),
-    memberScore(memberId, year, month),
-    ranking(year, month).then((r) => r.find((x) => x.memberId === memberId)?.rank ?? 0),
+    getActiveMembers(),
   ]);
+  const scores = await scoresFor(members, year, month);
+
+  // Bảng xếp hạng CHỈ gồm vai nhân viên, nhưng màn hình này mở được cho cả leader —
+  // nên điểm lấy từ `scores` (có mọi người), còn hạng thì tra trong bảng đã lọc.
+  const rankableIds = new Set(members.filter((x) => x.role === 'member').map((x) => x.id));
+  const rank =
+    withRanks(scores.filter((s) => rankableIds.has(s.memberId))).find((r) => r.memberId === memberId)
+      ?.rank ?? 0;
+  const score = scores.find((s) => s.memberId === memberId) ?? {
+    monthPoints: 0,
+    bonus: 0,
+  };
 
   const byDay = new Map<string, typeof tasks>();
   for (const t of tasks) {

@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../components/Toaster';
-import { Badge, EmptyState, SkeletonRows, type BadgeVariant } from '../components/ui';
+import { Badge, EmptyState, Skeleton, SkeletonRows, type BadgeVariant } from '../components/ui';
 import AsyncButton from '../components/AsyncButton';
+
+// Thư viện biểu đồ nặng 360KB — tải riêng để danh sách dự án và ô nhập chỉ số hiện trước.
+const ProjectProgressChart = lazy(() => import('../components/charts/ProjectProgressChart'));
+const KpiLineChart = lazy(() => import('../components/charts/KpiLineChart'));
 
 // Dự án đo KẾT QUẢ cam kết với khách (bao nhiêu tin nhắn, bao nhiêu khách mới) — khác
 // trang Điểm vốn đo công sức bỏ ra.
@@ -325,16 +328,9 @@ export default function Projects() {
       {isDirector && overview.length > 0 && (
         <div className="card">
           <h2 className="mb-2 font-semibold">Tiến độ các dự án đang chạy (kỳ hiện tại)</h2>
-          <div style={{ width: '100%', height: Math.max(160, overview.length * 44) }}>
-            <ResponsiveContainer>
-              <BarChart data={overview} layout="vertical" margin={{ left: 8, right: 24 }}>
-                <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 12 }} unit="%" />
-                <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(v: number) => `${v}%`} />
-                <Bar dataKey="percent" fill="#7367f0" radius={[0, 6, 6, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <Suspense fallback={<Skeleton className="h-40 w-full" />}>
+            <ProjectProgressChart data={overview} />
+          </Suspense>
         </div>
       )}
 
@@ -456,15 +452,10 @@ export default function Projects() {
                         </div>
 
                         {chartKpi?.id === k.id && (
-                          <div className="mt-3" style={{ width: '100%', height: 200 }}>
-                            <ResponsiveContainer>
-                              <LineChart data={k.series} margin={{ left: -20, right: 8 }}>
-                                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                                <YAxis tick={{ fontSize: 11 }} />
-                                <Tooltip />
-                                <Line type="monotone" dataKey="value" stroke="#7367f0" strokeWidth={2} dot={{ r: 3 }} />
-                              </LineChart>
-                            </ResponsiveContainer>
+                          <div className="mt-3">
+                            <Suspense fallback={<Skeleton className="h-[200px] w-full" />}>
+                              <KpiLineChart data={k.series} />
+                            </Suspense>
                           </div>
                         )}
 
