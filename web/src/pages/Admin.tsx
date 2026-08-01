@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
+import MemberTable from '../components/MemberTable';
 import { useToast } from '../components/Toaster';
-import type { User } from '../lib/types';
-
-type AdminMember = User & { active: boolean };
 
 /**
  * Chọn model: danh sách lấy từ API của nhà cung cấp, nhưng vẫn gõ tay được
@@ -72,8 +70,6 @@ function ModelPicker({
 
 export default function Admin() {
   const toast = useToast();
-  const [members, setMembers] = useState<AdminMember[]>([]);
-  const [pwd, setPwd] = useState<Record<string, string>>({});
   const [aiOn, setAiOn] = useState<boolean | null>(null);
   const [authUrl, setAuthUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -89,7 +85,7 @@ export default function Admin() {
   const [models, setModels] = useState<ModelOption[]>([]);
   const [modelsError, setModelsError] = useState('');
   const [loadingModels, setLoadingModels] = useState(false);
-  const [syncInfo, setSyncInfo] = useState<{ hrSheetUrl: string; taskSheetUrl: string }>({ hrSheetUrl: '', taskSheetUrl: '' });
+  const [syncInfo, setSyncInfo] = useState<{ taskSheetUrl: string }>({ taskSheetUrl: '' });
 
   interface Check {
     name: string;
@@ -126,16 +122,11 @@ export default function Admin() {
     autoCapture: boolean;
   }
 
-  async function loadMembers() {
-    const r = await api<{ members: AdminMember[] }>('/admin/members');
-    setMembers(r.members);
-  }
   useEffect(() => {
-    loadMembers().catch((e) => toast.error((e as Error).message));
     api<{ env: { gemini: boolean } }>('/health')
       .then((r) => setAiOn(!!r.env.gemini))
       .catch(() => setAiOn(null));
-    api<{ hrSheetUrl: string; taskSheetUrl: string }>('/admin/sync-info')
+    api<{ taskSheetUrl: string }>('/admin/sync-info')
       .then(setSyncInfo)
       .catch(() => undefined);
     api<AiInfo>('/admin/ai-info')
@@ -250,21 +241,6 @@ export default function Admin() {
     }
   }
 
-  async function sync() {
-    try {
-      const r = await api<{ imported: number; teams: string[]; deactivated: string[] }>('/admin/sync-members', {
-        method: 'POST',
-      });
-      const off = r.deactivated?.length
-        ? ` Ẩn ${r.deactivated.length} người đã nghỉ: ${r.deactivated.join(', ')}.`
-        : '';
-      toast.success(`Đã đồng bộ ${r.imported} thành viên. Teams: ${r.teams.join(', ')}.${off}`);
-      await loadMembers();
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  }
-
   async function syncCatalog() {
     try {
       const r = await api<CatalogSync>('/admin/sync-catalog', { method: 'POST' });
@@ -351,40 +327,15 @@ export default function Admin() {
     }
   }
 
-  async function setPassword(id: string) {
-    const password = pwd[id];
-    if (!password || password.length < 6) {
-      toast.error('Mật khẩu tối thiểu 6 ký tự.');
-      return;
-    }
-    try {
-      await api(`/admin/members/${id}/password`, { body: { password } });
-      toast.success('Đã đặt mật khẩu');
-      setPwd((p) => ({ ...p, [id]: '' }));
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  }
-
   return (
     <div className="space-y-4">
       <div className="card flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-lg font-bold">Quản trị</h1>
           <p className="text-sm text-slate-500">
-            Đồng bộ từ Google Sheet (cần share công khai): nhân sự (Họ tên · Chức vụ · Lương · BHXH…) và bảng điểm task (điểm = cột EXPERT).
+            Nhân sự và lương nhập thẳng ở bảng bên dưới. Bảng điểm task vẫn đồng bộ từ Google Sheet (điểm = cột EXPERT).
           </p>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-            {syncInfo.hrSheetUrl && (
-              <a
-                href={syncInfo.hrSheetUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="font-medium text-brand-700 underline hover:text-brand-800"
-              >
-                📝 Mở Sheet nhân sự để chỉnh sửa
-              </a>
-            )}
             {syncInfo.taskSheetUrl && (
               <a
                 href={syncInfo.taskSheetUrl}
@@ -398,10 +349,7 @@ export default function Admin() {
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <AsyncButton className="btn-primary" onClick={sync} busyLabel="Đang đồng bộ…">
-            Đồng bộ nhân sự
-          </AsyncButton>
-          <AsyncButton className="btn-ghost" onClick={syncCatalog} busyLabel="Đang đồng bộ…">
+          <AsyncButton className="btn-primary" onClick={syncCatalog} busyLabel="Đang đồng bộ…">
             Đồng bộ bảng điểm
           </AsyncButton>
           <AsyncButton className="btn-ghost" onClick={migrateDb} busyLabel="Đang cập nhật…">
@@ -652,49 +600,7 @@ export default function Admin() {
         )}
       </div>
 
-      <div className="card overflow-x-auto">
-        <h2 className="font-semibold mb-2">Thành viên ({members.filter((m) => m.active).length})</h2>
-        <table className="w-full text-sm">
-          <thead className="text-left text-slate-500">
-            <tr>
-              <th className="py-1">Họ tên</th>
-              <th>Tài khoản</th>
-              <th>Team</th>
-              <th>Vai trò</th>
-              <th>Đặt mật khẩu</th>
-            </tr>
-          </thead>
-          <tbody>
-            {members.filter((m) => m.active).map((m) => (
-              <tr key={m.id} className="border-t">
-                <td className="py-1">{m.fullName}</td>
-                <td className="font-mono text-xs font-semibold text-brand-700">{m.username}</td>
-                <td>{m.teamId}</td>
-                <td>{m.role}</td>
-                <td>
-                  <div className="flex gap-1">
-                    <input
-                      className="input py-1 text-xs w-28"
-                      placeholder="mật khẩu mới"
-                      value={pwd[m.id] || ''}
-                      onChange={(e) => setPwd((p) => ({ ...p, [m.id]: e.target.value }))}
-                    />
-                    <AsyncButton className="btn-ghost text-xs px-2 py-1" onClick={() => setPassword(m.id)} busyLabel="…">
-                      Lưu
-                    </AsyncButton>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {members.some((m) => !m.active) && (
-          <p className="mt-3 text-xs text-slate-400">
-            Đã nghỉ (ẩn): {members.filter((m) => !m.active).map((m) => m.fullName).join(', ')}. Thêm lại vào Google Sheet
-            rồi đồng bộ để khôi phục.
-          </p>
-        )}
-      </div>
+      <MemberTable />
     </div>
   );
 }

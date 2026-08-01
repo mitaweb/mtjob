@@ -57,7 +57,6 @@ npm run dev --prefix web        # PWA http://localhost:5173 (proxy /api -> 8080)
 | `npm test` | Unit test logic nghiệp vụ (Vitest) |
 | `npm run typecheck` | Kiểm tra kiểu TypeScript |
 | `npm run setup-db` | Tạo bảng + seed config/danh mục/ngày lễ/thành viên + admin |
-| `npm run sync-members` | Đồng bộ nhân sự từ Google Sheet nguồn (cần sheet share công khai) |
 | `npm run gemini-auth` | Lấy URL OAuth Google cho trợ lý Gemini |
 | `npm run job:daily` | Chạy tay báo cáo hằng ngày |
 | `npm run job:monthly` | Chạy tay tổng kết tháng (xếp hạng + công/lương) |
