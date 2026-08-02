@@ -33,6 +33,12 @@ export interface Party {
   note: string;
   active: boolean;
   nextDue?: string;
+  /** Tiền các kỳ TRƯỚC còn thiếu (đã trừ phần đã thu một phần). */
+  carryOver?: number;
+  /** Nợ cũ + kỳ này − đã thu kỳ này. */
+  totalDue?: number;
+  /** Các kỳ cũ còn thiếu, dạng YYYY-MM. */
+  unpaidMonths?: string[];
 }
 
 export interface FinanceEntry {

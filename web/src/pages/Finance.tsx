@@ -12,6 +12,8 @@ interface Summary {
   expense: number;
   profit: number;
   receivableTotal: number;
+  /** Nợ tồn từ các kỳ trước của mọi bên đang hoạt động. */
+  carryOverTotal?: number;
   entries: FinanceEntry[];
 }
 interface PayRow {
@@ -56,7 +58,8 @@ export default function Finance() {
   async function loadAll() {
     const [s, p, mb, py] = await Promise.all([
       api<Summary>(`/finance/summary?month=${ym}`),
-      api<{ parties: Party[] }>('/finance/parties'),
+      // Truyền tháng: nợ cũ phải tính tới đúng tháng anh đang xem, không phải tháng hiện tại.
+      api<{ parties: Party[] }>(`/finance/parties?month=${ym}`),
       api<{ members: Mem[] }>('/finance/members'),
       api<{ rows: PayRow[] }>(`/finance/payroll?${ymQuery()}`),
     ]);
@@ -168,8 +171,18 @@ export default function Finance() {
         <Stat label="Thu" value={vnd(sum?.income ?? 0)} cls="text-emerald-600" />
         <Stat label="Chi" value={vnd(sum?.expense ?? 0)} cls="text-rose-600" />
         <Stat label="Lãi / Lỗ" value={vnd(sum?.profit ?? 0)} cls={(sum?.profit ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'} />
-        <Stat label="Tổng phải thu/tháng" value={vnd(sum?.receivableTotal ?? 0)} cls="text-brand-600" />
+        <Stat
+          label={sum?.carryOverTotal ? 'Phải thu tháng này + nợ cũ' : 'Tổng phải thu/tháng'}
+          value={vnd((sum?.receivableTotal ?? 0) + (sum?.carryOverTotal ?? 0))}
+          cls="text-brand-600"
+        />
       </div>
+      {/* Nợ tồn nói riêng — con số này mới là tiền đang bị giữ ngoài công ty. */}
+      {!!sum?.carryOverTotal && (
+        <p className="-mt-1 text-xs text-slate-500">
+          Trong đó <b className="text-rose-600">{vnd(sum.carryOverTotal)}</b> là nợ các tháng trước chưa thu.
+        </p>
+      )}
 
       {/* Các bên */}
       <div className="card">
@@ -181,6 +194,8 @@ export default function Finance() {
               <tr>
                 <th className="py-1">Tên bên</th>
                 <th className="text-right">Phải thu</th>
+                <th className="text-right">Nợ cũ</th>
+                <th className="text-right">Tổng phải đòi</th>
                 <th className="text-center">Ngày thu</th>
                 <th>Hạn kế tiếp</th>
                 <th>Nhắc cho</th>
@@ -192,6 +207,17 @@ export default function Finance() {
                 <tr key={p.id} className="border-t">
                   <td className="py-1">{p.name}</td>
                   <td className="text-right">{vnd(p.receivable)}</td>
+                  {/* Nợ cũ = tiền các kỳ TRƯỚC còn thiếu. Rê chuột để xem thiếu tháng nào. */}
+                  <td className="text-right" title={(p.unpaidMonths || []).join(', ')}>
+                    {p.carryOver ? (
+                      <span className="font-medium text-rose-600">{vnd(p.carryOver)}</span>
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
+                  </td>
+                  <td className="text-right font-medium">
+                    {p.totalDue ? vnd(p.totalDue) : <span className="text-emerald-600">đã thu đủ</span>}
+                  </td>
                   <td className="text-center">{p.dueDay}</td>
                   <td>{p.nextDue}</td>
                   <td className="text-xs">

@@ -100,3 +100,26 @@ export async function upsertEntry(e: FinanceEntry): Promise<void> {
 export async function deleteEntry(id: string): Promise<void> {
   await q('DELETE FROM finance_entries WHERE entry_id = $1', [id]);
 }
+
+/**
+ * Tổng đã thu công nợ của MỌI bên, gom theo (bên, kỳ).
+ *
+ * Một lượt truy vấn cho cả bảng thay vì hỏi từng bên — với 16 bên là 16 lượt HTTP tới
+ * Neon, đủ làm trang Tài chính ì hẳn.
+ */
+export async function paidByPartyMonth(fromMonth: string): Promise<Record<string, Record<string, number>>> {
+  const rows = await q(
+    `SELECT party_id, month, SUM(amount)::int AS total
+     FROM finance_entries
+     WHERE kind = 'thu' AND party_id <> '' AND month >= $1
+     GROUP BY party_id, month`,
+    [fromMonth],
+  );
+  const out: Record<string, Record<string, number>> = {};
+  for (const r of rows) {
+    const pid = String(r.party_id || '');
+    if (!pid) continue;
+    (out[pid] ||= {})[String(r.month || '')] = Number(r.total || 0) || 0;
+  }
+  return out;
+}

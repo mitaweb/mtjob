@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { nextDueDateIso, daysUntil } from './finance.js';
+import { nextDueDateIso, daysUntil, debtMonths, computeDebt } from './finance.js';
 
 describe('nextDueDateIso', () => {
   it('lấy ngày thu trong tháng nếu chưa qua', () => {
@@ -19,5 +19,73 @@ describe('daysUntil', () => {
     expect(daysUntil('2026-06-20', '2026-06-15')).toBe(5);
     expect(daysUntil('2026-06-15', '2026-06-15')).toBe(0);
     expect(daysUntil('2026-06-10', '2026-06-15')).toBe(-5);
+  });
+});
+
+// Anh Tâm 1/8/2026: "ở phần công nợ nếu tháng trước chưa thu thì em cộng dồn vào để theo dõi."
+// Mốc theo dõi chốt là 2026-08 — trước đó coi như đã xử lý ngoài app.
+
+describe('debtMonths', () => {
+  it('liệt kê các kỳ từ mốc theo dõi tới tháng đang xem', () => {
+    expect(debtMonths('', '2026-10')).toEqual(['2026-08', '2026-09', '2026-10']);
+  });
+
+  it('KHÔNG lùi trước mốc dù bên đó bắt đầu từ lâu', () => {
+    expect(debtMonths('2024-01', '2026-09')).toEqual(['2026-08', '2026-09']);
+  });
+
+  it('bên mới vào sau thì tính từ tháng của bên đó', () => {
+    expect(debtMonths('2026-10', '2026-11')).toEqual(['2026-10', '2026-11']);
+  });
+
+  it('xem tháng trước mốc thì không có kỳ nào', () => {
+    expect(debtMonths('', '2026-07')).toEqual([]);
+  });
+
+  it('vắt qua năm vẫn đúng', () => {
+    expect(debtMonths('2026-11', '2027-01')).toEqual(['2026-11', '2026-12', '2027-01']);
+  });
+});
+
+describe('computeDebt', () => {
+  const base = { receivable: 21_000_000, startMonth: '', month: '2026-10' };
+
+  it('chưa thu hai tháng trước thì nợ cũ gấp đôi', () => {
+    const r = computeDebt({ ...base, paid: {} });
+    expect(r.carryOver).toBe(42_000_000); // 8 và 9
+    expect(r.thisMonth).toBe(21_000_000);
+    expect(r.total).toBe(63_000_000);
+    expect(r.unpaidMonths).toEqual(['2026-08', '2026-09']);
+  });
+
+  it('thu đủ các tháng trước thì không còn nợ cũ', () => {
+    const r = computeDebt({ ...base, paid: { '2026-08': 21_000_000, '2026-09': 21_000_000 } });
+    expect(r.carryOver).toBe(0);
+    expect(r.total).toBe(21_000_000);
+  });
+
+  it('THU MỘT PHẦN vẫn giữ lại phần còn thiếu', () => {
+    const r = computeDebt({ ...base, paid: { '2026-08': 10_000_000, '2026-09': 21_000_000 } });
+    expect(r.carryOver).toBe(11_000_000);
+    expect(r.unpaidMonths).toEqual(['2026-08']);
+  });
+
+  it('đã thu kỳ đang xem thì trừ khỏi tổng', () => {
+    const r = computeDebt({
+      ...base,
+      paid: { '2026-08': 21_000_000, '2026-09': 21_000_000, '2026-10': 21_000_000 },
+    });
+    expect(r.total).toBe(0);
+  });
+
+  it('thu dư (khách trả trước) không làm tổng âm', () => {
+    const r = computeDebt({ ...base, month: '2026-08', paid: { '2026-08': 50_000_000 } });
+    expect(r.total).toBe(0);
+  });
+
+  it('bên mới thêm giữa chừng không bị tính nợ các tháng chưa hợp tác', () => {
+    const r = computeDebt({ ...base, startMonth: '2026-10', paid: {} });
+    expect(r.carryOver).toBe(0);
+    expect(r.total).toBe(21_000_000);
   });
 });
