@@ -348,6 +348,7 @@ export default function AdminPayroll() {
               <table className="w-full text-sm">
                 <thead className="text-left text-slate-500">
                   <tr>
+                    <th className="py-1 w-8 text-right pr-2">#</th>
                     <th className="py-1">Ngày</th>
                     <th>Sáng</th>
                     <th>Chiều</th>
@@ -357,8 +358,10 @@ export default function AdminPayroll() {
                   </tr>
                 </thead>
                 <tbody>
-                  {records.map((a) => (
+                  {records.map((a, i) => (
                     <tr key={a.date} className="border-t">
+                      {/* Đánh số theo thứ tự đang hiển thị (mới nhất là 1) để dễ đối chiếu khi đọc cùng nhau. */}
+                      <td className="py-1 pr-2 text-right text-xs text-slate-400">{i + 1}</td>
                       <td className="py-1">{a.date}</td>
                       <td>{a.morningIn || '—'}–{a.morningOut || '—'}</td>
                       <td>{a.afternoonIn || '—'}–{a.afternoonOut || '—'}</td>
@@ -375,7 +378,7 @@ export default function AdminPayroll() {
                   ))}
                   {records.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="py-2 text-slate-500">
+                      <td colSpan={7} className="py-2 text-slate-500">
                         Chưa có ngày chấm công nào trong tháng.
                       </td>
                     </tr>

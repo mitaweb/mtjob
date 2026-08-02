@@ -63,12 +63,17 @@ export function monthRange(year: number, month: number): { start: string; end: s
 
 /** Format an ISO datetime as HH:mm in app TZ. */
 export function fmtHm(iso: string): string {
-  return dayjs(iso).tz(TZ).format('HH:mm');
+  // Trả rỗng khi không phải mốc thời gian thật. Chấm công duyệt online ghi cờ 'online'
+  // vào ô giờ vào (requests.service) để tính đủ công — đem format thẳng thì bảng lương
+  // hiện "Invalid Date". Không đoán giờ, chỉ để trống.
+  const d = dayjs(iso);
+  return d.isValid() ? d.tz(TZ).format('HH:mm') : '';
 }
 
 /** Format an ISO date/datetime as DD/MM/YYYY in app TZ. */
 export function fmtDate(iso: string): string {
-  return dayjs(iso).tz(TZ).format('DD/MM/YYYY');
+  const d = dayjs(iso);
+  return d.isValid() ? d.tz(TZ).format('DD/MM/YYYY') : '';
 }
 
 /**
