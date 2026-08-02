@@ -138,15 +138,26 @@ export default function PushDiag() {
             </div>
           ))}
           {res.ok && (
-            <div className="mt-1.5 space-y-1 text-xs text-slate-500">
-              <p>Báo gửi được mà máy vẫn im thì bấm tiếp nút 2 để khoanh vùng:</p>
+            <div className="mt-1.5 space-y-1.5 text-xs text-slate-500">
               <p>
-                <b>Nút 2 hiện được, nút 1 im</b> — máy chủ gửi tới nơi nhưng máy không nhận. Với Chrome trên
-                máy tính: mở Cài đặt Windows → Hệ thống → Thông báo, bật cho Google Chrome và tắt “Không làm
-                phiền”. Chrome cũng phải đang chạy (còn trong khay hệ thống) mới nhận được.
+                <b className="text-slate-700">Cả hai nút báo được mà màn hình vẫn im?</b> Nghĩa là máy chủ và
+                đường truyền đều tốt — Windows đang chặn khâu HIỆN. Làm theo thứ tự:
               </p>
               <p>
-                <b>Cả hai đều im</b> — trình duyệt hoặc hệ điều hành đang chặn hiển thị, không phải lỗi máy chủ.
+                <b>1. Bấm Win + N</b> mở Trung tâm thông báo. Thấy thông báo MTJOB nằm trong đó thì mọi thứ
+                đang chạy đúng, chỉ là banner không bật lên.
+              </p>
+              <p>
+                <b>2. Tắt Hỗ trợ tập trung</b>: Cài đặt → Hệ thống → Thông báo → tắt “Không làm phiền” và mọi
+                quy tắc tự động.
+              </p>
+              <p>
+                <b>3. Bật thông báo cho Chrome</b>: cũng ở trang đó, tìm Google Chrome trong danh sách và bật
+                lên, đồng thời bật “Hiện biểu ngữ thông báo”.
+              </p>
+              <p>
+                <b>4. Chrome phải đang chạy</b> (còn trong khay hệ thống) mới nhận được thông báo lúc anh
+                không mở app.
               </p>
               <p>
                 <b>iPhone</b>: phải mở app từ biểu tượng đã “Thêm vào Màn hình chính”; và vào Cài đặt → Thông

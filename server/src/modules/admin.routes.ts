@@ -16,6 +16,7 @@ import { upsertCatalogItem } from './catalog.repo.js';
 import { upsertHoliday } from './holidays.repo.js';
 import { upsertTeam, findTeam, getTeams } from './teams.repo.js';
 import { deleteMemberBlock, usernameTaken } from '../lib/hr.js';
+import { storageInfo } from './storage.service.js';
 import { vnUsername } from '../lib/people.js';
 import { getForMemberRange, saveAttendance } from './attendance.repo.js';
 import {
@@ -570,5 +571,18 @@ adminRouter.get(
     }
     const { getAuthUrl } = await import('../gemini/auth.js');
     res.json({ url: getAuthUrl() });
+  }),
+);
+
+/**
+ * Dung lượng hệ thống — anh Tâm 1/8/2026 muốn nhìn được ngay trong màn Quản trị.
+ *
+ * Neon gói miễn phí cho 512MB; chạm trần thì database chuyển sang chỉ đọc và cả app
+ * dừng ghi, không có cảnh báo nào trước. Bảng nào phình cũng hiện luôn để dọn đúng chỗ.
+ */
+adminRouter.get(
+  '/storage',
+  asyncHandler(async (_req, res) => {
+    res.json(await storageInfo());
   }),
 );

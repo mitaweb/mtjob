@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
 import MemberTable from '../components/MemberTable';
+import StorageCard from '../components/StorageCard';
 import { useToast } from '../components/Toaster';
 
 /**
@@ -599,6 +600,8 @@ export default function Admin() {
           </div>
         )}
       </div>
+
+      <StorageCard />
 
       <MemberTable />
     </div>
