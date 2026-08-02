@@ -32,16 +32,37 @@ export interface PushPayload {
 export interface PushResult {
   ok: boolean;
   gone: boolean; // 404/410 → subscription should be pruned
+  /** Mã HTTP dịch vụ đẩy trả về — 0 khi chưa gửi được. */
+  status?: number;
+  /** Lý do đọc được, để hiện lên màn hình chẩn đoán. */
+  error?: string;
+}
+
+/** Dịch mã lỗi của dịch vụ đẩy sang câu người dùng hiểu được. */
+function explain(status: number | undefined, raw: string): string {
+  if (status === 401 || status === 403) {
+    return 'Khoá VAPID không khớp với đăng ký cũ — máy chủ đã đổi khoá. Người dùng cần tắt rồi bật lại thông báo.';
+  }
+  if (status === 404 || status === 410) return 'Đăng ký đã hết hiệu lực (gỡ app hoặc xoá dữ liệu trình duyệt).';
+  if (status === 413) return 'Nội dung thông báo quá dài.';
+  if (status === 429) return 'Dịch vụ đẩy đang chặn vì gửi quá dày.';
+  return raw || 'Không rõ lý do';
 }
 
 export async function sendPush(sub: PushSub, payload: PushPayload): Promise<PushResult> {
-  if (!ensureConfigured()) return { ok: false, gone: false };
+  if (!ensureConfigured()) {
+    return { ok: false, gone: false, status: 0, error: 'Máy chủ chưa cấu hình VAPID.' };
+  }
   try {
     await webpush.sendNotification(sub as webpush.PushSubscription, JSON.stringify(payload));
-    return { ok: true, gone: false };
+    return { ok: true, gone: false, status: 201 };
   } catch (e) {
     const status = (e as { statusCode?: number }).statusCode;
-    return { ok: false, gone: status === 404 || status === 410 };
+    const raw = (e as { body?: string; message?: string }).body || (e as Error).message || '';
+    const error = explain(status, String(raw).slice(0, 200));
+    // GHI LOG. Trước đây lỗi bị nuốt sạch nên đẩy hỏng hàng tháng cũng không ai biết.
+    console.error(`[push] gửi thất bại (${status ?? 'không có mã'}): ${error}`);
+    return { ok: false, gone: status === 404 || status === 410, status: status ?? 0, error };
   }
 }
 
