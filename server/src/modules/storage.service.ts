@@ -9,39 +9,10 @@ import { q } from '../db/client.js';
 /** Ngưỡng cảnh báo: gói miễn phí của Neon là 512MB. */
 export const DB_LIMIT_BYTES = 512 * 1024 * 1024;
 
-export interface TableSize {
-  name: string;
-  bytes: number;
-  /** Số dòng ƯỚC LƯỢNG (Postgres thống kê nền, không đếm lại cả bảng). */
-  rows: number;
-}
-
 export interface StorageInfo {
   dbBytes: number;
   dbLimitBytes: number;
-  tables: TableSize[];
   blob: { bytes: number; files: number; available: boolean };
-}
-
-/** Dung lượng từng bảng + số dòng ước lượng, lớn trước. */
-export async function tableSizes(limit = 12): Promise<TableSize[]> {
-  const rows = await q(
-    `SELECT c.relname AS name,
-            pg_total_relation_size(c.oid)::bigint AS bytes,
-            COALESCE(s.n_live_tup, 0)::bigint AS rows
-     FROM pg_class c
-     JOIN pg_namespace n ON n.oid = c.relnamespace
-     LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
-     WHERE n.nspname = 'public' AND c.relkind = 'r'
-     ORDER BY bytes DESC
-     LIMIT $1`,
-    [limit],
-  );
-  return rows.map((r) => ({
-    name: String(r.name || ''),
-    bytes: Number(r.bytes || 0) || 0,
-    rows: Number(r.rows || 0) || 0,
-  }));
 }
 
 /**
@@ -75,15 +46,13 @@ async function blobUsage(): Promise<StorageInfo['blob']> {
 }
 
 export async function storageInfo(): Promise<StorageInfo> {
-  const [sizeRows, tables, blob] = await Promise.all([
+  const [sizeRows, blob] = await Promise.all([
     q('SELECT pg_database_size(current_database())::bigint AS bytes'),
-    tableSizes(),
     blobUsage(),
   ]);
   return {
     dbBytes: Number(sizeRows[0]?.bytes || 0) || 0,
     dbLimitBytes: DB_LIMIT_BYTES,
-    tables,
     blob,
   };
 }
