@@ -9,12 +9,13 @@ import {
   getEntries,
   addEntry,
   deleteEntry,
+  paidByPartyMonth,
   type Party,
 } from './finance.repo.js';
 import { collectReceivable } from './finance.service.js';
 import { payrollForMonth } from './payroll.service.js';
 import { getActiveMembers } from './members.repo.js';
-import { nextDueDateIso } from '../lib/finance.js';
+import { nextDueDateIso, computeDebt, DEBT_TRACK_FROM } from '../lib/finance.js';
 import { todayIso, nowTz } from '../lib/datetime.js';
 import { newId } from '../util/id.js';
 
@@ -34,11 +35,30 @@ function ym(req: { query: Record<string, unknown> }): string {
 financeRouter.get(
   '/parties',
   canView,
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
     const today = todayIso();
-    const parties = await getParties();
+    const month = ym(req);
+    const [parties, paid] = await Promise.all([getParties(), paidByPartyMonth(DEBT_TRACK_FROM)]);
+
     res.json({
-      parties: parties.map((p) => ({ ...p, nextDue: nextDueDateIso(p.dueDay, today) })),
+      debtFrom: DEBT_TRACK_FROM,
+      parties: parties.map((p) => {
+        const debt = computeDebt({
+          receivable: p.receivable,
+          // Bên vào sau mốc chung thì tính từ tháng của bên đó, khỏi đội nợ những kỳ
+          // chưa hợp tác.
+          startMonth: (p.startDate || '').slice(0, 7),
+          month,
+          paid: paid[p.id] || {},
+        });
+        return {
+          ...p,
+          nextDue: nextDueDateIso(p.dueDay, today),
+          carryOver: debt.carryOver,
+          totalDue: debt.total,
+          unpaidMonths: debt.unpaidMonths,
+        };
+      }),
     });
   }),
 );
@@ -111,8 +131,25 @@ financeRouter.get(
     const entries = await getEntries(month);
     const income = entries.filter((e) => e.kind === 'thu').reduce((s, e) => s + e.amount, 0);
     const expense = entries.filter((e) => e.kind === 'chi').reduce((s, e) => s + e.amount, 0);
-    const receivableTotal = (await getParties()).filter((p) => p.active).reduce((s, p) => s + p.receivable, 0);
-    res.json({ month, income, expense, profit: income - expense, receivableTotal, entries });
+    const parties = (await getParties()).filter((p) => p.active);
+    const receivableTotal = parties.reduce((s, p) => s + p.receivable, 0);
+
+    // Nợ tồn từ các kỳ trước — tách khỏi `receivableTotal` (vốn là tiền của riêng kỳ này)
+    // để màn hình nói rõ đâu là tiền tháng này, đâu là tiền còn treo lại.
+    const paid = await paidByPartyMonth(DEBT_TRACK_FROM);
+    const carryOverTotal = parties.reduce(
+      (s, p) =>
+        s +
+        computeDebt({
+          receivable: p.receivable,
+          startMonth: (p.startDate || '').slice(0, 7),
+          month,
+          paid: paid[p.id] || {},
+        }).carryOver,
+      0,
+    );
+
+    res.json({ month, income, expense, profit: income - expense, receivableTotal, carryOverTotal, entries });
   }),
 );
 
