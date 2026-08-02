@@ -145,17 +145,15 @@ export default function PushDiag() {
               </p>
               <p>
                 <b>1. Bấm Win + N</b> mở Trung tâm thông báo. Thấy thông báo MTJOB nằm trong đó thì mọi thứ
-                đang chạy đúng, chỉ là banner không bật lên — nguyên nhân gần như luôn là mục 2.
+                đang chạy đúng, chỉ là banner không bật lên.
               </p>
               <p>
-                <b>2. Tắt Không làm phiền</b> (máy tiếng Anh ghi <i>“Do not disturb is on”</i> ngay đầu Trung
-                tâm thông báo). Cài đặt → Hệ thống → Thông báo → gạt tắt, và mở mục “Bật tự động” để tắt các
-                quy tắc theo giờ.
+                <b>2. Tắt Hỗ trợ tập trung</b>: Cài đặt → Hệ thống → Thông báo → tắt “Không làm phiền” và mọi
+                quy tắc tự động.
               </p>
               <p>
-                <b>3. Bật thông báo cho Chrome</b>: cũng ở trang đó, tìm Google Chrome và bật lên, kèm “Hiện
-                biểu ngữ thông báo”. Muốn giữ Không làm phiền mà vẫn nhận được MTJOB thì đặt Chrome thành
-                <i>ưu tiên</i> trong phần “Đặt thông báo ưu tiên”.
+                <b>3. Bật thông báo cho Chrome</b>: cũng ở trang đó, tìm Google Chrome trong danh sách và bật
+                lên, đồng thời bật “Hiện biểu ngữ thông báo”.
               </p>
               <p>
                 <b>4. Chrome phải đang chạy</b> (còn trong khay hệ thống) mới nhận được thông báo lúc anh
