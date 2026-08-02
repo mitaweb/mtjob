@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import { currentEndpoint } from '../lib/push';
+import { currentEndpoint, showLocalTest, swStatus } from '../lib/push';
 import AsyncButton from './AsyncButton';
 
 // Khối tự chẩn thông báo đẩy.
@@ -29,6 +29,8 @@ export default function PushDiag() {
   const [res, setRes] = useState<TestRes | null>(null);
   const [err, setErr] = useState('');
   const [myTail, setMyTail] = useState('');
+  const [sw, setSw] = useState('');
+  const [local, setLocal] = useState('');
 
   useEffect(() => {
     if (!open || diag) return;
@@ -36,6 +38,7 @@ export default function PushDiag() {
       .then(setDiag)
       .catch((e) => setErr((e as Error).message));
     currentEndpoint().then((ep) => setMyTail(ep.slice(-8)));
+    swStatus().then(setSw);
   }, [open, diag]);
 
   async function guiThu() {
@@ -89,15 +92,33 @@ export default function PushDiag() {
               {d.ua && <span className="text-slate-400"> ({d.ua})</span>}
             </div>
           ))}
-          <div className="pt-1 text-xs text-slate-400">Địa chỉ liên hệ gửi kèm: {diag.subject}</div>
+          <div className="pt-1 text-xs text-slate-400">
+            Địa chỉ liên hệ gửi kèm: {diag.subject}
+            {sw && <> · Bộ nhận thông báo: {sw}</>}
+          </div>
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2 pt-1">
-        <AsyncButton className="btn-primary px-3 py-1 text-sm" busyLabel="Đang gửi…" onClick={guiThu}>
-          Gửi thử về máy này
-        </AsyncButton>
-        <span className="text-xs text-slate-500">Gửi một thông báo thật, đi đúng đường như mọi thông báo khác.</span>
+      <div className="space-y-2 pt-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <AsyncButton className="btn-primary px-3 py-1 text-sm" busyLabel="Đang gửi…" onClick={guiThu}>
+            1. Gửi thử qua máy chủ
+          </AsyncButton>
+          <span className="text-xs text-slate-500">Đi đúng đường như mọi thông báo khác.</span>
+        </div>
+        {/* Phép thử tách bạch: hiện thẳng tại máy, không qua mạng. So hai kết quả là biết
+            hỏng ở đường đẩy hay ở quyền/cài đặt của chính máy này. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <AsyncButton
+            className="btn-ghost px-3 py-1 text-sm"
+            busyLabel="…"
+            onClick={() => showLocalTest().then((r) => setLocal(`${r.ok ? '✅' : '❌'} ${r.message}`))}
+          >
+            2. Hiện thử ngay tại máy
+          </AsyncButton>
+          <span className="text-xs text-slate-500">Không qua máy chủ — để biết máy có chịu hiện không.</span>
+        </div>
+        {local && <div className="text-sm text-slate-700">{local}</div>}
       </div>
 
       {res && (
@@ -117,11 +138,21 @@ export default function PushDiag() {
             </div>
           ))}
           {res.ok && (
-            <p className="mt-1.5 text-xs text-slate-500">
-              Gửi được rồi mà điện thoại vẫn im: kiểm tra phần Cài đặt → Thông báo của máy xem có đang tắt
-              hoặc để chế độ im lặng cho trình duyệt không. Riêng iPhone phải mở app từ biểu tượng đã
-              “Thêm vào Màn hình chính” thì mới nhận được.
-            </p>
+            <div className="mt-1.5 space-y-1 text-xs text-slate-500">
+              <p>Báo gửi được mà máy vẫn im thì bấm tiếp nút 2 để khoanh vùng:</p>
+              <p>
+                <b>Nút 2 hiện được, nút 1 im</b> — máy chủ gửi tới nơi nhưng máy không nhận. Với Chrome trên
+                máy tính: mở Cài đặt Windows → Hệ thống → Thông báo, bật cho Google Chrome và tắt “Không làm
+                phiền”. Chrome cũng phải đang chạy (còn trong khay hệ thống) mới nhận được.
+              </p>
+              <p>
+                <b>Cả hai đều im</b> — trình duyệt hoặc hệ điều hành đang chặn hiển thị, không phải lỗi máy chủ.
+              </p>
+              <p>
+                <b>iPhone</b>: phải mở app từ biểu tượng đã “Thêm vào Màn hình chính”; và vào Cài đặt → Thông
+                báo → MT DIGITAL bật Cho phép, chọn kiểu cảnh báo Biểu ngữ.
+              </p>
+            </div>
           )}
         </div>
       )}

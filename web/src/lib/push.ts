@@ -42,6 +42,46 @@ export async function currentEndpoint(): Promise<string> {
   }
 }
 
+/**
+ * Hiện một thông báo NGAY tại máy này, KHÔNG đi qua máy chủ.
+ *
+ * Đây là phép thử tách bạch: nếu cách này hiện được mà "gửi thử" từ máy chủ lại im, thì
+ * hỏng ở đường đẩy. Nếu ngay cả cách này cũng im thì hỏng ở quyền thông báo hoặc ở cài
+ * đặt của hệ điều hành — không phải lỗi máy chủ.
+ */
+export async function showLocalTest(): Promise<{ ok: boolean; message: string }> {
+  if (!('serviceWorker' in navigator) || !('Notification' in window)) {
+    return { ok: false, message: 'Trình duyệt không hỗ trợ thông báo.' };
+  }
+  if (Notification.permission !== 'granted') {
+    return { ok: false, message: `Trình duyệt chưa cho phép hiện thông báo (${Notification.permission}).` };
+  }
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    // Lấy bản service worker mới nhất trước khi thử — máy có thể còn giữ bản cũ.
+    await reg.update().catch(() => undefined);
+    await reg.showNotification('MTJOB — thử tại chỗ 🔔', {
+      body: 'Thông báo này hiện thẳng từ máy bạn, không qua máy chủ.',
+      icon: '/icon.svg',
+      tag: 'test',
+      data: { url: '/inbox' },
+    });
+    return { ok: true, message: 'Đã yêu cầu hiện thông báo. Nhìn góc màn hình xem có không.' };
+  } catch (e) {
+    return { ok: false, message: `Không hiện được: ${(e as Error).message}` };
+  }
+}
+
+/** Trạng thái service worker — bản cũ còn chạy thì thông báo có thể thiếu tính năng mới. */
+export async function swStatus(): Promise<string> {
+  if (!('serviceWorker' in navigator)) return 'trình duyệt không hỗ trợ';
+  const reg = await navigator.serviceWorker.getRegistration();
+  if (!reg) return 'chưa đăng ký';
+  if (reg.waiting) return 'có bản mới đang chờ — tải lại trang để dùng';
+  if (reg.active) return 'đang chạy';
+  return 'đang cài';
+}
+
 export async function enablePush(): Promise<{ ok: boolean; message: string }> {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     return { ok: false, message: 'Trình duyệt không hỗ trợ thông báo đẩy.' };
