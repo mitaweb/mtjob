@@ -36,7 +36,8 @@ Video chỉ dán link nên không tốn Blob; chỉ ảnh + PDF được tải l
 | `DATABASE_URL` | (tự có khi connect Neon) |
 | `JWT_SECRET` | chuỗi ngẫu nhiên dài |
 | `CRON_SECRET` | chuỗi ngẫu nhiên — Vercel tự gắn vào header khi gọi cron |
-| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | từ `npx web-push generate-vapid-keys` |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | từ `npx web-push generate-vapid-keys` |
+| `VAPID_SUBJECT` | địa chỉ liên hệ THẬT (`https://job.mtdigital.vn`). Apple trả 403 nếu là tên miền giả như `.local`; Google thì bỏ qua nên rất dễ tưởng đã chạy tốt |
 | `BLOB_READ_WRITE_TOKEN` | tự có khi tạo Blob store (xem bước 3b) — dùng cho "Lưu ý khách hàng" (ảnh/PDF) |
 | *(AI — tuỳ chọn)* `GEMINI_API_KEY` | key AI Studio (cách đơn giản nhất trên Vercel) |
 | *(AI — OAuth)* `GOOGLE_OAUTH_CLIENT_ID/SECRET`, `GEMINI_OAUTH_REFRESH_TOKEN`, `GOOGLE_OAUTH_REDIRECT` | redirect = `https://<domain>/api/oauth2/callback` |

@@ -26,6 +26,22 @@ export async function pushStatus(): Promise<PushStatus> {
   }
 }
 
+/**
+ * Endpoint đăng ký của CHÍNH máy đang mở app.
+ *
+ * Màn chẩn đoán gửi thử tới mọi thiết bị đã đăng ký, nên phải chỉ rõ dòng nào là máy
+ * đang cầm — không thì "gửi được" mà máy này im vẫn không biết là đúng hay sai.
+ */
+export async function currentEndpoint(): Promise<string> {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return '';
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    return (await reg.pushManager.getSubscription())?.endpoint || '';
+  } catch {
+    return '';
+  }
+}
+
 export async function enablePush(): Promise<{ ok: boolean; message: string }> {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     return { ok: false, message: 'Trình duyệt không hỗ trợ thông báo đẩy.' };

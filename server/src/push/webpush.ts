@@ -2,19 +2,50 @@ import webpush from 'web-push';
 
 let configured: boolean | null = null;
 
+/** Mặc định an toàn: tên miền thật của app, dùng khi env chưa khai hoặc khai sai. */
+const FALLBACK_SUBJECT = 'https://job.mtdigital.vn';
+
+/**
+ * VAPID subject phải là địa chỉ liên hệ THẬT — `https://<tên miền>` hoặc `mailto:` với
+ * tên miền có thật.
+ *
+ * Apple (web.push.apple.com) kiểm chặt chỗ này và trả **403** nếu sai; Google (FCM) thì
+ * bỏ qua. Đó đúng là triệu chứng anh Tâm gặp 1/8/2026: máy Windows qua FCM gửi được,
+ * iPhone qua Apple lỗi 403 — trong khi mặc định cũ là `mailto:admin@mtjob.local`, mà
+ * `.local` không phải tên miền có thật.
+ */
+export function normalizeSubject(raw: string | undefined): string {
+  const s = (raw || '').trim();
+  if (/^https:\/\/[^\s/]+\.[^\s/]+/i.test(s)) return s;
+  if (/^mailto:[^\s@]+@[^\s@.]+\.[a-z]{2,}$/i.test(s)) {
+    // Loại các tên miền chỉ dùng nội bộ — Apple không chấp nhận.
+    const domain = s.split('@')[1]!.toLowerCase();
+    if (!/\.(local|localhost|test|invalid|example)$/.test(domain)) return s;
+  }
+  return FALLBACK_SUBJECT;
+}
+
 function ensureConfigured(): boolean {
   if (configured !== null) return configured;
   const pub = process.env.VAPID_PUBLIC_KEY;
   const priv = process.env.VAPID_PRIVATE_KEY;
-  const subject = process.env.VAPID_SUBJECT || 'mailto:admin@mtjob.local';
   if (!pub || !priv) {
     console.warn('[push] VAPID keys chưa cấu hình — Web Push bị tắt.');
     configured = false;
     return false;
   }
+  const subject = normalizeSubject(process.env.VAPID_SUBJECT);
+  if (subject !== (process.env.VAPID_SUBJECT || '').trim()) {
+    console.warn(`[push] VAPID_SUBJECT không hợp lệ với Apple — dùng thay bằng ${subject}`);
+  }
   webpush.setVapidDetails(subject, pub, priv);
   configured = true;
   return true;
+}
+
+/** Subject đang thực sự dùng — hiện ở màn hình chẩn đoán. */
+export function vapidSubject(): string {
+  return normalizeSubject(process.env.VAPID_SUBJECT);
 }
 
 export interface PushSub {

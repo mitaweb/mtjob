@@ -11,7 +11,7 @@ import {
   getSubscriptions,
   deleteSubscription,
 } from './notifications.repo.js';
-import { vapidPublicKey, sendPush } from '../push/webpush.js';
+import { vapidPublicKey, vapidSubject, sendPush } from '../push/webpush.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
 
@@ -100,6 +100,9 @@ notificationsRouter.get(
     const subs = await getSubscriptions(req.user!.sub);
     res.json({
       serverReady: !!vapidPublicKey(),
+      // Apple từ chối 403 nếu subject không phải địa chỉ thật — hiện ra để lần sau
+      // nhìn phát biết, khỏi phải mò.
+      subject: vapidSubject(),
       deviceCount: subs.length,
       devices: subs.map((s) => ({
         // Cắt endpoint: đủ để phân biệt máy, không lộ nguyên khoá đẩy.
