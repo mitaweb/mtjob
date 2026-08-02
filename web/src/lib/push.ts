@@ -65,8 +65,24 @@ export async function showLocalTest(): Promise<{ ok: boolean; message: string }>
       icon: '/icon.svg',
       tag: 'test',
       data: { url: '/inbox' },
+      // Ở lại tới khi người dùng tự đóng. Không có cờ này thì Windows cho hiện vài giây
+      // rồi cất vào Trung tâm thông báo — nhìn không kịp là tưởng không có gì.
+      requireInteraction: true,
     });
-    return { ok: true, message: 'Đã yêu cầu hiện thông báo. Nhìn góc màn hình xem có không.' };
+
+    // Phép kiểm quyết định: hỏi ngược trình duyệt xem thông báo có THẬT SỰ tồn tại không.
+    // Có mà không thấy trên màn hình = Windows đang chặn phần hiện, không phải app hỏng.
+    const live = await reg.getNotifications({ tag: 'test' });
+    return live.length > 0
+      ? {
+          ok: true,
+          message:
+            'Trình duyệt ĐÃ tạo thông báo (kiểm chứng được). Không thấy trên màn hình thì Windows đang chặn phần hiển thị — xem hướng dẫn bên dưới.',
+        }
+      : {
+          ok: false,
+          message: 'Trình duyệt nhận lệnh nhưng KHÔNG tạo được thông báo. Quyền đang bị chặn ở tầng trình duyệt.',
+        };
   } catch (e) {
     return { ok: false, message: `Không hiện được: ${(e as Error).message}` };
   }
