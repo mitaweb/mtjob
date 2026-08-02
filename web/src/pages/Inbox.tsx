@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { enablePush, pushStatus, type PushStatus } from '../lib/push';
 import { useToast } from '../components/Toaster';
 import { Badge, EmptyState, SkeletonRows } from '../components/ui';
+import PushDiag from '../components/PushDiag';
 import type { NotificationItem } from '../lib/types';
 
 // Gom thông báo theo nhóm để không bị trôi lẫn lộn — duyệt đơn là nhóm ồn nhất nên tách riêng.
@@ -171,6 +172,8 @@ export default function Inbox() {
           </button>
         )}
       </div>
+
+      <PushDiag />
 
       {/* Tabs theo nhóm — duyệt đơn tách riêng cho khỏi lẫn với báo cáo và nhắc hẹn */}
       <div className="flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1">
