@@ -25,6 +25,7 @@ import {
   canWriteEntry,
   entryWindowOpen,
   openEntryDates,
+  projectProgress,
   type KpiPeriod,
 } from '../lib/kpi.js';
 import { getHolidaySet } from './holidays.repo.js';
@@ -89,14 +90,22 @@ projectsRouter.get(
     res.json({
       projects: visible.map((p) => {
         const own = activeKpis.filter((k) => k.projectId === p.id);
-        const percents = own.map(
-          (k) => progressOf(entries.filter((e) => e.kpiId === k.id), k, today).percent,
+        // Chỉ số CHƯA đặt mục tiêu không đo được tiến độ — gộp vào trung bình sẽ kéo con
+        // số đứng im dù nhập bao nhiêu. `projectProgress` loại chúng ra và đếm riêng.
+        const prog = projectProgress(
+          own.map((k) => ({
+            percent: progressOf(entries.filter((e) => e.kpiId === k.id), k, today).percent,
+            target: k.target,
+          })),
         );
         return {
           ...p,
           kpiCount: own.length,
-          // Tiến độ tổng = trung bình % các chỉ số của kỳ đang chạy.
-          percent: percents.length ? Math.round(percents.reduce((s, x) => s + x, 0) / percents.length) : 0,
+          percent: prog.percent,
+          /** Bao nhiêu chỉ số thực sự được tính vào phần trăm. */
+          measured: prog.counted,
+          /** Bao nhiêu chỉ số còn thiếu mục tiêu — màn hình nhắc leader đặt nốt. */
+          noTarget: prog.noTarget,
         };
       }),
     });

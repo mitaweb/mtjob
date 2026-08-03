@@ -40,6 +40,10 @@ interface ProjectRow {
   note: string;
   kpiCount: number;
   percent: number;
+  /** Số chỉ số thực sự được tính vào phần trăm (có đặt mục tiêu). */
+  measured?: number;
+  /** Số chỉ số chưa đặt mục tiêu — chưa đo được tiến độ. */
+  noTarget?: number;
 }
 
 interface Kpi {
@@ -166,7 +170,9 @@ export default function Projects() {
   async function openProject(p: ProjectRow) {
     try {
       const r = await api<{ project: ProjectRow; kpis: Kpi[] }>(`/projects/${p.id}`);
-      setOpen({ project: p, kpis: r.kpis });
+      // Giữ phần trăm từ danh sách (route chi tiết không tính), còn lại lấy bản mới nhất
+      // từ máy chủ — sửa tên hay đổi khách xong mở lại phải thấy ngay.
+      setOpen({ project: { ...p, ...r.project }, kpis: r.kpis });
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -370,11 +376,22 @@ export default function Projects() {
                     {STATUS[p.status]?.label || p.status}
                   </Badge>
                 </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <Bar100 percent={p.percent} />
-                  <span className="w-12 shrink-0 text-right text-sm font-medium text-slate-700">{p.percent}%</span>
+                {/* Chưa chỉ số nào có mục tiêu thì 0% là vô nghĩa — nói thẳng ra thay vì
+                    để anh tưởng nhập số mà tiến độ không nhúc nhích. */}
+                {p.measured === 0 && p.kpiCount > 0 ? (
+                  <div className="mt-2 text-xs text-amber-600">Chưa đặt mục tiêu nên chưa đo được tiến độ</div>
+                ) : (
+                  <div className="mt-2 flex items-center gap-2">
+                    <Bar100 percent={p.percent} />
+                    <span className="w-12 shrink-0 text-right text-sm font-medium text-slate-700">{p.percent}%</span>
+                  </div>
+                )}
+                <div className="mt-1 text-xs text-slate-400">
+                  {p.kpiCount} chỉ số
+                  {!!p.noTarget && p.measured !== 0 && (
+                    <span className="text-amber-600"> · {p.noTarget} chưa có mục tiêu</span>
+                  )}
                 </div>
-                <div className="mt-1 text-xs text-slate-400">{p.kpiCount} chỉ số</div>
               </button>
             ))}
           </div>

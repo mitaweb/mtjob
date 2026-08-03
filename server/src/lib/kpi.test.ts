@@ -7,6 +7,7 @@ import {
   entryWindowOpen,
   canWriteEntry,
   openEntryDates,
+  projectProgress,
   type KpiEntryLike,
 } from './kpi.js';
 
@@ -198,5 +199,37 @@ describe('openEntryDates', () => {
   it('ngày cuối cùng luôn là hôm nay', () => {
     const d = openEntryDates('2026-08-06');
     expect(d[d.length - 1]).toBe('2026-08-06');
+  });
+});
+
+// Anh Tâm 3/8/2026: "nhập chỉ số xong thì tiến độ dự án chưa cập nhật". Gốc là chỉ số
+// để trống mục tiêu luôn ra 0% mà vẫn bị gộp vào trung bình, kéo con số đứng yên.
+
+describe('projectProgress', () => {
+  it('bỏ qua chỉ số CHƯA đặt mục tiêu — đúng ca anh Tâm gặp', () => {
+    const r = projectProgress([
+      { percent: 100, target: 500 },
+      { percent: 0, target: 0 }, // chưa đặt mục tiêu
+    ]);
+    expect(r.percent).toBe(100); // trước đây ra 50 — nhập bao nhiêu cũng gần như đứng im
+    expect(r.counted).toBe(1);
+    expect(r.noTarget).toBe(1);
+  });
+
+  it('trung bình các chỉ số có mục tiêu', () => {
+    expect(projectProgress([{ percent: 80, target: 10 }, { percent: 40, target: 20 }]).percent).toBe(60);
+  });
+
+  it('chưa chỉ số nào có mục tiêu thì báo rõ, không phải 0% vì kém', () => {
+    const r = projectProgress([{ percent: 0, target: 0 }, { percent: 0, target: 0 }]);
+    expect(r).toEqual({ percent: 0, counted: 0, noTarget: 2 });
+  });
+
+  it('dự án chưa có chỉ số nào', () => {
+    expect(projectProgress([])).toEqual({ percent: 0, counted: 0, noTarget: 0 });
+  });
+
+  it('vượt mục tiêu vẫn giữ số thật, không cắt về 100', () => {
+    expect(projectProgress([{ percent: 140, target: 10 }]).percent).toBe(140);
   });
 });

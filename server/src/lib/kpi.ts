@@ -113,13 +113,6 @@ export function seriesFor(
   return out;
 }
 
-/**
- * Ngày `date` còn nhập/sửa số được không?
- *
- * Anh Tâm chốt 28/7/2026: số của ngày D sửa được trong ngày D và cả ngày D+1 — vì có
- * chỉ số hôm nay tới mai mới ra kết quả. Hết ngày D+1 là khoá vĩnh viễn.
- * Ngày tương lai cũng đóng: không ai biết trước số của ngày mai.
- */
 /** Ngày làm việc kế tiếp sau `date` — bỏ qua T7, CN và ngày lễ. */
 function ngayLamViecKeTiep(date: string, holidays: Set<string>): string {
   let d = dayjs(date).add(1, 'day');
@@ -182,4 +175,30 @@ export function openEntryDates(today: string, holidays: Set<string> = new Set())
   }
   out.push(t.format('YYYY-MM-DD'));
   return out;
+}
+
+export interface ProjectProgress {
+  /** Trung bình % các chỉ số CÓ mục tiêu. */
+  percent: number;
+  /** Số chỉ số đã tính vào trung bình. */
+  counted: number;
+  /** Số chỉ số chưa đặt mục tiêu — không đo được tiến độ. */
+  noTarget: number;
+}
+
+/**
+ * Tiến độ tổng của một dự án.
+ *
+ * CHỈ tính trung bình trên những chỉ số CÓ mục tiêu. Anh Tâm 3/8/2026 báo "nhập chỉ số
+ * xong thì tiến độ dự án chưa cập nhật" — gốc là chỉ số để trống mục tiêu luôn ra 0%, và
+ * bị gộp vào trung bình. Dự án có một chỉ số đạt 100% và một chỉ số chưa đặt mục tiêu thì
+ * ra 50%: con số đó không nói lên điều gì, mà nhập thêm bao nhiêu cũng gần như không nhúc
+ * nhích — nhìn cứ như hệ thống không ghi nhận.
+ */
+export function projectProgress(percents: Array<{ percent: number; target: number }>): ProjectProgress {
+  const coMucTieu = percents.filter((p) => (Number(p.target) || 0) > 0);
+  const noTarget = percents.length - coMucTieu.length;
+  if (coMucTieu.length === 0) return { percent: 0, counted: 0, noTarget };
+  const tong = coMucTieu.reduce((s, p) => s + (Number(p.percent) || 0), 0);
+  return { percent: Math.round(tong / coMucTieu.length), counted: coMucTieu.length, noTarget };
 }
