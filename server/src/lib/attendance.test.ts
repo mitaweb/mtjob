@@ -6,6 +6,7 @@ import {
   isLate,
   dayFractionFromShifts,
   fractionForScope,
+  locationVerdict,
   DEFAULT_SHIFTS,
 } from './attendance.js';
 
@@ -85,5 +86,41 @@ describe('fractionForScope', () => {
     expect(fractionForScope('full')).toBe(1);
     expect(fractionForScope('half_am')).toBe(0.5);
     expect(fractionForScope('half_pm')).toBe(0.5);
+  });
+});
+
+describe('locationVerdict', () => {
+  const R = 300;
+
+  it('đứng trong văn phòng, đo chính xác → cho chấm', () => {
+    expect(locationVerdict(20, 15, R)).toBe('ok');
+  });
+
+  it('trừ sai số trước khi so — đứng ngay cửa không bị phạt oan', () => {
+    // Đo 350m nhưng sai số 100m: vị trí thật có thể là 250m, vẫn trong vùng.
+    expect(locationVerdict(350, 100, R)).toBe('ok');
+  });
+
+  it('thật sự ở xa thì vẫn chặn', () => {
+    expect(locationVerdict(2000, 50, R)).toBe('too_far');
+  });
+
+  it('WiFi cho sai số khổng lồ → KHÔNG kết luận là ở xa', () => {
+    // Đúng ca anh Tâm gặp: 6121m nhưng sai số hàng nghìn mét.
+    expect(locationVerdict(6121, 5000, R)).toBe('inaccurate');
+  });
+
+  it('sai số vượt ngưỡng thì luôn là không đo được, dù đo ra gần', () => {
+    expect(locationVerdict(50, 900, R)).toBe('inaccurate');
+  });
+
+  it('máy không báo sai số thì so thẳng khoảng cách như cũ', () => {
+    expect(locationVerdict(100, 0, R)).toBe('ok');
+    expect(locationVerdict(500, 0, R)).toBe('too_far');
+  });
+
+  it('sai số âm hoặc không hợp lệ được bỏ qua', () => {
+    expect(locationVerdict(100, -5, R)).toBe('ok');
+    expect(locationVerdict(100, NaN, R)).toBe('ok');
   });
 });

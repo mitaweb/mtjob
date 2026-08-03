@@ -88,3 +88,29 @@ export function dayFractionFromShifts(m: {
 export function fractionForScope(scope: 'half_am' | 'half_pm' | 'full'): number {
   return scope === 'full' ? 1 : 0.5;
 }
+
+/**
+ * Sai số định vị TỐI ĐA còn tin được (mét).
+ *
+ * Anh Tâm 3/8/2026: máy tính nối WiFi báo cách công ty 6121m trong khi đang ngồi ở văn
+ * phòng. Máy tính không có chip GPS nên trình duyệt định vị bằng WiFi/IP — ra vị trí trạm
+ * của nhà mạng, lệch hàng km. Sai số lớn hơn ngưỡng này thì con số khoảng cách vô nghĩa,
+ * không được dùng để kết luận gì.
+ */
+export const MAX_ACCURACY_M = 200;
+
+export type LocationVerdict = 'ok' | 'too_far' | 'inaccurate';
+
+/**
+ * Kết luận về vị trí chấm công.
+ *
+ * Trừ sai số trước khi so bán kính: đo được 350m với sai số 100m nghĩa là vị trí thật
+ * nằm đâu đó trong khoảng 250–450m, nên vẫn có thể đang ở trong vùng cho phép. Bắt bẻ
+ * đúng con số đo được là phạt oan người đứng ngay cửa văn phòng.
+ */
+export function locationVerdict(distM: number, accuracyM: number, radiusM: number): LocationVerdict {
+  const acc = Number.isFinite(accuracyM) && accuracyM > 0 ? accuracyM : 0;
+  // Không có số sai số (máy cũ) thì xử như trước: so thẳng khoảng cách.
+  if (acc > MAX_ACCURACY_M) return 'inaccurate';
+  return distM - acc <= radiusM ? 'ok' : 'too_far';
+}

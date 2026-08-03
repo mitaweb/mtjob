@@ -7,7 +7,7 @@ import {
   shiftConfigFrom,
   classifyShift,
   haversineMeters,
-  withinRadius,
+  locationVerdict,
   isLate,
   dayFractionFromShifts,
   type Shift,
@@ -36,6 +36,33 @@ function computeStatus(fraction: number, late: boolean): string {
   return 'absent';
 }
 
+/**
+ * Chặn chấm công khi không ở văn phòng — nhưng phân biệt "ở xa thật" với "máy đo sai".
+ *
+ * Anh Tâm 3/8/2026: máy tính nối WiFi báo cách công ty 6121m trong khi đang ngồi ở văn
+ * phòng. Máy tính không có chip GPS nên trình duyệt định vị bằng WiFi/IP, ra vị trí trạm
+ * của nhà mạng. Báo "bạn ở xa 6121m" trong trường hợp đó vừa sai vừa làm người ta bối rối
+ * — phải nói đúng bệnh và chỉ cách chữa.
+ */
+function requireAtOffice(dist: number, accuracy: number, radiusM: number, viec: string): void {
+  const verdict = locationVerdict(dist, accuracy, radiusM);
+  if (verdict === 'ok') return;
+
+  if (verdict === 'inaccurate') {
+    throw new ApiError(
+      400,
+      `Máy không định vị chính xác được (sai số khoảng ${Math.round(accuracy)}m) nên chưa ${viec} được. ` +
+        'Máy tính nối WiFi thường lấy vị trí của nhà mạng chứ không phải chỗ bạn ngồi. ' +
+        'Hãy dùng điện thoại có bật Định vị để chấm, hoặc xin duyệt làm online.',
+    );
+  }
+
+  throw new ApiError(
+    400,
+    `Bạn đang cách công ty khoảng ${Math.round(dist)}m (cho phép tối đa ${radiusM}m). Chưa thể ${viec}.`,
+  );
+}
+
 export interface CheckResult {
   shift: Shift;
   time: string;
@@ -45,7 +72,7 @@ export interface CheckResult {
   mode: AttendanceMode;
 }
 
-export async function checkIn(memberId: string, lat: number, lng: number): Promise<CheckResult> {
+export async function checkIn(memberId: string, lat: number, lng: number, accuracy = 0): Promise<CheckResult> {
   const member = await findById(memberId);
   if (!member) throw new ApiError(404, 'Không tìm thấy thành viên');
 
@@ -59,12 +86,7 @@ export async function checkIn(memberId: string, lat: number, lng: number): Promi
   const online = await approvedOnlineScope(memberId, date);
   const mode: AttendanceMode = online ? 'online' : 'office';
 
-  if (!online && !withinRadius(dist, cfg.checkinRadiusM)) {
-    throw new ApiError(
-      400,
-      `Bạn đang cách công ty khoảng ${Math.round(dist)}m (cho phép tối đa ${cfg.checkinRadiusM}m). Chưa thể chấm công.`,
-    );
-  }
+  if (!online) requireAtOffice(dist, accuracy, cfg.checkinRadiusM, 'chấm công');
 
   const row = (await getMemberDate(memberId, date)) ?? baseRow(member, date, mode);
   const iso = nowTz().toISOString();
@@ -82,7 +104,7 @@ export async function checkIn(memberId: string, lat: number, lng: number): Promi
   return { shift, time: iso, late, distanceM: Math.round(dist), dayFraction: row.dayFraction, mode };
 }
 
-export async function checkOut(memberId: string, lat: number, lng: number): Promise<CheckResult> {
+export async function checkOut(memberId: string, lat: number, lng: number, accuracy = 0): Promise<CheckResult> {
   const member = await findById(memberId);
   if (!member) throw new ApiError(404, 'Không tìm thấy thành viên');
 
@@ -94,12 +116,7 @@ export async function checkOut(memberId: string, lat: number, lng: number): Prom
   const dist = haversineMeters(lat, lng, cfg.companyLat, cfg.companyLng);
 
   const online = await approvedOnlineScope(memberId, date);
-  if (!online && !withinRadius(dist, cfg.checkinRadiusM)) {
-    throw new ApiError(
-      400,
-      `Bạn đang cách công ty khoảng ${Math.round(dist)}m (cho phép tối đa ${cfg.checkinRadiusM}m). Chưa thể chấm giờ ra.`,
-    );
-  }
+  if (!online) requireAtOffice(dist, accuracy, cfg.checkinRadiusM, 'chấm giờ ra');
 
   const existing = await getMemberDate(memberId, date);
   const row = existing ?? baseRow(member, date, online ? 'online' : 'office');

@@ -14,15 +14,16 @@ import type { Shift } from '../lib/attendance.js';
 export const attendanceRouter = Router();
 attendanceRouter.use(requireAuth);
 
-const geoSchema = z.object({ lat: z.number(), lng: z.number() });
+// accuracy: sai so met do trinh duyet bao. Khong co (may cu) thi coi nhu 0 = so thang khoang cach.
+const geoSchema = z.object({ lat: z.number(), lng: z.number(), accuracy: z.number().optional().default(0) });
 
 const shiftVi = (s: Shift) => (s === 'morning' ? 'sáng' : 'chiều');
 
 attendanceRouter.post(
   '/checkin',
   asyncHandler(async (req, res) => {
-    const { lat, lng } = geoSchema.parse(req.body);
-    const r = await checkIn(req.user!.sub, lat, lng);
+    const { lat, lng, accuracy } = geoSchema.parse(req.body);
+    const r = await checkIn(req.user!.sub, lat, lng, accuracy);
     await notify(req.user!.sub, {
       type: 'attendance',
       title: 'Chấm công thành công ✅',
@@ -36,8 +37,8 @@ attendanceRouter.post(
 attendanceRouter.post(
   '/checkout',
   asyncHandler(async (req, res) => {
-    const { lat, lng } = geoSchema.parse(req.body);
-    const r = await checkOut(req.user!.sub, lat, lng);
+    const { lat, lng, accuracy } = geoSchema.parse(req.body);
+    const r = await checkOut(req.user!.sub, lat, lng, accuracy);
     await notify(req.user!.sub, {
       type: 'attendance',
       title: 'Chấm công thành công ✅',
