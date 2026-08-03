@@ -10,6 +10,7 @@ import { findById, getDirectors } from './members.repo.js';
 import { teamLeaderId } from './teams.repo.js';
 import { saveAttendance, getMemberDate, deleteAttendance } from './attendance.repo.js';
 import { notify } from './notifications.service.js';
+import { markReadByRef } from './notifications.repo.js';
 import { dayFractionFromShifts } from '../lib/attendance.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
@@ -72,6 +73,8 @@ export async function submitRequest(i: SubmitInput): Promise<RequestRow> {
       title: 'Đơn cần duyệt',
       body: `${member.fullName} xin ${kindVi(i.kind)}: ${i.dates.join(', ')}.`,
       url: '/approvals',
+      // Gắn mã đơn: duyệt xong thì thông báo nhắc duyệt tự thành đã đọc.
+      refId: row.id,
     }, { background: true });
   } else {
     for (const d of await getDirectors()) {
@@ -80,6 +83,7 @@ export async function submitRequest(i: SubmitInput): Promise<RequestRow> {
         title: 'Đơn cần duyệt (cấp giám đốc)',
         body: `${member.fullName} xin ${kindVi(i.kind)}: ${i.dates.join(', ')}.`,
         url: '/approvals',
+        refId: row.id,
       }, { background: true });
     }
   }
@@ -297,6 +301,14 @@ export async function decideRequest(
   patch['FinalStatus'] = req.finalStatus;
   await updateRequest(kind, id, patch);
 
+  // Xử lý xong thì thông báo nhắc duyệt đơn này thôi đòi chú ý (anh Tâm chốt 2/8/2026).
+  //
+  // Người vừa bấm duyệt: dọn ngay, việc của họ xong rồi. Nếu đơn đã có kết quả CUỐI CÙNG
+  // thì dọn cho mọi người — kể cả leader đã duyệt trước đó, vì không còn gì để làm nữa.
+  // Không dùng cho thông báo báo KẾT QUẢ gửi nhân viên: cái đó họ phải tự đọc.
+  await markReadByRef(req.id, approverId).catch(() => undefined);
+  if (req.finalStatus !== 'pending') await markReadByRef(req.id).catch(() => undefined);
+
   // Side effects + notifications.
   if (req.finalStatus === 'approved') {
     if (kind === 'online') await recordOnlineAttendance(req);
@@ -322,6 +334,7 @@ export async function decideRequest(
         title: 'Đơn chờ giám đốc duyệt',
         body: `${req.name} xin ${kindVi(kind)} (${req.dates.join(', ')}) — leader đã duyệt.`,
         url: '/approvals',
+        refId: req.id,
       }, { background: true });
     }
   }

@@ -133,6 +133,10 @@ CREATE TABLE IF NOT EXISTS notifications (
   read_at    text DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS notifications_member_idx ON notifications (member_id, created_at DESC);
+-- Mã của thứ mà thông báo nói tới (hiện dùng cho đơn từ). Xử lý xong cái đó thì thông báo
+-- nhắc về nó tự thành đã đọc — anh Tâm chốt 2/8/2026.
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS ref_id text DEFAULT '';
+CREATE INDEX IF NOT EXISTS notifications_ref_idx ON notifications (ref_id) WHERE ref_id <> '';
 
 CREATE TABLE IF NOT EXISTS monthly_scores (
   year         integer NOT NULL,
