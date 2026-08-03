@@ -1,6 +1,7 @@
 // Tính kỳ và tiến độ KPI. Thuần, không đụng DB — đây là chỗ dễ sai nhất của tính năng
 // Dự án (tuần vắt qua tháng, cửa sổ khoá số vắt qua cuối năm) nên phải test được.
 import { dayjs, TZ } from './datetime.js';
+import { isWorkday } from './workdays.js';
 import isoWeek from 'dayjs/plugin/isoWeek.js';
 
 dayjs.extend(isoWeek);
@@ -119,16 +120,66 @@ export function seriesFor(
  * chỉ số hôm nay tới mai mới ra kết quả. Hết ngày D+1 là khoá vĩnh viễn.
  * Ngày tương lai cũng đóng: không ai biết trước số của ngày mai.
  */
-export function entryWindowOpen(date: string, today: string): boolean {
+/** Ngày làm việc kế tiếp sau `date` — bỏ qua T7, CN và ngày lễ. */
+function ngayLamViecKeTiep(date: string, holidays: Set<string>): string {
+  let d = dayjs(date).add(1, 'day');
+  // Nghỉ Tết dài nhất cũng không quá hai tuần; chặn vòng lặp phòng dữ liệu lễ sai.
+  for (let i = 0; i < 20; i++) {
+    const iso = d.format('YYYY-MM-DD');
+    if (isWorkday(iso, holidays)) return iso;
+    d = d.add(1, 'day');
+  }
+  return d.format('YYYY-MM-DD');
+}
+
+/**
+ * Ngày `date` còn nhập/sửa số được không?
+ *
+ * Mở trong CHÍNH ngày đó, và trong NGÀY LÀM VIỆC KẾ TIẾP.
+ *
+ * Anh Tâm 3/8/2026: "nếu rơi vào T7 CN thì nhập bù vào thứ 2, số T6 cũng nhập vào ngày
+ * T2 là tối đa". Luật cũ cho đúng một ngày lịch nên số thứ Sáu hết hạn vào thứ Bảy —
+ * ngày không ai đi làm. Cứ cuối tuần là mất số, mà chẳng ai làm gì sai.
+ *
+ * Nên thứ Hai mở cho: thứ Hai, Chủ nhật, thứ Bảy và thứ Sáu.
+ */
+export function entryWindowOpen(date: string, today: string, holidays: Set<string> = new Set()): boolean {
   const d = dayjs(date);
   const t = dayjs(today);
   if (!d.isValid() || !t.isValid()) return false;
-  const diff = t.startOf('day').diff(d.startOf('day'), 'day');
-  return diff === 0 || diff === 1;
+  if (d.startOf('day').isAfter(t.startOf('day'))) return false; // ngày chưa tới
+
+  // Mở LIÊN TỤC từ chính ngày đó tới hết ngày làm việc kế tiếp — ai vào app cuối tuần
+  // vẫn nhập được, và thứ Hai là hạn chót.
+  const dIso = d.format('YYYY-MM-DD');
+  const tIso = t.format('YYYY-MM-DD');
+  return tIso <= ngayLamViecKeTiep(dIso, holidays);
 }
 
 /** Giám đốc/admin nhập bù được mọi ngày; còn lại phải trong cửa sổ. */
-export function canWriteEntry(date: string, today: string, role: string): boolean {
+export function canWriteEntry(
+  date: string,
+  today: string,
+  role: string,
+  holidays: Set<string> = new Set(),
+): boolean {
   if (role === 'director' || role === 'admin') return true;
-  return entryWindowOpen(date, today);
+  return entryWindowOpen(date, today, holidays);
+}
+
+/**
+ * Những ngày mà HÔM NAY còn nhập/sửa được — cũ trước, hôm nay cuối.
+ * Màn hình dựng ô nhập theo danh sách này thay vì cứng "hôm nay / hôm qua".
+ */
+export function openEntryDates(today: string, holidays: Set<string> = new Set()): string[] {
+  const t = dayjs(today);
+  if (!t.isValid()) return [];
+  const out: string[] = [];
+  // Nhìn lùi tối đa 20 ngày là quá đủ kể cả sau kỳ nghỉ Tết.
+  for (let i = 20; i >= 1; i--) {
+    const iso = t.subtract(i, 'day').format('YYYY-MM-DD');
+    if (entryWindowOpen(iso, today, holidays)) out.push(iso);
+  }
+  out.push(t.format('YYYY-MM-DD'));
+  return out;
 }

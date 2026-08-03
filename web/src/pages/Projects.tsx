@@ -59,8 +59,17 @@ interface Kpi {
 interface TodayRow {
   kpi: Kpi;
   projectName: string;
-  today: number | null;
-  yesterday: number | null;
+  /** Số đã nhập theo từng ngày đang mở: { '2026-07-31': 86, … } */
+  values: Record<string, number | null>;
+}
+
+const THU = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+
+/** '2026-08-03' → 'T2 03/08'. Có thứ thì nhìn phát biết ngày nào là cuối tuần. */
+function nhanNgay(iso: string, today: string): string {
+  if (iso === today) return 'Hôm nay';
+  const d = new Date(`${iso}T00:00:00`);
+  return `${THU[d.getDay()]} ${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 }
 
 const blankProject = () => ({
@@ -117,7 +126,7 @@ export default function Projects() {
   const isDirector = user?.role === 'director' || user?.role === 'admin';
 
   const [projects, setProjects] = useState<ProjectRow[]>([]);
-  const [today, setToday] = useState<{ teamId: string; dates: { today: string; yesterday: string }; rows: TodayRow[] } | null>(null);
+  const [today, setToday] = useState<{ teamId: string; dates: string[]; rows: TodayRow[] } | null>(null);
   const [customers, setCustomers] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
 
@@ -274,7 +283,9 @@ export default function Projects() {
           ) : (
             <>
               <p className="mb-3 text-xs text-slate-500">
-                Số của hôm qua còn sửa được tới hết hôm nay. Sau đó phải nhờ giám đốc nhập bù.
+                {today.dates.length > 2
+                  ? 'Cuối tuần không ai đi làm nên số thứ Sáu, thứ Bảy và Chủ nhật nhập bù được tới hết hôm nay.'
+                  : 'Số của hôm qua còn sửa được tới hết hôm nay. Sau đó phải nhờ giám đốc nhập bù.'}
               </p>
               <div className="space-y-2">
                 {today.rows.map((r) => (
@@ -287,14 +298,16 @@ export default function Projects() {
                       <span className="text-xs text-slate-400">{r.projectName}</span>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2">
-                      {(['today', 'yesterday'] as const).map((which) => {
-                        const date = today.dates[which];
-                        const saved = r[which];
+                      {today.dates.map((date) => {
+                        const saved = r.values?.[date] ?? null;
                         const key = `${r.kpi.id}|${date}`;
+                        const laHomNay = date === today.dates[today.dates.length - 1];
                         return (
-                          <div key={which} className="flex items-center gap-2">
-                            <span className="w-16 shrink-0 text-xs text-slate-500">
-                              {which === 'today' ? 'Hôm nay' : 'Hôm qua'}
+                          <div key={date} className="flex items-center gap-2">
+                            <span
+                              className={`w-20 shrink-0 text-xs ${laHomNay ? 'font-medium text-slate-700' : 'text-slate-500'}`}
+                            >
+                              {nhanNgay(date, today.dates[today.dates.length - 1]!)}
                             </span>
                             <input
                               className="input py-1 text-sm"
