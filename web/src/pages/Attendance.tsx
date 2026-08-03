@@ -50,7 +50,8 @@ export default function Attendance() {
       const pos = await getPosition();
       const r = await api<{ shift: string; time: string; late: boolean; distanceM: number; dayFraction: number }>(
         `/attendance/${kind}`,
-        { body: { lat: pos.lat, lng: pos.lng } },
+        // Gửi kèm sai số: máy chủ cần biết con số khoảng cách có đáng tin không.
+        { body: { lat: pos.lat, lng: pos.lng, accuracy: Math.round(pos.accuracy || 0) } },
       );
       setMsg(
         `✅ Chấm công thành công — ca ${r.shift === 'morning' ? 'sáng' : 'chiều'}, ${kind === 'checkin' ? 'giờ vào' : 'giờ ra'} ${hm(
