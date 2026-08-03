@@ -6,6 +6,8 @@ import { checkIn, checkOut } from './attendance.service.js';
 import { getForMemberRange, getForDate } from './attendance.repo.js';
 import { notify } from './notifications.service.js';
 import { findById, membersInTeam } from './members.repo.js';
+import { getHolidaySet } from './holidays.repo.js';
+import { workdaysInMonth, missingWorkdays } from '../lib/workdays.js';
 import { nowTz, monthRange, fmtHm, todayIso } from '../lib/datetime.js';
 import type { Shift } from '../lib/attendance.js';
 
@@ -55,7 +57,18 @@ attendanceRouter.get(
     const { start, end } = monthRange(y!, m!);
     const records = await getForMemberRange(req.user!.sub, start, end);
     const totalDays = records.reduce((s, r) => s + (Number(r.dayFraction) || 0), 0);
-    res.json({ year: y, month: m, totalDays, records });
+
+    // Ngày làm việc KHÔNG có công — tức quên chấm hoặc quên làm đơn. Anh Tâm 2/8/2026:
+    // nhân sự phải tự soi được, đừng để tới lúc tính lương mới phát hiện.
+    const me = await findById(req.user!.sub);
+    const holidays = await getHolidaySet();
+    const coCong = new Set(records.filter((r) => (Number(r.dayFraction) || 0) > 0).map((r) => r.date));
+    const missing = missingWorkdays(workdaysInMonth(y!, m!, holidays), coCong, {
+      today: todayIso(),
+      joinDate: me?.joinDate || '',
+    });
+
+    res.json({ year: y, month: m, totalDays, records, missing });
   }),
 );
 

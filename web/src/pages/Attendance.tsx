@@ -16,7 +16,14 @@ interface Record_ {
 interface MeResponse {
   totalDays: number;
   records: Record_[];
+  /** Ngày làm việc chưa có công — quên chấm hoặc quên làm đơn. */
+  missing?: string[];
 }
+
+const thangNay = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
 
 const hm = (iso?: string) => (iso && iso.includes('T') ? new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : iso || '—');
 
@@ -24,14 +31,17 @@ export default function Attendance() {
   const [data, setData] = useState<MeResponse | null>(null);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  // Xem lại tháng cũ để soi ngày nào còn thiếu — anh Tâm 2/8/2026.
+  const [ym, setYm] = useState(thangNay());
 
   async function load() {
-    const r = await api<MeResponse>('/attendance/me');
+    const r = await api<MeResponse>(`/attendance/me?month=${ym}`);
     setData(r);
   }
   useEffect(() => {
     load().catch((e) => setMsg((e as Error).message));
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ym]);
 
   async function punch(kind: 'checkin' | 'checkout') {
     setBusy(true);
@@ -97,7 +107,35 @@ export default function Attendance() {
       </div>
 
       <div className="card">
-        <h2 className="font-semibold mb-2">Tháng này — tổng công: {data?.totalDays ?? 0} ngày</h2>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-semibold">Tổng công: {data?.totalDays ?? 0} ngày</h2>
+          <input
+            type="month"
+            className="input max-w-[10rem] py-1"
+            value={ym}
+            max={thangNay()}
+            onChange={(e) => e.target.value && setYm(e.target.value)}
+          />
+        </div>
+
+        {/* Ngày làm việc chưa có công — thứ nhân sự cần thấy nhất, nên đặt trên bảng. */}
+        {!!data?.missing?.length && (
+          <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <div className="text-sm font-medium text-amber-800">
+              ⚠️ {data.missing.length} ngày làm việc chưa có công
+            </div>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {data.missing.map((d) => (
+                <span key={d} className="rounded-md bg-white px-2 py-0.5 text-xs text-amber-800">
+                  {d.slice(8, 10)}/{d.slice(5, 7)}
+                </span>
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs text-amber-700">
+              Quên chấm công hoặc quên làm đơn nghỉ/online. Vào mục Đơn từ nộp bù, hoặc báo quản lý.
+            </p>
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-slate-500">
