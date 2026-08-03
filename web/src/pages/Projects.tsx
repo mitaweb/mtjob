@@ -44,7 +44,23 @@ interface ProjectRow {
   measured?: number;
   /** Số chỉ số chưa đặt mục tiêu — chưa đo được tiến độ. */
   noTarget?: number;
+  /** Các phòng có chỉ số trong dự án. */
+  teams?: string[];
+  /** % thời gian đã trôi; null khi chưa khai ngày bắt đầu/kết thúc. */
+  timePercent?: number | null;
+  alert?: 'none' | 'warn' | 'danger';
+  alertReason?: string;
 }
+
+/**
+ * Viền và nền theo mức cảnh báo. Đỏ phải NỔI HƠN vàng — nếu không thì mức nặng lại chìm
+ * hơn mức nhẹ, mắt đọc ngược mức độ nghiêm trọng.
+ */
+const ALERT_STYLE: Record<string, string> = {
+  danger: 'border-rose-400 bg-rose-50 hover:border-rose-500',
+  warn: 'border-amber-300 bg-amber-50/70 hover:border-amber-400',
+  none: 'border-slate-100 hover:border-brand-200 hover:bg-slate-50',
+};
 
 interface Kpi {
   id: string;
@@ -255,6 +271,25 @@ export default function Projects() {
     }
   }
 
+  // Bộ lọc — dự án nhiều lên thì nhìn cả danh sách không ra vấn đề nằm ở đâu.
+  const [fTeam, setFTeam] = useState('');
+  const [fProgress, setFProgress] = useState('');
+  const [fAlert, setFAlert] = useState(false);
+
+  const shown = useMemo(
+    () =>
+      projects.filter((p) => {
+        if (fTeam && !(p.teams || []).includes(fTeam)) return false;
+        if (fAlert && p.alert !== 'warn' && p.alert !== 'danger') return false;
+        if (fProgress === 'low' && p.percent >= 50) return false;
+        if (fProgress === 'mid' && (p.percent < 50 || p.percent >= 100)) return false;
+        if (fProgress === 'done' && p.percent < 100) return false;
+        return true;
+      }),
+    [projects, fTeam, fProgress, fAlert],
+  );
+  const soCanhBao = projects.filter((p) => p.alert === 'warn' || p.alert === 'danger').length;
+
   const overview = useMemo(
     () => projects.filter((p) => p.status === 'active' && p.kpiCount > 0).map((p) => ({ name: p.name, percent: p.percent })),
     [projects],
@@ -354,17 +389,54 @@ export default function Projects() {
       )}
 
       <div className="card">
-        <h2 className="mb-2 font-semibold">Dự án ({projects.length})</h2>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-semibold">
+            Dự án ({shown.length}
+            {shown.length !== projects.length && ` / ${projects.length}`})
+          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <select className="input max-w-[9rem] py-1 text-sm" value={fTeam} onChange={(e) => setFTeam(e.target.value)}>
+              <option value="">Mọi phòng</option>
+              {TEAMS.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+            <select
+              className="input max-w-[11rem] py-1 text-sm"
+              value={fProgress}
+              onChange={(e) => setFProgress(e.target.value)}
+            >
+              <option value="">Mọi tiến độ</option>
+              <option value="low">Dưới 50%</option>
+              <option value="mid">50–99%</option>
+              <option value="done">Đạt 100%</option>
+            </select>
+            {/* Nút này là thứ giám đốc bấm đầu tiên mỗi sáng — cho nó nổi hơn hai ô kia. */}
+            <button
+              className={`rounded-lg border px-3 py-1 text-sm ${
+                fAlert
+                  ? 'border-rose-400 bg-rose-50 font-medium text-rose-700'
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+              onClick={() => setFAlert((v) => !v)}
+            >
+              ⚠️ Cần chú ý{soCanhBao > 0 && ` (${soCanhBao})`}
+            </button>
+          </div>
+        </div>
         {loading ? (
           <SkeletonRows rows={3} />
         ) : projects.length === 0 ? (
           <EmptyState icon="📁" text="Chưa có dự án nào. Leader bấm “+ Dự án mới” để bắt đầu." />
+        ) : shown.length === 0 ? (
+          <EmptyState icon="🔍" text="Không có dự án nào khớp bộ lọc." />
         ) : (
           <div className="grid gap-2 sm:grid-cols-2">
-            {projects.map((p) => (
+            {shown.map((p) => (
               <button
                 key={p.id}
-                className="rounded-xl border border-slate-100 p-3 text-left hover:border-brand-200 hover:bg-slate-50"
+                title={p.alertReason || ''}
+                className={`rounded-xl border p-3 text-left ${ALERT_STYLE[p.alert || 'none']}`}
                 onClick={() => openProject(p)}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -386,12 +458,35 @@ export default function Projects() {
                     <span className="w-12 shrink-0 text-right text-sm font-medium text-slate-700">{p.percent}%</span>
                   </div>
                 )}
+                {/* Thời gian đã trôi — đặt cạnh tiến độ KPI để so được bằng mắt. */}
+                {typeof p.timePercent === 'number' && (
+                  <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
+                    <span className="w-14 shrink-0">Thời gian</span>
+                    <div className="h-1 w-full overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className="h-full rounded-full bg-slate-300"
+                        style={{ width: `${Math.min(100, p.timePercent)}%` }}
+                      />
+                    </div>
+                    <span className="w-10 shrink-0 text-right">{p.timePercent}%</span>
+                  </div>
+                )}
                 <div className="mt-1 text-xs text-slate-400">
                   {p.kpiCount} chỉ số
+                  {!!p.teams?.length && <span> · {p.teams.join(', ')}</span>}
                   {!!p.noTarget && p.measured !== 0 && (
                     <span className="text-amber-600"> · {p.noTarget} chưa có mục tiêu</span>
                   )}
                 </div>
+                {p.alertReason && (
+                  <div
+                    className={`mt-1.5 text-xs font-medium ${
+                      p.alert === 'danger' ? 'text-rose-700' : 'text-amber-700'
+                    }`}
+                  >
+                    {p.alert === 'danger' ? '🔴' : '🟡'} {p.alertReason}
+                  </div>
+                )}
               </button>
             ))}
           </div>

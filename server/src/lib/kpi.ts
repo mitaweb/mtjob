@@ -202,3 +202,71 @@ export function projectProgress(percents: Array<{ percent: number; target: numbe
   const tong = coMucTieu.reduce((s, p) => s + (Number(p.percent) || 0), 0);
   return { percent: Math.round(tong / coMucTieu.length), counted: coMucTieu.length, noTarget };
 }
+
+/** Mức cảnh báo của một dự án. */
+export type AlertLevel = 'none' | 'warn' | 'danger';
+
+export interface ProjectAlert {
+  level: AlertLevel;
+  /** % thời gian đã trôi; null khi dự án không khai đủ ngày bắt đầu/kết thúc. */
+  timePercent: number | null;
+  /** Câu ngắn giải thích vì sao bị tô màu — hiện khi rê chuột. */
+  reason: string;
+}
+
+/**
+ * Phần trăm thời gian đã trôi của dự án.
+ *
+ * Trả null khi thiếu ngày bắt đầu hoặc kết thúc: không có mốc thì mọi kết luận "chậm" đều
+ * là bịa. Thà không cảnh báo còn hơn cảnh báo sai rồi mất tin.
+ */
+export function timeProgress(startDate: string, endDate: string, today: string): number | null {
+  const s = dayjs(startDate);
+  const e = dayjs(endDate);
+  const t = dayjs(today);
+  if (!startDate || !endDate || !s.isValid() || !e.isValid() || !t.isValid()) return null;
+
+  const tong = e.startOf('day').diff(s.startOf('day'), 'day');
+  if (tong <= 0) return null; // ngày kết thúc không sau ngày bắt đầu → dữ liệu hỏng
+  const daTroi = t.startOf('day').diff(s.startOf('day'), 'day');
+  if (daTroi <= 0) return 0; // chưa tới ngày bắt đầu
+  return Math.round((daTroi / tong) * 100);
+}
+
+/**
+ * Dự án có đang đáng lo không?
+ *
+ * Anh Tâm 3/8/2026: "dự án nào quá 50% thời gian mà chưa đạt 50% KPI thì tô đỏ hoặc vàng,
+ * nếu thời gian vượt thì tô đỏ".
+ *
+ * Ba mức:
+ *  - ĐỎ  : hết hạn mà chưa đạt mục tiêu, HOẶC đã tiêu quá 75% thời gian mà KPI chưa nổi 50%
+ *  - VÀNG: đã qua nửa thời gian mà KPI chưa nổi 50%
+ *  - none: còn lại, hoặc chưa đủ dữ liệu để kết luận
+ *
+ * `measured = 0` (chưa chỉ số nào đặt mục tiêu) thì KHÔNG cảnh báo — 0% lúc đó là do
+ * chưa đặt mục tiêu chứ không phải làm kém.
+ */
+export function projectAlert(
+  timePercent: number | null,
+  kpiPercent: number,
+  measured: number,
+): ProjectAlert {
+  if (timePercent === null || measured === 0) {
+    return { level: 'none', timePercent, reason: '' };
+  }
+
+  if (timePercent > 100) {
+    return kpiPercent >= 100
+      ? { level: 'none', timePercent, reason: 'Đã hết hạn và đạt mục tiêu' }
+      : { level: 'danger', timePercent, reason: `Đã quá hạn mà mới đạt ${kpiPercent}%` };
+  }
+
+  if (kpiPercent < 50 && timePercent >= 75) {
+    return { level: 'danger', timePercent, reason: `Đã qua ${timePercent}% thời gian mà mới đạt ${kpiPercent}%` };
+  }
+  if (kpiPercent < 50 && timePercent >= 50) {
+    return { level: 'warn', timePercent, reason: `Đã qua ${timePercent}% thời gian mà mới đạt ${kpiPercent}%` };
+  }
+  return { level: 'none', timePercent, reason: '' };
+}
