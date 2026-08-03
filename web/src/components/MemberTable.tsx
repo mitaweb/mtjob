@@ -187,20 +187,22 @@ export default function MemberTable() {
       ) : working.length === 0 ? (
         <EmptyState icon="👥" text="Chưa có nhân sự nào." />
       ) : (
+        // Bảng rộng hơn màn hình là chuyện thường — cho cuộn ngang thay vì bóp cột làm
+        // cắt mất họ tên và chức vụ (anh Tâm 3/8/2026).
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[62rem] text-sm">
+          <table className="w-full min-w-[92rem] text-sm">
             <thead className="text-left text-xs text-slate-500">
-              <tr>
-                <th className="py-1 pr-2">Họ tên</th>
-                <th className="pr-2">Tài khoản</th>
-                <th className="pr-2">Chức vụ</th>
-                <th className="pr-2">Phòng</th>
-                <th className="pr-2">Vai trò</th>
-                <th className="pr-2 text-right">Mức lương</th>
-                <th className="pr-2 text-right">BHXH</th>
-                <th className="pr-2">Ngày vào</th>
-                <th className="pr-2">Ngày sinh</th>
-                <th></th>
+              <tr className="whitespace-nowrap">
+                <th className="w-48 py-1 pr-2">Họ tên</th>
+                <th className="w-32 pr-2">Tài khoản</th>
+                <th className="w-44 pr-2">Chức vụ</th>
+                <th className="w-28 pr-2">Phòng</th>
+                <th className="w-32 pr-2">Vai trò</th>
+                <th className="w-32 pr-2 text-right">Mức lương</th>
+                <th className="w-32 pr-2 text-right">BHXH</th>
+                <th className="w-36 pr-2">Ngày vào</th>
+                <th className="w-36 pr-2">Ngày sinh</th>
+                <th className="w-28"></th>
               </tr>
             </thead>
             <tbody>

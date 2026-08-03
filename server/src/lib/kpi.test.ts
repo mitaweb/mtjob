@@ -6,6 +6,7 @@ import {
   seriesFor,
   entryWindowOpen,
   canWriteEntry,
+  openEntryDates,
   type KpiEntryLike,
 } from './kpi.js';
 
@@ -130,5 +131,72 @@ describe('canWriteEntry', () => {
   it('giám đốc nhập bù được mọi ngày đã qua', () => {
     expect(canWriteEntry('2026-06-01', '2026-07-29', 'director')).toBe(true);
     expect(canWriteEntry('2026-06-01', '2026-07-29', 'admin')).toBe(true);
+  });
+});
+
+// Anh Tâm 3/8/2026: "nếu rơi vào T7 CN thì sẽ nhập bù vào thứ 2, số T6 cũng nhập vào
+// ngày T2 là tối đa". Luật cũ cho đúng một ngày lịch nên số thứ Sáu hết hạn vào thứ Bảy —
+// ngày không ai đi làm. Cứ cuối tuần là mất số.
+//
+// Mốc: 2026-08-03 là thứ Hai. 07-31 = T6, 08-01 = T7, 08-02 = CN.
+
+describe('entryWindowOpen — bỏ qua ngày nghỉ', () => {
+  const T2 = '2026-08-03';
+
+  it('thứ Hai vẫn nhập được cho chính thứ Hai', () => {
+    expect(entryWindowOpen(T2, T2)).toBe(true);
+  });
+
+  it('thứ Hai nhập bù được cho thứ Sáu, thứ Bảy và Chủ nhật', () => {
+    expect(entryWindowOpen('2026-07-31', T2)).toBe(true); // T6
+    expect(entryWindowOpen('2026-08-01', T2)).toBe(true); // T7
+    expect(entryWindowOpen('2026-08-02', T2)).toBe(true); // CN
+  });
+
+  it('nhưng KHÔNG lùi xa hơn — thứ Năm tuần trước đã khoá', () => {
+    expect(entryWindowOpen('2026-07-30', T2)).toBe(false);
+  });
+
+  it('giữa tuần vẫn là hôm nay + hôm qua như cũ', () => {
+    expect(entryWindowOpen('2026-08-04', '2026-08-05')).toBe(true);
+    expect(entryWindowOpen('2026-08-03', '2026-08-05')).toBe(false);
+  });
+
+  it('ai vào app cuối tuần vẫn nhập được số thứ Sáu — mở liên tục tới hạn chót', () => {
+    expect(entryWindowOpen('2026-07-31', '2026-08-01')).toBe(true); // xem vào T7
+    expect(entryWindowOpen('2026-07-31', '2026-08-02')).toBe(true); // xem vào CN
+    expect(entryWindowOpen('2026-07-31', '2026-08-03')).toBe(true); // T2 — hạn chót
+    expect(entryWindowOpen('2026-07-31', '2026-08-04')).toBe(false); // T3 đã muộn
+  });
+
+  it('ngày chưa tới thì không mở', () => {
+    expect(entryWindowOpen('2026-08-04', T2)).toBe(false);
+  });
+
+  it('nghỉ lễ cũng được bỏ qua', () => {
+    // 2026-09-02 (T4) là lễ → số ngày 01/9 nhập bù được tới 03/9.
+    const le = new Set(['2026-09-02']);
+    expect(entryWindowOpen('2026-09-01', '2026-09-03', le)).toBe(true);
+    expect(entryWindowOpen('2026-09-01', '2026-09-03')).toBe(false); // không khai lễ thì đóng
+  });
+});
+
+describe('openEntryDates', () => {
+  it('thứ Hai mở bốn ngày: T6, T7, CN, T2', () => {
+    expect(openEntryDates('2026-08-03')).toEqual([
+      '2026-07-31',
+      '2026-08-01',
+      '2026-08-02',
+      '2026-08-03',
+    ]);
+  });
+
+  it('giữa tuần chỉ mở hai ngày', () => {
+    expect(openEntryDates('2026-08-05')).toEqual(['2026-08-04', '2026-08-05']);
+  });
+
+  it('ngày cuối cùng luôn là hôm nay', () => {
+    const d = openEntryDates('2026-08-06');
+    expect(d[d.length - 1]).toBe('2026-08-06');
   });
 });

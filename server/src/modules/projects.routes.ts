@@ -19,7 +19,15 @@ import {
 } from './projects.repo.js';
 import { findById } from './members.repo.js';
 import { findCustomer, getCustomers } from './crm.repo.js';
-import { progressOf, seriesFor, canWriteEntry, entryWindowOpen, type KpiPeriod } from '../lib/kpi.js';
+import {
+  progressOf,
+  seriesFor,
+  canWriteEntry,
+  entryWindowOpen,
+  openEntryDates,
+  type KpiPeriod,
+} from '../lib/kpi.js';
+import { getHolidaySet } from './holidays.repo.js';
 import { newId } from '../util/id.js';
 import { nowTz, todayIso, fmtDate } from '../lib/datetime.js';
 
@@ -29,7 +37,23 @@ projectsRouter.use(requireAuth);
 /** Ai được tạo/sửa khung dự án và chỉ số. Nhân viên chỉ nhập SỐ, không đụng cấu trúc. */
 const canManage = requireRole('leader', 'director', 'admin');
 
-const seesAll = (role: string) => role === 'director' || role === 'admin';
+/**
+ * Ai xem được MỌI dự án.
+ *
+ * Anh Tâm 3/8/2026: "leader có thể thấy toàn bộ dự án" — leader cần nhìn bức tranh chung
+ * để điều phối, chứ không chỉ phần phòng mình. Riêng NHÂN VIÊN vẫn chỉ thấy dự án có chỉ
+ * số của phòng mình, để màn hình của họ gọn đúng việc phải làm.
+ */
+const seesAll = (role: string) => role === 'director' || role === 'admin' || role === 'leader';
+
+/**
+ * Ai ghi được số cho MỌI phòng — chỉ giám đốc/admin.
+ *
+ * TÁCH RIÊNG khỏi quyền xem, cố ý. Leader nay xem được mọi dự án, nhưng anh Tâm đã chốt
+ * 28/7/2026: "leader không sửa được số". Dùng chung một cờ cho cả xem lẫn ghi thì mở
+ * quyền xem là vô tình mở luôn quyền sửa số của phòng khác.
+ */
+const canWriteAnyTeam = (role: string) => role === 'director' || role === 'admin';
 
 /** Phòng ban của người đang đăng nhập — req.user không mang teamId nên phải tra lại. */
 async function myTeam(memberId: string): Promise<string> {
@@ -83,28 +107,32 @@ projectsRouter.get(
   asyncHandler(async (req, res) => {
     const teamId = await myTeam(req.user!.sub);
     const today = todayIso();
-    const yesterday = nowTz().subtract(1, 'day').format('YYYY-MM-DD');
+    // Ngày nghỉ không ai đi làm nên cửa sổ nhập phải nhảy qua chúng: thứ Hai mở cho cả
+    // thứ Sáu, thứ Bảy và Chủ nhật (anh Tâm chốt 3/8/2026).
+    const dates = openEntryDates(today, await getHolidaySet());
 
     if (!teamId) {
-      res.json({ teamId: '', dates: { today, yesterday }, rows: [] });
+      res.json({ teamId: '', dates, rows: [] });
       return;
     }
 
     const [projects, kpis] = await Promise.all([getProjects(), getKpis()]);
     const mine = kpis.filter((k) => k.active && k.teamId === teamId);
     const byProject = new Map(projects.map((p) => [p.id, p]));
-    const entries = await getEntriesForDates(mine.map((k) => k.id), [today, yesterday]);
+    const entries = await getEntriesForDates(mine.map((k) => k.id), dates);
 
     res.json({
       teamId,
-      dates: { today, yesterday },
+      dates,
       rows: mine
         .filter((k) => byProject.get(k.projectId)?.status === 'active')
         .map((k) => ({
           kpi: k,
           projectName: byProject.get(k.projectId)?.name || '',
-          today: entries.find((e) => e.kpiId === k.id && e.date === today)?.value ?? null,
-          yesterday: entries.find((e) => e.kpiId === k.id && e.date === yesterday)?.value ?? null,
+          // Số đã nhập theo từng ngày đang mở: { '2026-07-31': 86, … }
+          values: Object.fromEntries(
+            dates.map((d) => [d, entries.find((e) => e.kpiId === k.id && e.date === d)?.value ?? null]),
+          ),
         })),
     });
   }),
@@ -152,7 +180,7 @@ projectsRouter.get(
           progress: progressOf(own, k, today),
           series: seriesFor(own, k.period, 8, today),
           // Nhân viên phòng khác chỉ xem; giám đốc nhập bù được mọi ngày.
-          canWrite: seesAll(req.user!.role) || k.teamId === teamId,
+          canWrite: canWriteAnyTeam(req.user!.role) || k.teamId === teamId,
         };
       }),
     });
@@ -271,13 +299,14 @@ projectsRouter.post(
     const role = req.user!.role;
 
     // Chặn ở TẦNG SERVER, không chỉ ẩn nút: người Content không ghi vào chỉ số của Ads.
-    if (!seesAll(role) && kpi.teamId !== (await myTeam(req.user!.sub))) {
+    if (!canWriteAnyTeam(role) && kpi.teamId !== (await myTeam(req.user!.sub))) {
       throw new ApiError(403, `Chỉ số này của phòng ${kpi.teamId} — bạn không nhập được.`);
     }
 
     const today = todayIso();
-    if (!canWriteEntry(b.date, today, role)) {
-      const reason = entryWindowOpen(b.date, today)
+    const holidays = await getHolidaySet();
+    if (!canWriteEntry(b.date, today, role, holidays)) {
+      const reason = entryWindowOpen(b.date, today, holidays)
         ? 'Không nhập được số của ngày chưa tới.'
         : `Số ngày ${fmtDate(b.date)} đã khoá. Nhờ giám đốc nhập bù giúp nhé.`;
       throw new ApiError(403, reason);
@@ -290,7 +319,7 @@ projectsRouter.post(
       memberId: req.user!.sub,
       memberName: req.user!.name,
       // Giám đốc ghi ngoài cửa sổ = nhập bù; đánh dấu để phân biệt với số nhân sự tự nhập.
-      late: !entryWindowOpen(b.date, today),
+      late: !entryWindowOpen(b.date, today, holidays),
       updatedAt: nowTz().toISOString(),
     });
     res.json({ ok: true });
