@@ -8,6 +8,8 @@ import {
   canWriteEntry,
   openEntryDates,
   projectProgress,
+  timeProgress,
+  projectAlert,
   type KpiEntryLike,
 } from './kpi.js';
 
@@ -231,5 +233,67 @@ describe('projectProgress', () => {
 
   it('vượt mục tiêu vẫn giữ số thật, không cắt về 100', () => {
     expect(projectProgress([{ percent: 140, target: 10 }]).percent).toBe(140);
+  });
+});
+
+// Anh Tâm 3/8/2026: "dự án nào quá 50% thời gian mà chưa đạt 50% KPI thì tô đỏ hoặc vàng,
+// nếu thời gian vượt thì tô đỏ".
+
+describe('timeProgress', () => {
+  it('tính phần trăm thời gian đã trôi', () => {
+    expect(timeProgress('2026-08-01', '2026-08-31', '2026-08-16')).toBe(50);
+    expect(timeProgress('2026-08-01', '2026-08-31', '2026-08-01')).toBe(0);
+    expect(timeProgress('2026-08-01', '2026-08-31', '2026-08-31')).toBe(100);
+  });
+
+  it('quá hạn thì vượt 100', () => {
+    expect(timeProgress('2026-08-01', '2026-08-31', '2026-09-15')).toBeGreaterThan(100);
+  });
+
+  it('chưa tới ngày bắt đầu thì là 0, không âm', () => {
+    expect(timeProgress('2026-09-01', '2026-09-30', '2026-08-15')).toBe(0);
+  });
+
+  it('THIẾU ngày thì trả null — không có mốc thì mọi kết luận chậm đều là bịa', () => {
+    expect(timeProgress('', '2026-08-31', '2026-08-16')).toBeNull();
+    expect(timeProgress('2026-08-01', '', '2026-08-16')).toBeNull();
+  });
+
+  it('ngày kết thúc không sau ngày bắt đầu thì coi như dữ liệu hỏng', () => {
+    expect(timeProgress('2026-08-31', '2026-08-01', '2026-08-16')).toBeNull();
+    expect(timeProgress('2026-08-01', '2026-08-01', '2026-08-01')).toBeNull();
+  });
+});
+
+describe('projectAlert', () => {
+  it('quá nửa thời gian mà KPI dưới 50% → VÀNG', () => {
+    const a = projectAlert(60, 40, 2);
+    expect(a.level).toBe('warn');
+    expect(a.reason).toContain('60%');
+  });
+
+  it('quá 75% thời gian mà KPI dưới 50% → ĐỎ', () => {
+    expect(projectAlert(80, 40, 2).level).toBe('danger');
+  });
+
+  it('QUÁ HẠN mà chưa đạt mục tiêu → ĐỎ', () => {
+    expect(projectAlert(130, 90, 2).level).toBe('danger');
+  });
+
+  it('quá hạn nhưng ĐÃ đạt mục tiêu thì không báo động', () => {
+    expect(projectAlert(130, 100, 2).level).toBe('none');
+  });
+
+  it('đi đúng nhịp thì không cảnh báo', () => {
+    expect(projectAlert(60, 65, 2).level).toBe('none');
+    expect(projectAlert(40, 10, 2).level).toBe('none'); // mới 40% thời gian, chưa tới mốc
+  });
+
+  it('KHÔNG cảnh báo khi chưa chỉ số nào đặt mục tiêu — 0% lúc đó không phải làm kém', () => {
+    expect(projectAlert(90, 0, 0).level).toBe('none');
+  });
+
+  it('thiếu ngày bắt đầu/kết thúc thì không cảnh báo', () => {
+    expect(projectAlert(null, 0, 3).level).toBe('none');
   });
 });

@@ -26,6 +26,8 @@ import {
   entryWindowOpen,
   openEntryDates,
   projectProgress,
+  timeProgress,
+  projectAlert,
   type KpiPeriod,
 } from '../lib/kpi.js';
 import { getHolidaySet } from './holidays.repo.js';
@@ -98,6 +100,7 @@ projectsRouter.get(
             target: k.target,
           })),
         );
+        const alert = projectAlert(timeProgress(p.startDate, p.endDate, today), prog.percent, prog.counted);
         return {
           ...p,
           kpiCount: own.length,
@@ -106,6 +109,11 @@ projectsRouter.get(
           measured: prog.counted,
           /** Bao nhiêu chỉ số còn thiếu mục tiêu — màn hình nhắc leader đặt nốt. */
           noTarget: prog.noTarget,
+          /** Các phòng có chỉ số trong dự án này — để lọc theo phòng. */
+          teams: [...new Set(own.map((k) => k.teamId).filter(Boolean))].sort(),
+          timePercent: alert.timePercent,
+          alert: alert.level,
+          alertReason: alert.reason,
         };
       }),
     });
