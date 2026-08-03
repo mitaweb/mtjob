@@ -8,6 +8,8 @@ export interface NotificationRow {
   body: string;
   createdAt: string;
   readAt: string;
+  /** Mã của thứ mà thông báo nói tới (vd mã đơn) — xử lý xong thì tự đánh dấu đã đọc. */
+  refId?: string;
 }
 
 export interface PushSubscriptionRow {
@@ -22,10 +24,34 @@ export interface PushSubscriptionRow {
 
 export async function addNotification(n: NotificationRow): Promise<void> {
   await q(
-    `INSERT INTO notifications (notif_id, member_id, type, title, body, created_at, read_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-    [n.id, n.memberId, n.type, n.title, n.body, n.createdAt, n.readAt || ''],
+    `INSERT INTO notifications (notif_id, member_id, type, title, body, created_at, read_at, ref_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [n.id, n.memberId, n.type, n.title, n.body, n.createdAt, n.readAt || '', n.refId || ''],
   );
+}
+
+/**
+ * Đánh dấu đã đọc mọi thông báo đang nhắc về một thứ đã xử lý xong.
+ *
+ * Anh Tâm 2/8/2026: "những đơn đã phê duyệt mặc định thông báo đã đọc". Duyệt xong rồi
+ * mà chuông vẫn đỏ thì con số đó mất hết ý nghĩa — chín mươi tư cái chưa đọc toàn là
+ * việc đã làm xong.
+ *
+ * `memberId` bỏ trống = dọn cho mọi người liên quan tới mã đó.
+ */
+export async function markReadByRef(refId: string, memberId?: string): Promise<number> {
+  if (!refId) return 0;
+  const rows = memberId
+    ? await q(
+        `UPDATE notifications SET read_at = $1
+         WHERE ref_id = $2 AND member_id = $3 AND read_at = '' RETURNING notif_id`,
+        [new Date().toISOString(), refId, memberId],
+      )
+    : await q(
+        `UPDATE notifications SET read_at = $1 WHERE ref_id = $2 AND read_at = '' RETURNING notif_id`,
+        [new Date().toISOString(), refId],
+      );
+  return rows.length;
 }
 
 /**

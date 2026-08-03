@@ -9,6 +9,8 @@ export interface NotifyInput {
   title: string;
   body: string;
   url?: string;
+  /** Mã của thứ được nhắc tới (vd mã đơn) — để xử lý xong thì tự đánh dấu đã đọc. */
+  refId?: string;
 }
 
 /** Fan-out một notification tới mọi push subscription của thành viên. */
@@ -46,6 +48,7 @@ export async function notify(
     body: n.body,
     createdAt: nowTz().toISOString(),
     readAt: '',
+    refId: n.refId || '',
   });
   const fanout = pushToMember(memberId, n).catch((e) => console.error('[push]', memberId, e));
   if (opts?.background) runInBackground(fanout);
