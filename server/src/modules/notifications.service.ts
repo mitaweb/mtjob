@@ -40,16 +40,29 @@ export async function notify(
   opts?: { background?: boolean },
 ): Promise<void> {
   if (!memberId) return;
-  await addNotification({
-    id: newId('N-'),
-    memberId,
-    type: n.type,
-    title: n.title,
-    body: n.body,
-    createdAt: nowTz().toISOString(),
-    readAt: '',
-    refId: n.refId || '',
-  });
+  try {
+    await addNotification({
+      id: newId('N-'),
+      memberId,
+      type: n.type,
+      title: n.title,
+      body: n.body,
+      createdAt: nowTz().toISOString(),
+      readAt: '',
+      refId: n.refId || '',
+    });
+  } catch (e) {
+    // Thông báo là việc PHỤ — hỏng thì thôi, TUYỆT ĐỐI không kéo đổ việc chính.
+    //
+    // Anh Tâm 3/8/2026: sau khi thêm cột ref_id mà chưa bấm cập nhật cấu trúc DB, câu
+    // INSERT hỏng và ném ngược lên route chấm công. Kết quả: công ĐÃ ghi vào database
+    // nhưng màn hình báo lỗi đỏ "column ref_id does not exist" — nhân sự tưởng chưa
+    // chấm được, bấm lại mấy lần.
+    //
+    // Ghi log rõ chứ không nuốt im: hỏng thông báo vẫn là chuyện cần biết.
+    console.error(`[notify] không lưu được thông báo cho ${memberId}:`, (e as Error).message);
+    return;
+  }
   const fanout = pushToMember(memberId, n).catch((e) => console.error('[push]', memberId, e));
   if (opts?.background) runInBackground(fanout);
   else await fanout;

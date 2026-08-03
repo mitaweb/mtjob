@@ -306,8 +306,10 @@ export async function decideRequest(
   // Người vừa bấm duyệt: dọn ngay, việc của họ xong rồi. Nếu đơn đã có kết quả CUỐI CÙNG
   // thì dọn cho mọi người — kể cả leader đã duyệt trước đó, vì không còn gì để làm nữa.
   // Không dùng cho thông báo báo KẾT QUẢ gửi nhân viên: cái đó họ phải tự đọc.
-  await markReadByRef(req.id, approverId).catch(() => undefined);
-  if (req.finalStatus !== 'pending') await markReadByRef(req.id).catch(() => undefined);
+  // Dọn thông báo là việc phụ — hỏng thì log rồi đi tiếp, không chặn việc duyệt đơn.
+  const donThongBao = (e: unknown) => console.error('[requests] dọn thông báo:', (e as Error).message);
+  await markReadByRef(req.id, approverId).catch(donThongBao);
+  if (req.finalStatus !== 'pending') await markReadByRef(req.id).catch(donThongBao);
 
   // Side effects + notifications.
   if (req.finalStatus === 'approved') {
