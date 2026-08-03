@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Bell,
   Banknote,
+  BookOpen,
   CalendarCheck,
   CheckSquare,
   FileText,
@@ -48,6 +49,8 @@ const NAV: NavItem[] = [
   { to: '/dashboard', label: 'Tổng quan', icon: LayoutDashboard, roles: ['leader', 'director', 'admin'] },
   { to: '/admin', label: 'Quản trị', icon: Settings, roles: ['admin', 'director'] },
   { to: '/inbox', label: 'Thông báo', icon: Bell },
+  // Luôn ở CUỐI cùng: thứ người ta tìm khi bí, không phải thứ dùng hằng ngày.
+  { to: '/guide', label: 'Hướng dẫn sử dụng', icon: BookOpen },
 ];
 
 const ROLE_LABEL: Record<string, string> = {
