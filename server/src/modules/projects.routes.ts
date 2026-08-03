@@ -61,8 +61,11 @@ async function myTeam(memberId: string): Promise<string> {
 }
 
 /**
- * Dự án người này được xem: giám đốc/admin thấy tất cả; còn lại chỉ thấy dự án có ít nhất
- * một chỉ số thuộc phòng mình.
+ * Dự án người này được xem.
+ *
+ * Giám đốc, admin và leader thấy TẤT CẢ. Nhân viên chỉ thấy dự án có ít nhất một chỉ số
+ * thuộc phòng mình — anh Tâm chốt 3/8/2026: "các bạn nhân sự thấy được dự án mà bạn phụ
+ * trách để theo dõi KPI theo phòng ban thôi, không thấy được toàn bộ".
  */
 function visibleProjects(projects: Project[], kpis: ProjectKpi[], role: string, teamId: string): Project[] {
   if (seesAll(role)) return projects;
