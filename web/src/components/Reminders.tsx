@@ -17,6 +17,8 @@ export interface Reminder {
   weekday: number;
   dayOfMonth: number;
   active: boolean;
+  /** Nhắc một lần đã qua ngày — việc xong rồi, máy chủ tự đánh dấu. */
+  done?: boolean;
 }
 
 const REPEATS: Array<{ key: RepeatKind; label: string }> = [
@@ -87,16 +89,21 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
     }
   }
 
-  async function remove(id: string) {
-    if (!window.confirm('Xoá nhắc hẹn này?')) return;
+  /** `imLang`: dùng khi dọn hàng loạt — đã hỏi một lần rồi, không hỏi lại từng cái. */
+  async function remove(id: string, imLang = false) {
+    if (!imLang && !window.confirm('Xoá nhắc hẹn này?')) return;
     try {
       await api(`/reminders/${id}`, { method: 'DELETE' });
       setList((l) => l.filter((x) => x.id !== id));
-      toast.success('Đã xoá');
+      if (!imLang) toast.success('Đã xoá');
     } catch (e) {
       toast.error((e as Error).message);
     }
   }
+
+  // Hẹn một lần đã qua ngày thì tách khỏi danh sách chính (anh Tâm 2/8/2026).
+  const daXong = list.filter((r) => r.done);
+  const dangTheoDoi = list.filter((r) => !r.done);
 
   return (
     <div
@@ -176,15 +183,17 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
           </AsyncButton>
         </div>
 
-        {/* Danh sách */}
+        {/* Danh sách đang theo dõi — lịch đã qua gom xuống mục riêng bên dưới. */}
         <ul className="mt-3 divide-y">
           {loading && <li className="py-3 text-sm text-slate-500">Đang tải…</li>}
-          {!loading && list.length === 0 && (
+          {!loading && dangTheoDoi.length === 0 && (
             <li className="py-3 text-sm text-slate-500">
-              Chưa có nhắc hẹn nào. Bạn cũng có thể nhắn thẳng cho trợ lý: “nhắc tôi đăng bài X Salon 8h hằng ngày”.
+              {daXong.length > 0
+                ? 'Không còn hẹn nào sắp tới. Các hẹn đã qua nằm ở mục bên dưới.'
+                : 'Chưa có nhắc hẹn nào. Bạn cũng có thể nhắn thẳng cho trợ lý: “nhắc tôi đăng bài X Salon 8h hằng ngày”.'}
             </li>
           )}
-          {list.map((r) => (
+          {dangTheoDoi.map((r) => (
             <li key={r.id} className="flex items-start justify-between gap-2 py-2">
               <div className="min-w-0">
                 <div className={`text-sm font-medium ${r.active ? 'text-slate-800' : 'text-slate-400 line-through'}`}>
@@ -206,6 +215,36 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
             </li>
           ))}
         </ul>
+
+        {/* Hẹn đã qua: gấp lại cho gọn, vẫn tra được và xoá được. */}
+        {daXong.length > 0 && (
+          <details className="mt-3 border-t border-slate-100 pt-2">
+            <summary className="cursor-pointer text-sm text-slate-500">✓ Đã xong ({daXong.length})</summary>
+            <ul className="mt-1 divide-y">
+              {daXong.map((r) => (
+                <li key={r.id} className="flex items-start justify-between gap-2 py-2">
+                  <div className="min-w-0">
+                    <div className="text-sm text-slate-400 line-through">{r.title}</div>
+                    <div className="mt-0.5 text-xs text-slate-400">{describe(r)}</div>
+                  </div>
+                  <button className="shrink-0 text-xs text-rose-600 underline" onClick={() => remove(r.id)}>
+                    xoá
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button
+              className="mt-2 text-xs text-rose-600 underline"
+              onClick={async () => {
+                if (!window.confirm(`Xoá hẳn ${daXong.length} nhắc hẹn đã xong?`)) return;
+                for (const r of daXong) await remove(r.id, true);
+                await load();
+              }}
+            >
+              Dọn hết {daXong.length} hẹn đã xong
+            </button>
+          </details>
+        )}
       </div>
     </div>
   );

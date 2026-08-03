@@ -30,17 +30,63 @@ const SCHEMA = {
  * Nhắc tới một loại việc là BẮT ĐẦU việc đó — không còn phân biệt bắt đầu/đã xong.
  * Anh Tâm chốt 26/7/2026: mọi việc đi qua Bắt đầu → Hoàn thành để có giờ làm thật.
  */
+/**
+ * Từ nói khác nhau nhưng cùng nghĩa. Danh mục ghi "ảnh" mà nhân sự quen gõ "hình" thì
+ * khớp nguyên chuỗi sẽ trượt — anh Tâm gặp đúng ca này 2/8/2026 với "Thiết kế post 1 hình".
+ */
+const DONG_NGHIA: Record<string, string> = {
+  hinh: 'anh',
+  photo: 'anh',
+  ads: 'quang cao',
+  qc: 'quang cao',
+  clip: 'video',
+  reels: 'video',
+  bai: 'bai',
+  post: 'post',
+};
+
+/** Tách thành các từ đã bỏ dấu và quy về từ chuẩn. */
+function tuKhoa(s: string): string[] {
+  return removeAccents(s)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => DONG_NGHIA[w] || w);
+}
+
+/**
+ * Keyword fallback when Gemini isn't configured/available.
+ *
+ * Nhắc tới một loại việc là BẮT ĐẦU việc đó — không còn phân biệt bắt đầu/đã xong.
+ * Anh Tâm chốt 26/7/2026: mọi việc đi qua Bắt đầu → Hoàn thành để có giờ làm thật.
+ *
+ * Khớp theo TỪ chứ không theo nguyên chuỗi: nhân sự gõ thiếu, gõ tắt, đảo thứ tự hay
+ * dùng từ đồng nghĩa vẫn ra đúng việc. Trượt ở đây là việc không được mở, không có
+ * điểm — mà người ta lại tưởng đã xong.
+ */
 export function heuristic(message: string, catalog: TaskCatalogItem[]): ChatExtraction {
   const m = removeAccents(message).toLowerCase();
   if (/(diem|xep hang|thu hang|luong|bonus|thuong|gio lam)/.test(m)) return { intent: 'query_stats' };
+
+  const tuTin = new Set(tuKhoa(message));
+  let totNhat: { item: TaskCatalogItem; diem: number } | null = null;
+
   for (const c of catalog) {
-    const code = c.code.toLowerCase();
-    const nameNoAccent = removeAccents(c.name).toLowerCase();
-    if (m.includes(code) || (nameNoAccent.length > 3 && m.includes(nameNoAccent))) {
-      return { intent: 'start_task', taskCode: c.code, note: message };
-    }
+    // Mã việc gõ thẳng thì chắc chắn đúng, khỏi đoán.
+    if (m.includes(c.code.toLowerCase())) return { intent: 'start_task', taskCode: c.code, note: message };
+
+    const tuTen = tuKhoa(c.name).filter((w) => w.length > 1);
+    if (tuTen.length === 0) continue;
+    const trung = tuTen.filter((w) => tuTin.has(w)).length;
+    const tyLe = trung / tuTen.length;
+    // Phải khớp phần LỚN tên việc mới tính — khớp 1-2 từ lẻ dễ nhận nhầm sang việc khác.
+    if (tyLe >= 0.7 && (!totNhat || trung > totNhat.diem)) totNhat = { item: c, diem: trung };
   }
-  return { intent: 'help' };
+
+  return totNhat
+    ? { intent: 'start_task', taskCode: totNhat.item.code, note: message }
+    : { intent: 'help' };
 }
 
 export async function interpret(

@@ -9,9 +9,9 @@ import {
   deleteReminder,
   type Reminder,
 } from './reminders.repo.js';
-import { describeRule } from '../lib/reminder.js';
+import { describeRule, isExpiredOnce } from '../lib/reminder.js';
 import { newId } from '../util/id.js';
-import { nowTz } from '../lib/datetime.js';
+import { nowTz, todayIso } from '../lib/datetime.js';
 
 export const remindersRouter = Router();
 remindersRouter.use(requireAuth);
@@ -29,7 +29,24 @@ const createSchema = z.object({
 remindersRouter.get(
   '/',
   asyncHandler(async (req, res) => {
-    res.json({ reminders: await getReminders(req.user!.sub) });
+    // Nhắc một lần đã qua ngày = việc xong rồi. Anh Tâm 2/8/2026: gom vào mục "Đã xong",
+    // đừng để lẫn trong danh sách đang theo dõi — nhìn mãi thành quen mắt, bỏ sót cái thật.
+    const today = todayIso();
+    const reminders = (await getReminders(req.user!.sub)).map((r) => ({
+      ...r,
+      done: isExpiredOnce(
+        {
+          atTime: r.atTime,
+          repeatKind: r.repeatKind,
+          onDate: r.onDate,
+          weekday: r.weekday,
+          dayOfMonth: r.dayOfMonth,
+          lastFired: r.lastFired,
+        },
+        today,
+      ),
+    }));
+    res.json({ reminders });
   }),
 );
 
