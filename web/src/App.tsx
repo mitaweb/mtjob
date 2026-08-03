@@ -24,6 +24,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Admin = lazy(() => import('./pages/Admin'));
 const Inbox = lazy(() => import('./pages/Inbox'));
 const Profile = lazy(() => import('./pages/Profile'));
+const Guide = lazy(() => import('./pages/Guide'));
 
 /** Fallback khi đang tải chunk trang: thanh chạy trên đỉnh (cùng style GlobalLoading). */
 function RouteFallback() {
@@ -110,6 +111,8 @@ export default function App() {
         <Route path="/requests" element={<Requests />} />
         <Route path="/inbox" element={<Inbox />} />
         <Route path="/profile" element={<Profile />} />
+        {/* Hướng dẫn: ai cũng vào được, nội dung tự lọc theo vai. */}
+        <Route path="/guide" element={<Guide />} />
         <Route
           path="/approvals"
           element={
