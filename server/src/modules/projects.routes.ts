@@ -96,7 +96,8 @@ projectsRouter.get(
         // số đứng im dù nhập bao nhiêu. `projectProgress` loại chúng ra và đếm riêng.
         const prog = projectProgress(
           own.map((k) => ({
-            percent: progressOf(entries.filter((e) => e.kpiId === k.id), k, today).percent,
+            // Mốc = ngày bắt đầu dự án: tuần/tháng đếm từ đó, không theo lịch.
+            percent: progressOf(entries.filter((e) => e.kpiId === k.id), k, today, p.startDate).percent,
             target: k.target,
           })),
         );
@@ -197,8 +198,8 @@ projectsRouter.get(
         const own = entries.filter((e) => e.kpiId === k.id);
         return {
           ...k,
-          progress: progressOf(own, k, today),
-          series: seriesFor(own, k.period, 8, today),
+          progress: progressOf(own, k, today, project.startDate),
+          series: seriesFor(own, k.period, 8, today, project.startDate),
           // Nhân viên phòng khác chỉ xem; giám đốc nhập bù được mọi ngày.
           canWrite: canWriteAnyTeam(req.user!.role) || k.teamId === teamId,
         };

@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth';
 import { useToast } from '../components/Toaster';
 import { Badge, EmptyState, Skeleton, SkeletonRows, type BadgeVariant } from '../components/ui';
 import AsyncButton from '../components/AsyncButton';
+import DailyKpiEntry, { type TodayData } from '../components/DailyKpiEntry';
 
 // Thư viện biểu đồ nặng 360KB — tải riêng để danh sách dự án và ô nhập chỉ số hiện trước.
 const ProjectProgressChart = lazy(() => import('../components/charts/ProjectProgressChart'));
@@ -71,25 +72,10 @@ interface Kpi {
   period: Period;
   target: number;
   active: boolean;
-  progress: { periodKey: string; current: number; target: number; percent: number };
+  /** `periodLabel` là kỳ đang đo viết cho người đọc: 'Tuần 1 (31/7–6/8)'. */
+  progress: { periodKey: string; periodLabel: string; current: number; target: number; percent: number };
   series: Array<{ key: string; label: string; value: number }>;
   canWrite: boolean;
-}
-
-interface TodayRow {
-  kpi: Kpi;
-  projectName: string;
-  /** Số đã nhập theo từng ngày đang mở: { '2026-07-31': 86, … } */
-  values: Record<string, number | null>;
-}
-
-const THU = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
-
-/** '2026-08-03' → 'T2 03/08'. Có thứ thì nhìn phát biết ngày nào là cuối tuần. */
-function nhanNgay(iso: string, today: string): string {
-  if (iso === today) return 'Hôm nay';
-  const d = new Date(`${iso}T00:00:00`);
-  return `${THU[d.getDay()]} ${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 }
 
 const blankProject = () => ({
@@ -146,7 +132,7 @@ export default function Projects() {
   const isDirector = user?.role === 'director' || user?.role === 'admin';
 
   const [projects, setProjects] = useState<ProjectRow[]>([]);
-  const [today, setToday] = useState<{ teamId: string; dates: string[]; rows: TodayRow[] } | null>(null);
+  const [today, setToday] = useState<TodayData | null>(null);
   const [customers, setCustomers] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
 
@@ -159,7 +145,6 @@ export default function Projects() {
   const [open, setOpen] = useState<{ project: ProjectRow; kpis: Kpi[] } | null>(null);
   const [kpiEdit, setKpiEdit] = useState<ReturnType<typeof blankKpi> | null>(null);
   const [chartKpi, setChartKpi] = useState<Kpi | null>(null);
-  const [draft, setDraft] = useState<Record<string, string>>({});
 
   async function loadProjects() {
     const r = await api<{ projects: ProjectRow[] }>('/projects');
@@ -257,18 +242,9 @@ export default function Projects() {
     }
   }
 
-  /** Ghi số cho một (chỉ số, ngày). Server chặn nếu sai phòng hoặc quá hạn sửa. */
-  async function saveEntry(kpiId: string, date: string, raw: string) {
-    const value = Number(raw);
-    if (!raw.trim() || !Number.isFinite(value) || value < 0) return toast.error('Nhập số không âm.');
-    try {
-      await api(`/projects/kpis/${kpiId}/entries`, { body: { date, value: Math.round(value) } });
-      setDraft((d) => ({ ...d, [`${kpiId}|${date}`]: '' }));
-      await Promise.all([loadToday(), loadProjects(), open ? openProject(open.project) : Promise.resolve()]);
-      toast.success('Đã lưu số.');
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
+  /** Nhập xong một lô chỉ số → làm mới mọi chỗ đang hiện số đó (tiến độ dự án, ô chi tiết). */
+  async function reloadAfterEntry() {
+    await Promise.all([loadToday(), loadProjects(), open ? openProject(open.project) : Promise.resolve()]);
   }
 
   // Bộ lọc — dự án nhiều lên thì nhìn cả danh sách không ra vấn đề nằm ở đâu.
@@ -312,71 +288,7 @@ export default function Projects() {
       </div>
 
       {/* Việc hằng ngày của nhân sự — đặt trên cùng vì đây là thứ họ mở app để làm. */}
-      {today && (
-        <div className="card">
-          <h2 className="mb-1 font-semibold">Chỉ số cần nhập {today.teamId && `— phòng ${today.teamId}`}</h2>
-          {!today.teamId ? (
-            <p className="text-sm text-slate-500">
-              Bạn không thuộc phòng ban nào nên không có chỉ số để nhập. Vẫn xem được tiến độ các dự án bên dưới.
-            </p>
-          ) : today.rows.length === 0 ? (
-            <p className="text-sm text-slate-500">Phòng bạn chưa có chỉ số nào trong các dự án đang chạy.</p>
-          ) : (
-            <>
-              <p className="mb-3 text-xs text-slate-500">
-                {today.dates.length > 2
-                  ? 'Cuối tuần không ai đi làm nên số thứ Sáu, thứ Bảy và Chủ nhật nhập bù được tới hết hôm nay.'
-                  : 'Số của hôm qua còn sửa được tới hết hôm nay. Sau đó phải nhờ giám đốc nhập bù.'}
-              </p>
-              <div className="space-y-2">
-                {today.rows.map((r) => (
-                  <div key={r.kpi.id} className="rounded-xl border border-slate-100 p-3">
-                    <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-                      <span className="text-sm font-medium text-slate-800">
-                        {r.kpi.name}
-                        {r.kpi.unit && <span className="text-slate-400"> ({r.kpi.unit})</span>}
-                      </span>
-                      <span className="text-xs text-slate-400">{r.projectName}</span>
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {today.dates.map((date) => {
-                        const saved = r.values?.[date] ?? null;
-                        const key = `${r.kpi.id}|${date}`;
-                        const laHomNay = date === today.dates[today.dates.length - 1];
-                        return (
-                          <div key={date} className="flex items-center gap-2">
-                            <span
-                              className={`w-20 shrink-0 text-xs ${laHomNay ? 'font-medium text-slate-700' : 'text-slate-500'}`}
-                            >
-                              {nhanNgay(date, today.dates[today.dates.length - 1]!)}
-                            </span>
-                            <input
-                              className="input py-1 text-sm"
-                              type="number"
-                              min={0}
-                              placeholder={saved === null ? 'chưa nhập' : String(saved)}
-                              value={draft[key] ?? ''}
-                              onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
-                              onKeyDown={(e) => e.key === 'Enter' && saveEntry(r.kpi.id, date, draft[key] ?? '')}
-                            />
-                            <AsyncButton
-                              className="btn-ghost shrink-0 px-3 py-1 text-sm"
-                              busyLabel="…"
-                              onClick={() => saveEntry(r.kpi.id, date, draft[key] ?? '')}
-                            >
-                              Lưu
-                            </AsyncButton>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      )}
+      {today && <DailyKpiEntry today={today} onSaved={reloadAfterEntry} />}
 
       {/* Biểu đồ toàn cảnh — chỉ có nghĩa khi nhìn nhiều dự án cùng lúc. */}
       {isDirector && overview.length > 0 && (
@@ -514,6 +426,16 @@ export default function Projects() {
               </button>
             </div>
 
+            {/* Tuần/tháng của dự án đếm từ ngày bắt đầu. Thiếu ngày đó thì phải quay về
+                tuần lịch — nói thẳng ra, vì đây đúng là chỗ làm tiến độ trông như đứng im. */}
+            {!open.project.startDate && open.kpis.some((k) => k.period === 'week' || k.period === 'month') && (
+              <p className="mt-2 rounded-xl bg-amber-50 p-2.5 text-xs text-amber-800">
+                Dự án chưa khai <b>ngày bắt đầu</b> nên tuần/tháng đang tính theo lịch (tuần mới bắt đầu
+                mỗi thứ Hai). Bấm <b>Sửa dự án</b> để khai ngày bắt đầu — khi đó tuần 1 chạy từ đúng ngày
+                ấy cộng 7 ngày.
+              </p>
+            )}
+
             {open.project.note && <p className="mt-2 text-sm text-slate-600">{open.project.note}</p>}
 
             {canManage && (
@@ -547,8 +469,10 @@ export default function Projects() {
                             {k.unit && <span className="text-slate-400"> ({k.unit})</span>}
                             {!k.active && <span className="ml-2 text-xs text-slate-400">đã tắt</span>}
                           </span>
+                          {/* Ghi rõ ĐANG ĐO KỲ NÀO. Trước đây chỉ hiện "Mỗi tuần · 0/68" nên
+                              thấy số 0 mà không biết nó là 0 của kỳ nào, tưởng máy không ghi nhận. */}
                           <span className="text-xs text-slate-500">
-                            {PERIODS.find((p) => p.value === k.period)?.label} ·{' '}
+                            {k.period !== 'total' && <>{k.progress.periodLabel} · </>}
                             <b className="text-slate-700">
                               {k.progress.current}/{k.target || '—'}
                             </b>

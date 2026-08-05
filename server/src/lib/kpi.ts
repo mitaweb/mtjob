@@ -15,25 +15,74 @@ export interface KpiEntryLike {
 }
 
 /**
- * Khoá kỳ chứa ngày `date`.
- *   day   → '2026-07-28'
- *   week  → '2026-W31'  (tuần ISO — thứ 2 đầu tuần, một ngày chỉ thuộc đúng một tuần)
- *   month → '2026-07'
- *   total → 'total'     (cả dự án, không chia kỳ)
+ * Độ dài một kỳ khi đếm từ ngày bắt đầu dự án.
+ *
+ * Anh Tâm chốt 4/8/2026: tuần và tháng của dự án đếm từ NGÀY BẮT ĐẦU, không theo lịch —
+ * "dự án bắt đầu từ 31/7 thì tuần là từ 31/7 + 7 ngày". Tháng là khối 30 ngày, không phải
+ * tháng lịch, nên tháng 2 hay tháng 31 ngày cũng dài như nhau.
  */
-export function periodKey(date: string, period: KpiPeriod): string {
+const DO_DAI_KY = { week: 7, month: 30 } as const;
+
+/**
+ * Kỳ thứ mấy kể từ mốc. Kỳ 1 là `[mốc, mốc + độ dài - 1]`.
+ * Trả 0 hoặc số âm cho ngày trước khi dự án bắt đầu; null khi mốc hoặc ngày không hợp lệ.
+ */
+function chiSoKy(date: string, moc: string, doDai: number): number | null {
+  const d = dayjs(date);
+  const m = dayjs(moc);
+  if (!d.isValid() || !m.isValid()) return null;
+  return Math.floor(d.startOf('day').diff(m.startOf('day'), 'day') / doDai) + 1;
+}
+
+/**
+ * Khoá kỳ chứa ngày `date`.
+ *
+ * Có `moc` (ngày bắt đầu dự án) thì tuần/tháng đếm từ đó:
+ *   week  → 'W1', 'W2'…  (mốc 31/7 ⇒ W1 = 31/7–6/8)
+ *   month → 'M1', 'M2'…  (khối 30 ngày)
+ * Không có mốc thì quay về kỳ theo lịch — dự án chưa khai ngày bắt đầu vẫn phải đo được:
+ *   week  → '2026-W31'  (tuần ISO)
+ *   month → '2026-07'
+ * Hai dạng khoá không đụng nhau nên đổi mốc cũng không lẫn số của kỳ cũ.
+ *
+ *   day   → '2026-07-28' (mốc không đổi gì)
+ *   total → 'total'      (cả dự án, không chia kỳ)
+ */
+export function periodKey(date: string, period: KpiPeriod, moc?: string): string {
   if (period === 'total') return 'total';
   const d = dayjs(date);
   if (!d.isValid()) return '';
   if (period === 'day') return d.format('YYYY-MM-DD');
+
+  const n = moc ? chiSoKy(date, moc, DO_DAI_KY[period]) : null;
+  if (n !== null) return `${period === 'week' ? 'W' : 'M'}${n}`;
+
   if (period === 'month') return d.format('YYYY-MM');
   // Năm ISO khác năm lịch ở tuần giao thừa: 31/12/2026 thuộc tuần 1 của 2027.
   return `${d.isoWeekYear()}-W${String(d.isoWeek()).padStart(2, '0')}`;
 }
 
-/** Nhãn tiếng Việt cho một khoá kỳ. Tuần hiện kèm khoảng ngày để khỏi phải nhẩm. */
-export function periodLabel(key: string): string {
+/**
+ * Nhãn tiếng Việt cho một khoá kỳ. Luôn kèm khoảng ngày để khỏi phải nhẩm —
+ * "Tuần 2" của dự án không trùng tuần 2 trên lịch nên nói trống không là dễ hiểu nhầm.
+ */
+export function periodLabel(key: string, moc?: string): string {
   if (key === 'total') return 'Cả dự án';
+
+  const neo = key.match(/^([WM])(-?\d+)$/);
+  if (neo) {
+    const n = Number(neo[2]);
+    const laTuan = neo[1] === 'W';
+    const ten = laTuan ? 'Tuần' : 'Tháng';
+    // Chỉ xảy ra khi nhập bù cho ngày trước lúc dự án khởi động.
+    if (n < 1) return 'Trước khi bắt đầu';
+    const m = dayjs(moc);
+    if (!moc || !m.isValid()) return `${ten} ${n}`;
+    const doDai = laTuan ? DO_DAI_KY.week : DO_DAI_KY.month;
+    const dau = m.add((n - 1) * doDai, 'day');
+    return `${ten} ${n} (${dau.format('D/M')}–${dau.add(doDai - 1, 'day').format('D/M')})`;
+  }
+
   const week = key.match(/^(\d{4})-W(\d{2})$/);
   if (week) {
     // Chuẩn ISO: tuần 1 là tuần CHỨA ngày 4/1. Tính từ đó thay vì dùng setter
@@ -49,8 +98,8 @@ export function periodLabel(key: string): string {
 }
 
 /** Kỳ đang chạy, tính theo giờ VN (máy người xem có thể ở múi khác). */
-export function currentPeriodKey(period: KpiPeriod, today?: string): string {
-  return periodKey(today || dayjs().tz(TZ).format('YYYY-MM-DD'), period);
+export function currentPeriodKey(period: KpiPeriod, today?: string, moc?: string): string {
+  return periodKey(today || dayjs().tz(TZ).format('YYYY-MM-DD'), period, moc);
 }
 
 export interface KpiLike {
@@ -60,20 +109,36 @@ export interface KpiLike {
 
 export interface KpiProgress {
   periodKey: string;
+  /** Kỳ đang đo, viết cho người đọc: 'Tuần 1 (31/7–6/8)'. Màn hình hiện cái này. */
+  periodLabel: string;
   current: number;
   target: number;
   /** Có thể vượt 100 — cố ý không cắt, để thấy ai làm dư. 0 khi chưa đặt mục tiêu. */
   percent: number;
 }
 
-/** Tiến độ của KPI trong kỳ đang chạy (hoặc kỳ chứa `today` nếu truyền vào). */
-export function progressOf(entries: KpiEntryLike[], kpi: KpiLike, today?: string): KpiProgress {
-  const key = currentPeriodKey(kpi.period, today);
+/**
+ * Tiến độ của KPI trong kỳ đang chạy (hoặc kỳ chứa `today` nếu truyền vào).
+ * `moc` là ngày bắt đầu dự án — xem `periodKey`.
+ */
+export function progressOf(
+  entries: KpiEntryLike[],
+  kpi: KpiLike,
+  today?: string,
+  moc?: string,
+): KpiProgress {
+  const key = currentPeriodKey(kpi.period, today, moc);
   const current = entries
-    .filter((e) => periodKey(e.date, kpi.period) === key)
+    .filter((e) => periodKey(e.date, kpi.period, moc) === key)
     .reduce((s, e) => s + (Number(e.value) || 0), 0);
   const target = Number(kpi.target) || 0;
-  return { periodKey: key, current, target, percent: target > 0 ? Math.round((current / target) * 100) : 0 };
+  return {
+    periodKey: key,
+    periodLabel: periodLabel(key, moc),
+    current,
+    target,
+    percent: target > 0 ? Math.round((current / target) * 100) : 0,
+  };
 }
 
 export interface KpiPoint {
@@ -91,21 +156,36 @@ export function seriesFor(
   period: KpiPeriod,
   n = 8,
   today?: string,
+  moc?: string,
 ): KpiPoint[] {
-  const base = dayjs(today || dayjs().tz(TZ).format('YYYY-MM-DD'));
+  const homNay = today || dayjs().tz(TZ).format('YYYY-MM-DD');
   if (period === 'total') {
     const value = entries.reduce((s, e) => s + (Number(e.value) || 0), 0);
     return [{ key: 'total', label: 'Cả dự án', value }];
   }
 
-  const unit = period === 'day' ? 'day' : period === 'week' ? 'week' : 'month';
   const sum = new Map<string, number>();
   for (const e of entries) {
-    const k = periodKey(e.date, period);
+    const k = periodKey(e.date, period, moc);
     if (k) sum.set(k, (sum.get(k) || 0) + (Number(e.value) || 0));
   }
-
   const out: KpiPoint[] = [];
+
+  const doDai = period === 'week' ? DO_DAI_KY.week : period === 'month' ? DO_DAI_KY.month : 0;
+  const kyHienTai = doDai > 0 && moc ? chiSoKy(homNay, moc, doDai) : null;
+  if (kyHienTai !== null) {
+    // KHÔNG vẽ lùi quá kỳ 1: trước ngày bắt đầu thì dự án chưa tồn tại, kéo dài đường
+    // biểu đồ về đó chỉ tạo ra một dãy số 0 trông như bị bỏ bê.
+    const dau = Math.max(1, kyHienTai - n + 1);
+    for (let i = dau; i <= Math.max(dau, kyHienTai); i++) {
+      const k = `${period === 'week' ? 'W' : 'M'}${i}`;
+      out.push({ key: k, label: periodLabel(k, moc), value: sum.get(k) || 0 });
+    }
+    return out;
+  }
+
+  const base = dayjs(homNay);
+  const unit = period === 'day' ? 'day' : period === 'week' ? 'week' : 'month';
   for (let i = n - 1; i >= 0; i--) {
     const k = periodKey(base.subtract(i, unit).format('YYYY-MM-DD'), period);
     out.push({ key: k, label: periodLabel(k), value: sum.get(k) || 0 });

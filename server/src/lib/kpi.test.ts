@@ -42,6 +42,49 @@ describe('periodKey', () => {
   });
 });
 
+// Anh Tâm 4/8/2026: tuần/tháng của dự án đếm từ NGÀY BẮT ĐẦU, không theo lịch.
+// Ví dụ gốc của anh: dự án bắt đầu 31/7 thì tuần 1 là 31/7 → 6/8.
+describe('periodKey — kỳ đếm từ ngày bắt đầu dự án', () => {
+  const MOC = '2026-07-31';
+
+  it('tuần 1 là đúng 7 ngày kể từ mốc', () => {
+    expect(periodKey('2026-07-31', 'week', MOC)).toBe('W1');
+    expect(periodKey('2026-08-06', 'week', MOC)).toBe('W1');
+    expect(periodKey('2026-08-07', 'week', MOC)).toBe('W2');
+    expect(periodKey('2026-08-13', 'week', MOC)).toBe('W2');
+  });
+
+  it('gom được số cuối tuần mà lịch ISO xé làm đôi', () => {
+    // Đây chính là lỗi anh Tâm gặp: T6 31/7 và T3 4/8 nằm ở HAI tuần lịch khác nhau
+    // nên nhập bù sáng thứ Hai xong tiến độ vẫn 0. Đếm từ mốc thì chúng cùng một kỳ.
+    expect(periodKey('2026-07-31', 'week')).not.toBe(periodKey('2026-08-04', 'week'));
+    expect(periodKey('2026-07-31', 'week', MOC)).toBe(periodKey('2026-08-04', 'week', MOC));
+  });
+
+  it('tháng là khối 30 ngày, không phải tháng lịch', () => {
+    expect(periodKey('2026-07-31', 'month', MOC)).toBe('M1');
+    expect(periodKey('2026-08-29', 'month', MOC)).toBe('M1'); // ngày thứ 30
+    expect(periodKey('2026-08-30', 'month', MOC)).toBe('M2');
+    // Sang tháng lịch mới vẫn là kỳ 1 — đây là điểm khác hẳn cách cũ.
+    expect(periodKey('2026-08-01', 'month')).toBe('2026-08');
+  });
+
+  it('ngày trước lúc dự án bắt đầu ra kỳ 0 trở xuống', () => {
+    expect(periodKey('2026-07-30', 'week', MOC)).toBe('W0');
+    expect(periodKey('2026-07-24', 'week', MOC)).toBe('W0');
+    expect(periodKey('2026-07-23', 'week', MOC)).toBe('W-1');
+  });
+
+  it('mốc rỗng hoặc hỏng thì quay về kỳ theo lịch, không ném lỗi', () => {
+    expect(periodKey('2026-07-31', 'week', '')).toBe(periodKey('2026-07-31', 'week'));
+    expect(periodKey('2026-07-31', 'week', 'linh tinh')).toBe(periodKey('2026-07-31', 'week'));
+  });
+
+  it('ngày là kỳ theo ngày, mốc không đổi gì', () => {
+    expect(periodKey('2026-08-04', 'day', MOC)).toBe('2026-08-04');
+  });
+});
+
 describe('periodLabel', () => {
   it('nhãn tuần kèm khoảng ngày để khỏi phải nhẩm', () => {
     expect(periodLabel('2026-W31')).toBe('Tuần 31 (27/7–2/8)');
@@ -50,6 +93,20 @@ describe('periodLabel', () => {
   it('nhãn tháng và cả dự án', () => {
     expect(periodLabel('2026-07')).toBe('Tháng 7/2026');
     expect(periodLabel('total')).toBe('Cả dự án');
+  });
+
+  it('kỳ đếm từ mốc ghi rõ khoảng ngày của chính dự án đó', () => {
+    expect(periodLabel('W1', '2026-07-31')).toBe('Tuần 1 (31/7–6/8)');
+    expect(periodLabel('W2', '2026-07-31')).toBe('Tuần 2 (7/8–13/8)');
+    expect(periodLabel('M1', '2026-07-31')).toBe('Tháng 1 (31/7–29/8)');
+  });
+
+  it('thiếu mốc thì vẫn đọc được, chỉ mất khoảng ngày', () => {
+    expect(periodLabel('W3')).toBe('Tuần 3');
+  });
+
+  it('số nhập trước ngày bắt đầu nói thẳng ra', () => {
+    expect(periodLabel('W0', '2026-07-31')).toBe('Trước khi bắt đầu');
   });
 });
 
@@ -77,6 +134,26 @@ describe('progressOf', () => {
     const r = progressOf([e('2026-07-29', 150)], { period: 'day', target: 100 }, '2026-07-29');
     expect(r.percent).toBe(150);
   });
+
+  it('đếm từ ngày bắt đầu: số T6 31/7 vẫn tính cho tuần đang chạy hôm T3 4/8', () => {
+    // Đúng tình huống Savax Door: nhập bù cuối tuần xong tiến độ đứng im vì lịch ISO
+    // xé 31/7 sang tuần trước.
+    const entries = [e('2026-07-31', 20), e('2026-08-04', 15)];
+    const theoLich = progressOf(entries, { period: 'week', target: 68 }, '2026-08-04');
+    expect(theoLich.current).toBe(15); // mất 20 của thứ Sáu
+
+    const theoMoc = progressOf(entries, { period: 'week', target: 68 }, '2026-08-04', '2026-07-31');
+    expect(theoMoc.current).toBe(35);
+    expect(theoMoc.periodKey).toBe('W1');
+    expect(theoMoc.periodLabel).toBe('Tuần 1 (31/7–6/8)');
+  });
+
+  it('sang kỳ sau thì số kỳ trước không theo qua', () => {
+    const entries = [e('2026-08-04', 35), e('2026-08-08', 10)];
+    const r = progressOf(entries, { period: 'week', target: 68 }, '2026-08-08', '2026-07-31');
+    expect(r.periodKey).toBe('W2');
+    expect(r.current).toBe(10);
+  });
 });
 
 describe('seriesFor', () => {
@@ -89,6 +166,19 @@ describe('seriesFor', () => {
   it('cũ trước mới sau', () => {
     const s = seriesFor([], 'month', 3, '2026-07-15');
     expect(s.map((p) => p.key)).toEqual(['2026-05', '2026-06', '2026-07']);
+  });
+
+  it('đếm từ mốc: nhãn là kỳ của dự án, không phải tuần trên lịch', () => {
+    const s = seriesFor([e('2026-08-04', 35)], 'week', 8, '2026-08-12', '2026-07-31');
+    expect(s.map((p) => p.key)).toEqual(['W1', 'W2']);
+    expect(s[0]!.label).toBe('Tuần 1 (31/7–6/8)');
+    expect(s.map((p) => p.value)).toEqual([35, 0]);
+  });
+
+  it('không vẽ lùi quá kỳ 1 — trước đó dự án chưa tồn tại', () => {
+    const s = seriesFor([], 'week', 8, '2026-08-04', '2026-07-31');
+    expect(s).toHaveLength(1);
+    expect(s[0]!.key).toBe('W1');
   });
 
   it('kỳ total chỉ có một cột tổng', () => {
