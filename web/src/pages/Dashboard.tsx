@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { vnd, fmtMin } from '../lib/format';
+import { vnd, fmtMin, currentYm } from '../lib/format';
 import { Skeleton, SkeletonRows } from '../components/ui';
 import MemberWorkDetail from '../components/MemberWorkDetail';
 import type { MemberScore } from '../lib/types';
@@ -9,34 +9,63 @@ import type { MemberScore } from '../lib/types';
 // Thư viện biểu đồ nặng 360KB — tải riêng để bảng xếp hạng hiện ra trước, khỏi bắt chờ.
 const PointsBarChart = lazy(() => import('../components/charts/PointsBarChart'));
 
+const thangNay = () => {
+  const { year, month } = currentYm();
+  return `${year}-${String(month).padStart(2, '0')}`;
+};
+
 export default function Dashboard() {
   const { user } = useAuth();
   const isDirector = user?.role === 'director' || user?.role === 'admin';
   const [scores, setScores] = useState<MemberScore[]>([]);
+  const [ym, setYm] = useState(thangNay());
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
   const [detail, setDetail] = useState<{ id: string; name: string } | null>(null);
 
+  // Cột "⏱ Hôm nay" là số phút làm việc CỦA HÔM NAY, không dính gì tới tháng đang xem.
+  // Để nó nằm trong bảng tháng 6 thì đọc thành "tháng 6 làm 6g11p" — sai hẳn.
+  const laThangNay = ym === thangNay();
+
   useEffect(() => {
+    const [y, m] = ym.split('-');
     const scoreUrl = isDirector ? '/scores/all' : '/scores/team';
     setLoading(true);
-    api<{ members: MemberScore[] }>(scoreUrl)
+    setMsg('');
+    api<{ members: MemberScore[] }>(`${scoreUrl}?year=${y}&month=${Number(m)}`)
       .then((r) => setScores(r.members))
       .catch((e) => setMsg((e as Error).message))
       .finally(() => setLoading(false));
-  }, [isDirector]);
+  }, [isDirector, ym]);
 
   const chartData = scores.map((s) => ({ name: s.fullName.split(' ').slice(-1)[0], points: s.monthPoints }));
+  const nhanThang = laThangNay ? 'tháng này' : `tháng ${Number(ym.slice(5))}/${ym.slice(0, 4)}`;
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-bold">{isDirector ? 'Tổng quan toàn công ty' : 'Tổng quan team'}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-lg font-bold">{isDirector ? 'Tổng quan toàn công ty' : 'Tổng quan team'}</h1>
+        <div className="flex items-center gap-2">
+          <label className="label mb-0 text-xs" htmlFor="dash-month">
+            Xem tháng
+          </label>
+          <input
+            id="dash-month"
+            type="month"
+            className="input max-w-[10rem] py-1"
+            value={ym}
+            onChange={(e) => e.target.value && setYm(e.target.value)}
+          />
+        </div>
+      </div>
       {msg && <div className="text-sm text-rose-600">{msg}</div>}
 
       <div className="card">
-        <h2 className="font-semibold mb-2">Điểm tháng này</h2>
+        <h2 className="mb-2 font-semibold">Điểm {nhanThang}</h2>
         {loading ? (
           <Skeleton className="h-[260px] w-full" />
+        ) : scores.every((s) => s.monthPoints === 0) ? (
+          <p className="py-12 text-center text-sm text-slate-500">Chưa ai có điểm trong {nhanThang}.</p>
         ) : (
           <Suspense fallback={<Skeleton className="h-[260px] w-full" />}>
             <PointsBarChart data={chartData} />
@@ -45,7 +74,7 @@ export default function Dashboard() {
       </div>
 
       <div className="card overflow-x-auto">
-        <h2 className="font-semibold">Bảng xếp hạng</h2>
+        <h2 className="font-semibold">Bảng xếp hạng {nhanThang}</h2>
         <p className="mb-2 text-xs text-slate-500">Bấm vào tên để xem chi tiết công việc từng ngày.</p>
         {loading ? (
           <SkeletonRows rows={5} />
@@ -58,7 +87,7 @@ export default function Dashboard() {
               <th>Team</th>
               <th>Điểm</th>
               <th>Thưởng</th>
-              <th>⏱ Hôm nay</th>
+              {laThangNay && <th>⏱ Hôm nay</th>}
             </tr>
           </thead>
           <tbody>
@@ -73,7 +102,7 @@ export default function Dashboard() {
                 <td>{s.teamId}</td>
                 <td className="font-medium">{s.monthPoints}</td>
                 <td className="text-emerald-600">{vnd(s.bonus)}</td>
-                <td>{fmtMin(s.workMinutesToday)}</td>
+                {laThangNay && <td>{fmtMin(s.workMinutesToday)}</td>}
               </tr>
             ))}
           </tbody>
@@ -82,7 +111,12 @@ export default function Dashboard() {
       </div>
 
       {detail && (
-        <MemberWorkDetail memberId={detail.id} fullName={detail.name} onClose={() => setDetail(null)} />
+        <MemberWorkDetail
+          memberId={detail.id}
+          fullName={detail.name}
+          initialYm={ym}
+          onClose={() => setDetail(null)}
+        />
       )}
     </div>
   );

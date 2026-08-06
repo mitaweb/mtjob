@@ -30,6 +30,19 @@ const STATUS: Record<string, { label: string; variant: BadgeVariant }> = {
   done: { label: 'Đã xong', variant: 'neutral' },
 };
 
+/** Một chỉ số kèm số đã đạt, đủ để hiện một dòng trên thẻ dự án. */
+interface KpiTomTat {
+  id: string;
+  teamId: string;
+  name: string;
+  unit: string;
+  period: Period;
+  current: number;
+  target: number;
+  percent: number;
+  periodLabel: string;
+}
+
 interface ProjectRow {
   id: string;
   name: string;
@@ -47,6 +60,8 @@ interface ProjectRow {
   noTarget?: number;
   /** Các phòng có chỉ số trong dự án. */
   teams?: string[];
+  /** Từng chỉ số kèm số đã đạt — hiện thẳng trên thẻ, khỏi phải mở dự án ra xem. */
+  kpis?: KpiTomTat[];
   /** % thời gian đã trôi; null khi chưa khai ngày bắt đầu/kết thúc. */
   timePercent?: number | null;
   alert?: 'none' | 'warn' | 'danger';
@@ -114,13 +129,62 @@ const KPI_PRESETS: Array<Omit<KpiDraft, 'id' | 'active'>> = [
   { teamId: 'SEO', name: 'Bài chuẩn SEO', unit: 'bài', period: 'month', target: 0 },
 ];
 
+/** Ba mức màu dùng chung cho thanh tiến độ và con số phần trăm — đọc phải khớp nhau. */
+const mucMau = (percent: number) => (percent >= 100 ? 'emerald' : percent >= 60 ? 'brand' : 'amber');
+
 /** Thanh tiến độ. Vượt mục tiêu vẫn hiện đầy nhưng đổi màu để thấy ngay là dư. */
 function Bar100({ percent }: { percent: number }) {
   const w = Math.min(100, Math.max(0, percent));
-  const color = percent >= 100 ? 'bg-emerald-500' : percent >= 60 ? 'bg-brand-500' : 'bg-amber-400';
+  const color = { emerald: 'bg-emerald-500', brand: 'bg-brand-500', amber: 'bg-amber-400' }[mucMau(percent)];
   return (
     <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
       <div className={`h-full rounded-full ${color}`} style={{ width: `${w}%` }} />
+    </div>
+  );
+}
+
+/**
+ * Chi tiết từng chỉ số ngay trên thẻ dự án, gom theo phòng.
+ *
+ * Anh Tâm 4/8/2026: "hiển thị đầy đủ các chỉ số của các team để theo dõi không cần bấm
+ * vào". Trước đây thẻ chỉ nói "2 chỉ số · Ads, SEO" — biết có hai chỉ số mà không biết
+ * chúng đang ở đâu, muốn xem phải mở từng dự án một.
+ */
+function ChiSoTheoTeam({ kpis }: { kpis: KpiTomTat[] }) {
+  const PHAN_TRAM_MAU = {
+    emerald: 'text-emerald-600',
+    brand: 'text-brand-600',
+    amber: 'text-amber-600',
+  };
+  const theoTeam = TEAMS.map((t) => [t, kpis.filter((k) => k.teamId === t)] as const)
+    .concat([['Khác', kpis.filter((k) => !TEAMS.includes(k.teamId))] as const])
+    .filter(([, ks]) => ks.length > 0);
+
+  return (
+    <div className="mt-2 space-y-1.5 border-t border-slate-100 pt-2">
+      {theoTeam.map(([team, ks]) => (
+        <div key={team}>
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{team}</div>
+          {ks.map((k) => (
+            <div key={k.id} className="flex items-baseline justify-between gap-2 text-xs">
+              <span className="min-w-0 truncate text-slate-600" title={k.name}>
+                {k.name}
+              </span>
+              {k.target > 0 ? (
+                <span className="shrink-0 tabular-nums text-slate-500">
+                  <b className="text-slate-700">
+                    {k.current}/{k.target}
+                  </b>
+                  {k.unit && ` ${k.unit}`} ·{' '}
+                  <b className={PHAN_TRAM_MAU[mucMau(k.percent)]}>{k.percent}%</b>
+                </span>
+              ) : (
+                <span className="shrink-0 text-amber-600">chưa đặt mục tiêu</span>
+              )}
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
@@ -343,12 +407,18 @@ export default function Projects() {
         ) : shown.length === 0 ? (
           <EmptyState icon="🔍" text="Không có dự án nào khớp bộ lọc." />
         ) : (
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {/* grid-cols-1 chứ KHÔNG để trống: không khai cột thì cột tự giãn theo nội dung
+                dài nhất, dòng chỉ số dài là cả thẻ phình ra khỏi màn hình điện thoại.
+                min-w-0 để tên dài trong thẻ cắt bằng dấu … thay vì đẩy thẻ rộng ra. */}
             {shown.map((p) => (
               <button
                 key={p.id}
                 title={p.alertReason || ''}
-                className={`rounded-xl border p-3 text-left ${ALERT_STYLE[p.alert || 'none']}`}
+                // self-start: thẻ cao bằng đúng nội dung. Không có nó thì thẻ ngắn bị kéo
+                // giãn bằng thẻ dài cùng hàng, mà trình duyệt lại canh giữa nội dung trong
+                // <button> — thành ra chữ trôi lơ lửng giữa thẻ.
+                className={`min-w-0 self-start rounded-xl border p-3 text-left ${ALERT_STYLE[p.alert || 'none']}`}
                 onClick={() => openProject(p)}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -383,13 +453,11 @@ export default function Projects() {
                     <span className="w-10 shrink-0 text-right">{p.timePercent}%</span>
                   </div>
                 )}
-                <div className="mt-1 text-xs text-slate-400">
-                  {p.kpiCount} chỉ số
-                  {!!p.teams?.length && <span> · {p.teams.join(', ')}</span>}
-                  {!!p.noTarget && p.measured !== 0 && (
-                    <span className="text-amber-600"> · {p.noTarget} chưa có mục tiêu</span>
-                  )}
-                </div>
+                {p.kpis && p.kpis.length > 0 ? (
+                  <ChiSoTheoTeam kpis={p.kpis} />
+                ) : (
+                  <div className="mt-1 text-xs text-slate-400">Chưa có chỉ số nào</div>
+                )}
                 {p.alertReason && (
                   <div
                     className={`mt-1.5 text-xs font-medium ${

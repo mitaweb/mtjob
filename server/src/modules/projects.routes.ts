@@ -92,15 +92,26 @@ projectsRouter.get(
     res.json({
       projects: visible.map((p) => {
         const own = activeKpis.filter((k) => k.projectId === p.id);
+        // Từng chỉ số một, đủ số liệu để hiện thẳng trên thẻ — anh Tâm 4/8/2026 muốn
+        // "theo dõi không cần bấm vào". Tính MỘT lần rồi dùng lại cho phần trăm tổng.
+        // Mốc = ngày bắt đầu dự án: tuần/tháng đếm từ đó, không theo lịch.
+        const chiTiet = own.map((k) => {
+          const pr = progressOf(entries.filter((e) => e.kpiId === k.id), k, today, p.startDate);
+          return {
+            id: k.id,
+            teamId: k.teamId,
+            name: k.name,
+            unit: k.unit,
+            period: k.period,
+            current: pr.current,
+            target: pr.target,
+            percent: pr.percent,
+            periodLabel: pr.periodLabel,
+          };
+        });
         // Chỉ số CHƯA đặt mục tiêu không đo được tiến độ — gộp vào trung bình sẽ kéo con
         // số đứng im dù nhập bao nhiêu. `projectProgress` loại chúng ra và đếm riêng.
-        const prog = projectProgress(
-          own.map((k) => ({
-            // Mốc = ngày bắt đầu dự án: tuần/tháng đếm từ đó, không theo lịch.
-            percent: progressOf(entries.filter((e) => e.kpiId === k.id), k, today, p.startDate).percent,
-            target: k.target,
-          })),
-        );
+        const prog = projectProgress(chiTiet.map((k) => ({ percent: k.percent, target: k.target })));
         const alert = projectAlert(timeProgress(p.startDate, p.endDate, today), prog.percent, prog.counted);
         return {
           ...p,
@@ -112,6 +123,8 @@ projectsRouter.get(
           noTarget: prog.noTarget,
           /** Các phòng có chỉ số trong dự án này — để lọc theo phòng. */
           teams: [...new Set(own.map((k) => k.teamId).filter(Boolean))].sort(),
+          /** Từng chỉ số kèm số đã đạt — thẻ dự án hiện thẳng, khỏi phải mở ra xem. */
+          kpis: chiTiet,
           timePercent: alert.timePercent,
           alert: alert.level,
           alertReason: alert.reason,

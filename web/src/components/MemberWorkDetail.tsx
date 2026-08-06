@@ -41,16 +41,19 @@ export default function MemberWorkDetail({
   memberId,
   fullName,
   onClose,
+  initialYm,
 }: {
   memberId: string;
   fullName: string;
   onClose: () => void;
+  /** Tháng mở sẵn ('2026-07'). Bảng xếp hạng đang xem tháng nào thì mở đúng tháng đó. */
+  initialYm?: string;
 }) {
   const { user } = useAuth();
   const toast = useToast();
   const canAdjust = user?.role === 'director' || user?.role === 'admin';
 
-  const [ym, setYm] = useState(currentYm());
+  const [ym, setYm] = useState(initialYm || currentYm());
   const [data, setData] = useState<Detail | null>(null);
   const [loading, setLoading] = useState(true);
 

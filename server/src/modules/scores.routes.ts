@@ -36,15 +36,18 @@ scoresRouter.get(
       teamId = me?.teamId || '';
     }
     if (!teamId) throw new ApiError(400, 'Không xác định được team');
-    res.json({ teamId, members: await ranking(undefined, undefined, teamId) });
+    const { year, month } = ymOf(req);
+    res.json({ teamId, year, month, members: await ranking(year, month, teamId) });
   }),
 );
 
 scoresRouter.get(
   '/all',
   requireRole('director', 'admin'),
-  asyncHandler(async (_req, res) => {
-    res.json({ members: await ranking() });
+  asyncHandler(async (req, res) => {
+    // Không truyền year/month thì `ymOf` trả tháng hiện tại — giữ nguyên hành vi cũ.
+    const { year, month } = ymOf(req);
+    res.json({ year, month, members: await ranking(year, month) });
   }),
 );
 
