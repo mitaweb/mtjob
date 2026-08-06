@@ -132,12 +132,16 @@ const KPI_PRESETS: Array<Omit<KpiDraft, 'id' | 'active'>> = [
 /** Ba mức màu dùng chung cho thanh tiến độ và con số phần trăm — đọc phải khớp nhau. */
 const mucMau = (percent: number) => (percent >= 100 ? 'emerald' : percent >= 60 ? 'brand' : 'amber');
 
-/** Thanh tiến độ. Vượt mục tiêu vẫn hiện đầy nhưng đổi màu để thấy ngay là dư. */
-function Bar100({ percent }: { percent: number }) {
+/**
+ * Thanh tiến độ. Vượt mục tiêu vẫn hiện đầy nhưng đổi màu để thấy ngay là dư.
+ * `thin` cho thanh của từng chỉ số — mảnh hơn thanh tổng của cả dự án để nhìn ra
+ * ngay cái nào là con, cái nào là tổng.
+ */
+function Bar100({ percent, thin }: { percent: number; thin?: boolean }) {
   const w = Math.min(100, Math.max(0, percent));
   const color = { emerald: 'bg-emerald-500', brand: 'bg-brand-500', amber: 'bg-amber-400' }[mucMau(percent)];
   return (
-    <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+    <div className={`${thin ? 'h-1' : 'h-2'} w-full overflow-hidden rounded-full bg-slate-100`}>
       <div className={`h-full rounded-full ${color}`} style={{ width: `${w}%` }} />
     </div>
   );
@@ -166,20 +170,29 @@ function ChiSoTheoTeam({ kpis }: { kpis: KpiTomTat[] }) {
         <div key={team}>
           <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{team}</div>
           {ks.map((k) => (
-            <div key={k.id} className="flex items-baseline justify-between gap-2 text-xs">
-              <span className="min-w-0 truncate text-slate-600" title={k.name}>
-                {k.name}
-              </span>
-              {k.target > 0 ? (
-                <span className="shrink-0 tabular-nums text-slate-500">
-                  <b className="text-slate-700">
-                    {k.current}/{k.target}
-                  </b>
-                  {k.unit && ` ${k.unit}`} ·{' '}
-                  <b className={PHAN_TRAM_MAU[mucMau(k.percent)]}>{k.percent}%</b>
+            <div key={k.id} className="mt-1">
+              <div className="flex items-baseline justify-between gap-2 text-xs">
+                <span className="min-w-0 truncate text-slate-600" title={k.name}>
+                  {k.name}
                 </span>
-              ) : (
-                <span className="shrink-0 text-amber-600">chưa đặt mục tiêu</span>
+                {k.target > 0 ? (
+                  <span className="shrink-0 tabular-nums text-slate-500">
+                    <b className="text-slate-700">
+                      {k.current}/{k.target}
+                    </b>
+                    {k.unit && ` ${k.unit}`} ·{' '}
+                    <b className={PHAN_TRAM_MAU[mucMau(k.percent)]}>{k.percent}%</b>
+                  </span>
+                ) : (
+                  <span className="shrink-0 text-amber-600">chưa đặt mục tiêu</span>
+                )}
+              </div>
+              {/* Chưa đặt mục tiêu thì không vẽ thanh: một thanh rỗng dài thượt trông y hệt
+                  "làm mãi chưa được gì", trong khi thật ra là chưa có gì để đo. */}
+              {k.target > 0 && (
+                <div className="mt-0.5">
+                  <Bar100 percent={k.percent} thin />
+                </div>
               )}
             </div>
           ))}
