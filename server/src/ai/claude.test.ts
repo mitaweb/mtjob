@@ -110,6 +110,83 @@ describe('toClaudeMessages', () => {
     expect(msgs).toHaveLength(1); // lượt thứ hai rỗng sau khi bỏ → không gửi
   });
 
+  // Lỗi thật anh Tâm gặp 4/8/2026: "each tool_use must have a single result.
+  // Found multiple `tool_result` blocks with id: call_11_2" → trợ lý đứng hình.
+  it('gọi CÙNG một hàm hai lần trong một lượt vẫn ra hai id khác nhau', () => {
+    const contents: GeminiContent[] = [
+      { role: 'user', parts: [{ text: 'đặt 2 lịch hẹn giúp anh' }] },
+      {
+        role: 'model',
+        parts: [
+          { functionCall: { name: 'tao_nhac_hen', args: { at: '2026-08-10T14:00' } } },
+          { functionCall: { name: 'tao_nhac_hen', args: { at: '2026-08-11T09:00' } } },
+        ],
+      },
+      {
+        role: 'user',
+        parts: [
+          { functionResponse: { name: 'tao_nhac_hen', response: { result: 'Đã đặt 10/8' } } },
+          { functionResponse: { name: 'tao_nhac_hen', response: { result: 'Đã đặt 11/8' } } },
+        ],
+      },
+    ];
+    const msgs = toClaudeMessages(contents);
+    const uses = msgs[1].content;
+    const results = msgs[2].content;
+
+    expect(uses).toHaveLength(2);
+    expect(results).toHaveLength(2);
+    expect(uses[0].id).not.toBe(uses[1].id);
+    // Mỗi id đúng MỘT kết quả — đây là điều kiện Claude bắt buộc.
+    expect(new Set(results.map((r: { tool_use_id: string }) => r.tool_use_id)).size).toBe(2);
+    // Ghép theo thứ tự: kết quả đầu thuộc lệnh gọi đầu.
+    expect(results[0].tool_use_id).toBe(uses[0].id);
+    expect(results[0].content).toBe('Đã đặt 10/8');
+    expect(results[1].tool_use_id).toBe(uses[1].id);
+  });
+
+  it('gọi cùng một hàm ở hai lượt khác nhau thì mỗi lượt tự ghép với kết quả của mình', () => {
+    const contents: GeminiContent[] = [
+      { role: 'user', parts: [{ text: 'hỏi' }] },
+      { role: 'model', parts: [{ functionCall: { name: 'f', args: { n: 1 } } }] },
+      { role: 'user', parts: [{ functionResponse: { name: 'f', response: { result: 'lần 1' } } }] },
+      { role: 'model', parts: [{ functionCall: { name: 'f', args: { n: 2 } } }] },
+      { role: 'user', parts: [{ functionResponse: { name: 'f', response: { result: 'lần 2' } } }] },
+    ];
+    const msgs = toClaudeMessages(contents);
+    expect(msgs[2].content[0].tool_use_id).toBe(msgs[1].content[0].id);
+    expect(msgs[2].content[0].content).toBe('lần 1');
+    expect(msgs[4].content[0].tool_use_id).toBe(msgs[3].content[0].id);
+    expect(msgs[4].content[0].content).toBe('lần 2');
+  });
+
+  it('lệnh gọi chưa có kết quả (lịch sử đứt gánh) bị bỏ, không để Claude trả 400', () => {
+    const contents: GeminiContent[] = [
+      { role: 'user', parts: [{ text: 'hỏi' }] },
+      { role: 'model', parts: [{ text: 'Để em tra.' }, { functionCall: { name: 'f' } }] },
+    ];
+    const msgs = toClaudeMessages(contents);
+    // Giữ lại phần chữ, bỏ lệnh gọi mồ côi.
+    expect(msgs).toHaveLength(2);
+    expect(msgs[1].content).toEqual([{ type: 'text', text: 'Để em tra.' }]);
+  });
+
+  it('kết quả không bao giờ vơ lấy một lệnh gọi ở lượt sau', () => {
+    const contents: GeminiContent[] = [
+      { role: 'user', parts: [{ text: 'hỏi' }] },
+      { role: 'user', parts: [{ functionResponse: { name: 'f', response: { result: 'mồ côi' } } }] },
+      { role: 'model', parts: [{ functionCall: { name: 'f' } }] },
+      { role: 'user', parts: [{ functionResponse: { name: 'f', response: { result: 'thật' } } }] },
+    ];
+    const msgs = toClaudeMessages(contents);
+    const uses = msgs.flatMap((m) => m.content.filter((b: { type: string }) => b.type === 'tool_use'));
+    const results = msgs.flatMap((m) => m.content.filter((b: { type: string }) => b.type === 'tool_result'));
+    expect(uses).toHaveLength(1);
+    expect(results).toHaveLength(1);
+    expect(results[0].content).toBe('thật');
+    expect(results[0].tool_use_id).toBe(uses[0].id);
+  });
+
   it('gói response không có trường result thì JSON hoá', () => {
     const contents: GeminiContent[] = [
       { role: 'user', parts: [{ text: 'hỏi' }] },

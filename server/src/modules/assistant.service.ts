@@ -457,9 +457,13 @@ async function runToolLoop(opts: {
     contents.push({ role: 'user', parts: responses });
   }
 
-  // Chạm giới hạn vòng gọi hàm → yêu cầu trả lời với dữ liệu đã có (không đưa tools nữa).
-  contents.push({ role: 'user', parts: [{ text: 'Hãy trả lời ngay dựa trên dữ liệu đã truy vấn được.' }] });
-  const parts = await call({ contents, systemInstruction });
+  // Chạm giới hạn vòng gọi hàm → yêu cầu trả lời ngay với dữ liệu đã có.
+  //
+  // VẪN phải gửi kèm `tools`: lịch sử lúc này đầy tool_use/tool_result, mà Claude từ chối
+  // request có mấy khối đó nhưng không khai tools — bỏ tools đi là ăn 400, đúng cái vẻ
+  // "trợ lý đang bận" mà thật ra là hỏng. Câu nhắc ở trên đủ để nó dừng gọi hàm.
+  contents.push({ role: 'user', parts: [{ text: 'Hãy trả lời ngay dựa trên dữ liệu đã truy vấn được, KHÔNG gọi thêm hàm nào.' }] });
+  const parts = await call({ contents, tools, systemInstruction });
   return parts.map((p) => p.text || '').join('').trim();
 }
 

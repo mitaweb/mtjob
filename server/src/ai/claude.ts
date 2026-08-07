@@ -72,20 +72,77 @@ function callId(msgIdx: number, partIdx: number): string {
   return `call_${msgIdx}_${partIdx}`;
 }
 
-/** Tìm id của functionCall gần nhất TRƯỚC vị trí `beforeMsg` có cùng tên hàm. */
-function findCallId(contents: GeminiContent[], beforeMsg: number, name: string): string | null {
-  for (let i = beforeMsg - 1; i >= 0; i--) {
-    const parts = contents[i]?.parts ?? [];
-    for (let j = parts.length - 1; j >= 0; j--) {
-      if (parts[j]?.functionCall?.name === name) return callId(i, j);
+/**
+ * Claude bắt buộc mỗi `tool_use` có ĐÚNG MỘT `tool_result` và ngược lại. Lượt nào lệch là
+ * cả request trả 400, mất luôn câu trả lời. Vá lại thay vì để nó nổ:
+ *   - kết quả trùng id (chỉ giữ cái đầu)
+ *   - kết quả không có lệnh gọi tương ứng
+ *   - lệnh gọi không có kết quả — xảy ra khi lịch sử đứt gánh giữa vòng gọi hàm
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function donDepCapToolUse(msgs: any[]): any[] {
+  // Lặp vì ba việc dọn ăn theo nhau: bỏ lượt 'assistant' mở đầu có thể làm kết quả ở lượt
+  // sau thành mồ côi, mà bỏ kết quả lại có thể làm một lượt rỗng đi rồi lòi ra 'assistant'
+  // mới ở đầu. Mỗi vòng chỉ bớt đi nên chắc chắn dừng.
+  let ds = msgs;
+  for (let vong = 0; vong < 5; vong++) {
+    // Claude phải mở đầu bằng lượt 'user' (lời chào của bot ở đầu lịch sử chat bị bỏ).
+    while (ds.length > 0 && ds[0].role === 'assistant') ds.shift();
+
+    const idLenhGoi = new Set<string>();
+    const idKetQua = new Set<string>();
+    for (const m of ds) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const b of m.content as any[]) {
+        if (b.type === 'tool_use') idLenhGoi.add(b.id);
+        else if (b.type === 'tool_result') idKetQua.add(b.tool_use_id);
+      }
     }
+
+    const daGiu = new Set<string>();
+    let boBot = false;
+    for (const m of ds) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const giu = (m.content as any[]).filter((b) => {
+        if (b.type === 'tool_use') return idKetQua.has(b.id);
+        if (b.type !== 'tool_result') return true;
+        if (!idLenhGoi.has(b.tool_use_id) || daGiu.has(b.tool_use_id)) return false;
+        daGiu.add(b.tool_use_id);
+        return true;
+      });
+      if (giu.length !== m.content.length) boBot = true;
+      m.content = giu;
+    }
+
+    const truoc = ds.length;
+    ds = ds.filter((m) => m.content.length > 0);
+    if (!boBot && ds.length === truoc && (ds.length === 0 || ds[0].role === 'user')) break;
   }
-  return null;
+  return ds;
 }
 
-/** contents (Gemini) → messages (Claude). Bỏ các lượt 'model' ở đầu vì Claude yêu cầu mở đầu bằng 'user'. */
+/** contents (Gemini) → messages (Claude). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function toClaudeMessages(contents: GeminiContent[]): any[] {
+  // Ghép kết quả với lệnh gọi theo THỨ TỰ, mỗi lệnh gọi chỉ được dùng một lần.
+  //
+  // Trước đây ghép theo TÊN hàm (lấy lệnh gọi gần nhất cùng tên). Hỏng ngay khi AI gọi CÙNG
+  // một hàm hai lần trong một lượt — chuyện thường gặp, ví dụ đặt hai lịch hẹn một câu: cả
+  // hai kết quả cùng trỏ về lệnh gọi thứ hai, lệnh thứ nhất thì mồ côi. Claude trả
+  // 400 "Found multiple tool_result blocks with id ..." và trợ lý đứng hình (anh Tâm 4/8/2026).
+  const chuaGhep: Array<{ id: string; name: string; luot: number }> = [];
+  contents.forEach((c, i) =>
+    c.parts.forEach((p, j) => {
+      if (p.functionCall) chuaGhep.push({ id: callId(i, j), name: p.functionCall.name, luot: i });
+    }),
+  );
+  /** Lệnh gọi cũ nhất còn chờ kết quả, và phải nằm TRƯỚC lượt đang xét — kết quả không
+   *  bao giờ được vơ lấy một lệnh gọi ở tương lai. */
+  const nhanId = (name: string, luot: number): string | null => {
+    const k = chuaGhep.findIndex((x) => x.name === name && x.luot < luot);
+    return k < 0 ? null : chuaGhep.splice(k, 1)[0]!.id;
+  };
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const msgs: any[] = [];
   contents.forEach((c, i) => {
@@ -100,8 +157,8 @@ export function toClaudeMessages(contents: GeminiContent[]): any[] {
           input: p.functionCall.args ?? {},
         });
       } else if (p.functionResponse) {
-        const id = findCallId(contents, i, p.functionResponse.name);
-        if (!id) return; // không tìm được lệnh gọi tương ứng → bỏ, tránh Claude trả 400
+        const id = nhanId(p.functionResponse.name, i);
+        if (!id) return; // không còn lệnh gọi nào chờ kết quả → bỏ
         const r = p.functionResponse.response as Record<string, unknown>;
         const text = typeof r?.result === 'string' ? r.result : JSON.stringify(r ?? {});
         blocks.push({ type: 'tool_result', tool_use_id: id, content: text });
@@ -109,13 +166,10 @@ export function toClaudeMessages(contents: GeminiContent[]): any[] {
         blocks.push({ type: 'text', text: p.text });
       }
     });
-    if (blocks.length === 0) return;
-    const role = c.role === 'model' ? 'assistant' : 'user';
-    // Claude phải bắt đầu bằng lượt 'user' (lời chào của bot ở đầu lịch sử chat bị bỏ).
-    if (msgs.length === 0 && role === 'assistant') return;
-    msgs.push({ role, content: blocks });
+    if (blocks.length > 0) msgs.push({ role: c.role === 'model' ? 'assistant' : 'user', content: blocks });
   });
-  return msgs;
+
+  return donDepCapToolUse(msgs);
 }
 
 /** content blocks (Claude) → parts (Gemini) để runToolLoop xử lý như cũ. */
