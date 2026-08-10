@@ -62,8 +62,44 @@ function rowToNote(r: any): CustomerNote {
   };
 }
 
+/**
+ * Cột `sort_order` chỉ có sau khi bấm Quản trị → Cập nhật cấu trúc DB. Chưa bấm mà đã
+ * deploy bản này thì trang Lưu ý KH phải chạy y như cũ, không được trắng màn hình.
+ */
+export function thieuCotThuTu(e: unknown): boolean {
+  return (e as { code?: string })?.code === '42703';
+}
+
+/**
+ * Thứ tự tay THẮNG TUYỆT ĐỐI (anh Tâm chốt 4/8/2026).
+ *
+ * `sort_order` nhỏ hơn thì lên trên; sửa nội dung note KHÔNG làm nó nhảy chỗ nữa. Mọi note
+ * cũ đều mang 0 nên khi chưa ai kéo thì `updated_at DESC` vẫn quyết định — thứ tự y hệt
+ * trước đây. Note MỚI cũng vào với 0, hoà với note đang đứng đầu rồi thắng nhờ mới hơn,
+ * nên tự lên đầu mà không phải tính toán gì thêm.
+ */
 export async function getNotes(): Promise<CustomerNote[]> {
-  return (await q('SELECT * FROM customer_notes ORDER BY updated_at DESC')).map(rowToNote);
+  try {
+    return (await q('SELECT * FROM customer_notes ORDER BY sort_order ASC, updated_at DESC')).map(
+      rowToNote,
+    );
+  } catch (e) {
+    if (!thieuCotThuTu(e)) throw e;
+    return (await q('SELECT * FROM customer_notes ORDER BY updated_at DESC')).map(rowToNote);
+  }
+}
+
+/** Ghi lại thứ tự vừa kéo: vị trí trong `ids` chính là `sort_order`. */
+export async function reorderNotes(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  // MỘT câu lệnh cho cả danh sách. Cập nhật từng note một là mỗi note một lượt HTTP tới
+  // Neon — kéo xong ngồi đợi mấy giây.
+  await q(
+    `UPDATE customer_notes AS c SET sort_order = v.pos - 1
+     FROM unnest($1::text[]) WITH ORDINALITY AS v(note_id, pos)
+     WHERE c.note_id = v.note_id`,
+    [ids],
+  );
 }
 
 export async function findNote(id: string): Promise<CustomerNote | undefined> {

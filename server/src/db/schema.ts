@@ -241,6 +241,9 @@ CREATE TABLE IF NOT EXISTS customer_notes (
   updated_name text DEFAULT ''             -- tên người sửa gần nhất
 );
 CREATE INDEX IF NOT EXISTS customer_notes_updated_idx ON customer_notes (updated_at);
+-- Thứ tự do người dùng kéo tay (anh Tâm 4/8/2026: "ưu tiên ai trước"). Nhỏ hơn = lên trên.
+-- Mặc định 0 cho mọi note cũ, nên khi chưa ai kéo thì thứ tự vẫn y như trước: mới sửa lên đầu.
+ALTER TABLE customer_notes ADD COLUMN IF NOT EXISTS sort_order integer DEFAULT 0;
 
 -- Lịch sử lưu ý KH: mỗi lần lưu đè, bản CŨ được chụp lại vào đây (xem/khôi phục).
 CREATE TABLE IF NOT EXISTS customer_note_history (

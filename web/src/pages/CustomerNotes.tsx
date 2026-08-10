@@ -83,6 +83,61 @@ export default function CustomerNotes() {
   const editorRef = useRef<HTMLDivElement>(null);
   const savedRange = useRef<Range | null>(null);
 
+  // ── Kéo thả sắp xếp (anh Tâm 4/8/2026: "ưu tiên ai trước") ──
+  //
+  // Dùng pointer events chứ không phải HTML5 drag-and-drop: HTML5 DnD không chạy trên màn
+  // hình cảm ứng, mà nửa công ty xem app bằng điện thoại. Pointer events lo được cả chuột
+  // lẫn ngón tay bằng một đường code.
+  const [keoId, setKeoId] = useState<string | null>(null);
+  const thuTuTruocKhiKeo = useRef<string[]>([]);
+  // Thứ tự mới nhất, ghi ngay trong lúc xếp lại. KHÔNG đọc `notes` lúc nhả tay: nhả nhanh
+  // quá thì lần xếp cuối chưa kịp vẽ lại, `notes` còn là bản cũ và ta lưu nhầm thứ tự.
+  const thuTuMoiNhat = useRef<string[]>([]);
+  const vuaKeoXong = useRef(0);
+
+  function batDauKeo(e: React.PointerEvent, id: string) {
+    // Chặn luôn cả việc trình duyệt coi đây là cú bấm mở note.
+    e.preventDefault();
+    e.stopPropagation();
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    thuTuTruocKhiKeo.current = notes.map((n) => n.id);
+    thuTuMoiNhat.current = thuTuTruocKhiKeo.current;
+    setKeoId(id);
+  }
+
+  function dangKeoQua(e: React.PointerEvent) {
+    if (!keoId) return;
+    // Thẻ nào đang nằm dưới ngón tay/con trỏ.
+    const duoi = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-note-id]');
+    const overId = duoi?.getAttribute('data-note-id');
+    if (!overId || overId === keoId) return;
+    setNotes((cur) => {
+      const from = cur.findIndex((x) => x.id === keoId);
+      const to = cur.findIndex((x) => x.id === overId);
+      if (from < 0 || to < 0) return cur;
+      const next = [...cur];
+      next.splice(to, 0, next.splice(from, 1)[0]!);
+      thuTuMoiNhat.current = next.map((x) => x.id);
+      return next;
+    });
+  }
+
+  async function ketThucKeo() {
+    if (!keoId) return;
+    setKeoId(null);
+    // Nhả ngay trên chỗ cũ thì khỏi gọi máy chủ.
+    const ids = thuTuMoiNhat.current;
+    vuaKeoXong.current = Date.now();
+    if (ids.join() === thuTuTruocKhiKeo.current.join()) return;
+    try {
+      await api('/customer-notes/reorder', { body: { ids } });
+    } catch (e) {
+      setErr((e as Error).message);
+      // Máy chủ không nhận thì trả màn hình về đúng thực tế, đừng để anh tưởng đã lưu.
+      await load().catch(() => undefined);
+    }
+  }
+
   async function load() {
     const r = await api<{ notes: Note[] }>('/customer-notes');
     setNotes(r.notes);
@@ -254,10 +309,38 @@ export default function CustomerNotes() {
           {notes.map((n) => (
             <button
               key={n.id}
-              onClick={() => openEditor({ ...n })}
-              className={`flex flex-col rounded-2xl border p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lg ${cardCls(n.color)}`}
+              data-note-id={n.id}
+              onClick={() => {
+                // Nhả tay sau khi kéo, trình duyệt vẫn có thể bắn ra một cú click — đừng
+                // để nó mở note ngay sau khi anh vừa sắp xếp xong.
+                if (Date.now() - vuaKeoXong.current < 300) return;
+                openEditor({ ...n });
+              }}
+              className={`relative flex flex-col rounded-2xl border p-4 text-left shadow-card transition ${cardCls(n.color)} ${
+                keoId === n.id
+                  ? 'opacity-60 ring-2 ring-brand-400'
+                  : keoId
+                    ? ''
+                    : 'hover:-translate-y-0.5 hover:shadow-lg'
+              }`}
             >
-              <div className="mb-1.5 font-bold text-slate-800">{n.customer || '(Chưa đặt tên)'}</div>
+              {/* Tay nắm để kéo. Là <span> chứ không phải <button>: lồng nút trong nút là
+                  HTML sai, và trình duyệt xử lý mỗi nơi một kiểu. */}
+              <span
+                role="button"
+                aria-label={`Kéo để đổi vị trí ${n.customer || 'note này'}`}
+                title="Kéo để đổi vị trí"
+                // touch-none: không có nó thì trên điện thoại vuốt là cuộn trang chứ không kéo thẻ.
+                className="absolute right-2 top-2 cursor-grab touch-none select-none rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-white/60 hover:text-slate-600 active:cursor-grabbing"
+                onPointerDown={(e) => batDauKeo(e, n.id)}
+                onPointerMove={dangKeoQua}
+                onPointerUp={ketThucKeo}
+                onPointerCancel={ketThucKeo}
+                onClick={(e) => e.stopPropagation()}
+              >
+                ⠿
+              </span>
+              <div className="mb-1.5 pr-6 font-bold text-slate-800">{n.customer || '(Chưa đặt tên)'}</div>
               <div
                 className="note-rich max-h-48 overflow-hidden"
                 dangerouslySetInnerHTML={{ __html: clean(n.content) || '<span class="text-slate-400">(trống)</span>' }}

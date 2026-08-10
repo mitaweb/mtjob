@@ -13,6 +13,8 @@ import {
   addHistory,
   getHistory,
   deleteHistory,
+  reorderNotes,
+  thieuCotThuTu,
   type CustomerNote,
 } from './customerNotes.repo.js';
 import { newId } from '../util/id.js';
@@ -68,6 +70,32 @@ customerNotesRouter.get(
   '/',
   asyncHandler(async (_req, res) => {
     res.json({ notes: await getNotes() });
+  }),
+);
+
+/**
+ * Ghi lại thứ tự vừa kéo. Nhận CẢ danh sách đang hiển thị chứ không nhận "chuyển note X từ
+ * vị trí 3 sang 7": gửi cả danh sách thì gọi lại bao nhiêu lần kết quả vẫn thế, và hai người
+ * kéo cùng lúc thì người bấm sau thắng — rõ ràng hơn là hai lệnh dịch chuyển chồng lên nhau.
+ *
+ * Thứ tự dùng chung cho cả công ty, đúng như bảng lưu ý này vốn dùng chung.
+ */
+const reorderSchema = z.object({ ids: z.array(z.string().min(1)).min(1).max(500) });
+
+customerNotesRouter.post(
+  '/reorder',
+  asyncHandler(async (req, res) => {
+    const { ids } = reorderSchema.parse(req.body);
+    try {
+      await reorderNotes(ids);
+    } catch (e) {
+      if (!thieuCotThuTu(e)) throw e;
+      throw new ApiError(
+        400,
+        'Chưa lưu được thứ tự: database còn thiếu cột sắp xếp. Vào Quản trị → 🛠 Cập nhật cấu trúc DB rồi thử lại.',
+      );
+    }
+    res.json({ ok: true });
   }),
 );
 
