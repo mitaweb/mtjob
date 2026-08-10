@@ -54,3 +54,63 @@ export function usernameTaken(all: MemberLike[], username: string, selfId: strin
   const clash = all.find((m) => m.id !== selfId && m.username.trim().toLowerCase() === want);
   return clash ? `Tên đăng nhập "${username}" đã là của ${clash.fullName}. Chọn tên khác nhé.` : '';
 }
+
+// ── Leader tự lập tài khoản cho thành viên phòng mình (anh Tâm 4/8/2026) ──
+
+/** Leader này có được lập tài khoản không? Trả câu lý do, hoặc '' nếu được. */
+export function leaderAddBlock(leaderTeamId: string): string {
+  return leaderTeamId.trim()
+    ? ''
+    : 'Bạn chưa được gán phòng ban nào nên chưa lập tài khoản cho ai được. Nhờ giám đốc gán phòng trước.';
+}
+
+/** Những ô leader được tự điền. Ngoài danh sách này là không cho đụng. */
+export interface TeamMemberInput {
+  fullName?: unknown;
+  username?: unknown;
+  position?: unknown;
+  dob?: unknown;
+  joinDate?: unknown;
+}
+
+export interface SafeTeamMember {
+  fullName: string;
+  username: string;
+  position: string;
+  dob: string;
+  joinDate: string;
+  /** Luôn là phòng của leader — không nhận từ client. */
+  teamId: string;
+  /** Luôn là nhân viên thường. */
+  role: 'member';
+  salary: 0;
+  bhxh: 0;
+  active: true;
+}
+
+/**
+ * Lọc dữ liệu leader gửi lên thành bản ghi an toàn.
+ *
+ * Đây là chốt chặn quyền, KHÔNG phải chỗ tiện tay gán mặc định. Leader gửi thêm gì cũng
+ * mặc kệ: `role` luôn là nhân viên (không thì leader tự phong mình hoặc người khác làm
+ * giám đốc), `teamId` luôn là phòng của chính leader (không thì cấy người sang phòng
+ * khác), lương và BHXH luôn 0 (leader không được biết cũng không được đặt lương).
+ *
+ * Viết ra hàm riêng vì kiểu chốt chặn này mà nằm rải trong route thì sửa route một cái
+ * là hở lúc nào không hay — ở đây nó có test bám sát.
+ */
+export function safeTeamMember(raw: TeamMemberInput, leaderTeamId: string): SafeTeamMember {
+  const chu = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  return {
+    fullName: chu(raw.fullName),
+    username: chu(raw.username),
+    position: chu(raw.position),
+    dob: chu(raw.dob),
+    joinDate: chu(raw.joinDate),
+    teamId: leaderTeamId.trim(),
+    role: 'member',
+    salary: 0,
+    bhxh: 0,
+    active: true,
+  };
+}

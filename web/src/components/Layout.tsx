@@ -15,6 +15,7 @@ import {
   Star,
   StickyNote,
   Brain,
+  UserPlus,
   Users,
   Wallet,
   type LucideIcon,
@@ -46,6 +47,8 @@ const NAV: NavItem[] = [
   // Giám đốc không nộp đơn cho ai duyệt → ẩn Đơn từ, chỉ giữ Duyệt đơn.
   { to: '/requests', label: 'Đơn từ', icon: FileText, roles: ['member', 'leader', 'sale', 'accountant', 'admin'] },
   { to: '/approvals', label: 'Duyệt đơn', icon: CheckSquare, roles: ['leader', 'director', 'admin'] },
+  // Chỉ leader: giám đốc/quản trị dùng mục Quản trị bên dưới, đầy đủ hơn.
+  { to: '/team-members', label: 'Nhân sự phòng tôi', icon: UserPlus, roles: ['leader'] },
   { to: '/dashboard', label: 'Tổng quan', icon: LayoutDashboard, roles: ['leader', 'director', 'admin'] },
   { to: '/admin', label: 'Quản trị', icon: Settings, roles: ['admin', 'director'] },
   { to: '/inbox', label: 'Thông báo', icon: Bell },

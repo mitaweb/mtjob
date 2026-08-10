@@ -19,6 +19,7 @@ import { customerNotesRouter } from '../modules/customerNotes.routes.js';
 import { brainRouter } from '../modules/brain.routes.js';
 import { remindersRouter } from '../modules/reminders.routes.js';
 import { projectsRouter } from '../modules/projects.routes.js';
+import { teamMembersRouter } from '../modules/team.members.routes.js';
 import { sweepRemindersOpportunistic } from '../modules/reminders.service.js';
 
 export function createApp() {
@@ -71,6 +72,8 @@ export function createApp() {
   app.use('/api/brain', brainRouter);
   app.use('/api/reminders', remindersRouter);
   app.use('/api/projects', projectsRouter);
+  // Leader lập tài khoản cho phòng mình. Tách hẳn khỏi /api/admin — xem ghi chú trong file.
+  app.use('/api/team', teamMembersRouter);
   app.use('/api/oauth2', oauthRouter);
   app.use('/api/jobs', jobsRouter);
 

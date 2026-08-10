@@ -25,6 +25,7 @@ const Admin = lazy(() => import('./pages/Admin'));
 const Inbox = lazy(() => import('./pages/Inbox'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Guide = lazy(() => import('./pages/Guide'));
+const TeamMembers = lazy(() => import('./pages/TeamMembers'));
 
 /** Fallback khi đang tải chunk trang: thanh chạy trên đỉnh (cùng style GlobalLoading). */
 function RouteFallback() {
@@ -113,6 +114,15 @@ export default function App() {
         <Route path="/profile" element={<Profile />} />
         {/* Hướng dẫn: ai cũng vào được, nội dung tự lọc theo vai. */}
         <Route path="/guide" element={<Guide />} />
+        {/* Chỉ leader: giám đốc/quản trị đã có mục Quản trị đầy đủ hơn. */}
+        <Route
+          path="/team-members"
+          element={
+            <Protected roles={['leader']}>
+              <TeamMembers />
+            </Protected>
+          }
+        />
         <Route
           path="/approvals"
           element={

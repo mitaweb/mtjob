@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { deleteMemberBlock, usernameTaken, type MemberLike } from './hr.js';
+import {
+  deleteMemberBlock,
+  usernameTaken,
+  leaderAddBlock,
+  safeTeamMember,
+  type MemberLike,
+} from './hr.js';
 
 const m = (id: string, fullName: string, role: string, username = id, active = true): MemberLike => ({
   id,
@@ -72,5 +78,80 @@ describe('usernameTaken', () => {
 
   it('bỏ trống thì bỏ qua — máy chủ sẽ tự sinh tên', () => {
     expect(usernameTaken(TEAM, '', 'M-3')).toBe('');
+  });
+});
+
+// Leader tự lập tài khoản cho thành viên phòng mình (anh Tâm 4/8/2026).
+describe('leaderAddBlock', () => {
+  it('leader có phòng thì lập được', () => {
+    expect(leaderAddBlock('Ads')).toBe('');
+  });
+
+  it('leader chưa được gán phòng thì chặn, và nói rõ phải làm gì', () => {
+    expect(leaderAddBlock('')).toMatch(/chưa được gán phòng/);
+    expect(leaderAddBlock('   ')).toMatch(/chưa được gán phòng/);
+  });
+});
+
+describe('safeTeamMember', () => {
+  it('giữ đúng những ô leader được điền', () => {
+    const out = safeTeamMember(
+      {
+        fullName: '  Trần Thị An Thùy ',
+        username: ' anthuy ',
+        position: 'Chuyên viên Content',
+        dob: '2000-05-01',
+        joinDate: '2026-08-01',
+      },
+      'Content',
+    );
+    expect(out.fullName).toBe('Trần Thị An Thùy');
+    expect(out.username).toBe('anthuy');
+    expect(out.position).toBe('Chuyên viên Content');
+    expect(out.dob).toBe('2000-05-01');
+    expect(out.joinDate).toBe('2026-08-01');
+  });
+
+  // Ba test dưới đây là phần quan trọng nhất của cả tính năng: leader gọi thẳng API,
+  // gửi thêm trường gì cũng không vượt được ba giới hạn này.
+  it('KHÔNG cho leader tự phong vai — luôn là nhân viên', () => {
+    expect(safeTeamMember({ fullName: 'X', role: 'director' } as never, 'Ads').role).toBe('member');
+    expect(safeTeamMember({ fullName: 'X', role: 'admin' } as never, 'Ads').role).toBe('member');
+  });
+
+  it('KHÔNG cho leader cấy người sang phòng khác — luôn là phòng của chính leader', () => {
+    expect(safeTeamMember({ fullName: 'X', teamId: 'SEO' } as never, 'Ads').teamId).toBe('Ads');
+  });
+
+  it('KHÔNG cho leader đặt lương hay BHXH — luôn bằng 0', () => {
+    const out = safeTeamMember({ fullName: 'X', salary: 99_000_000, bhxh: 5_000_000 } as never, 'Ads');
+    expect(out.salary).toBe(0);
+    expect(out.bhxh).toBe(0);
+  });
+
+  it('không để lọt bất kỳ ô lạ nào sang bản ghi', () => {
+    const out = safeTeamMember(
+      { fullName: 'X', id: 'M-1', passwordHash: 'abc', active: false } as never,
+      'Ads',
+    );
+    expect(out.active).toBe(true);
+    expect(Object.keys(out).sort()).toEqual([
+      'active',
+      'bhxh',
+      'dob',
+      'fullName',
+      'joinDate',
+      'position',
+      'role',
+      'salary',
+      'teamId',
+      'username',
+    ]);
+  });
+
+  it('ô không phải chuỗi thì thành rỗng, không nhét số vào tên', () => {
+    const out = safeTeamMember({ fullName: 123, dob: null } as never, 'Ads');
+    expect(out.fullName).toBe('');
+    expect(out.dob).toBe('');
   });
 });
