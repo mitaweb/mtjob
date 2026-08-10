@@ -19,8 +19,20 @@ const PERIODS: Array<{ value: Period; label: string }> = [
   { value: 'day', label: 'Mỗi ngày' },
   { value: 'week', label: 'Mỗi tuần' },
   { value: 'month', label: 'Mỗi tháng' },
-  { value: 'total', label: 'Cả dự án' },
 ];
+
+/**
+ * Kỳ chọn được khi khai chỉ số.
+ *
+ * Anh Tâm 4/8/2026 bỏ "Cả dự án": "cái nào là tuần thì tuần mà tháng thì tháng". Nhưng
+ * chỉ số CŨ đang để 'total' thì vẫn phải hiện ra trong ô chọn — bỏ hẳn khỏi danh sách là
+ * ô select không khớp giá trị nào, trình duyệt hiện đại lựa chọn đầu tiên, và chỉ cần bấm
+ * Lưu một cái là kỳ bị đổi lặng lẽ sang "Mỗi ngày".
+ */
+const CHON_KY = (hienTai: Period): Array<{ value: Period; label: string }> =>
+  hienTai === 'total'
+    ? [...PERIODS, { value: 'total', label: 'Cả dự án (kiểu cũ — nên đổi sang tuần/tháng)' }]
+    : PERIODS;
 
 const TEAMS = ['Ads', 'Content', 'SEO'];
 
@@ -185,7 +197,12 @@ function TienDoTheoKy({ groups, percent }: { groups?: NhomKy[]; percent: number 
           <div className="flex items-baseline justify-between gap-2 text-xs">
             <span className="min-w-0 truncate">
               <span className="font-medium text-slate-600">{g.ten}</span>
-              {g.period !== 'total' && <span className="text-slate-400"> · {g.kyLabel}</span>}
+              {g.period === 'total' ? (
+                // Kỳ 'Cả dự án' đã bỏ khỏi lựa chọn; còn thấy dòng này là chỉ số cũ chưa đổi.
+                <span className="text-amber-600"> · kiểu cũ, nên đổi sang tuần/tháng</span>
+              ) : (
+                <span className="text-slate-400"> · {g.kyLabel}</span>
+              )}
             </span>
             {g.measured > 0 && (
               <span className="shrink-0 text-sm font-medium text-slate-700">{g.percent}%</span>
@@ -755,7 +772,7 @@ export default function Projects() {
                           onChange={(e) => set({ unit: e.target.value })}
                         />
                         <select className="input py-1.5 text-sm sm:col-span-2" value={k.period} onChange={(e) => set({ period: e.target.value as Period })}>
-                          {PERIODS.map((p) => (
+                          {CHON_KY(k.period).map((p) => (
                             <option key={p.value} value={p.value}>{p.label}</option>
                           ))}
                         </select>
@@ -833,10 +850,16 @@ export default function Projects() {
               <div>
                 <label className="label">Chỉ tiêu tính theo</label>
                 <select className="input" value={kpiEdit.period} onChange={(e) => setKpiEdit({ ...kpiEdit, period: e.target.value as Period })}>
-                  {PERIODS.map((p) => (
+                  {CHON_KY(kpiEdit.period).map((p) => (
                     <option key={p.value} value={p.value}>{p.label}</option>
                   ))}
                 </select>
+                {kpiEdit.period === 'total' && (
+                  <p className="mt-1 text-xs text-amber-600">
+                    Chỉ số này đang để “Cả dự án” — kiểu cũ, cộng dồn mãi không bao giờ về 0. Đổi
+                    sang <b>Mỗi tuần</b> hoặc <b>Mỗi tháng</b> để theo dõi đúng kỳ.
+                  </p>
+                )}
               </div>
               <div>
                 <label className="label">Mục tiêu</label>
