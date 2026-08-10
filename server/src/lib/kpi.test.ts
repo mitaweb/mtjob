@@ -148,6 +148,47 @@ describe('progressOf', () => {
     expect(theoMoc.periodLabel).toBe('Tuần 1 (31/7–6/8)');
   });
 
+  // Hai cách nhập (anh Tâm 4/8/2026). SAVAX DOOR từng ra 250/120 vì cộng dồn một chỉ số
+  // đo TRẠNG THÁI — nhập 45 rồi 46 thành 91, trong khi thực tế vẫn chỉ có 46.
+  it('cumulative: lấy số nhập gần nhất, KHÔNG cộng', () => {
+    const entries = [e('2026-08-01', 45), e('2026-08-03', 46), e('2026-08-05', 50)];
+    const cong = progressOf(entries, { period: 'month', target: 120 }, '2026-08-06');
+    expect(cong.current).toBe(141); // cách cũ: cộng hết
+
+    const luyKe = progressOf(
+      entries,
+      { period: 'month', target: 120, inputMode: 'cumulative' },
+      '2026-08-06',
+    );
+    expect(luyKe.current).toBe(50);
+    expect(luyKe.percent).toBe(42);
+    expect(luyKe.periodLabel).toBe('Tổng đến hôm nay');
+  });
+
+  it('cumulative: bỏ qua số của ngày mai — hôm nay chưa biết được', () => {
+    const entries = [e('2026-08-03', 46), e('2026-08-09', 99)];
+    const r = progressOf(entries, { period: 'month', target: 120, inputMode: 'cumulative' }, '2026-08-06');
+    expect(r.current).toBe(46);
+  });
+
+  it('cumulative: sang kỳ mới KHÔNG về 0 — 100 keyword vẫn còn đó', () => {
+    const entries = [e('2026-07-20', 100)];
+    // Kiểu cộng dồn thì tháng 8 không có số nào → 0.
+    expect(progressOf(entries, { period: 'month', target: 120 }, '2026-08-06').current).toBe(0);
+    // Kiểu luỹ kế thì vẫn là 100.
+    expect(
+      progressOf(entries, { period: 'month', target: 120, inputMode: 'cumulative' }, '2026-08-06').current,
+    ).toBe(100);
+  });
+
+  it('thiếu inputMode thì vẫn cộng dồn như cũ — chỉ số cũ không bị đổi cách tính', () => {
+    const entries = [e('2026-08-01', 10), e('2026-08-02', 20)];
+    expect(progressOf(entries, { period: 'month', target: 100 }, '2026-08-06').current).toBe(30);
+    expect(
+      progressOf(entries, { period: 'month', target: 100, inputMode: 'daily' }, '2026-08-06').current,
+    ).toBe(30);
+  });
+
   it('sang kỳ sau thì số kỳ trước không theo qua', () => {
     const entries = [e('2026-08-04', 35), e('2026-08-08', 10)];
     const r = progressOf(entries, { period: 'week', target: 68 }, '2026-08-08', '2026-07-31');
@@ -179,6 +220,21 @@ describe('seriesFor', () => {
     const s = seriesFor([], 'week', 8, '2026-08-04', '2026-07-31');
     expect(s).toHaveLength(1);
     expect(s[0]!.key).toBe('W1');
+  });
+
+  it('cumulative: kỳ không nhập thì kéo số kỳ trước sang, không rơi về 0', () => {
+    // Nhập 40 ở tháng 6, im lặng tháng 7, nhập 55 ở tháng 8.
+    const entries = [e('2026-06-10', 40), e('2026-08-02', 55)];
+    const s = seriesFor(entries, 'month', 3, '2026-08-06', undefined, 'cumulative');
+    expect(s.map((p) => p.key)).toEqual(['2026-06', '2026-07', '2026-08']);
+    expect(s.map((p) => p.value)).toEqual([40, 40, 55]);
+  });
+
+  it('cumulative: số nhập TRƯỚC cửa sổ vẫn được dùng làm mốc mở đầu', () => {
+    const entries = [e('2026-01-05', 30)];
+    const s = seriesFor(entries, 'month', 3, '2026-08-06', undefined, 'cumulative');
+    // Ba tháng gần đây không ai nhập, nhưng 30 keyword đó vẫn còn — không được vẽ thành 0.
+    expect(s.map((p) => p.value)).toEqual([30, 30, 30]);
   });
 
   it('kỳ total chỉ có một cột tổng', () => {

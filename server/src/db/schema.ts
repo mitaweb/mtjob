@@ -316,6 +316,9 @@ CREATE TABLE IF NOT EXISTS project_kpis (
   sort_order integer DEFAULT 0,
   created_at text DEFAULT ''
 );
+-- Cach nhap so (anh Tam 4/8/2026): daily = so cua NGAY do (cong lai trong ky),
+-- cumulative = so TONG den ngay do (lay so moi nhat, khong cong).
+ALTER TABLE project_kpis ADD COLUMN IF NOT EXISTS input_mode text DEFAULT 'daily';
 CREATE INDEX IF NOT EXISTS project_kpis_project_idx ON project_kpis (project_id);
 CREATE INDEX IF NOT EXISTS project_kpis_team_idx ON project_kpis (team_id, active);
 

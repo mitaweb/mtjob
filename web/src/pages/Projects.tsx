@@ -15,6 +15,24 @@ const KpiLineChart = lazy(() => import('../components/charts/KpiLineChart'));
 
 type Period = 'day' | 'week' | 'month' | 'total';
 
+/** Người nhập đang điền con số kiểu gì (anh Tâm 4/8/2026 — hai cách nhập). */
+type CachNhap = 'daily' | 'cumulative';
+
+const CACH_NHAP: Array<{ value: CachNhap; label: string; giaiThich: string }> = [
+  {
+    value: 'daily',
+    label: 'Số của ngày đó',
+    giaiThich:
+      'Mỗi ngày điền phần làm được trong ngày, hệ thống cộng lại trong kỳ. Hợp với thứ đếm được: tin nhắn, bài đăng, lượt tiếp cận.',
+  },
+  {
+    value: 'cumulative',
+    label: 'Số tổng đến ngày đó',
+    giaiThich:
+      'Điền con số tổng tại thời điểm đó, hệ thống lấy số mới nhất chứ KHÔNG cộng. Hợp với thứ đo trạng thái: số keyword đang top 10, số follower.',
+  },
+];
+
 const PERIODS: Array<{ value: Period; label: string }> = [
   { value: 'day', label: 'Mỗi ngày' },
   { value: 'week', label: 'Mỗi tuần' },
@@ -44,7 +62,8 @@ const STATUS: Record<string, { label: string; variant: BadgeVariant }> = {
 
 /** Tiến độ của một KỲ trên thẻ dự án: 'KPI tuần · Tuần 1 (31/7–6/8) — 122%'. */
 interface NhomKy {
-  period: Period;
+  /** Kỳ ('week', 'month'…) hoặc 'cumulative' cho nhóm chỉ số luỹ kế. */
+  period: string;
   ten: string;
   kyLabel: string;
   percent: number;
@@ -60,6 +79,7 @@ interface KpiTomTat {
   name: string;
   unit: string;
   period: Period;
+  inputMode?: CachNhap;
   current: number;
   target: number;
   percent: number;
@@ -110,6 +130,7 @@ interface Kpi {
   name: string;
   unit: string;
   period: Period;
+  inputMode: CachNhap;
   target: number;
   active: boolean;
   /** `periodLabel` là kỳ đang đo viết cho người đọc: 'Tuần 1 (31/7–6/8)'. */
@@ -134,6 +155,7 @@ const blankKpi = (teamId: string) => ({
   name: '',
   unit: '',
   period: 'month' as Period,
+  inputMode: 'daily' as CachNhap,
   target: 0,
   active: true,
 });
@@ -145,13 +167,14 @@ type KpiDraft = ReturnType<typeof blankKpi>;
  * còn phải gõ con số mục tiêu. Vẫn tự gõ tên khác được.
  */
 const KPI_PRESETS: Array<Omit<KpiDraft, 'id' | 'active'>> = [
-  { teamId: 'Ads', name: 'Tin nhắn khách inbox', unit: 'tin', period: 'week', target: 0 },
-  { teamId: 'Ads', name: 'Khách mới', unit: 'khách', period: 'month', target: 0 },
-  { teamId: 'Ads', name: 'Lượt tiếp cận', unit: 'lượt', period: 'week', target: 0 },
-  { teamId: 'Content', name: 'Bài đăng', unit: 'bài', period: 'week', target: 0 },
-  { teamId: 'Content', name: 'Video / Reels', unit: 'video', period: 'month', target: 0 },
-  { teamId: 'SEO', name: 'Từ khoá lên top 10', unit: 'từ khoá', period: 'month', target: 0 },
-  { teamId: 'SEO', name: 'Bài chuẩn SEO', unit: 'bài', period: 'month', target: 0 },
+  { teamId: 'Ads', name: 'Tin nhắn khách inbox', unit: 'tin', period: 'week', inputMode: 'daily', target: 0 },
+  { teamId: 'Ads', name: 'Khách mới', unit: 'khách', period: 'month', inputMode: 'daily', target: 0 },
+  { teamId: 'Ads', name: 'Lượt tiếp cận', unit: 'lượt', period: 'week', inputMode: 'daily', target: 0 },
+  { teamId: 'Content', name: 'Bài đăng', unit: 'bài', period: 'week', inputMode: 'daily', target: 0 },
+  { teamId: 'Content', name: 'Video / Reels', unit: 'video', period: 'month', inputMode: 'daily', target: 0 },
+  // Số từ khoá đang ở top 10 là TRẠNG THÁI, không phải việc đếm được — cộng dồn là sai.
+  { teamId: 'SEO', name: 'Từ khoá lên top 10', unit: 'từ khoá', period: 'month', inputMode: 'cumulative', target: 0 },
+  { teamId: 'SEO', name: 'Bài chuẩn SEO', unit: 'bài', period: 'month', inputMode: 'daily', target: 0 },
 ];
 
 /** Ba mức màu dùng chung cho thanh tiến độ và con số phần trăm — đọc phải khớp nhau. */
@@ -741,10 +764,11 @@ export default function Projects() {
                 {kpiRows.length > 0 && (
                   <div className="hidden gap-2 px-1 pb-1 text-xs text-slate-400 sm:grid sm:grid-cols-12">
                     <span className="sm:col-span-2">Phòng</span>
-                    <span className="sm:col-span-4">Tên chỉ số</span>
+                    <span className="sm:col-span-3">Tên chỉ số</span>
                     <span className="sm:col-span-2">Đơn vị</span>
-                    <span className="sm:col-span-2">Tính theo</span>
-                    <span className="sm:col-span-2">Mục tiêu</span>
+                    <span className="sm:col-span-1">Tính theo</span>
+                    <span className="sm:col-span-1">Cách nhập</span>
+                    <span className="sm:col-span-3">Mục tiêu</span>
                   </div>
                 )}
 
@@ -771,12 +795,22 @@ export default function Projects() {
                           value={k.unit}
                           onChange={(e) => set({ unit: e.target.value })}
                         />
-                        <select className="input py-1.5 text-sm sm:col-span-2" value={k.period} onChange={(e) => set({ period: e.target.value as Period })}>
+                        <select className="input py-1.5 text-sm sm:col-span-1" value={k.period} onChange={(e) => set({ period: e.target.value as Period })}>
                           {CHON_KY(k.period).map((p) => (
                             <option key={p.value} value={p.value}>{p.label}</option>
                           ))}
                         </select>
-                        <div className="flex items-center gap-1 sm:col-span-2">
+                        <select
+                          className="input py-1.5 text-sm sm:col-span-1"
+                          value={k.inputMode}
+                          title="Cách nhập số"
+                          onChange={(e) => set({ inputMode: e.target.value as CachNhap })}
+                        >
+                          {CACH_NHAP.map((c) => (
+                            <option key={c.value} value={c.value}>{c.label}</option>
+                          ))}
+                        </select>
+                        <div className="flex items-center gap-1 sm:col-span-3">
                           <input
                             className="input py-1.5 text-sm"
                             type="number"
@@ -854,6 +888,19 @@ export default function Projects() {
                     <option key={p.value} value={p.value}>{p.label}</option>
                   ))}
                 </select>
+                <label className="label mt-3">Cách nhập số</label>
+                <select
+                  className="input"
+                  value={kpiEdit.inputMode}
+                  onChange={(e) => setKpiEdit({ ...kpiEdit, inputMode: e.target.value as CachNhap })}
+                >
+                  {CACH_NHAP.map((c) => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-slate-500">
+                  {CACH_NHAP.find((c) => c.value === kpiEdit.inputMode)?.giaiThich}
+                </p>
                 {kpiEdit.period === 'total' && (
                   <p className="mt-1 text-xs text-amber-600">
                     Chỉ số này đang để “Cả dự án” — kiểu cũ, cộng dồn mãi không bao giờ về 0. Đổi

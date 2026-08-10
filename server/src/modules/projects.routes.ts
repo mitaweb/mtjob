@@ -111,6 +111,7 @@ projectsRouter.get(
             name: k.name,
             unit: k.unit,
             period: k.period,
+            inputMode: k.inputMode,
             current: pr.current,
             target: pr.target,
             percent: pr.percent,
@@ -127,21 +128,33 @@ projectsRouter.get(
         // tuần vừa reset về 0 sáng thứ Hai, chỉ số tháng thì đang chạy dở — cộng trung bình
         // hai thứ đó ra một số không nói lên điều gì. Mỗi kỳ một thanh, và thanh nào cũng
         // đo ĐÚNG kỳ đang chạy nên qua tuần là tự sang thanh tuần mới.
-        const kpiGroups = KY_HIEN_THI.map(({ period, ten }) => {
-          const ks = chiTiet.filter((k) => k.period === period);
-          if (ks.length === 0) return null;
-          const g = projectProgress(ks.map((k) => ({ percent: k.percent, target: k.target })));
-          return {
-            period,
-            ten,
-            // Các chỉ số cùng kỳ trong một dự án luôn cùng nhãn kỳ (cùng mốc, cùng hôm nay).
-            kyLabel: ks[0]!.periodLabel,
-            percent: g.percent,
-            measured: g.counted,
-            noTarget: g.noTarget,
-            kpiCount: ks.length,
-          };
-        }).filter((g) => g !== null);
+        //
+        // Chỉ số LUỸ KẾ đứng thành nhóm riêng, không nhét vào nhóm tuần/tháng: số của nó là
+        // tổng đến hôm nay, không thuộc kỳ nào cả. Gộp chung thì nhãn "Tuần 2 (7/8–13/8)"
+        // sẽ nói dối về con số bên cạnh.
+        const nhomKy = KY_HIEN_THI.map(({ period, ten }) => ({
+          period: period as string,
+          ten,
+          ks: chiTiet.filter((k) => k.period === period && k.inputMode !== 'cumulative'),
+        }));
+        const kpiGroups = [
+          ...nhomKy,
+          { period: 'cumulative', ten: 'KPI luỹ kế', ks: chiTiet.filter((k) => k.inputMode === 'cumulative') },
+        ]
+          .filter((n) => n.ks.length > 0)
+          .map(({ period, ten, ks }) => {
+            const g = projectProgress(ks.map((k) => ({ percent: k.percent, target: k.target })));
+            return {
+              period,
+              ten,
+              // Các chỉ số cùng nhóm luôn cùng nhãn kỳ (cùng mốc, cùng hôm nay).
+              kyLabel: ks[0]!.periodLabel,
+              percent: g.percent,
+              measured: g.counted,
+              noTarget: g.noTarget,
+              kpiCount: ks.length,
+            };
+          });
         const alert = projectAlert(timeProgress(p.startDate, p.endDate, today), prog.percent, prog.counted);
         return {
           ...p,
@@ -244,7 +257,7 @@ projectsRouter.get(
         return {
           ...k,
           progress: progressOf(own, k, today, project.startDate),
-          series: seriesFor(own, k.period, 8, today, project.startDate),
+          series: seriesFor(own, k.period, 8, today, project.startDate, k.inputMode),
           // Nhân viên phòng khác chỉ xem; giám đốc nhập bù được mọi ngày.
           canWrite: canWriteAnyTeam(req.user!.role) || k.teamId === teamId,
         };
@@ -308,6 +321,9 @@ const kpiSchema = z.object({
   name: z.string().min(1),
   unit: z.string().optional().default(''),
   period: z.enum(['day', 'week', 'month', 'total']).optional().default('month'),
+  // daily = so cua ngay do (cong lai trong ky); cumulative = so tong den ngay do (lay so
+  // moi nhat). Thieu thi giu nguyen kieu cu de moi chi so da co khong bi doi cach tinh.
+  inputMode: z.enum(['daily', 'cumulative']).optional(),
   target: z.number().int().min(0).optional().default(0),
   active: z.boolean().optional().default(true),
   sortOrder: z.number().int().optional().default(0),
@@ -329,6 +345,8 @@ projectsRouter.post(
       name: b.name.trim(),
       unit: b.unit.trim(),
       period: b.period as KpiPeriod,
+      // Thiếu thì giữ nguyên kiểu cũ của chỉ số — đừng lặng lẽ đổi cách tính của số đã nhập.
+      inputMode: b.inputMode || existing?.inputMode || 'daily',
       target: b.target,
       active: b.active,
       sortOrder: b.sortOrder,

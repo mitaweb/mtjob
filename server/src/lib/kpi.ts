@@ -102,9 +102,24 @@ export function currentPeriodKey(period: KpiPeriod, today?: string, moc?: string
   return periodKey(today || dayjs().tz(TZ).format('YYYY-MM-DD'), period, moc);
 }
 
+/**
+ * Người nhập đang điền con số kiểu gì (anh Tâm chốt 4/8/2026 — hai cách nhập).
+ *
+ *   'daily'  — "số của NGÀY ĐÓ thôi": mỗi ngày một phần việc, cộng lại trong kỳ.
+ *              Hợp với thứ đếm được: tin nhắn, bài đăng, lượt tiếp cận.
+ *
+ *   'cumulative' — "số TỔNG đến ngày đó": con số nhập vào ĐÃ là tổng rồi.
+ *              Hợp với thứ đo trạng thái: số keyword đang ở top 10, số follower.
+ *              Cộng dồn kiểu này là sai: nhập 45 hôm nay rồi 46 hôm sau ra 91,
+ *              trong khi thực tế vẫn chỉ có 46 (SAVAX DOOR từng ra 250/120 vì vậy).
+ */
+export type KpiInputMode = 'daily' | 'cumulative';
+
 export interface KpiLike {
   period: KpiPeriod;
   target: number;
+  /** Thiếu thì coi như 'daily' — mọi chỉ số cũ đều đang là kiểu cộng dồn. */
+  inputMode?: KpiInputMode;
 }
 
 export interface KpiProgress {
@@ -117,9 +132,23 @@ export interface KpiProgress {
   percent: number;
 }
 
+/** Số đã nhập gần nhất tính đến `den` (kể cả ngày đó). undefined khi chưa có số nào. */
+function soMoiNhat(entries: KpiEntryLike[], den: string): KpiEntryLike | undefined {
+  let ra: KpiEntryLike | undefined;
+  for (const e of entries) {
+    if (!e.date || e.date > den) continue;
+    if (!ra || e.date > ra.date) ra = e;
+  }
+  return ra;
+}
+
 /**
- * Tiến độ của KPI trong kỳ đang chạy (hoặc kỳ chứa `today` nếu truyền vào).
- * `moc` là ngày bắt đầu dự án — xem `periodKey`.
+ * Tiến độ của KPI. `moc` là ngày bắt đầu dự án — xem `periodKey`.
+ *
+ * Kiểu 'daily' (mặc định): cộng các số TRONG kỳ đang chạy.
+ * Kiểu 'cumulative': lấy đúng số nhập gần nhất — con số đó đã là tổng rồi, cộng thêm là
+ * sai. Cũng KHÔNG cắt theo kỳ: 100 keyword đang ở top 10 thì sang tháng mới nó vẫn còn đó,
+ * cho về 0 mỗi đầu kỳ là nhìn như mất trắng.
  */
 export function progressOf(
   entries: KpiEntryLike[],
@@ -127,14 +156,20 @@ export function progressOf(
   today?: string,
   moc?: string,
 ): KpiProgress {
-  const key = currentPeriodKey(kpi.period, today, moc);
-  const current = entries
-    .filter((e) => periodKey(e.date, kpi.period, moc) === key)
-    .reduce((s, e) => s + (Number(e.value) || 0), 0);
+  const homNay = today || dayjs().tz(TZ).format('YYYY-MM-DD');
   const target = Number(kpi.target) || 0;
+  const luyKe = kpi.inputMode === 'cumulative';
+
+  const key = luyKe ? 'cumulative' : currentPeriodKey(kpi.period, homNay, moc);
+  const current = luyKe
+    ? Number(soMoiNhat(entries, homNay)?.value || 0) || 0
+    : entries
+        .filter((e) => periodKey(e.date, kpi.period, moc) === key)
+        .reduce((s, e) => s + (Number(e.value) || 0), 0);
+
   return {
     periodKey: key,
-    periodLabel: periodLabel(key, moc),
+    periodLabel: luyKe ? 'Tổng đến hôm nay' : periodLabel(key, moc),
     current,
     target,
     percent: target > 0 ? Math.round((current / target) * 100) : 0,
@@ -157,17 +192,30 @@ export function seriesFor(
   n = 8,
   today?: string,
   moc?: string,
+  inputMode?: KpiInputMode,
 ): KpiPoint[] {
   const homNay = today || dayjs().tz(TZ).format('YYYY-MM-DD');
+  const luyKe = inputMode === 'cumulative';
   if (period === 'total') {
-    const value = entries.reduce((s, e) => s + (Number(e.value) || 0), 0);
+    const value = luyKe
+      ? Number(soMoiNhat(entries, homNay)?.value || 0) || 0
+      : entries.reduce((s, e) => s + (Number(e.value) || 0), 0);
     return [{ key: 'total', label: 'Cả dự án', value }];
   }
 
+  // 'daily' cộng các số trong kỳ; 'cumulative' lấy số nhập MUỘN NHẤT của kỳ — con số đó đã
+  // là tổng rồi.
   const sum = new Map<string, number>();
+  const ngayCuaKy = new Map<string, string>();
   for (const e of entries) {
     const k = periodKey(e.date, period, moc);
-    if (k) sum.set(k, (sum.get(k) || 0) + (Number(e.value) || 0));
+    if (!k) continue;
+    if (!luyKe) {
+      sum.set(k, (sum.get(k) || 0) + (Number(e.value) || 0));
+    } else if (!ngayCuaKy.has(k) || e.date > ngayCuaKy.get(k)!) {
+      ngayCuaKy.set(k, e.date);
+      sum.set(k, Number(e.value) || 0);
+    }
   }
   const out: KpiPoint[] = [];
 
@@ -181,7 +229,7 @@ export function seriesFor(
       const k = `${period === 'week' ? 'W' : 'M'}${i}`;
       out.push({ key: k, label: periodLabel(k, moc), value: sum.get(k) || 0 });
     }
-    return out;
+    return luyKe ? keoNganTiep(out, sum, entries, period, moc, homNay) : out;
   }
 
   const base = dayjs(homNay);
@@ -190,7 +238,33 @@ export function seriesFor(
     const k = periodKey(base.subtract(i, unit).format('YYYY-MM-DD'), period);
     out.push({ key: k, label: periodLabel(k), value: sum.get(k) || 0 });
   }
-  return out;
+  return luyKe ? keoNganTiep(out, sum, entries, period, moc, homNay) : out;
+}
+
+/**
+ * Với chỉ số luỹ kế, kỳ KHÔNG có số nhập nghĩa là "chưa đổi", không phải "về 0". Kéo giá
+ * trị của kỳ trước sang, và mồi bằng số đã nhập trước cửa sổ đang vẽ — nếu không thì chỉ
+ * số nhập từ ba tháng trước sẽ hiện thành một đường 0 dài, nhìn như mất trắng.
+ */
+function keoNganTiep(
+  out: KpiPoint[],
+  sum: Map<string, number>,
+  entries: KpiEntryLike[],
+  period: KpiPeriod,
+  moc: string | undefined,
+  homNay: string,
+): KpiPoint[] {
+  const trongCuaSo = new Set(out.map((p) => p.key));
+  const dauCuaSo = entries
+    .filter((e) => e.date && e.date <= homNay && trongCuaSo.has(periodKey(e.date, period, moc)))
+    .reduce((min, e) => (min && min <= e.date ? min : e.date), '');
+  let chay = Number(soMoiNhat(entries, dauCuaSo || homNay)?.value || 0) || 0;
+  // Số nhập ĐÚNG ngày mở cửa sổ đã nằm trong `sum`, đừng tính nó làm mồi.
+  if (dauCuaSo && soMoiNhat(entries, dauCuaSo)?.date === dauCuaSo) chay = 0;
+  return out.map((p) => {
+    if (sum.has(p.key)) chay = sum.get(p.key)!;
+    return { ...p, value: chay };
+  });
 }
 
 /** Ngày làm việc kế tiếp sau `date` — bỏ qua T7, CN và ngày lễ. */
