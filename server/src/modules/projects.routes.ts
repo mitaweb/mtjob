@@ -37,6 +37,14 @@ import { nowTz, todayIso, fmtDate } from '../lib/datetime.js';
 export const projectsRouter = Router();
 projectsRouter.use(requireAuth);
 
+/** Thứ tự và tên hiển thị của các kỳ trên thẻ dự án — ngắn dần về phía trên. */
+const KY_HIEN_THI = [
+  { period: 'day', ten: 'KPI ngày' },
+  { period: 'week', ten: 'KPI tuần' },
+  { period: 'month', ten: 'KPI tháng' },
+  { period: 'total', ten: 'KPI cả dự án' },
+] as const satisfies ReadonlyArray<{ period: KpiPeriod; ten: string }>;
+
 /** Ai được tạo/sửa khung dự án và chỉ số. Nhân viên chỉ nhập SỐ, không đụng cấu trúc. */
 const canManage = requireRole('leader', 'director', 'admin');
 
@@ -112,6 +120,28 @@ projectsRouter.get(
         // Chỉ số CHƯA đặt mục tiêu không đo được tiến độ — gộp vào trung bình sẽ kéo con
         // số đứng im dù nhập bao nhiêu. `projectProgress` loại chúng ra và đếm riêng.
         const prog = projectProgress(chiTiet.map((k) => ({ percent: k.percent, target: k.target })));
+
+        // Tách tiến độ theo KỲ (anh Tâm 4/8/2026: "nếu KPI theo tuần thì tách theo tuần").
+        //
+        // Một thanh gộp chung chỉ số tuần với chỉ số tháng là con số không đọc được: chỉ số
+        // tuần vừa reset về 0 sáng thứ Hai, chỉ số tháng thì đang chạy dở — cộng trung bình
+        // hai thứ đó ra một số không nói lên điều gì. Mỗi kỳ một thanh, và thanh nào cũng
+        // đo ĐÚNG kỳ đang chạy nên qua tuần là tự sang thanh tuần mới.
+        const kpiGroups = KY_HIEN_THI.map(({ period, ten }) => {
+          const ks = chiTiet.filter((k) => k.period === period);
+          if (ks.length === 0) return null;
+          const g = projectProgress(ks.map((k) => ({ percent: k.percent, target: k.target })));
+          return {
+            period,
+            ten,
+            // Các chỉ số cùng kỳ trong một dự án luôn cùng nhãn kỳ (cùng mốc, cùng hôm nay).
+            kyLabel: ks[0]!.periodLabel,
+            percent: g.percent,
+            measured: g.counted,
+            noTarget: g.noTarget,
+            kpiCount: ks.length,
+          };
+        }).filter((g) => g !== null);
         const alert = projectAlert(timeProgress(p.startDate, p.endDate, today), prog.percent, prog.counted);
         return {
           ...p,
@@ -125,6 +155,8 @@ projectsRouter.get(
           teams: [...new Set(own.map((k) => k.teamId).filter(Boolean))].sort(),
           /** Từng chỉ số kèm số đã đạt — thẻ dự án hiện thẳng, khỏi phải mở ra xem. */
           kpis: chiTiet,
+          /** Tiến độ tách theo kỳ: mỗi kỳ một thanh, luôn là kỳ ĐANG chạy. */
+          kpiGroups,
           timePercent: alert.timePercent,
           alert: alert.level,
           alertReason: alert.reason,
