@@ -64,11 +64,24 @@ interface ChatReply {
  * Giờ người dùng chủ động bấm "Lưu vào kho" khi chốt được điều đáng nhớ (POST /brain/notes).
  */
 function saveChatTurn(memberId: string, userText: string, payload: ChatReply): void {
-  const now = nowTz().toISOString();
+  // Câu hỏi và câu trả lời phải có mốc thời gian KHÁC nhau.
+  //
+  // Trước đây cả hai dùng chung một `now`, mà lịch sử sắp bằng `ORDER BY created_at` — hai
+  // dòng trùng mốc thì Postgres trả về theo thứ tự tuỳ ý, nên câu trả lời của trợ lý hay
+  // nhảy lên TRÊN câu hỏi (anh Tâm 4/8/2026). Lệch một phần nghìn giây là đủ để thứ tự
+  // luôn đúng, và cũng đúng sự thật: trả lời sau khi hỏi.
+  const base = nowTz();
   const rows: ChatMessageRow[] = [];
   const question = (userText || '').trim();
   if (question) {
-    rows.push({ id: newId('CM-'), memberId, role: 'user', text: question, action: '', createdAt: now });
+    rows.push({
+      id: newId('CM-'),
+      memberId,
+      role: 'user',
+      text: question,
+      action: '',
+      createdAt: base.toISOString(),
+    });
   }
   rows.push({
     id: newId('CM-'),
@@ -76,7 +89,7 @@ function saveChatTurn(memberId: string, userText: string, payload: ChatReply): v
     role: 'model',
     text: payload.reply || '',
     action: payload.action || '',
-    createdAt: now,
+    createdAt: base.add(1, 'millisecond').toISOString(),
   });
 
   runInBackground(

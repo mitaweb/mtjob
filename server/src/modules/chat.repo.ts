@@ -37,13 +37,18 @@ export async function getChatMessages(
   limit = 50,
   before?: string,
 ): Promise<ChatMessageRow[]> {
+  // Các lượt chat CŨ đã lỡ lưu câu hỏi và câu trả lời TRÙNG mốc thời gian; trùng mốc thì
+  // Postgres trả thứ tự tuỳ ý nên câu trả lời hay nhảy lên trên câu hỏi. Danh sách này là
+  // mới-nhất-trước rồi mới đảo lại để hiển thị, nên khi trùng mốc phải xếp 'model' TRƯỚC
+  // để sau khi đảo thì câu hỏi đứng trước câu trả lời.
+  const SAP_XEP = `ORDER BY created_at DESC, CASE WHEN role = 'model' THEN 0 ELSE 1 END`;
   const rows = before
     ? await q(
         `SELECT * FROM chat_messages WHERE member_id = $1 AND created_at < $2
-         ORDER BY created_at DESC LIMIT $3`,
+         ${SAP_XEP} LIMIT $3`,
         [memberId, before, limit],
       )
-    : await q('SELECT * FROM chat_messages WHERE member_id = $1 ORDER BY created_at DESC LIMIT $2', [
+    : await q(`SELECT * FROM chat_messages WHERE member_id = $1 ${SAP_XEP} LIMIT $2`, [
         memberId,
         limit,
       ]);
