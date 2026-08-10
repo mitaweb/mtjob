@@ -319,25 +319,28 @@ export function crmWriteTools(memberId: string): ToolDef[] {
           required: ['customerName', 'at'],
         },
       },
+      // Mọi đường THẤT BẠI đều mở đầu bằng "CHƯA ĐẶT ĐƯỢC" — anh Tâm 4/8/2026 gặp cảnh trợ lý
+      // đọc câu "không có khách hàng nào tên..." rồi vẫn báo "Đã đặt lịch hẹn ✅". Câu báo hỏng
+      // viết như văn xuôi thì AI dễ lướt qua; mở đầu bằng chữ in hoa dứt khoát thì khó lờ hơn.
       run: async (a) => {
         const needle = flat(a.customerName as string);
-        if (!needle) return 'Chưa rõ hẹn với ai.';
+        if (!needle) return 'CHƯA ĐẶT ĐƯỢC: chưa rõ hẹn với ai. Hỏi lại tên người hẹn.';
         const at = String(a.at || '').trim().slice(0, 16);
         if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at)) {
-          return 'Thời điểm hẹn phải dạng YYYY-MM-DDTHH:mm giờ Việt Nam, vd "2026-07-24T14:00".';
+          return 'CHƯA ĐẶT ĐƯỢC: thời điểm hẹn phải dạng YYYY-MM-DDTHH:mm giờ Việt Nam, vd "2026-07-24T14:00".';
         }
         const hits = (await getCustomers()).filter((c) => flat(c.name).includes(needle));
         // KHÔNG tự tạo khách mới từ một câu hẹn gặp — "chị Hằng" thường là người quen,
         // tạo bừa sẽ làm bẩn danh sách khách hàng.
         if (hits.length === 0) {
           return (
-            `Không có khách hàng nào tên "${a.customerName}" trong CRM. ` +
-            'Đây có thể là hẹn cá nhân — hãy đặt bằng create_reminder (repeatKind="once", onDate là ngày hẹn) ' +
-            'thay vì tạo khách mới.'
+            `CHƯA ĐẶT ĐƯỢC: không có khách hàng nào tên "${a.customerName}" trong CRM, nên KHÔNG có lịch hẹn nào được tạo. ` +
+            'Gọi tiếp create_reminder (repeatKind="once", onDate là ngày hẹn) để đặt nhắc hẹn cá nhân, ' +
+            'rồi mới báo lại cho người dùng. Đừng tạo khách mới.'
           );
         }
         if (hits.length > 1) {
-          return `Có ${hits.length} khách khớp: ${hits.map((c) => c.name).join(', ')}. Hỏi lại là khách nào.`;
+          return `CHƯA ĐẶT ĐƯỢC: có ${hits.length} khách khớp: ${hits.map((c) => c.name).join(', ')}. Hỏi lại là khách nào.`;
         }
         const customer = hits[0];
         const note = String(a.note || '').trim();

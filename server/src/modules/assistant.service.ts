@@ -101,14 +101,15 @@ function reminderTool(memberId: string): ToolDef {
       },
     },
     run: async (a) => {
+      // Mọi đường THẤT BẠI mở đầu bằng "CHƯA ĐẶT ĐƯỢC" — xem ghi chú ở create_appointment.
       const title = String(a.title || '').trim();
       const atTime = String(a.atTime || '').trim();
       const repeatKind = String(a.repeatKind || 'once') as RepeatKind;
-      if (!title) return 'Chưa rõ cần nhắc việc gì.';
-      if (!/^\d{1,2}:\d{2}$/.test(atTime)) return 'Giờ nhắc phải dạng HH:mm, vd 08:00.';
+      if (!title) return 'CHƯA ĐẶT ĐƯỢC: chưa rõ cần nhắc việc gì.';
+      if (!/^\d{1,2}:\d{2}$/.test(atTime)) return 'CHƯA ĐẶT ĐƯỢC: giờ nhắc phải dạng HH:mm, vd 08:00.';
       const onDate = String(a.onDate || '');
       if (repeatKind === 'once' && !/^\d{4}-\d{2}-\d{2}$/.test(onDate)) {
-        return 'Nhắc một lần cần biết ngày cụ thể (YYYY-MM-DD). Hỏi lại người dùng ngày nào.';
+        return 'CHƯA ĐẶT ĐƯỢC: nhắc một lần cần biết ngày cụ thể (YYYY-MM-DD). Hỏi lại người dùng ngày nào.';
       }
       const [h, m] = atTime.split(':');
       const rule = {
