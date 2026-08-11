@@ -40,6 +40,7 @@ const customerSchema = z.object({
   assignedTo: z.string().optional().default(''),
   dob: z.string().optional().default(''),
   closedAt: z.string().optional().default(''),
+  source: z.string().max(60).optional().default(''),
 });
 
 crmRouter.post(
@@ -56,6 +57,7 @@ crmRouter.post(
       info: b.info,
       assignedTo: b.assignedTo,
       dob: b.dob,
+      source: b.source,
       // Tự ghi mốc chốt lần đầu chuyển sang "Đã chốt" — dùng để nhắc tái tục.
       closedAt:
         b.closedAt ||

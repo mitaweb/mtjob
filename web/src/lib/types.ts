@@ -10,6 +10,7 @@ export interface Customer {
   assignedTo: string;
   dob: string; // ngày sinh khách — để chuẩn bị quà/lời chúc
   closedAt: string; // ngày chốt hợp đồng — mốc tính tái tục
+  source: string; // nguồn khách — chọn từ danh sách cố định
   createdAt: string;
 }
 

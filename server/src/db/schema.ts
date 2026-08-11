@@ -213,6 +213,10 @@ CREATE INDEX IF NOT EXISTS customers_created_idx ON customers (created_at DESC);
 -- Chăm sóc khách: ngày sinh (chuẩn bị quà/lời chúc) + ngày chốt hợp đồng (tính tái tục).
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS dob text DEFAULT '';
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS closed_at text DEFAULT '';
+-- Nguon khach (anh Tam 4/8/2026: 'co nguon khach thi nho co thong ke'). Chon tu danh sach
+-- co dinh chu khong go tu do: go tu do thi moi nguoi viet mot kieu (FB / Facebook / face)
+-- va bang thong ke thanh vo dung.
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS source text DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS appointments (
   appt_id       text PRIMARY KEY,

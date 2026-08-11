@@ -280,6 +280,8 @@ export function crmWriteTools(memberId: string): ToolDef[] {
           status,
           note: String(a.note || '').trim() || existing?.note || '',
           info: existing?.info || '',
+          // Nguon khach chi dat tay trong CRM — AI khong doan bua tu mot cau chat.
+          source: existing?.source || '',
           assignedTo: existing?.assignedTo || memberId,
           dob: String(a.dob || '').trim() || existing?.dob || '',
           // Mốc chốt hợp đồng chỉ ghi lần ĐẦU chuyển sang "Đã chốt" — mốc tính tái tục.

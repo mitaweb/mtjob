@@ -11,10 +11,19 @@ interface Mem {
 }
 
 const STATUSES = ['Mới', 'Đang chăm sóc', 'Đã chốt', 'Tạm dừng', 'Mất'];
+
+/**
+ * Nguồn khách — danh sách CỐ ĐỊNH, không cho gõ tự do.
+ *
+ * Anh Tâm 4/8/2026 muốn thống kê theo nguồn. Gõ tự do thì mỗi người viết một kiểu
+ * (FB / Facebook / face / fb ads) và bảng thống kê vỡ thành hàng chục dòng trùng ý nhau —
+ * đúng thứ làm cho con số không dùng được.
+ */
+const NGUON = ['Facebook Ads', 'Google Ads', 'Zalo', 'Website', 'Giới thiệu', 'Sự kiện', 'Khác'];
 const CLOSED = 'Đã chốt';
 const LOST = ['Tạm dừng', 'Mất'];
 const blankCustomer = (): Partial<Customer> => ({
-  name: '', phone: '', status: 'Mới', note: '', info: '', assignedTo: '', dob: '', closedAt: '',
+  name: '', phone: '', status: 'Mới', note: '', info: '', assignedTo: '', dob: '', closedAt: '', source: '',
 });
 
 type Tab = 'lead' | 'closed' | 'other';
@@ -82,6 +91,27 @@ export default function CRM() {
 
   const shown = useMemo(() => customers.filter((c) => tabOf(c.status) === tab), [customers, tab]);
 
+  /**
+   * Thống kê theo nguồn khách (anh Tâm 4/8/2026).
+   *
+   * Đếm kèm SỐ ĐÃ CHỐT và tỉ lệ chốt, không chỉ tổng số khách. Nguồn mang về 50 khách mà
+   * chốt 2 thì kém hơn hẳn nguồn mang về 10 khách chốt 5 — nhìn mỗi cột tổng thì kết luận
+   * ngược. Sắp theo số chốt giảm dần: nguồn nào ra tiền đứng đầu.
+   */
+  const theoNguon = useMemo(() => {
+    const m = new Map<string, { tong: number; chot: number }>();
+    for (const c of customers) {
+      const nguon = (c.source || '').trim() || 'Chưa rõ';
+      const o = m.get(nguon) || { tong: 0, chot: 0 };
+      o.tong++;
+      if (c.status === CLOSED) o.chot++;
+      m.set(nguon, o);
+    }
+    return [...m.entries()]
+      .map(([nguon, o]) => ({ nguon, ...o, tyLe: o.tong > 0 ? Math.round((o.chot / o.tong) * 100) : 0 }))
+      .sort((a, b) => b.chot - a.chot || b.tong - a.tong);
+  }, [customers]);
+
   const birthdays = useMemo(
     () =>
       customers
@@ -136,6 +166,7 @@ export default function CRM() {
           assignedTo: edit.assignedTo || '',
           dob: edit.dob || '',
           closedAt: edit.closedAt || '',
+          source: edit.source || '',
         },
       });
       toast.success('Đã lưu khách hàng');
@@ -208,6 +239,35 @@ export default function CRM() {
           {upcoming.length === 0 && <li className="py-2 text-sm text-ink-muted">Không có lịch hẹn nào sắp tới.</li>}
         </ul>
       </div>
+
+      {/* Nguồn khách: nguồn nào RA TIỀN, không phải nguồn nào đông khách. */}
+      {theoNguon.length > 0 && (
+        <div className="card">
+          <h2 className="font-semibold">Nguồn khách</h2>
+          <p className="mb-3 text-xs text-ink-muted">
+            Sắp theo số khách đã chốt. Nguồn mang về nhiều khách mà chốt ít thì không bằng nguồn
+            ít khách mà chốt nhiều.
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            {theoNguon.map((n) => (
+              <div key={n.nguon} className="rounded-xl border border-brand-100 bg-brand-50/50 p-3">
+                <div className="truncate text-xs font-medium text-ink-soft" title={n.nguon}>
+                  {n.nguon}
+                </div>
+                <div className="mt-1 flex items-baseline gap-1.5">
+                  <span className="text-xl font-bold text-ink">{n.chot}</span>
+                  <span className="text-xs text-ink-muted">/ {n.tong} khách</span>
+                </div>
+                <div className="mt-1 text-xs">
+                  <span className={n.tyLe >= 50 ? 'text-emerald-700' : 'text-ink-muted'}>
+                    chốt {n.tyLe}%
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Sinh nhật khách trong tháng — để chuẩn bị quà/lời chúc */}
       {birthdays.length > 0 && (
@@ -331,6 +391,21 @@ export default function CRM() {
                   {STATUSES.map((s) => (
                     <option key={s} value={s}>
                       {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label">Nguồn khách</label>
+                <select
+                  className="input"
+                  value={edit.source || ''}
+                  onChange={(e) => setEdit({ ...edit, source: e.target.value })}
+                >
+                  <option value="">— Chưa rõ —</option>
+                  {NGUON.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
                     </option>
                   ))}
                 </select>

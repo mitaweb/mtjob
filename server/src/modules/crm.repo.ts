@@ -10,6 +10,8 @@ export interface Customer {
   assignedTo: string;
   dob: string; // ngày sinh khách (YYYY-MM-DD hoặc --MM-DD nếu không rõ năm)
   closedAt: string; // ngày chốt hợp đồng — mốc tính tái tục
+  /** Nguồn khách — chọn từ danh sách cố định để thống kê cộng được. */
+  source: string;
   createdAt: string;
 }
 
@@ -38,6 +40,7 @@ function rowToCustomer(r: any): Customer {
     assignedTo: r.assigned_to || '',
     dob: r.dob || '',
     closedAt: r.closed_at || '',
+    source: r.source || '',
     createdAt: r.created_at || '',
   };
 }
@@ -66,15 +69,15 @@ export async function findCustomer(id: string): Promise<Customer | undefined> {
 
 export async function upsertCustomer(c: Customer): Promise<void> {
   await q(
-    `INSERT INTO customers (customer_id, name, phone, status, note, info, assigned_to, dob, closed_at, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    `INSERT INTO customers (customer_id, name, phone, status, note, info, assigned_to, dob, closed_at, created_at, source)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
      ON CONFLICT (customer_id) DO UPDATE SET
        name = EXCLUDED.name, phone = EXCLUDED.phone, status = EXCLUDED.status,
        note = EXCLUDED.note, info = EXCLUDED.info, assigned_to = EXCLUDED.assigned_to,
-       dob = EXCLUDED.dob, closed_at = EXCLUDED.closed_at`,
+       dob = EXCLUDED.dob, closed_at = EXCLUDED.closed_at, source = EXCLUDED.source`,
     [
       c.id, c.name, c.phone, c.status, c.note, c.info, c.assignedTo,
-      c.dob || '', c.closedAt || '', c.createdAt || new Date().toISOString(),
+      c.dob || '', c.closedAt || '', c.createdAt || new Date().toISOString(), c.source || '',
     ],
   );
 }
