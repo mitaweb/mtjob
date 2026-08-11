@@ -65,28 +65,48 @@ function tuKhoa(s: string): string[] {
  * dùng từ đồng nghĩa vẫn ra đúng việc. Trượt ở đây là việc không được mở, không có
  * điểm — mà người ta lại tưởng đã xong.
  */
-export function heuristic(message: string, catalog: TaskCatalogItem[]): ChatExtraction {
+/**
+ * Câu này là CÂU HỎI chứ không phải báo việc?
+ *
+ * "cách lên ads thế nào?" có đủ từ của việc "Lên Ads" nên dò từ khoá sẽ mở việc đó ra —
+ * người ta hỏi cách làm mà máy ghi thành đã bắt đầu làm. Phải chặn trước khi dò.
+ */
+export function laCauHoi(message: string): boolean {
+  if (message.includes('?')) return true;
   const m = removeAccents(message).toLowerCase();
-  if (/(diem|xep hang|thu hang|luong|bonus|thuong|gio lam)/.test(m)) return { intent: 'query_stats' };
+  return /(^|\s)(ai|gi|sao|the nao|nhu the nao|bao nhieu|bao lau|khi nao|lam sao|co nen|nen lam)(\s|$)/.test(m);
+}
 
+/** Việc khớp nhất với câu nói, kèm tỉ lệ khớp. null khi không đủ tin. */
+function khopViec(
+  message: string,
+  catalog: TaskCatalogItem[],
+): { item: TaskCatalogItem; tyLe: number } | null {
+  const m = removeAccents(message).toLowerCase();
   const tuTin = new Set(tuKhoa(message));
-  let totNhat: { item: TaskCatalogItem; diem: number } | null = null;
+  let totNhat: { item: TaskCatalogItem; tyLe: number; trung: number } | null = null;
 
   for (const c of catalog) {
     // Mã việc gõ thẳng thì chắc chắn đúng, khỏi đoán.
-    if (m.includes(c.code.toLowerCase())) return { intent: 'start_task', taskCode: c.code, note: message };
+    if (m.includes(c.code.toLowerCase())) return { item: c, tyLe: 1 };
 
     const tuTen = tuKhoa(c.name).filter((w) => w.length > 1);
     if (tuTen.length === 0) continue;
     const trung = tuTen.filter((w) => tuTin.has(w)).length;
     const tyLe = trung / tuTen.length;
     // Phải khớp phần LỚN tên việc mới tính — khớp 1-2 từ lẻ dễ nhận nhầm sang việc khác.
-    if (tyLe >= 0.7 && (!totNhat || trung > totNhat.diem)) totNhat = { item: c, diem: trung };
+    if (tyLe >= 0.7 && (!totNhat || trung > totNhat.trung)) totNhat = { item: c, tyLe, trung };
   }
+  return totNhat ? { item: totNhat.item, tyLe: totNhat.tyLe } : null;
+}
 
-  return totNhat
-    ? { intent: 'start_task', taskCode: totNhat.item.code, note: message }
-    : { intent: 'help' };
+export function heuristic(message: string, catalog: TaskCatalogItem[]): ChatExtraction {
+  const m = removeAccents(message).toLowerCase();
+  if (/(diem|xep hang|thu hang|luong|bonus|thuong|gio lam)/.test(m)) return { intent: 'query_stats' };
+  if (laCauHoi(message)) return { intent: 'help' };
+
+  const khop = khopViec(message, catalog);
+  return khop ? { intent: 'start_task', taskCode: khop.item.code, note: message } : { intent: 'help' };
 }
 
 export async function interpret(
@@ -135,6 +155,24 @@ export async function interpret(
     // NLU ghi việc luôn dùng flash (nhanh/rẻ) kể cả khi admin chọn model khác cho Q&A.
     const parsed = (await generateJson(prompt, SCHEMA, 'gemini-2.5-flash')) as ChatExtraction;
     if (!parsed.intent) return heuristic(message, catalog);
+
+    /*
+     * AI bó tay thì HỎI LẠI bộ dò từ khoá trước khi bỏ cuộc.
+     *
+     * Anh Tâm 4/8/2026 nhắn "thiết kế post 1 hình Tín Đạt" và bị trả về "chưa mở được việc
+     * này". Bộ dò từ khoá khớp câu đó 100% — nó có sẵn hinh→anh — nhưng không ai hỏi nó,
+     * vì đường AI trả về `help` hợp lệ nên coi như xong. Đường thông minh thua ở đúng chỗ
+     * đường ngu thắng.
+     *
+     * Chỉ nhận khi khớp TOÀN BỘ từ trong tên việc: khớp 70% đủ cho đường dự phòng (lúc đó
+     * không còn lựa chọn nào khác), nhưng để ĐÈ lên phán đoán của AI thì phải chắc hơn.
+     */
+    if (parsed.intent === 'help' && !laCauHoi(message)) {
+      const khop = khopViec(message, catalog);
+      if (khop && khop.tyLe >= 1) {
+        return { intent: 'start_task', taskCode: khop.item.code, note: message };
+      }
+    }
     return parsed;
   } catch (e) {
     console.warn('[chatNlu] Gemini lỗi, dùng heuristic:', (e as Error).message);

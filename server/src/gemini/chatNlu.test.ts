@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { heuristic } from './chatNlu.js';
+import { heuristic, laCauHoi } from './chatNlu.js';
 import type { TaskCatalogItem } from '../types.js';
 
 // Anh Tâm 2/8/2026 gõ "Thiết kế post 1 hình — Maple": danh mục ghi "ảnh" nên khớp nguyên
@@ -60,5 +60,31 @@ describe('heuristic — khớp loại việc', () => {
 
   it('giữ nguyên câu gốc vào note để bước sau tách tên khách', () => {
     expect(heuristic('Thiết kế post 1 hình — Maple', CATALOG).note).toBe('Thiết kế post 1 hình — Maple');
+  });
+
+  // Anh Tâm 4/8/2026: hỏi CÁCH làm mà máy mở việc ra là ghi nhầm giờ làm của người ta.
+  it('CÂU HỎI không bị mở thành việc, dù có đủ từ của tên việc', () => {
+    expect(heuristic('cách lên ads thế nào?', CATALOG).intent).toBe('help');
+    expect(heuristic('lên ads sao cho hiệu quả', CATALOG).intent).toBe('help');
+    expect(heuristic('edit video mất bao lâu', CATALOG).intent).toBe('help');
+  });
+
+  it('câu báo việc bình thường vẫn mở được — chặn câu hỏi không được chặn nhầm', () => {
+    expect(heuristic('lên ads cho X Salon', CATALOG).intent).toBe('start_task');
+    expect(heuristic('thiết kế post 1 hình Tín Đạt', CATALOG).intent).toBe('start_task');
+  });
+});
+
+describe('laCauHoi', () => {
+  it('nhận ra câu hỏi', () => {
+    for (const c of ['cách lên ads thế nào?', 'ai làm việc này', 'bao nhiêu điểm', 'khi nào xong']) {
+      expect(laCauHoi(c)).toBe(true);
+    }
+  });
+
+  it('câu báo việc KHÔNG bị coi là câu hỏi', () => {
+    for (const c of ['thiết kế post 1 hình Tín Đạt', 'lên ads cho X Salon', 'edit video đăng facebook']) {
+      expect(laCauHoi(c)).toBe(false);
+    }
   });
 });
