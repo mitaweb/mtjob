@@ -39,10 +39,18 @@ export default {
         },
         /** Navy đậm cho chữ — ấm hơn xám trung tính, hợp nền ngả xanh. */
         ink: {
-          DEFAULT: '#232650',
-          soft: '#3a3c55',
-          muted: '#52546d',
+          DEFAULT: '#232650', // tiêu đề, số liệu
+          soft: '#3a3c55', // chữ thường
+          muted: '#52546d', // chữ phụ
+          // Chữ mờ nhất (nhãn, chú thích). Thay `slate-400` cũ vốn chỉ đạt 2.56 — DƯỚI
+          // chuẩn AA. Màu này đạt 4.94 trên nền trắng và 4.51 trên nền app.
+          faint: '#6b6e8f',
         },
+      },
+      borderColor: {
+        // `border-t` trơ trọi (bảng biểu dùng đầy) mặc định ăn xám gray-200 của Tailwind.
+        // Đổi mặc định sang xanh nhạt để không còn đường kẻ xám lạc lõng giữa nền xanh.
+        DEFAULT: '#e2ebf8',
       },
       backgroundColor: {
         /** Nền trang: xanh rất nhạt thay cho #f5f5f9 xám. */

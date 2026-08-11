@@ -147,7 +147,7 @@ function ThinkingBubble({ stage }: { stage?: string }) {
   const label = stage || guessed;
   return (
     <div className="flex justify-start">
-      <div className="flex max-w-[85%] items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-slate-500">
+      <div className="flex max-w-[85%] items-center gap-2 rounded-2xl border border-brand-100 bg-white px-4 py-2 text-ink-muted">
         <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600" />
         {label}
         <span className="animate-pulse">…</span>
@@ -184,7 +184,7 @@ function CustomerPicker({ onPick }: { onPick: (customer: string) => void }) {
           Xác nhận
         </button>
       </div>
-      {!ok && <div className="text-xs text-slate-500">Hãy nhập việc + tên khách hàng mới được.</div>}
+      {!ok && <div className="text-xs text-ink-muted">Hãy nhập việc + tên khách hàng mới được.</div>}
     </div>
   );
 }
@@ -517,7 +517,7 @@ export default function Chat() {
         {hasMore && (
           <div className="flex justify-center py-1">
             <button
-              className="rounded-full px-3 py-1 text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+              className="rounded-full px-3 py-1 text-xs text-ink-muted hover:bg-brand-100 disabled:opacity-50"
               disabled={loadingMore}
               onClick={() => void loadOlder()}
             >
@@ -531,7 +531,7 @@ export default function Chat() {
               className={`max-w-[85%] rounded-2xl px-4 py-2 ${
                 m.role === 'user'
                   ? 'whitespace-pre-wrap bg-brand-600 text-white'
-                  : 'border border-slate-200 bg-white'
+                  : 'border border-brand-100 bg-white'
               }`}
             >
               {/* Người dùng: giữ nguyên chữ thô. Bot: AI trả lời kiểu markdown nên phải dựng lại. */}
@@ -553,9 +553,9 @@ export default function Chat() {
               {/* Chốt câu trả lời vào kho tri thức — lần sau khỏi hỏi lại */}
               {m.role === 'bot' && m.res?.action === 'data_answer' && (
                 m.saved ? (
-                  <div className="mt-2 text-xs text-emerald-600">✓ Đã lưu vào kho tri thức</div>
+                  <div className="mt-2 text-xs text-emerald-700">✓ Đã lưu vào kho tri thức</div>
                 ) : savingIdx === i ? (
-                  <div className="mt-2 space-y-2 rounded-xl bg-slate-50 p-2">
+                  <div className="mt-2 space-y-2 rounded-xl bg-brand-50 p-2">
                     <input
                       className="input py-1 text-sm"
                       placeholder="Tiêu đề (để trống sẽ lấy theo câu hỏi)"
@@ -610,8 +610,8 @@ export default function Chat() {
             {todo.map((t) => (
               <li key={t.id} className="flex items-center justify-between gap-2 rounded-xl bg-white px-3 py-2">
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-medium text-slate-800">{t.taskName}</div>
-                  <div className="text-xs text-slate-500">
+                  <div className="truncate text-sm font-medium text-ink">{t.taskName}</div>
+                  <div className="text-xs text-ink-muted">
                     {t.assignedBy ? `${t.assignedBy} · ` : ''}chọn loại việc khi bắt đầu
                   </div>
                 </div>
@@ -628,16 +628,16 @@ export default function Chat() {
         <div className="relative flex gap-2">
           {/* Gợi ý @tên người nhận việc */}
           {mentionMatches.length > 0 && (
-            <div className="absolute bottom-full left-0 z-10 mb-1 w-72 max-w-[90%] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+            <div className="absolute bottom-full left-0 z-10 mb-1 w-72 max-w-[90%] overflow-hidden rounded-xl border border-brand-100 bg-white shadow-lg">
               {mentionMatches.map((a) => (
                 <button
                   key={a.id}
                   type="button"
-                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-brand-50"
                   onClick={() => pickMention(a)}
                 >
-                  <span className="font-medium text-slate-800">{a.fullName}</span>
-                  <span className="text-xs text-slate-400">@{a.username}</span>
+                  <span className="font-medium text-ink">{a.fullName}</span>
+                  <span className="text-xs text-ink-faint">@{a.username}</span>
                 </button>
               ))}
             </div>
@@ -659,7 +659,7 @@ export default function Chat() {
         </div>
         <div className="flex gap-2">
           <button
-            className={`btn flex-1 ${doing.length ? 'bg-amber-100 text-amber-800 hover:bg-amber-200' : 'bg-slate-100 text-slate-500'}`}
+            className={`btn flex-1 ${doing.length ? 'bg-amber-100 text-amber-800 hover:bg-amber-200' : 'bg-brand-100 text-ink-muted'}`}
             onClick={() => {
               loadDoing();
               setShowDoing(true);
@@ -667,7 +667,7 @@ export default function Chat() {
           >
             ⏳ Đang làm ({doing.length})
           </button>
-          <button className="btn bg-slate-100 text-slate-600 hover:bg-slate-200" onClick={() => setShowReminders(true)}>
+          <button className="btn bg-brand-100 text-ink-soft hover:bg-brand-200" onClick={() => setShowReminders(true)}>
             ⏰ Nhắc hẹn
           </button>
         </div>
@@ -697,7 +697,7 @@ export default function Chat() {
                 ✕
               </button>
             </div>
-            <p className="text-xs text-slate-500 mb-2">Điểm tính theo loại việc bạn chọn (hệ thống Ads/Content/SEO).</p>
+            <p className="text-xs text-ink-muted mb-2">Điểm tính theo loại việc bạn chọn (hệ thống Ads/Content/SEO).</p>
             <input
               className="input mb-2"
               placeholder="Tìm loại việc…"
@@ -709,16 +709,16 @@ export default function Chat() {
               {pickMatches.map((c) => (
                 <li key={c.code}>
                   <button
-                    className="flex w-full items-center justify-between gap-2 py-2 text-left hover:bg-slate-50"
+                    className="flex w-full items-center justify-between gap-2 py-2 text-left hover:bg-brand-50"
                     onClick={() => beginTodo(startingTodo, c)}
                   >
-                    <span className="text-sm text-slate-800">{c.name}</span>
-                    <span className="text-xs text-slate-400 shrink-0">+{c.points}đ</span>
+                    <span className="text-sm text-ink">{c.name}</span>
+                    <span className="text-xs text-ink-faint shrink-0">+{c.points}đ</span>
                   </button>
                 </li>
               ))}
               {pickMatches.length === 0 && (
-                <li className="py-3 text-sm text-slate-500">Không tìm thấy loại việc phù hợp.</li>
+                <li className="py-3 text-sm text-ink-muted">Không tìm thấy loại việc phù hợp.</li>
               )}
             </ul>
           </div>
@@ -738,7 +738,7 @@ export default function Chat() {
               </button>
             </div>
             {doing.length === 0 && (
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-ink-muted">
                 Chưa có task nào đang làm. Nhắn bot "bắt đầu + tên việc" hoặc bấm "Bắt đầu" ở mục Cần làm nhé.
               </p>
             )}
@@ -747,7 +747,7 @@ export default function Chat() {
                 <li key={t.id} className="py-2 flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="font-medium text-sm">{t.title || t.taskName}</div>
-                    <div className="text-xs text-slate-500">
+                    <div className="text-xs text-ink-muted">
                       Bắt đầu {hm(t.startedAt)} · đã {fmtMin(t.elapsedMinutes)} · +{t.points}đ khi xong
                     </div>
                   </div>
@@ -757,7 +757,7 @@ export default function Chat() {
                     </button>
                     {/* Trợ lý gán nhầm loại việc là gán nhầm điểm — phải có đường tự bỏ. */}
                     <button
-                      className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                      className="grid h-8 w-8 place-items-center rounded-lg text-ink-faint hover:bg-rose-50 hover:text-rose-600"
                       title="Bỏ việc này (chọn sai loại việc)"
                       aria-label={`Bỏ việc ${t.title || t.taskName}`}
                       onClick={() => dropDoing(t)}

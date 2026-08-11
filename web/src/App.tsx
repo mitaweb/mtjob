@@ -45,7 +45,7 @@ function homeFor(role?: Role): string {
 
 function Protected({ children, roles }: { children: ReactElement; roles?: Role[] }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="p-10 text-center text-slate-500">Đang tải…</div>;
+  if (loading) return <div className="p-10 text-center text-ink-muted">Đang tải…</div>;
   if (!user) return <Navigate to="/login" replace />;
   if (roles && !roles.includes(user.role)) return <Navigate to={homeFor(user.role)} replace />;
   return children;

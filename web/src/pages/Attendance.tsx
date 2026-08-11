@@ -73,7 +73,7 @@ export default function Attendance() {
     <div className="space-y-4">
       <div className="card">
         <h1 className="text-lg font-bold mb-1">Chấm công GPS</h1>
-        <p className="text-sm text-slate-500">Ca sáng 08:30–12:00 · Ca chiều 13:30–17:00. Hãy ở gần văn phòng khi chấm công.</p>
+        <p className="text-sm text-ink-muted">Ca sáng 08:30–12:00 · Ca chiều 13:30–17:00. Hãy ở gần văn phòng khi chấm công.</p>
         <div className="flex gap-2 mt-3">
           <button className="btn-primary flex-1" onClick={() => punch('checkin')} disabled={busy}>
             ⬇️ Giờ vào
@@ -82,7 +82,7 @@ export default function Attendance() {
             ⬆️ Giờ ra
           </button>
         </div>
-        {msg && <div className="mt-3 text-sm rounded-lg bg-slate-50 px-3 py-2">{msg}</div>}
+        {msg && <div className="mt-3 text-sm rounded-lg bg-brand-50 px-3 py-2">{msg}</div>}
         <button
           className="mt-3 text-sm text-brand-600 underline"
           onClick={() => enablePush().then((r) => setMsg(r.message))}
@@ -103,7 +103,7 @@ export default function Attendance() {
             <div>Trạng thái: <b>{todayRec.status}</b></div>
           </div>
         ) : (
-          <p className="text-sm text-slate-500">Chưa chấm công hôm nay.</p>
+          <p className="text-sm text-ink-muted">Chưa chấm công hôm nay.</p>
         )}
       </div>
 
@@ -139,7 +139,7 @@ export default function Attendance() {
         )}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="text-left text-slate-500">
+            <thead className="text-left text-ink-muted">
               <tr>
                 <th className="py-1">Ngày</th>
                 <th>Sáng</th>

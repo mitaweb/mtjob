@@ -23,7 +23,7 @@ const statusVi: Record<string, string> = {
 // Tiến trình duyệt: Đỏ (chờ leader) → Vàng (leader đã duyệt, chờ giám đốc) → Xanh (duyệt xong).
 function stageOf(r: Req): { label: string; badge: string; border: string } {
   if (r.finalStatus === 'rejected')
-    return { label: '❌ Từ chối', badge: 'bg-slate-200 text-slate-600', border: 'border-slate-300' };
+    return { label: '❌ Từ chối', badge: 'bg-brand-200 text-ink-soft', border: 'border-brand-200' };
   if (r.finalStatus === 'approved')
     return { label: '✅ Đã duyệt', badge: 'bg-emerald-100 text-emerald-700', border: 'border-emerald-400' };
   if (r.leaderStatus === 'approved')
@@ -101,7 +101,7 @@ export default function Requests() {
         <AsyncButton className="btn-primary mt-3" onClick={submit}>
           Gửi đơn
         </AsyncButton>
-        {msg && <div className="mt-2 text-sm text-slate-600">{msg}</div>}
+        {msg && <div className="mt-2 text-sm text-ink-soft">{msg}</div>}
       </div>
 
       <div className="card">
@@ -117,14 +117,14 @@ export default function Requests() {
                   </span>
                   <span className={`rounded-full px-2 py-0.5 text-xs ${stage.badge}`}>{stage.label}</span>
                 </div>
-                <div className="text-xs text-slate-500">
+                <div className="text-xs text-ink-muted">
                   Leader: {statusVi[r.leaderStatus]} · Giám đốc: {statusVi[r.directorStatus]}
                   {r.reason ? ` · ${r.reason}` : ''}
                 </div>
               </li>
             );
           })}
-          {list.length === 0 && <li className="py-2 text-sm text-slate-500">Chưa có đơn nào.</li>}
+          {list.length === 0 && <li className="py-2 text-sm text-ink-muted">Chưa có đơn nào.</li>}
         </ul>
       </div>
     </div>

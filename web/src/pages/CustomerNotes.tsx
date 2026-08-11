@@ -63,7 +63,7 @@ function ToolBtn({ title, onClick, children }: { title: string; onClick: () => v
       title={title}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
-      className="flex h-7 min-w-[28px] items-center justify-center rounded-lg px-1.5 text-sm leading-none text-slate-600 hover:bg-slate-200"
+      className="flex h-7 min-w-[28px] items-center justify-center rounded-lg px-1.5 text-sm leading-none text-ink-soft hover:bg-brand-200"
     >
       {children}
     </button>
@@ -71,7 +71,7 @@ function ToolBtn({ title, onClick, children }: { title: string; onClick: () => v
 }
 
 function Sep() {
-  return <span className="mx-0.5 h-5 w-px bg-slate-200" />;
+  return <span className="mx-0.5 h-5 w-px bg-brand-200" />;
 }
 
 export default function CustomerNotes() {
@@ -287,8 +287,8 @@ export default function CustomerNotes() {
     <div>
       <div className="mb-5 flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">📌 Lưu ý khách hàng</h1>
-          <p className="text-sm text-slate-500">Mỗi note là một khách hàng — soạn chữ, chèn ảnh/PDF/link video ngay trong nội dung.</p>
+          <h1 className="text-xl font-bold text-ink">📌 Lưu ý khách hàng</h1>
+          <p className="text-sm text-ink-muted">Mỗi note là một khách hàng — soạn chữ, chèn ảnh/PDF/link video ngay trong nội dung.</p>
         </div>
         <button
           onClick={() => openEditor(emptyNote())}
@@ -301,7 +301,7 @@ export default function CustomerNotes() {
       {err && !edit && <div className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-600">{err}</div>}
 
       {notes.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-slate-400">
+        <div className="rounded-2xl border border-dashed border-brand-100 bg-white p-10 text-center text-ink-faint">
           Chưa có lưu ý nào. Bấm “+ Thêm khách hàng” để tạo note đầu tiên.
         </div>
       ) : (
@@ -331,7 +331,7 @@ export default function CustomerNotes() {
                 aria-label={`Kéo để đổi vị trí ${n.customer || 'note này'}`}
                 title="Kéo để đổi vị trí"
                 // touch-none: không có nó thì trên điện thoại vuốt là cuộn trang chứ không kéo thẻ.
-                className="absolute right-2 top-2 cursor-grab touch-none select-none rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-white/60 hover:text-slate-600 active:cursor-grabbing"
+                className="absolute right-2 top-2 cursor-grab touch-none select-none rounded-lg px-1.5 py-0.5 text-ink-faint hover:bg-white/60 hover:text-ink-soft active:cursor-grabbing"
                 onPointerDown={(e) => batDauKeo(e, n.id)}
                 onPointerMove={dangKeoQua}
                 onPointerUp={ketThucKeo}
@@ -340,10 +340,10 @@ export default function CustomerNotes() {
               >
                 ⠿
               </span>
-              <div className="mb-1.5 pr-6 font-bold text-slate-800">{n.customer || '(Chưa đặt tên)'}</div>
+              <div className="mb-1.5 pr-6 font-bold text-ink">{n.customer || '(Chưa đặt tên)'}</div>
               <div
                 className="note-rich max-h-48 overflow-hidden"
-                dangerouslySetInnerHTML={{ __html: clean(n.content) || '<span class="text-slate-400">(trống)</span>' }}
+                dangerouslySetInnerHTML={{ __html: clean(n.content) || '<span class="text-ink-faint">(trống)</span>' }}
               />
             </button>
           ))}
@@ -352,7 +352,7 @@ export default function CustomerNotes() {
 
       {edit && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 sm:items-center sm:p-4"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-0 sm:items-center sm:p-4"
           onClick={() => !busy && setEdit(null)}
         >
           <div
@@ -360,25 +360,25 @@ export default function CustomerNotes() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-800">{edit.id ? 'Sửa lưu ý' : 'Lưu ý mới'}</h2>
-              <button onClick={() => setEdit(null)} className="text-slate-400 hover:text-slate-600" aria-label="Đóng">
+              <h2 className="text-lg font-bold text-ink">{edit.id ? 'Sửa lưu ý' : 'Lưu ý mới'}</h2>
+              <button onClick={() => setEdit(null)} className="text-ink-faint hover:text-ink-soft" aria-label="Đóng">
                 ✕
               </button>
             </div>
 
             {err && <div className="mb-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{err}</div>}
 
-            <label className="mb-1 block text-sm font-medium text-slate-600">Tên khách hàng</label>
+            <label className="mb-1 block text-sm font-medium text-ink-soft">Tên khách hàng</label>
             <input
               value={edit.customer}
               onChange={(e) => setEdit({ ...edit, customer: e.target.value })}
               placeholder="VD: Công ty ABC / Chị Lan"
-              className="mb-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none"
+              className="mb-3 w-full rounded-xl border border-brand-100 px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none"
             />
 
-            <label className="mb-1 block text-sm font-medium text-slate-600">Nội dung lưu ý</label>
+            <label className="mb-1 block text-sm font-medium text-ink-soft">Nội dung lưu ý</label>
             {/* Thanh công cụ soạn thảo — định dạng chữ + chèn ảnh/PDF/video tại vị trí con trỏ */}
-            <div className="mb-2 flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1.5">
+            <div className="mb-2 flex flex-wrap items-center gap-1 rounded-xl border border-brand-100 bg-brand-50 p-1.5">
               <ToolBtn title="Đậm" onClick={() => exec('bold')}>
                 <span className="font-bold">B</span>
               </ToolBtn>
@@ -406,7 +406,7 @@ export default function CustomerNotes() {
                   title="Màu chữ"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => exec('foreColor', c)}
-                  className="h-6 w-6 rounded-full ring-1 ring-slate-200"
+                  className="h-6 w-6 rounded-full ring-1 ring-brand-200"
                   style={{ background: c }}
                   aria-label={`Màu ${c}`}
                 />
@@ -414,7 +414,7 @@ export default function CustomerNotes() {
               <Sep />
               <label
                 title="Chèn ảnh / PDF"
-                className="flex h-7 cursor-pointer items-center justify-center rounded-lg px-2 text-sm leading-none text-slate-600 hover:bg-slate-200"
+                className="flex h-7 cursor-pointer items-center justify-center rounded-lg px-2 text-sm leading-none text-ink-soft hover:bg-brand-200"
               >
                 🖼️
                 <input
@@ -441,17 +441,17 @@ export default function CustomerNotes() {
               onMouseUp={saveSelection}
               onBlur={saveSelection}
               data-placeholder="Gõ nội dung, chèn ảnh/PDF/link video vào đây…"
-              className="note-rich note-editor mb-4 min-h-[160px] w-full rounded-xl border border-slate-200 px-3 py-2.5 focus:border-brand-500 focus:outline-none"
+              className="note-rich note-editor mb-4 min-h-[160px] w-full rounded-xl border border-brand-100 px-3 py-2.5 focus:border-brand-500 focus:outline-none"
             />
 
-            <label className="mb-1 block text-sm font-medium text-slate-600">Màu note</label>
+            <label className="mb-1 block text-sm font-medium text-ink-soft">Màu note</label>
             <div className="mb-4 flex gap-2">
               {COLORS.map((c) => (
                 <button
                   key={c.key}
                   type="button"
                   onClick={() => setEdit({ ...edit, color: c.key })}
-                  className={`h-7 w-7 rounded-full ${c.dot} ${edit.color === c.key ? 'ring-2 ring-slate-700 ring-offset-2' : ''}`}
+                  className={`h-7 w-7 rounded-full ${c.dot} ${edit.color === c.key ? 'ring-2 ring-ink ring-offset-2' : ''}`}
                   aria-label={c.label}
                 />
               ))}
@@ -470,7 +470,7 @@ export default function CustomerNotes() {
                   <button
                     onClick={openHistory}
                     disabled={busy}
-                    className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+                    className="rounded-xl px-3 py-2.5 text-sm font-medium text-ink-muted hover:bg-brand-100 disabled:opacity-50"
                   >
                     🕘 Lịch sử
                   </button>
@@ -482,7 +482,7 @@ export default function CustomerNotes() {
                 <button
                   onClick={() => setEdit(null)}
                   disabled={busy}
-                  className="rounded-xl px-4 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+                  className="rounded-xl px-4 py-2.5 text-sm font-medium text-ink-muted hover:bg-brand-100 disabled:opacity-50"
                 >
                   Hủy
                 </button>
@@ -502,7 +502,7 @@ export default function CustomerNotes() {
       {/* Lịch sử các lần sửa — nằm trên modal soạn */}
       {edit && history !== null && (
         <div
-          className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/50 p-0 sm:items-center sm:p-4"
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/50 p-0 sm:items-center sm:p-4"
           onClick={() => setHistory(null)}
         >
           <div
@@ -510,13 +510,13 @@ export default function CustomerNotes() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-800">🕘 Lịch sử — {edit.customer || '(chưa đặt tên)'}</h2>
-              <button onClick={() => setHistory(null)} className="text-slate-400 hover:text-slate-600" aria-label="Đóng">
+              <h2 className="text-lg font-bold text-ink">🕘 Lịch sử — {edit.customer || '(chưa đặt tên)'}</h2>
+              <button onClick={() => setHistory(null)} className="text-ink-faint hover:text-ink-soft" aria-label="Đóng">
                 ✕
               </button>
             </div>
             {history.length === 0 ? (
-              <p className="py-4 text-sm text-slate-500">
+              <p className="py-4 text-sm text-ink-muted">
                 Chưa có bản cũ nào — lịch sử được ghi lại từ mỗi lần bấm Lưu (sau khi tính năng này bật).
               </p>
             ) : (
@@ -524,26 +524,26 @@ export default function CustomerNotes() {
                 {history.map((h) => (
                   <li key={h.id} className="py-3">
                     <div className="mb-1 flex items-center justify-between gap-2">
-                      <div className="text-xs text-slate-500">
+                      <div className="text-xs text-ink-muted">
                         {fmtTime(h.savedAt)} · {h.savedName || 'Ẩn danh'}
                         {h.customer !== edit.customer ? ` · KH: ${h.customer}` : ''}
                       </div>
                       <button
                         onClick={() => restore(h)}
-                        className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50"
+                        className="shrink-0 rounded-lg border border-brand-100 px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50"
                       >
                         ↩️ Khôi phục
                       </button>
                     </div>
                     <div
-                      className="note-rich max-h-32 overflow-hidden rounded-lg bg-slate-50 px-2.5 py-1.5"
-                      dangerouslySetInnerHTML={{ __html: clean(h.content) || '<span class="text-slate-400">(trống)</span>' }}
+                      className="note-rich max-h-32 overflow-hidden rounded-lg bg-brand-50 px-2.5 py-1.5"
+                      dangerouslySetInnerHTML={{ __html: clean(h.content) || '<span class="text-ink-faint">(trống)</span>' }}
                     />
                   </li>
                 ))}
               </ul>
             )}
-            <p className="mt-2 text-xs text-slate-400">
+            <p className="mt-2 text-xs text-ink-faint">
               Khôi phục sẽ nạp bản cũ vào ô soạn — bấm Lưu để chốt. Bản hiện tại vẫn được giữ trong lịch sử.
             </p>
           </div>

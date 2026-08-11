@@ -36,14 +36,14 @@ export default function Payroll() {
           <Row label="Trừ BHXH (10,5% mức đóng)" value={`- ${vnd(line.bhxh)}`} />
           <div className="border-t pt-2 flex justify-between text-lg font-bold">
             <span>Lương thực lãnh</span>
-            <span className="text-emerald-600">{vnd(line.netSalary)}</span>
+            <span className="text-emerald-700">{vnd(line.netSalary)}</span>
           </div>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-ink-faint">
             Công thức: Mức lương ÷ ngày công chuẩn × ngày làm thực tế − 10,5% × mức đóng BHXH.
           </p>
         </div>
       ) : (
-        <div className="card text-sm text-slate-500">{msg}</div>
+        <div className="card text-sm text-ink-muted">{msg}</div>
       )}
     </div>
   );
@@ -52,7 +52,7 @@ export default function Payroll() {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between text-sm">
-      <span className="text-slate-500">{label}</span>
+      <span className="text-ink-muted">{label}</span>
       <span className="font-medium">{value}</span>
     </div>
   );

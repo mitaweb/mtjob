@@ -146,10 +146,10 @@ export default function AdminPayroll() {
           <h1 className="flex items-center gap-2 text-lg font-bold">
             Bảng lương & công
             {locked && (
-              <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs font-medium text-white">🔒 Đã chốt</span>
+              <span className="rounded-full bg-ink px-2 py-0.5 text-xs font-medium text-white">🔒 Đã chốt</span>
             )}
           </h1>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-ink-muted">
             {locked
               ? 'Tháng đã chốt — số liệu đóng băng, không đổi khi sửa lương/công hay nhân sự nghỉ. Bấm “Mở lại” nếu cần sửa.'
               : 'Mức lương lấy từ Google Sheet (tự tính). Bấm tên để xem chi tiết & sửa công. Xong thì “Chốt lương” để đóng băng tháng.'}
@@ -169,7 +169,7 @@ export default function AdminPayroll() {
         </div>
       </div>
 
-      {msg && <div className="text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2">{msg}</div>}
+      {msg && <div className="text-sm text-ink-soft bg-brand-50 rounded-lg px-3 py-2">{msg}</div>}
 
       <div className="card overflow-x-auto">
         {/* Mobile: dạng thẻ cho dễ đọc */}
@@ -183,10 +183,10 @@ export default function AdminPayroll() {
                 >
                   {r.fullName}
                 </button>
-                <span className="font-semibold text-emerald-600">{vnd(r.netSalary)}</span>
+                <span className="font-semibold text-emerald-700">{vnd(r.netSalary)}</span>
               </div>
               <div className="mt-0.5 flex items-center justify-between gap-2">
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-ink-muted">
                   {r.teamId || '—'} · Công {r.actualDays}/{r.standardDays} · Mức lương {vnd(r.salary)}
                 </span>
                 <button className="btn-ghost text-xs px-2 py-1 whitespace-nowrap" onClick={() => openEditor(r)}>
@@ -195,10 +195,10 @@ export default function AdminPayroll() {
               </div>
             </li>
           ))}
-          {rows.length === 0 && <li className="py-3 text-sm text-slate-500">Chưa có dữ liệu.</li>}
+          {rows.length === 0 && <li className="py-3 text-sm text-ink-muted">Chưa có dữ liệu.</li>}
         </ul>
         <table className="w-full text-sm hidden md:table">
-          <thead className="text-left text-slate-500">
+          <thead className="text-left text-ink-muted">
             <tr>
               <th className="py-1">Họ tên</th>
               <th>Team</th>
@@ -224,7 +224,7 @@ export default function AdminPayroll() {
                 <td className="text-center">
                   {r.actualDays}/{r.standardDays}
                 </td>
-                <td className="text-right font-medium text-emerald-600">{vnd(r.netSalary)}</td>
+                <td className="text-right font-medium text-emerald-700">{vnd(r.netSalary)}</td>
                 <td className="text-right">
                   <button className="btn-ghost text-xs px-2 py-1" onClick={() => openEditor(r)}>
                     Chi tiết
@@ -234,7 +234,7 @@ export default function AdminPayroll() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-3 text-slate-500">
+                <td colSpan={6} className="py-3 text-ink-muted">
                   Chưa có dữ liệu.
                 </td>
               </tr>
@@ -262,44 +262,44 @@ export default function AdminPayroll() {
             <div className="mb-3 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
                 <div>
-                  <div className="text-xs text-slate-500">Mức lương</div>
+                  <div className="text-xs text-ink-muted">Mức lương</div>
                   <div className="font-medium">{vnd(editing.salary)}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-slate-500">Công thực tế / chuẩn</div>
+                  <div className="text-xs text-ink-muted">Công thực tế / chuẩn</div>
                   <div className="font-medium">
                     {editing.actualDays}/{editing.standardDays} ngày
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-slate-500">Lương theo công</div>
+                  <div className="text-xs text-ink-muted">Lương theo công</div>
                   <div className="font-medium">{vnd(editing.proratedSalary)}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-slate-500">Trừ BHXH</div>
+                  <div className="text-xs text-ink-muted">Trừ BHXH</div>
                   <div className="font-medium text-rose-600">−{vnd(editing.bhxhDeduction)}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-slate-500">Thực lãnh</div>
-                  <div className="font-semibold text-emerald-600">{vnd(editing.netSalary)}</div>
+                  <div className="text-xs text-ink-muted">Thực lãnh</div>
+                  <div className="font-semibold text-emerald-700">{vnd(editing.netSalary)}</div>
                 </div>
               </div>
-              <p className="mt-1.5 text-xs text-slate-400">
+              <p className="mt-1.5 text-xs text-ink-faint">
                 Lương theo công = mức lương ÷ công chuẩn × công thực tế. Sửa giờ vào/ra bên dưới, số liệu tự tính lại.
               </p>
             </div>
 
             {locked && (
-              <div className="mb-3 rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-600">
+              <div className="mb-3 rounded-xl bg-brand-100 px-3 py-2 text-sm text-ink-soft">
                 🔒 Tháng đã chốt — chỉ xem. Bấm “Mở lại” ở trên nếu cần sửa công.
               </div>
             )}
 
             {/* Form sửa/thêm 1 ngày (ẩn khi tháng đã chốt) */}
             {!locked && (
-            <div className="bg-slate-50 rounded-xl p-3 space-y-2">
+            <div className="bg-brand-50 rounded-xl p-3 space-y-2">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                <label className="text-xs text-slate-500">
+                <label className="text-xs text-ink-muted">
                   Ngày
                   <input
                     type="date"
@@ -308,23 +308,23 @@ export default function AdminPayroll() {
                     onChange={(e) => setForm({ ...form, date: e.target.value })}
                   />
                 </label>
-                <label className="text-xs text-slate-500">
+                <label className="text-xs text-ink-muted">
                   Sáng vào
                   <input type="time" className="input py-1" value={form.morningIn} onChange={(e) => setForm({ ...form, morningIn: e.target.value })} />
                 </label>
-                <label className="text-xs text-slate-500">
+                <label className="text-xs text-ink-muted">
                   Sáng ra
                   <input type="time" className="input py-1" value={form.morningOut} onChange={(e) => setForm({ ...form, morningOut: e.target.value })} />
                 </label>
-                <label className="text-xs text-slate-500">
+                <label className="text-xs text-ink-muted">
                   Chiều vào
                   <input type="time" className="input py-1" value={form.afternoonIn} onChange={(e) => setForm({ ...form, afternoonIn: e.target.value })} />
                 </label>
-                <label className="text-xs text-slate-500">
+                <label className="text-xs text-ink-muted">
                   Chiều ra
                   <input type="time" className="input py-1" value={form.afternoonOut} onChange={(e) => setForm({ ...form, afternoonOut: e.target.value })} />
                 </label>
-                <label className="text-xs text-slate-500">
+                <label className="text-xs text-ink-muted">
                   Chế độ
                   <select className="input py-1" value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })}>
                     <option value="office">Tại văn phòng</option>
@@ -334,7 +334,7 @@ export default function AdminPayroll() {
                   </select>
                 </label>
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-ink-faint">
                 Công tự tính: có giờ vào ca sáng = 0.5, có giờ vào ca chiều = 0.5 (đủ 2 ca = 1 công).
               </p>
               <button className="btn-primary" onClick={saveAttn} disabled={savingAttn}>
@@ -346,7 +346,7 @@ export default function AdminPayroll() {
             {/* Danh sách ngày trong tháng */}
             <div className="overflow-x-auto mt-3">
               <table className="w-full text-sm">
-                <thead className="text-left text-slate-500">
+                <thead className="text-left text-ink-muted">
                   <tr>
                     <th className="py-1 w-8 text-right pr-2">#</th>
                     <th className="py-1">Ngày</th>
@@ -361,7 +361,7 @@ export default function AdminPayroll() {
                   {records.map((a, i) => (
                     <tr key={a.date} className="border-t">
                       {/* Đánh số theo thứ tự đang hiển thị (mới nhất là 1) để dễ đối chiếu khi đọc cùng nhau. */}
-                      <td className="py-1 pr-2 text-right text-xs text-slate-400">{i + 1}</td>
+                      <td className="py-1 pr-2 text-right text-xs text-ink-faint">{i + 1}</td>
                       <td className="py-1">{a.date}</td>
                       <td>{a.morningIn || '—'}–{a.morningOut || '—'}</td>
                       <td>{a.afternoonIn || '—'}–{a.afternoonOut || '—'}</td>
@@ -378,7 +378,7 @@ export default function AdminPayroll() {
                   ))}
                   {records.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="py-2 text-slate-500">
+                      <td colSpan={7} className="py-2 text-ink-muted">
                         Chưa có ngày chấm công nào trong tháng.
                       </td>
                     </tr>

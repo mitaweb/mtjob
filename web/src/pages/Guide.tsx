@@ -259,8 +259,8 @@ export default function Guide() {
     <div className="space-y-4">
       <div className="card">
         <h1 className="text-lg font-bold">Hướng dẫn sử dụng</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Nội dung dành riêng cho vai <b className="text-slate-700">{ROLE_LABEL[role] || role}</b> của bạn — chỉ
+        <p className="mt-1 text-sm text-ink-muted">
+          Nội dung dành riêng cho vai <b className="text-ink-soft">{ROLE_LABEL[role] || role}</b> của bạn — chỉ
           những việc bạn thật sự dùng.
         </p>
       </div>
@@ -271,11 +271,11 @@ export default function Guide() {
             <span className="text-lg">{p.icon}</span>
             <div>
               <h2 className="font-semibold">{p.ten}</h2>
-              <p className="text-sm text-slate-500">{p.tom}</p>
+              <p className="text-sm text-ink-muted">{p.tom}</p>
             </div>
           </div>
 
-          <div className="mt-3 divide-y divide-slate-100">
+          <div className="mt-3 divide-y divide-brand-100">
             {p.mucs.map((m) => {
               const key = `${p.ten}|${m.hoi}`;
               const mo = moMuc === key;
@@ -286,13 +286,13 @@ export default function Guide() {
                     className="flex w-full items-center justify-between gap-2 py-2.5 text-left"
                     onClick={() => setMoMuc(mo ? null : key)}
                   >
-                    <span className="text-sm font-medium text-slate-800">{m.hoi}</span>
-                    <span className="shrink-0 text-xs text-slate-400">{mo ? '−' : '+'}</span>
+                    <span className="text-sm font-medium text-ink">{m.hoi}</span>
+                    <span className="shrink-0 text-xs text-ink-faint">{mo ? '−' : '+'}</span>
                   </button>
                   {mo && (
                     <ul className="mb-3 space-y-1.5 pl-1">
                       {m.dap.map((d, i) => (
-                        <li key={i} className="flex gap-2 text-sm text-slate-600">
+                        <li key={i} className="flex gap-2 text-sm text-ink-soft">
                           <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-brand-400" />
                           <span>{d}</span>
                         </li>
@@ -306,8 +306,8 @@ export default function Guide() {
         </div>
       ))}
 
-      <div className="card bg-slate-50">
-        <p className="text-sm text-slate-600">
+      <div className="card bg-brand-50">
+        <p className="text-sm text-ink-soft">
           Không thấy điều mình cần? Nhắn thẳng cho <b>Trợ lý</b> — hỏi được cả cách dùng lẫn dữ liệu của bạn.
           Còn vướng nữa thì báo quản lý.
         </p>

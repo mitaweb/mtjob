@@ -61,9 +61,9 @@ function ModelPicker({
         </button>
       </div>
       {error ? (
-        <p className="mt-1 text-xs text-amber-600">Không lấy được danh sách ({error}) — bạn gõ tên model trực tiếp nhé.</p>
+        <p className="mt-1 text-xs text-amber-700">Không lấy được danh sách ({error}) — bạn gõ tên model trực tiếp nhé.</p>
       ) : (
-        <p className="mt-1 text-xs text-slate-500">Bấm vào ô để chọn từ danh sách, hoặc gõ tên model bất kỳ.</p>
+        <p className="mt-1 text-xs text-ink-muted">Bấm vào ô để chọn từ danh sách, hoặc gõ tên model bất kỳ.</p>
       )}
     </div>
   );
@@ -333,7 +333,7 @@ export default function Admin() {
       <div className="card flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-lg font-bold">Quản trị</h1>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-ink-muted">
             Nhân sự và lương nhập thẳng ở bảng bên dưới. Bảng điểm task vẫn đồng bộ từ Google Sheet (điểm = cột EXPERT).
           </p>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
@@ -370,7 +370,7 @@ export default function Admin() {
         <div className="card">
           <div className="mb-2 flex items-center justify-between gap-2">
             <h2 className="font-semibold">Điểm việc cũ theo bảng điểm mới</h2>
-            <button className="text-xs text-slate-400 underline" onClick={() => setPointSync(null)}>
+            <button className="text-xs text-ink-faint underline" onClick={() => setPointSync(null)}>
               đóng
             </button>
           </div>
@@ -378,15 +378,15 @@ export default function Admin() {
           {pointSync.skipped ? (
             <p className="text-sm text-rose-600">⚠️ {pointSync.skipped}</p>
           ) : pointSync.updated === 0 ? (
-            <p className="text-sm text-emerald-600">Điểm việc cũ đã khớp bảng điểm ✓</p>
+            <p className="text-sm text-emerald-700">Điểm việc cũ đã khớp bảng điểm ✓</p>
           ) : (
             <>
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-ink-soft">
                 Đã đổi điểm <b>{pointSync.updated}</b> việc cũ theo bảng điểm mới.
               </p>
 
               <table className="mt-3 w-full text-sm">
-                <thead className="text-left text-slate-500">
+                <thead className="text-left text-ink-muted">
                   <tr>
                     <th className="py-1">Loại việc</th>
                     <th className="text-right">Điểm</th>
@@ -398,7 +398,7 @@ export default function Admin() {
                     <tr key={`${t.taskName}-${t.cu}-${t.moi}`} className="border-t">
                       <td className="py-1">{t.taskName}</td>
                       <td className="text-right whitespace-nowrap">
-                        {t.cu}đ → <b className={t.moi < t.cu ? 'text-rose-600' : 'text-emerald-600'}>{t.moi}đ</b>
+                        {t.cu}đ → <b className={t.moi < t.cu ? 'text-rose-600' : 'text-emerald-700'}>{t.moi}đ</b>
                       </td>
                       <td className="text-right">{t.tasks}</td>
                     </tr>
@@ -407,7 +407,7 @@ export default function Admin() {
               </table>
 
               <table className="mt-3 w-full text-sm">
-                <thead className="text-left text-slate-500">
+                <thead className="text-left text-ink-muted">
                   <tr>
                     <th className="py-1">Nhân sự</th>
                     <th className="text-right">Việc đổi</th>
@@ -419,7 +419,7 @@ export default function Admin() {
                     <tr key={m.memberName} className="border-t">
                       <td className="py-1">{m.memberName}</td>
                       <td className="text-right">{m.tasks}</td>
-                      <td className={`text-right ${m.delta < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                      <td className={`text-right ${m.delta < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
                         {m.delta > 0 ? '+' : ''}
                         {m.delta}đ
                       </td>
@@ -431,7 +431,7 @@ export default function Admin() {
           )}
 
           {pointSync.lockedMonths.length > 0 && (
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="mt-2 text-xs text-ink-muted">
               Tháng đã khoá lương ({pointSync.lockedMonths.join(', ')}) giữ nguyên, không bị đụng tới.
             </p>
           )}
@@ -443,17 +443,17 @@ export default function Admin() {
         <div className="card">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="font-semibold">Kết quả kiểm tra</h2>
-            <button className="text-xs text-slate-400 underline" onClick={() => setChecks(null)}>
+            <button className="text-xs text-ink-faint underline" onClick={() => setChecks(null)}>
               đóng
             </button>
           </div>
           <ul className="divide-y">
             {checks.map((c) => (
               <li key={c.name} className="flex items-start gap-2 py-2 text-sm">
-                <span className={c.ok ? 'text-emerald-600' : 'text-rose-600'}>{c.ok ? '✓' : '✕'}</span>
+                <span className={c.ok ? 'text-emerald-700' : 'text-rose-600'}>{c.ok ? '✓' : '✕'}</span>
                 <div className="min-w-0">
-                  <div className="font-medium text-slate-800">{c.name}</div>
-                  <div className={`break-words ${c.ok ? 'text-slate-500' : 'text-rose-600'}`}>{c.detail}</div>
+                  <div className="font-medium text-ink">{c.name}</div>
+                  <div className={`break-words ${c.ok ? 'text-ink-muted' : 'text-rose-600'}`}>{c.detail}</div>
                 </div>
               </li>
             ))}
@@ -472,7 +472,7 @@ export default function Admin() {
                 <span className="text-xs rounded-full px-2 py-0.5 bg-amber-100 text-amber-700">Chưa bật — chat chạy chế độ cơ bản</span>
               )}
             </h2>
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="text-sm text-ink-muted mt-1">
               Chọn nhà cung cấp cho phần <b>hỏi-đáp dữ liệu</b>. Phần nhận diện tin nhắn ghi việc của nhân viên luôn dùng
               Gemini Flash cho nhanh và rẻ.
             </p>
@@ -491,7 +491,7 @@ export default function Admin() {
           </div>
         </div>
 
-        <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-xl bg-slate-50 p-3 text-sm">
+        <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-xl bg-brand-50 p-3 text-sm">
           <input
             type="checkbox"
             className="mt-0.5"
@@ -500,7 +500,7 @@ export default function Admin() {
           />
           <span>
             <b>Tự ghi tri thức từ hội thoại</b>
-            <span className="block text-xs text-slate-500">
+            <span className="block text-xs text-ink-muted">
               Sau mỗi câu trả lời dài, AI tự xét xem có đáng nhớ lâu dài không (quy trình, quyết định,
               thông tin khách) rồi lưu vào kho. Tra cứu số liệu tạm thời thì bỏ qua. Xem lại ở Kho tri thức,
               nhóm “AI tự ghi nhận”.
@@ -509,8 +509,8 @@ export default function Admin() {
         </label>
 
         {provider === 'gemini' ? (
-          <div className="mt-4 border-t border-slate-100 pt-3">
-            <p className="text-sm text-slate-500 mb-2">
+          <div className="mt-4 border-t border-brand-100 pt-3">
+            <p className="text-sm text-ink-muted mb-2">
               Lấy API key tại{' '}
               <a className="text-brand-600 underline" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
                 aistudio.google.com/apikey
@@ -549,14 +549,14 @@ export default function Admin() {
             />
           </div>
         ) : (
-          <div className="mt-4 border-t border-slate-100 pt-3">
-            <p className="text-sm text-slate-500 mb-2">
+          <div className="mt-4 border-t border-brand-100 pt-3">
+            <p className="text-sm text-ink-muted mb-2">
               Lấy API key tại{' '}
               <a className="text-brand-600 underline" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">
                 console.anthropic.com
               </a>{' '}
               — trả theo mức dùng, không phải thuê bao.{' '}
-              {hasClaudeKey && <span className="text-emerald-600">Đã có key được lưu.</span>}
+              {hasClaudeKey && <span className="text-emerald-700">Đã có key được lưu.</span>}
             </p>
             <div className="flex gap-2 flex-wrap">
               <input

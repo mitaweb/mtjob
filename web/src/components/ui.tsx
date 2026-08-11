@@ -10,7 +10,7 @@ const BADGE_CLS: Record<BadgeVariant, string> = {
   warn: 'bg-amber-100 text-amber-700',
   danger: 'bg-rose-100 text-rose-600',
   info: 'bg-brand-100 text-brand-700',
-  neutral: 'bg-slate-200 text-slate-600',
+  neutral: 'bg-brand-200 text-ink-soft',
 };
 
 export function Badge({ variant = 'neutral', children }: { variant?: BadgeVariant; children: ReactNode }) {
@@ -31,7 +31,7 @@ export function PageHeader({
     <div className="card flex items-center justify-between gap-3">
       <div>
         <h1 className="text-lg font-bold">{title}</h1>
-        {desc ? <p className="text-sm text-slate-500">{desc}</p> : null}
+        {desc ? <p className="text-sm text-ink-muted">{desc}</p> : null}
       </div>
       {action}
     </div>
@@ -41,7 +41,7 @@ export function PageHeader({
 /** Trạng thái rỗng nhất quán cho danh sách/bảng. */
 export function EmptyState({ icon = '📭', text }: { icon?: string; text: ReactNode }) {
   return (
-    <div className="py-6 text-center text-sm text-slate-500">
+    <div className="py-6 text-center text-sm text-ink-muted">
       <div aria-hidden className="mb-1 text-2xl">{icon}</div>
       {text}
     </div>

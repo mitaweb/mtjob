@@ -41,14 +41,14 @@ export default function WorkDayList({ days, emptyText }: { days: DayBlock[]; emp
   return (
     <>
       {days.map((d) => (
-        <div key={d.date} className="mt-3 rounded-xl border border-slate-100 p-3">
+        <div key={d.date} className="mt-3 rounded-xl border border-brand-100 p-3">
           <div className="flex items-center justify-between gap-2 text-sm">
-            <span className="font-medium text-slate-800">📅 {fmtDay(d.date)}</span>
-            <span className="text-xs text-slate-500">
+            <span className="font-medium text-ink">📅 {fmtDay(d.date)}</span>
+            <span className="text-xs text-ink-muted">
               {d.tasks.length} việc · <b className="text-brand-600">{signed(d.points)}</b>
               {d.minutes > 0 && ` · ⏱ ${fmtMin(d.minutes)}`}
               {d.noTimeCount > 0 && (
-                <span className="text-amber-600"> · ⚠️ {d.noTimeCount} việc không có giờ</span>
+                <span className="text-amber-700"> · ⚠️ {d.noTimeCount} việc không có giờ</span>
               )}
             </span>
           </div>
@@ -57,31 +57,31 @@ export default function WorkDayList({ days, emptyText }: { days: DayBlock[]; emp
             {d.tasks.map((t) => (
               <li key={t.id} className={t.overlap ? 'border-l-2 border-amber-400 pl-2' : 'pl-2'}>
                 <div className="flex items-start justify-between gap-2 text-sm">
-                  <span className="text-slate-700">{t.title}</span>
-                  <span className="whitespace-nowrap text-xs text-slate-400">{signed(t.points)}</span>
+                  <span className="text-ink-soft">{t.title}</span>
+                  <span className="whitespace-nowrap text-xs text-ink-faint">{signed(t.points)}</span>
                 </div>
                 {/* Giờ làm là dữ liệu gốc để đối chiếu điểm — hiện rõ từng việc. */}
-                <div className="text-xs text-slate-400">
+                <div className="text-xs text-ink-faint">
                   {t.adjusted ? (
                     // Dòng nhập tay: không có giờ là ĐÚNG, đừng gắn cảnh báo làm anh tưởng lỗi.
                     <span className="text-brand-600">✎ điểm nhập bù</span>
                   ) : t.minutes === null ? (
-                    <span className="text-amber-600">⚠️ không có giờ làm (báo thẳng)</span>
+                    <span className="text-amber-700">⚠️ không có giờ làm (báo thẳng)</span>
                   ) : (
                     <>
-                      ⏱ {t.crossDay && <span className="text-slate-400">(hôm trước) </span>}
+                      ⏱ {t.crossDay && <span className="text-ink-faint">(hôm trước) </span>}
                       {t.startHm} → {t.endHm} · {fmtMin(t.minutes)}
-                      {t.minutes < 1 && <span className="text-amber-600"> · ⚠️ dưới 1 phút</span>}
+                      {t.minutes < 1 && <span className="text-amber-700"> · ⚠️ dưới 1 phút</span>}
                     </>
                   )}
-                  {t.overlap && <span className="text-amber-600"> · ⚠️ chồng giờ</span>}
+                  {t.overlap && <span className="text-amber-700"> · ⚠️ chồng giờ</span>}
                 </div>
               </li>
             ))}
           </ul>
 
           {d.tasks.some((t) => t.overlap) && (
-            <p className="mt-1.5 text-xs text-slate-400">
+            <p className="mt-1.5 text-xs text-ink-faint">
               ⏱ ở trên là giờ làm đã gộp khoảng chồng lấn, nên tổng thời lượng từng việc có thể lớn
               hơn — không phải lỗi.
             </p>

@@ -51,16 +51,16 @@ export default function StorageCard() {
       ) : (
         <>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <span className="text-sm text-slate-600">Cơ sở dữ liệu</span>
+            <span className="text-sm text-ink-soft">Cơ sở dữ liệu</span>
             <span className="text-sm">
-              <b className="text-slate-800">{dungLuong(data.dbBytes)}</b>
-              <span className="text-slate-400">
+              <b className="text-ink">{dungLuong(data.dbBytes)}</b>
+              <span className="text-ink-faint">
                 {' '}
                 / {dungLuong(data.dbLimitBytes)} ({pct}%)
               </span>
             </span>
           </div>
-          <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+          <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-brand-100">
             <div className={`h-full rounded-full ${mau}`} style={{ width: `${Math.max(1, pct)}%` }} />
           </div>
           {pct >= 85 && (
@@ -70,11 +70,11 @@ export default function StorageCard() {
           )}
 
           {data.blob.available && (
-            <div className="mt-3 flex flex-wrap items-baseline justify-between gap-2 border-t border-slate-100 pt-3">
-              <span className="text-sm text-slate-600">Ảnh &amp; tài liệu đính kèm</span>
+            <div className="mt-3 flex flex-wrap items-baseline justify-between gap-2 border-t border-brand-100 pt-3">
+              <span className="text-sm text-ink-soft">Ảnh &amp; tài liệu đính kèm</span>
               <span className="text-sm">
-                <b className="text-slate-800">{dungLuong(data.blob.bytes)}</b>
-                <span className="text-slate-400"> · {data.blob.files} tệp</span>
+                <b className="text-ink">{dungLuong(data.blob.bytes)}</b>
+                <span className="text-ink-faint"> · {data.blob.files} tệp</span>
               </span>
             </div>
           )}

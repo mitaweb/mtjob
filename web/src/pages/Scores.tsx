@@ -64,25 +64,25 @@ export default function Scores() {
           <>
             <div className="card text-center">
               <div className="text-2xl font-bold">{score?.todayPoints ?? 0}</div>
-              <div className="text-xs text-slate-500">Điểm hôm nay</div>
+              <div className="text-xs text-ink-muted">Điểm hôm nay</div>
             </div>
             <div className="card text-center">
               <div className="text-2xl font-bold">{score?.monthPoints ?? 0}</div>
-              <div className="text-xs text-slate-500">Lũy kế tháng</div>
+              <div className="text-xs text-ink-muted">Lũy kế tháng</div>
             </div>
             <div className="card text-center">
-              <div className="text-2xl font-bold text-emerald-600">{vnd(score?.bonus ?? 0)}</div>
-              <div className="text-xs text-slate-500">Thưởng hiện tại</div>
+              <div className="text-2xl font-bold text-emerald-700">{vnd(score?.bonus ?? 0)}</div>
+              <div className="text-xs text-ink-muted">Thưởng hiện tại</div>
             </div>
             <div className="card text-center">
               <div className="text-2xl font-bold text-brand-600">{fmtMin(score?.workMinutesToday ?? 0)}</div>
-              <div className="text-xs text-slate-500">⏱ Giờ làm hôm nay</div>
+              <div className="text-xs text-ink-muted">⏱ Giờ làm hôm nay</div>
             </div>
           </>
         )}
       </div>
 
-      {msg && <div className="text-sm text-slate-600">{msg}</div>}
+      {msg && <div className="text-sm text-ink-soft">{msg}</div>}
 
       <div className="card">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">

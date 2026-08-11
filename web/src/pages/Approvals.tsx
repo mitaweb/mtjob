@@ -92,17 +92,17 @@ export default function Approvals() {
       <h1 className="text-lg font-bold">Duyệt đơn</h1>
 
       {/* Tabs */}
-      <div className="flex gap-1 rounded-xl bg-slate-100 p-1 w-fit">
+      <div className="flex gap-1 rounded-xl bg-brand-100 p-1 w-fit">
         {TABS.map((t) => (
           <button
             key={t.key}
             className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-              tab === t.key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              tab === t.key ? 'bg-white text-ink shadow-sm' : 'text-ink-muted hover:text-ink-soft'
             }`}
             onClick={() => setTab(t.key)}
           >
             {t.label}
-            <span className={`ml-1.5 text-xs ${tab === t.key ? 'text-brand-600' : 'text-slate-400'}`}>{counts[t.key]}</span>
+            <span className={`ml-1.5 text-xs ${tab === t.key ? 'text-brand-600' : 'text-ink-faint'}`}>{counts[t.key]}</span>
           </button>
         ))}
       </div>
@@ -132,7 +132,7 @@ export default function Approvals() {
             {tab === 'approved' && <Badge variant="success">Đã duyệt{r.directorAt ? ` ${fmtD(r.directorAt)}` : ''}</Badge>}
             {tab === 'rejected' && <Badge variant="danger">Từ chối{r.directorAt || r.leaderAt ? ` ${fmtD(r.directorAt || r.leaderAt)}` : ''}</Badge>}
           </div>
-          <div className="text-sm text-slate-500">
+          <div className="text-sm text-ink-muted">
             {r.dates.join(', ')}
             {r.reason ? ` · ${r.reason}` : ''}
           </div>

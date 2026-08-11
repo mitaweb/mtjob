@@ -142,14 +142,14 @@ export default function DailyKpiEntry({
   // Không có gì để nhập thì đừng chiếm chỗ đầu trang — về một dòng chữ nhạt.
   if (!today.teamId) {
     return (
-      <div className="card text-sm text-slate-500">
+      <div className="card text-sm text-ink-muted">
         Bạn không thuộc phòng ban nào nên không có chỉ số để nhập. Vẫn xem được tiến độ các dự án bên dưới.
       </div>
     );
   }
   if (today.rows.length === 0) {
     return (
-      <div className="card text-sm text-slate-500">
+      <div className="card text-sm text-ink-muted">
         Phòng bạn chưa có chỉ số nào trong các dự án đang chạy.
       </div>
     );
@@ -163,7 +163,7 @@ export default function DailyKpiEntry({
       <div className="card flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-semibold">Chỉ số cần nhập — phòng {today.teamId}</h2>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-ink-muted">
             {soONhap} ô cần điền cho {blocks.length} dự án.
             {soDaNhap > 0 && ` Đã nhập ${soDaNhap} ô.`}
           </p>
@@ -185,7 +185,7 @@ export default function DailyKpiEntry({
       </div>
 
       <>
-          <p className="mb-3 text-xs text-slate-500">
+          <p className="mb-3 text-xs text-ink-muted">
             {today.dates.length > 2
               ? 'Cuối tuần không ai đi làm nên số thứ Sáu, thứ Bảy và Chủ nhật nhập bù được tới hết hôm nay.'
               : 'Số của hôm qua còn sửa được tới hết hôm nay. Sau đó phải nhờ giám đốc nhập bù.'}
@@ -197,12 +197,12 @@ export default function DailyKpiEntry({
               return (
                 <div
                   key={b.id}
-                  className="rounded-xl border border-l-4 border-slate-200 border-l-brand-500 p-3"
+                  className="rounded-xl border border-l-4 border-brand-100 border-l-brand-500 p-3"
                 >
                   {/* Tên dự án: bên TRÁI, đậm, có vạch màu — nhìn xuống là biết đang nhập cho ai.
                       Nút lưu nằm cùng hàng với tên: thao tác lưu gắn hẳn vào MỘT dự án cụ thể. */}
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-semibold text-slate-800">{b.name}</span>
+                    <span className="font-semibold text-ink">{b.name}</span>
                     <AsyncButton
                       className="btn-ghost px-3 py-1 text-sm"
                       busyLabel="Đang lưu…"
@@ -229,7 +229,7 @@ export default function DailyKpiEntry({
                         <div
                           key={date}
                           className={`text-center text-xs ${
-                            date === homNay ? 'font-semibold text-slate-700' : 'text-slate-500'
+                            date === homNay ? 'font-semibold text-ink-soft' : 'text-ink-muted'
                           }`}
                         >
                           {nhanNgay(date, homNay)}
@@ -243,9 +243,9 @@ export default function DailyKpiEntry({
                               Chặn 11rem trên điện thoại — tên chỉ số dài mà để tự do thì nó
                               chiếm hết bề ngang, đẩy sạch ô nhập ra ngoài màn hình. */}
                           <div className="sticky left-0 z-10 flex min-w-[9rem] max-w-[11rem] items-center self-stretch bg-white pr-2 sm:max-w-[18rem]">
-                            <span className="min-w-0 truncate text-sm text-slate-700" title={r.kpi.name}>
+                            <span className="min-w-0 truncate text-sm text-ink-soft" title={r.kpi.name}>
                               {r.kpi.name}
-                              {r.kpi.unit && <span className="text-slate-400"> ({r.kpi.unit})</span>}
+                              {r.kpi.unit && <span className="text-ink-faint"> ({r.kpi.unit})</span>}
                             </span>
                           </div>
                           {today.dates.map((date) => {
@@ -256,11 +256,11 @@ export default function DailyKpiEntry({
                               ? 'border-amber-400 bg-amber-50'
                               : saved !== null
                                 ? 'border-emerald-200 bg-emerald-50/60'
-                                : 'border-slate-200 bg-white';
+                                : 'border-brand-100 bg-white';
                             return (
                               <input
                                 key={date}
-                                className={`w-full rounded-lg border px-2 py-1.5 text-center text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 ${mau}`}
+                                className={`w-full rounded-lg border px-2 py-1.5 text-center text-sm text-ink-soft outline-none transition placeholder:text-ink-faint focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 ${mau}`}
                                 type="number"
                                 min={0}
                                 inputMode="numeric"

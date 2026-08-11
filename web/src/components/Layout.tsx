@@ -107,7 +107,7 @@ export default function Layout() {
               `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                 isActive
                   ? 'bg-brand-600 text-white shadow-sm shadow-brand-600/30'
-                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                  : 'text-ink-muted hover:bg-brand-100 hover:text-ink'
               }`
             }
           >
@@ -116,25 +116,25 @@ export default function Layout() {
           </NavLink>
         ))}
       </nav>
-      <div className="border-t border-slate-100 p-3">
+      <div className="border-t border-brand-100 p-3">
         <button
           onClick={() => {
             setOpen(false);
             navigate('/profile');
           }}
-          className="w-full flex items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-slate-100"
+          className="w-full flex items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-brand-100"
         >
           <div className="h-9 w-9 shrink-0 rounded-full bg-brand-600 text-white grid place-items-center text-sm font-semibold">
             {initial}
           </div>
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-slate-700 truncate">{user?.fullName}</div>
-            <div className="text-xs text-slate-400">{ROLE_LABEL[user?.role || ''] || user?.role}</div>
+            <div className="text-sm font-semibold text-ink-soft truncate">{user?.fullName}</div>
+            <div className="text-xs text-ink-faint">{ROLE_LABEL[user?.role || ''] || user?.role}</div>
           </div>
         </button>
         <button
           onClick={logout}
-          className="mt-1 w-full rounded-xl px-3 py-2 text-left text-sm text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition"
+          className="mt-1 w-full rounded-xl px-3 py-2 text-left text-sm text-ink-muted hover:bg-rose-50 hover:text-rose-600 transition"
         >
           ⎋ Đăng xuất
         </button>
@@ -145,12 +145,12 @@ export default function Layout() {
   return (
     <div className="min-h-screen">
       {/* Sidebar cố định (desktop) */}
-      <aside className="hidden lg:block fixed inset-y-0 left-0 w-64 border-r border-slate-100">{sidebar}</aside>
+      <aside className="hidden lg:block fixed inset-y-0 left-0 w-64 border-r border-brand-100">{sidebar}</aside>
 
       {/* Drawer (mobile) */}
-      {open && <div className="fixed inset-0 z-40 bg-slate-900/40 lg:hidden" onClick={() => setOpen(false)} />}
+      {open && <div className="fixed inset-0 z-40 bg-ink/40 lg:hidden" onClick={() => setOpen(false)} />}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 border-r border-slate-100 shadow-card transition-transform duration-200 lg:hidden ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 border-r border-brand-100 shadow-card transition-transform duration-200 lg:hidden ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -159,10 +159,10 @@ export default function Layout() {
 
       {/* Khu vực chính */}
       <div className="lg:pl-64 flex min-h-screen flex-col">
-        <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/80 backdrop-blur">
+        <header className="sticky top-0 z-30 border-b border-brand-100 bg-white/80 backdrop-blur">
           <div className="flex h-14 items-center gap-2 px-4">
             <button
-              className="lg:hidden grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"
+              className="lg:hidden grid h-9 w-9 place-items-center rounded-lg text-ink-muted hover:bg-brand-100"
               onClick={() => setOpen(true)}
               aria-label="Mở menu"
             >
@@ -174,7 +174,7 @@ export default function Layout() {
             <div className="ml-auto flex items-center gap-1">
               <NavLink
                 to="/inbox"
-                className="relative grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"
+                className="relative grid h-9 w-9 place-items-center rounded-lg text-ink-muted hover:bg-brand-100"
                 aria-label={unread > 0 ? `Thông báo (${unread} chưa đọc)` : 'Thông báo'}
               >
                 <Bell size={20} aria-hidden />

@@ -106,7 +106,7 @@ interface ProjectRow {
 const ALERT_STYLE: Record<string, string> = {
   danger: 'border-rose-400 bg-rose-50 hover:border-rose-500',
   warn: 'border-amber-300 bg-amber-50/70 hover:border-amber-400',
-  none: 'border-slate-100 hover:border-brand-200 hover:bg-slate-50',
+  none: 'border-brand-100 hover:border-brand-200 hover:bg-brand-50',
 };
 
 interface Kpi {
@@ -190,7 +190,7 @@ function Bar100({ percent, thin }: { percent: number; thin?: boolean }) {
   const w = Math.min(100, Math.max(0, percent));
   const color = { emerald: 'bg-emerald-500', brand: 'bg-brand-500', amber: 'bg-amber-400' }[mucMau(percent)];
   return (
-    <div className={`${thin ? 'h-1' : 'h-2'} w-full overflow-hidden rounded-full bg-slate-100`}>
+    <div className={`${thin ? 'h-1' : 'h-2'} w-full overflow-hidden rounded-full bg-brand-100`}>
       <div className={`h-full rounded-full ${color}`} style={{ width: `${w}%` }} />
     </div>
   );
@@ -205,38 +205,38 @@ function Bar100({ percent, thin }: { percent: number; thin?: boolean }) {
  */
 function ChiSoTheoTeam({ kpis }: { kpis: KpiTomTat[] }) {
   const PHAN_TRAM_MAU = {
-    emerald: 'text-emerald-600',
+    emerald: 'text-emerald-700',
     brand: 'text-brand-600',
-    amber: 'text-amber-600',
+    amber: 'text-amber-700',
   };
   const theoTeam = TEAMS.map((t) => [t, kpis.filter((k) => k.teamId === t)] as const)
     .concat([['Khác', kpis.filter((k) => !TEAMS.includes(k.teamId))] as const])
     .filter(([, ks]) => ks.length > 0);
 
   return (
-    <div className="mt-2 space-y-1.5 border-t border-slate-100 pt-2">
+    <div className="mt-2 space-y-1.5 border-t border-brand-100 pt-2">
       {theoTeam.map(([team, ks]) => (
         <div key={team}>
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{team}</div>
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{team}</div>
           {ks.map((k) => (
             <div key={k.id} className="mt-1.5">
               <div className="flex items-baseline justify-between gap-2 text-xs">
-                <span className="min-w-0 truncate text-slate-600" title={k.name}>
+                <span className="min-w-0 truncate text-ink-soft" title={k.name}>
                   {k.name}
                   {/* Kỳ đi kèm TỪNG chỉ số — anh Tâm 4/8/2026: "chỉ cần KPI của từng phòng
                       ban theo thời kỳ". Bỏ thanh gộp rồi thì đây là chỗ duy nhất nói kỳ. */}
-                  <span className="text-slate-400"> · {k.periodLabel}</span>
+                  <span className="text-ink-faint"> · {k.periodLabel}</span>
                 </span>
                 {k.target > 0 ? (
-                  <span className="shrink-0 tabular-nums text-slate-500">
-                    <b className="text-slate-700">
+                  <span className="shrink-0 tabular-nums text-ink-muted">
+                    <b className="text-ink-soft">
                       {k.current}/{k.target}
                     </b>
                     {k.unit && ` ${k.unit}`} ·{' '}
                     <b className={PHAN_TRAM_MAU[mucMau(k.percent)]}>{k.percent}%</b>
                   </span>
                 ) : (
-                  <span className="shrink-0 text-amber-600">chưa đặt mục tiêu</span>
+                  <span className="shrink-0 text-amber-700">chưa đặt mục tiêu</span>
                 )}
               </div>
               {/* Chưa đặt mục tiêu thì không vẽ thanh: một thanh rỗng dài thượt trông y hệt
@@ -405,7 +405,7 @@ export default function Projects() {
       <div className="card flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-bold">Dự án &amp; KPI</h1>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-ink-muted">
             Theo dõi kết quả cam kết với khách. Mỗi phòng nhập chỉ số của phòng mình hằng ngày.
           </p>
         </div>
@@ -457,7 +457,7 @@ export default function Projects() {
               className={`rounded-lg border px-3 py-1 text-sm ${
                 fAlert
                   ? 'border-rose-400 bg-rose-50 font-medium text-rose-700'
-                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  : 'border-brand-100 text-ink-soft hover:bg-brand-50'
               }`}
               onClick={() => setFAlert((v) => !v)}
             >
@@ -488,8 +488,8 @@ export default function Projects() {
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="truncate font-medium text-slate-800">{p.name}</div>
-                    {p.customerName && <div className="truncate text-xs text-slate-500">{p.customerName}</div>}
+                    <div className="truncate font-medium text-ink">{p.name}</div>
+                    {p.customerName && <div className="truncate text-xs text-ink-muted">{p.customerName}</div>}
                   </div>
                   <Badge variant={STATUS[p.status]?.variant || 'neutral'}>
                     {STATUS[p.status]?.label || p.status}
@@ -500,15 +500,15 @@ export default function Projects() {
                     KHÔNG còn thanh tổng gộp theo kỳ: anh Tâm 4/8/2026 chốt bỏ, chỉ xem
                     chỉ số của từng phòng ban. */}
                 {p.measured === 0 && p.kpiCount > 0 && (
-                  <div className="mt-2 text-xs text-amber-600">Chưa đặt mục tiêu nên chưa đo được tiến độ</div>
+                  <div className="mt-2 text-xs text-amber-700">Chưa đặt mục tiêu nên chưa đo được tiến độ</div>
                 )}
                 {/* Thời gian đã trôi — đặt cạnh tiến độ KPI để so được bằng mắt. */}
                 {typeof p.timePercent === 'number' && (
-                  <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
+                  <div className="mt-1 flex items-center gap-2 text-xs text-ink-faint">
                     <span className="w-14 shrink-0">Thời gian</span>
-                    <div className="h-1 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div className="h-1 w-full overflow-hidden rounded-full bg-brand-100">
                       <div
-                        className="h-full rounded-full bg-slate-300"
+                        className="h-full rounded-full bg-brand-300"
                         style={{ width: `${Math.min(100, p.timePercent)}%` }}
                       />
                     </div>
@@ -518,7 +518,7 @@ export default function Projects() {
                 {p.kpis && p.kpis.length > 0 ? (
                   <ChiSoTheoTeam kpis={p.kpis} />
                 ) : (
-                  <div className="mt-1 text-xs text-slate-400">Chưa có chỉ số nào</div>
+                  <div className="mt-1 text-xs text-ink-faint">Chưa có chỉ số nào</div>
                 )}
                 {p.alertReason && (
                   <div
@@ -538,14 +538,14 @@ export default function Projects() {
       {/* Chi tiết dự án */}
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4"
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 p-4"
           onClick={() => { setOpen(null); setKpiEdit(null); setChartKpi(null); }}
         >
-          <div className="card my-8 w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
+          <div className="card hien-len my-8 w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-2">
               <div>
                 <h2 className="font-semibold">{open.project.name}</h2>
-                <div className="mt-1 text-xs text-slate-500">
+                <div className="mt-1 text-xs text-ink-muted">
                   {open.project.customerName || 'Dự án nội bộ'}
                   {open.project.startDate && ` · từ ${open.project.startDate}`}
                   {open.project.endDate && ` → ${open.project.endDate}`}
@@ -566,7 +566,7 @@ export default function Projects() {
               </p>
             )}
 
-            {open.project.note && <p className="mt-2 text-sm text-slate-600">{open.project.note}</p>}
+            {open.project.note && <p className="mt-2 text-sm text-ink-soft">{open.project.note}</p>}
 
             {canManage && (
               <div className="mt-3 flex flex-wrap gap-2">
@@ -587,43 +587,43 @@ export default function Projects() {
 
             {TEAMS.filter((t) => open.kpis.some((k) => k.teamId === t)).map((team) => (
               <div key={team} className="mt-4">
-                <h3 className="mb-2 text-sm font-semibold text-slate-700">Phòng {team}</h3>
+                <h3 className="mb-2 text-sm font-semibold text-ink-soft">Phòng {team}</h3>
                 <div className="space-y-2">
                   {open.kpis
                     .filter((k) => k.teamId === team)
                     .map((k) => (
-                      <div key={k.id} className={`rounded-xl border p-3 ${k.active ? 'border-slate-100' : 'border-slate-100 bg-slate-50 opacity-70'}`}>
+                      <div key={k.id} className={`rounded-xl border p-3 ${k.active ? 'border-brand-100' : 'border-brand-100 bg-brand-50 opacity-70'}`}>
                         <div className="flex flex-wrap items-baseline justify-between gap-2">
-                          <span className="text-sm font-medium text-slate-800">
+                          <span className="text-sm font-medium text-ink">
                             {k.name}
-                            {k.unit && <span className="text-slate-400"> ({k.unit})</span>}
-                            {!k.active && <span className="ml-2 text-xs text-slate-400">đã tắt</span>}
+                            {k.unit && <span className="text-ink-faint"> ({k.unit})</span>}
+                            {!k.active && <span className="ml-2 text-xs text-ink-faint">đã tắt</span>}
                           </span>
                           {/* Ghi rõ ĐANG ĐO KỲ NÀO. Trước đây chỉ hiện "Mỗi tuần · 0/68" nên
                               thấy số 0 mà không biết nó là 0 của kỳ nào, tưởng máy không ghi nhận. */}
-                          <span className="text-xs text-slate-500">
+                          <span className="text-xs text-ink-muted">
                             {k.period !== 'total' && <>{k.progress.periodLabel} · </>}
-                            <b className="text-slate-700">
+                            <b className="text-ink-soft">
                               {k.progress.current}/{k.target || '—'}
                             </b>
                           </span>
                         </div>
                         <div className="mt-2 flex items-center gap-2">
                           <Bar100 percent={k.progress.percent} />
-                          <span className="w-12 shrink-0 text-right text-sm font-medium text-slate-700">
+                          <span className="w-12 shrink-0 text-right text-sm font-medium text-ink-soft">
                             {k.progress.percent}%
                           </span>
                         </div>
                         {/* Chỉ số có hạn riêng thì so tiến độ với hạn CỦA NÓ, không phải của
                             cả dự án — "120 từ khoá trong 8 tháng" dài hơn hẳn dự án mẹ. */}
                         {k.ownDates && typeof k.timePercent === 'number' && (
-                          <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
+                          <div className="mt-1 flex items-center gap-2 text-xs text-ink-faint">
                             <span className="shrink-0">
                               Hạn riêng {fmtNgay(k.startDate)} → {fmtNgay(k.endDate)}
                             </span>
-                            <div className="h-1 w-full overflow-hidden rounded-full bg-slate-100">
+                            <div className="h-1 w-full overflow-hidden rounded-full bg-brand-100">
                               <div
-                                className="h-full rounded-full bg-slate-300"
+                                className="h-full rounded-full bg-brand-300"
                                 style={{ width: `${Math.min(100, k.timePercent)}%` }}
                               />
                             </div>
@@ -636,7 +636,7 @@ export default function Projects() {
                           </button>
                           {canManage && (
                             <>
-                              <button className="text-slate-500 underline" onClick={() => setKpiEdit({ ...blankKpi(k.teamId), ...k })}>
+                              <button className="text-ink-muted underline" onClick={() => setKpiEdit({ ...blankKpi(k.teamId), ...k })}>
                                 Sửa chỉ số
                               </button>
                               <button className="text-rose-600 underline" onClick={() => removeKpi(k)}>
@@ -671,8 +671,8 @@ export default function Projects() {
 
       {/* Form dự án */}
       {edit && (
-        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4" onClick={closeProjectForm}>
-          <div className="card my-8 w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-ink/40 p-4" onClick={closeProjectForm}>
+          <div className="card hien-len my-8 w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
             <h2 className="mb-3 font-semibold">{edit.id ? 'Sửa dự án' : 'Dự án mới'}</h2>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="sm:col-span-2">
@@ -712,9 +712,9 @@ export default function Projects() {
 
             {/* Chỉ số đặt luôn ở đây: tạo dự án xong là các phòng có ô để nhập ngay hôm sau. */}
             {!edit.id && (
-              <div className="mt-5 border-t border-slate-100 pt-4">
+              <div className="mt-5 border-t border-brand-100 pt-4">
                 <h3 className="font-semibold">Chỉ số KPI của dự án</h3>
-                <p className="mb-3 text-xs text-slate-500">
+                <p className="mb-3 text-xs text-ink-muted">
                   Mỗi chỉ số gắn một phòng — chỉ người phòng đó nhập số. Bỏ trống cũng được, thêm sau
                   trong phần chi tiết dự án.
                 </p>
@@ -724,7 +724,7 @@ export default function Projects() {
                     <button
                       key={`${p.teamId}-${p.name}`}
                       type="button"
-                      className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
+                      className="rounded-full border border-brand-100 px-3 py-1 text-xs text-ink-soft hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
                       onClick={() =>
                         setKpiRows((rows) => [...rows, { ...p, id: '', active: true, startDate: '', endDate: '' }])
                       }
@@ -735,7 +735,7 @@ export default function Projects() {
                 </div>
 
                 {kpiRows.length > 0 && (
-                  <div className="hidden gap-2 px-1 pb-1 text-xs text-slate-400 sm:grid sm:grid-cols-12">
+                  <div className="hidden gap-2 px-1 pb-1 text-xs text-ink-faint sm:grid sm:grid-cols-12">
                     <span className="sm:col-span-2">Phòng</span>
                     <span className="sm:col-span-3">Tên chỉ số</span>
                     <span className="sm:col-span-2">Đơn vị</span>
@@ -750,7 +750,7 @@ export default function Projects() {
                     const set = (patch: Partial<KpiDraft>) =>
                       setKpiRows((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
                     return (
-                      <div key={i} className="grid gap-2 rounded-xl border border-slate-100 p-2 sm:grid-cols-12 sm:items-center sm:border-0 sm:p-0">
+                      <div key={i} className="grid gap-2 rounded-xl border border-brand-100 p-2 sm:grid-cols-12 sm:items-center sm:border-0 sm:p-0">
                         <select className="input py-1.5 text-sm sm:col-span-2" value={k.teamId} onChange={(e) => set({ teamId: e.target.value })}>
                           {TEAMS.map((t) => (
                             <option key={t} value={t}>{t}</option>
@@ -794,7 +794,7 @@ export default function Projects() {
                           />
                           <button
                             type="button"
-                            className="shrink-0 rounded-lg px-2 py-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                            className="shrink-0 rounded-lg px-2 py-1 text-ink-faint hover:bg-rose-50 hover:text-rose-600"
                             aria-label={`Bỏ chỉ số ${k.name || 'chưa đặt tên'}`}
                             onClick={() => setKpiRows((rows) => rows.filter((_, j) => j !== i))}
                           >
@@ -826,10 +826,10 @@ export default function Projects() {
 
       {/* Form chỉ số */}
       {kpiEdit && (
-        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4" onClick={() => setKpiEdit(null)}>
-          <div className="card my-8 w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-ink/40 p-4" onClick={() => setKpiEdit(null)}>
+          <div className="card hien-len my-8 w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
             <h2 className="mb-1 font-semibold">{kpiEdit.id ? 'Sửa chỉ số' : 'Chỉ số mới'}</h2>
-            <p className="mb-3 text-xs text-slate-500">
+            <p className="mb-3 text-xs text-ink-muted">
               Bạn đặt tên và mục tiêu; nhân sự trong phòng sẽ nhập số hằng ngày.
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -871,7 +871,7 @@ export default function Projects() {
                     <option key={c.value} value={c.value}>{c.label}</option>
                   ))}
                 </select>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-ink-muted">
                   {CACH_NHAP.find((c) => c.value === kpiEdit.inputMode)?.giaiThich}
                 </p>
 
@@ -894,12 +894,12 @@ export default function Projects() {
                     onChange={(e) => setKpiEdit({ ...kpiEdit, endDate: e.target.value })}
                   />
                 </div>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-ink-muted">
                   Bỏ trống thì chỉ số chạy theo thời gian của cả dự án. Khai riêng khi chỉ tiêu có
                   hạn riêng — vd “120 từ khoá lên top 10 trong 8 tháng”.
                 </p>
                 {kpiEdit.period === 'total' && (
-                  <p className="mt-1 text-xs text-amber-600">
+                  <p className="mt-1 text-xs text-amber-700">
                     Chỉ số này đang để “Cả dự án” — kiểu cũ, cộng dồn mãi không bao giờ về 0. Đổi
                     sang <b>Mỗi tuần</b> hoặc <b>Mỗi tháng</b> để theo dõi đúng kỳ.
                   </p>
@@ -952,8 +952,8 @@ function BackfillRow({ kpiId, onSaved }: { kpiId: string; onSaved: () => Promise
   }
 
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 p-2">
-      <span className="text-xs text-slate-500">Nhập bù</span>
+    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-brand-50 p-2">
+      <span className="text-xs text-ink-muted">Nhập bù</span>
       <input className="input max-w-[9.5rem] py-1 text-sm" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
       <input
         className="input max-w-[7rem] py-1 text-sm"

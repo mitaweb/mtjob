@@ -107,20 +107,20 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 p-4"
       onClick={onClose}
     >
-      <div className="card my-8 w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+      <div className="card hien-len my-8 w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
         <div className="mb-1 flex items-center justify-between">
           <h2 className="font-semibold">⏰ Nhắc hẹn của tôi</h2>
           <button className="btn-ghost px-2 py-1 text-sm" onClick={onClose}>
             ✕ Đóng
           </button>
         </div>
-        <p className="mb-3 text-sm text-slate-500">Chỉ mình bạn nhận được thông báo của các nhắc hẹn này.</p>
+        <p className="mb-3 text-sm text-ink-muted">Chỉ mình bạn nhận được thông báo của các nhắc hẹn này.</p>
 
         {/* Tạo mới */}
-        <div className="space-y-2 rounded-xl bg-slate-50 p-3">
+        <div className="space-y-2 rounded-xl bg-brand-50 p-3">
           <input
             className="input py-1.5"
             placeholder="Nhắc gì? vd: Đăng bài X Salon"
@@ -128,11 +128,11 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
             onChange={(e) => setTitle(e.target.value)}
           />
           <div className="flex flex-wrap gap-2">
-            <label className="text-xs text-slate-500">
+            <label className="text-xs text-ink-muted">
               Giờ nhắc
               <input className="input py-1" type="time" value={atTime} onChange={(e) => setAtTime(e.target.value)} />
             </label>
-            <label className="text-xs text-slate-500">
+            <label className="text-xs text-ink-muted">
               Lặp lại
               <select
                 className="input py-1"
@@ -147,7 +147,7 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
               </select>
             </label>
             {repeatKind === 'weekly' && (
-              <label className="text-xs text-slate-500">
+              <label className="text-xs text-ink-muted">
                 Vào thứ
                 <select className="input py-1" value={weekday} onChange={(e) => setWeekday(Number(e.target.value))}>
                   {WEEKDAYS.map((w, i) => (
@@ -159,7 +159,7 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
               </label>
             )}
             {repeatKind === 'monthly' && (
-              <label className="text-xs text-slate-500">
+              <label className="text-xs text-ink-muted">
                 Ngày trong tháng
                 <input
                   className="input py-1"
@@ -172,7 +172,7 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
               </label>
             )}
             {repeatKind === 'once' && (
-              <label className="text-xs text-slate-500">
+              <label className="text-xs text-ink-muted">
                 Ngày
                 <input className="input py-1" type="date" value={onDate} onChange={(e) => setOnDate(e.target.value)} />
               </label>
@@ -185,9 +185,9 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
 
         {/* Danh sách đang theo dõi — lịch đã qua gom xuống mục riêng bên dưới. */}
         <ul className="mt-3 divide-y">
-          {loading && <li className="py-3 text-sm text-slate-500">Đang tải…</li>}
+          {loading && <li className="py-3 text-sm text-ink-muted">Đang tải…</li>}
           {!loading && dangTheoDoi.length === 0 && (
-            <li className="py-3 text-sm text-slate-500">
+            <li className="py-3 text-sm text-ink-muted">
               {daXong.length > 0
                 ? 'Không còn hẹn nào sắp tới. Các hẹn đã qua nằm ở mục bên dưới.'
                 : 'Chưa có nhắc hẹn nào. Bạn cũng có thể nhắn thẳng cho trợ lý: “nhắc tôi đăng bài X Salon 8h hằng ngày”.'}
@@ -196,10 +196,10 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
           {dangTheoDoi.map((r) => (
             <li key={r.id} className="flex items-start justify-between gap-2 py-2">
               <div className="min-w-0">
-                <div className={`text-sm font-medium ${r.active ? 'text-slate-800' : 'text-slate-400 line-through'}`}>
+                <div className={`text-sm font-medium ${r.active ? 'text-ink' : 'text-ink-faint line-through'}`}>
                   {r.title}
                 </div>
-                <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
+                <div className="mt-0.5 flex items-center gap-2 text-xs text-ink-muted">
                   <Badge variant={r.active ? 'success' : 'neutral'}>{r.active ? 'Đang bật' : 'Đã tắt'}</Badge>
                   {describe(r)}
                 </div>
@@ -218,14 +218,14 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
 
         {/* Hẹn đã qua: gấp lại cho gọn, vẫn tra được và xoá được. */}
         {daXong.length > 0 && (
-          <details className="mt-3 border-t border-slate-100 pt-2">
-            <summary className="cursor-pointer text-sm text-slate-500">✓ Đã xong ({daXong.length})</summary>
+          <details className="mt-3 border-t border-brand-100 pt-2">
+            <summary className="cursor-pointer text-sm text-ink-muted">✓ Đã xong ({daXong.length})</summary>
             <ul className="mt-1 divide-y">
               {daXong.map((r) => (
                 <li key={r.id} className="flex items-start justify-between gap-2 py-2">
                   <div className="min-w-0">
-                    <div className="text-sm text-slate-400 line-through">{r.title}</div>
-                    <div className="mt-0.5 text-xs text-slate-400">{describe(r)}</div>
+                    <div className="text-sm text-ink-faint line-through">{r.title}</div>
+                    <div className="mt-0.5 text-xs text-ink-faint">{describe(r)}</div>
                   </div>
                   <button className="shrink-0 text-xs text-rose-600 underline" onClick={() => remove(r.id)}>
                     xoá

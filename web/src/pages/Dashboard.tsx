@@ -65,7 +65,7 @@ export default function Dashboard() {
         {loading ? (
           <Skeleton className="h-[260px] w-full" />
         ) : scores.every((s) => s.monthPoints === 0) ? (
-          <p className="py-12 text-center text-sm text-slate-500">Chưa ai có điểm trong {nhanThang}.</p>
+          <p className="py-12 text-center text-sm text-ink-muted">Chưa ai có điểm trong {nhanThang}.</p>
         ) : (
           <Suspense fallback={<Skeleton className="h-[260px] w-full" />}>
             <PointsBarChart data={chartData} />
@@ -75,12 +75,12 @@ export default function Dashboard() {
 
       <div className="card overflow-x-auto">
         <h2 className="font-semibold">Bảng xếp hạng {nhanThang}</h2>
-        <p className="mb-2 text-xs text-slate-500">Bấm vào tên để xem chi tiết công việc từng ngày.</p>
+        <p className="mb-2 text-xs text-ink-muted">Bấm vào tên để xem chi tiết công việc từng ngày.</p>
         {loading ? (
           <SkeletonRows rows={5} />
         ) : (
         <table className="w-full text-sm">
-          <thead className="text-left text-slate-500">
+          <thead className="text-left text-ink-muted">
             <tr>
               <th className="py-1">#</th>
               <th>Họ tên</th>
@@ -94,14 +94,14 @@ export default function Dashboard() {
             {scores.map((s) => (
               <tr
                 key={s.memberId}
-                className="cursor-pointer border-t hover:bg-slate-50"
+                className="cursor-pointer border-t hover:bg-brand-50"
                 onClick={() => setDetail({ id: s.memberId, name: s.fullName })}
               >
                 <td className="py-1">{s.rank}</td>
                 <td className="font-medium text-brand-700 underline">{s.fullName}</td>
                 <td>{s.teamId}</td>
                 <td className="font-medium">{s.monthPoints}</td>
-                <td className="text-emerald-600">{vnd(s.bonus)}</td>
+                <td className="text-emerald-700">{vnd(s.bonus)}</td>
                 {laThangNay && <td>{fmtMin(s.workMinutesToday)}</td>}
               </tr>
             ))}

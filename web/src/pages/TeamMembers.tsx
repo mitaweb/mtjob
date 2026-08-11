@@ -131,7 +131,7 @@ export default function TeamMembers() {
           <EmptyState icon="👥" text="Phòng bạn chưa có thành viên nào." />
         ) : (
           <table className="w-full min-w-[38rem] text-sm">
-            <thead className="text-left text-xs text-slate-500">
+            <thead className="text-left text-xs text-ink-muted">
               <tr className="whitespace-nowrap">
                 <th className="w-8 py-1 pr-2">#</th>
                 <th className="pr-2">Họ tên</th>
@@ -144,11 +144,11 @@ export default function TeamMembers() {
             </thead>
             <tbody>
               {members.map((m, i) => (
-                <tr key={m.id} className={`border-t ${m.active ? '' : 'text-slate-400'}`}>
-                  <td className="py-1.5 pr-2 text-slate-400">{i + 1}</td>
-                  <td className="pr-2 font-medium text-slate-800">
+                <tr key={m.id} className={`border-t ${m.active ? '' : 'text-ink-faint'}`}>
+                  <td className="py-1.5 pr-2 text-ink-faint">{i + 1}</td>
+                  <td className="pr-2 font-medium text-ink">
                     {m.fullName}
-                    {!m.active && <span className="ml-2 text-xs text-slate-400">đã nghỉ</span>}
+                    {!m.active && <span className="ml-2 text-xs text-ink-faint">đã nghỉ</span>}
                   </td>
                   <td className="pr-2 font-mono text-xs">{m.username}</td>
                   <td className="pr-2">{m.position || '—'}</td>
@@ -162,19 +162,19 @@ export default function TeamMembers() {
             </tbody>
           </table>
         )}
-        <p className="mt-3 text-xs text-slate-400">
+        <p className="mt-3 text-xs text-ink-faint">
           Cần sửa thông tin, đổi phòng, đặt lương hay cho nghỉ thì nhờ giám đốc — phần đó nằm ở mục Quản trị.
         </p>
       </div>
 
       {form && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4"
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 p-4"
           onClick={() => setForm(null)}
         >
-          <div className="card my-8 w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="card hien-len my-8 w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
             <h2 className="mb-1 font-semibold">Thêm thành viên phòng {teamId}</h2>
-            <p className="mb-3 text-xs text-slate-500">
+            <p className="mb-3 text-xs text-ink-muted">
               Bạn mới sẽ là <b>nhân viên</b> của phòng <b>{teamId}</b>. Lương và bảo hiểm do giám đốc đặt sau.
             </p>
 
@@ -254,7 +254,7 @@ export default function TeamMembers() {
               </div>
             </div>
 
-            <p className="mt-2 text-xs text-slate-400">
+            <p className="mt-2 text-xs text-ink-faint">
               Bỏ trống tài khoản thì máy tự đặt từ họ tên — “Lương Thị Thu Hà” thành <b>luongha</b>. Ngày vào
               làm dùng để tính công, nên điền đúng ngay từ đầu.
             </p>

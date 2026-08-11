@@ -27,7 +27,7 @@ export function useToast(): ToastApi {
 const KIND_CLS: Record<Kind, string> = {
   success: 'bg-emerald-600 text-white',
   error: 'bg-rose-600 text-white',
-  info: 'bg-slate-800/95 text-white',
+  info: 'bg-ink/95 text-white',
 };
 
 const KIND_ICON: Record<Kind, string> = { success: '✓', error: '✕', info: 'ℹ' };

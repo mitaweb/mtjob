@@ -270,12 +270,12 @@ export default function Brain() {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <span className="text-2xl font-bold text-brand-600">{stats.total}</span>{' '}
-              <span className="text-sm text-slate-500">mục đang được ghi nhớ</span>
+              <span className="text-sm text-ink-muted">mục đang được ghi nhớ</span>
             </div>
             {stats.remaining > 0 ? (
-              <span className="text-sm text-amber-600">Còn {stats.remaining} mục đang chờ nạp (tự nạp dần)</span>
+              <span className="text-sm text-amber-700">Còn {stats.remaining} mục đang chờ nạp (tự nạp dần)</span>
             ) : (
-              <span className="text-sm text-emerald-600">Đã nạp đầy đủ ✓</span>
+              <span className="text-sm text-emerald-700">Đã nạp đầy đủ ✓</span>
             )}
           </div>
         </div>
@@ -284,7 +284,7 @@ export default function Brain() {
       {/* Tải tài liệu lên */}
       <div className="card">
         <h2 className="font-semibold">📎 Tải tài liệu vào kho</h2>
-        <p className="mb-3 text-sm text-slate-500">
+        <p className="mb-3 text-sm text-ink-muted">
           PDF, ảnh chụp (hợp đồng, báo giá), file text — tối đa 10MB. AI sẽ đọc nội dung và đưa vào kho để
           trả lời được các câu hỏi trong tài liệu.
         </p>
@@ -301,7 +301,7 @@ export default function Brain() {
               onChange={(e) => setDocCustomer(e.target.value)}
             />
           </div>
-          <p className="w-full text-xs text-slate-500">
+          <p className="w-full text-xs text-ink-muted">
             Excel/Google Sheets: dán link sheet thẳng cho trợ lý (“cập nhật sheet này vào kho”) hoặc xuất ra
             CSV rồi tải lên — dữ liệu bảng giữ được quan hệ hàng–cột nên tra cứu chính xác hơn PDF.
           </p>
@@ -323,7 +323,7 @@ export default function Brain() {
         </div>
 
         {docs.length > 0 && (
-          <ul className="mt-3 divide-y border-t border-slate-100 pt-1">
+          <ul className="mt-3 divide-y border-t border-brand-100 pt-1">
             {docs.map((d) => (
               <li key={d.id} className="py-2">
                 <div className="flex items-start justify-between gap-2">
@@ -331,10 +331,10 @@ export default function Brain() {
                     className="min-w-0 flex-1 text-left"
                     onClick={() => setOpenDoc(openDoc === d.id ? null : d.id)}
                   >
-                    <div className="truncate text-sm font-medium text-slate-800">
+                    <div className="truncate text-sm font-medium text-ink">
                       {d.kind === 'pdf' ? '📄' : d.kind === 'image' ? '🖼' : '📃'} {d.name}
                     </div>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
                       <Badge variant={STATUS_VI[d.status].variant}>{STATUS_VI[d.status].label}</Badge>
                       {d.customer && <span>KH: {d.customer}</span>}
                       <span>{d.uploadedName}</span>
@@ -356,7 +356,7 @@ export default function Brain() {
                   <p className="mt-1 text-xs text-rose-600">{d.error}</p>
                 )}
                 {openDoc === d.id && d.transcript && (
-                  <p className="mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
+                  <p className="mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-xl bg-brand-50 p-3 text-sm text-ink-soft">
                     {d.transcript}
                   </p>
                 )}
@@ -370,7 +370,7 @@ export default function Brain() {
       {profiles.length > 0 && (
         <div className="card">
           <h2 className="font-semibold">📋 Hồ sơ khách hàng ({profiles.length})</h2>
-          <p className="mb-2 text-sm text-slate-500">
+          <p className="mb-2 text-sm text-ink-muted">
             Bản tổng hợp tự động từ lưu ý khách hàng, CRM và lịch hẹn.
           </p>
           <ul className="divide-y">
@@ -380,13 +380,13 @@ export default function Brain() {
                   className="flex w-full items-center justify-between gap-2 text-left"
                   onClick={() => setOpenProfile(openProfile === p.key ? null : p.key)}
                 >
-                  <span className="font-medium text-slate-800">{p.customer}</span>
-                  <span className="whitespace-nowrap text-xs text-slate-400">
+                  <span className="font-medium text-ink">{p.customer}</span>
+                  <span className="whitespace-nowrap text-xs text-ink-faint">
                     {fmtD(p.builtAt)} {openProfile === p.key ? '▲' : '▼'}
                   </span>
                 </button>
                 {openProfile === p.key && (
-                  <p className="mt-2 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
+                  <p className="mt-2 whitespace-pre-wrap rounded-xl bg-brand-50 p-3 text-sm text-ink-soft">
                     {p.summary}
                   </p>
                 )}
@@ -434,9 +434,9 @@ export default function Brain() {
             >
               <span className="flex items-center gap-2 font-semibold">
                 <Badge variant={SOURCE_VARIANT[type] || 'neutral'}>{SOURCE_VI[type] || type}</Badge>
-                <span className="text-sm font-normal text-slate-500">{items.length} mục</span>
+                <span className="text-sm font-normal text-ink-muted">{items.length} mục</span>
               </span>
-              <span className="text-xs text-slate-400">{isCollapsed ? '▼' : '▲'}</span>
+              <span className="text-xs text-ink-faint">{isCollapsed ? '▼' : '▲'}</span>
             </button>
 
             {!isCollapsed && (
@@ -449,8 +449,8 @@ export default function Brain() {
                           className="min-w-0 flex-1 text-left"
                           onClick={() => setOpenChunk(openChunk === c.id ? null : c.id)}
                         >
-                          <span className="block truncate text-sm text-slate-700">{oneLine(c)}</span>
-                          <span className="text-xs text-slate-400">
+                          <span className="block truncate text-sm text-ink-soft">{oneLine(c)}</span>
+                          <span className="text-xs text-ink-faint">
                             {c.customer ? `${c.customer} · ` : ''}
                             {fmtD(c.createdAt)}
                           </span>
@@ -465,7 +465,7 @@ export default function Brain() {
                         )}
                       </div>
                       {openChunk === c.id && (
-                        <p className="mt-1 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
+                        <p className="mt-1 whitespace-pre-wrap rounded-xl bg-brand-50 p-3 text-sm text-ink-soft">
                           {body(c.content)}
                         </p>
                       )}

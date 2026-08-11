@@ -93,7 +93,7 @@ export default function Profile() {
         </button>
       </div>
 
-      {msg && <div className="text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2">{msg}</div>}
+      {msg && <div className="text-sm text-ink-soft bg-brand-50 rounded-lg px-3 py-2">{msg}</div>}
     </div>
   );
 }
@@ -101,7 +101,7 @@ export default function Profile() {
 function Row({ k, v }: { k: string; v?: string | null }) {
   return (
     <div className="flex justify-between">
-      <dt className="text-slate-500">{k}</dt>
+      <dt className="text-ink-muted">{k}</dt>
       <dd className="font-medium">{v || '—'}</dd>
     </div>
   );

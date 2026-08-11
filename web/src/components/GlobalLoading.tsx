@@ -24,7 +24,7 @@ export default function GlobalLoading() {
         </div>
       )}
       {show && (
-        <div className="fixed bottom-5 left-1/2 z-[100] -translate-x-1/2 flex items-center gap-2 rounded-full bg-slate-900/85 px-4 py-2 text-sm text-white shadow-card">
+        <div className="fixed bottom-5 left-1/2 z-[100] -translate-x-1/2 flex items-center gap-2 rounded-full bg-ink/90 px-4 py-2 text-sm text-white shadow-card">
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
           Vui lòng chờ…
         </div>

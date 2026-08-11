@@ -115,21 +115,21 @@ export default function MemberWorkDetail({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 p-4"
       onClick={onClose}
     >
-      <div className="card my-8 w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="card hien-len my-8 w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-2">
           <div>
             <h2 className="font-semibold">{data?.member.fullName || fullName}</h2>
             {data && (
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
                 {data.member.teamId && <Badge variant="neutral">{data.member.teamId}</Badge>}
                 <span>
-                  Tháng {data.month}/{data.year}: <b className="text-slate-700">{data.score.monthPoints}đ</b>
+                  Tháng {data.month}/{data.year}: <b className="text-ink-soft">{data.score.monthPoints}đ</b>
                 </span>
                 {data.score.rank > 0 && <span>Hạng #{data.score.rank}</span>}
-                {data.score.bonus > 0 && <span className="text-emerald-600">Thưởng {vnd(data.score.bonus)}</span>}
+                {data.score.bonus > 0 && <span className="text-emerald-700">Thưởng {vnd(data.score.bonus)}</span>}
                 <span>· {totalTasks} việc</span>
               </div>
             )}
@@ -160,7 +160,7 @@ export default function MemberWorkDetail({
         {/* Bù điểm cho ngày nhân sự quên ghi việc — hoặc trừ lại nếu ghi dư. */}
         {canAdjust && adjustOpen && (
           <div className="mt-3 rounded-xl border border-brand-100 bg-brand-50/40 p-3">
-            <p className="mb-2 text-xs text-slate-500">
+            <p className="mb-2 text-xs text-ink-muted">
               Cộng thêm khi bạn ấy quên ghi việc, hoặc để số âm để trừ lại nếu ghi dư. Dòng bù hiện
               trong bảng dưới đây như một việc thường, ghi rõ lý do và tên người nhập.
             </p>
@@ -192,15 +192,15 @@ export default function MemberWorkDetail({
 
             {adjustments.length > 0 && (
               <div className="mt-3 space-y-1 border-t border-brand-100 pt-2">
-                <div className="text-xs font-medium text-slate-500">Đã bù trong tháng {ym.slice(5)}</div>
+                <div className="text-xs font-medium text-ink-muted">Đã bù trong tháng {ym.slice(5)}</div>
                 {adjustments.map((a) => (
                   <div key={a.id} className="flex flex-wrap items-baseline gap-2 text-xs">
-                    <span className="text-slate-500">{a.date}</span>
-                    <b className={a.points >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                    <span className="text-ink-muted">{a.date}</span>
+                    <b className={a.points >= 0 ? 'text-emerald-700' : 'text-rose-600'}>
                       {a.points > 0 ? '+' : ''}
                       {a.points}đ
                     </b>
-                    <span className="min-w-0 flex-1 truncate text-slate-600">{a.note}</span>
+                    <span className="min-w-0 flex-1 truncate text-ink-soft">{a.note}</span>
                     <button className="text-rose-600 underline" onClick={() => removeAdjust(a)}>
                       Gỡ
                     </button>

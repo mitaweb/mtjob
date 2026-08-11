@@ -146,13 +146,13 @@ export default function Inbox() {
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-lg font-bold">Thông báo</h1>
         {push === 'on' ? (
-          <span className="text-sm text-emerald-600" title="Thiết bị này đã nhận được thông báo đẩy">
+          <span className="text-sm text-emerald-700" title="Thiết bị này đã nhận được thông báo đẩy">
             🔔 Đã bật thông báo đẩy
           </span>
         ) : push === 'unsupported' ? (
-          <span className="text-sm text-slate-400">Trình duyệt không hỗ trợ thông báo đẩy</span>
+          <span className="text-sm text-ink-faint">Trình duyệt không hỗ trợ thông báo đẩy</span>
         ) : push === 'blocked' ? (
-          <span className="text-sm text-amber-600" title="Mở cài đặt trình duyệt để cho phép lại">
+          <span className="text-sm text-amber-700" title="Mở cài đặt trình duyệt để cho phép lại">
             🔕 Trình duyệt đang chặn thông báo
           </span>
         ) : (
@@ -176,12 +176,12 @@ export default function Inbox() {
       <PushDiag />
 
       {/* Tabs theo nhóm — duyệt đơn tách riêng cho khỏi lẫn với báo cáo và nhắc hẹn */}
-      <div className="flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1">
+      <div className="flex gap-1 overflow-x-auto rounded-xl bg-brand-100 p-1">
         {GROUPS.map((g) => (
           <button
             key={g.key}
             className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-              tab === g.key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              tab === g.key ? 'bg-white text-ink shadow-sm' : 'text-ink-muted hover:text-ink-soft'
             }`}
             onClick={() => setTab(g.key)}
           >
@@ -194,7 +194,7 @@ export default function Inbox() {
       </div>
 
       <div className="flex items-center justify-between gap-2 text-sm">
-        <span className="text-slate-500">{current.hint}</span>
+        <span className="text-ink-muted">{current.hint}</span>
         {unread[tab] > 0 && (
           <button className="whitespace-nowrap text-xs text-brand-600 underline" onClick={markGroupRead}>
             Đánh dấu đã đọc ({unread[tab]})
@@ -222,7 +222,7 @@ export default function Inbox() {
               {!n.readAt && <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-brand-500 align-middle" />}
               {n.title}
             </span>
-            <span className="whitespace-nowrap text-xs text-slate-400">{fmtWhen(n.createdAt)}</span>
+            <span className="whitespace-nowrap text-xs text-ink-faint">{fmtWhen(n.createdAt)}</span>
           </div>
           <div className="mt-1 whitespace-pre-wrap text-sm">{n.body}</div>
           <button
@@ -239,7 +239,7 @@ export default function Inbox() {
       ))}
 
       {!loading && shown.length > 0 && (
-        <p className="text-center text-xs text-slate-400">
+        <p className="text-center text-xs text-ink-faint">
           Hiển thị {shown.length} thông báo gần nhất của nhóm này.
         </p>
       )}

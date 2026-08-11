@@ -182,7 +182,7 @@ export default function CRM() {
       <div className="card flex items-center justify-between">
         <div>
           <h1 className="text-lg font-bold">Khách hàng (CRM)</h1>
-          <p className="text-sm text-slate-500">Thông tin khách · tình trạng · lịch hẹn & nhắc hẹn</p>
+          <p className="text-sm text-ink-muted">Thông tin khách · tình trạng · lịch hẹn & nhắc hẹn</p>
         </div>
         <button className="btn-primary" onClick={() => openCustomer(blankCustomer())}>
           ＋ Thêm khách
@@ -197,15 +197,15 @@ export default function CRM() {
             <li key={a.id} className="py-2 flex items-center justify-between text-sm">
               <div>
                 <span className="font-medium">{fmtDT(a.at)}</span> · {a.customerName}
-                {a.note ? <span className="text-slate-500"> — {a.note}</span> : null}
-                {a.ownerId ? <span className="text-xs text-slate-400"> ({memberName(a.ownerId)})</span> : null}
+                {a.note ? <span className="text-ink-muted"> — {a.note}</span> : null}
+                {a.ownerId ? <span className="text-xs text-ink-faint"> ({memberName(a.ownerId)})</span> : null}
               </div>
               <button className="btn-ghost text-xs px-2 py-1" onClick={() => toggleDone(a)}>
                 Xong
               </button>
             </li>
           ))}
-          {upcoming.length === 0 && <li className="py-2 text-sm text-slate-500">Không có lịch hẹn nào sắp tới.</li>}
+          {upcoming.length === 0 && <li className="py-2 text-sm text-ink-muted">Không có lịch hẹn nào sắp tới.</li>}
         </ul>
       </div>
 
@@ -230,17 +230,17 @@ export default function CRM() {
       )}
 
       {/* Tabs: tiềm năng / đã chốt / khác */}
-      <div className="flex w-fit gap-1 rounded-xl bg-slate-100 p-1">
+      <div className="flex w-fit gap-1 rounded-xl bg-brand-100 p-1">
         {TABS.map((t) => (
           <button
             key={t.key}
             className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-              tab === t.key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              tab === t.key ? 'bg-white text-ink shadow-sm' : 'text-ink-muted hover:text-ink-soft'
             }`}
             onClick={() => setTab(t.key)}
           >
             {t.label}
-            <span className={`ml-1.5 text-xs ${tab === t.key ? 'text-brand-600' : 'text-slate-400'}`}>
+            <span className={`ml-1.5 text-xs ${tab === t.key ? 'text-brand-600' : 'text-ink-faint'}`}>
               {counts[t.key]}
             </span>
           </button>
@@ -249,10 +249,10 @@ export default function CRM() {
 
       <div className="card">
         <h2 className="font-semibold">{TABS.find((t) => t.key === tab)?.label}</h2>
-        <p className="mb-2 text-sm text-slate-500">{TABS.find((t) => t.key === tab)?.hint}</p>
+        <p className="mb-2 text-sm text-ink-muted">{TABS.find((t) => t.key === tab)?.hint}</p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="text-left text-slate-500">
+            <thead className="text-left text-ink-muted">
               <tr>
                 <th className="py-1">Tên</th>
                 <th>SĐT</th>
@@ -274,7 +274,7 @@ export default function CRM() {
                       <Badge variant={statusVariant(c.status)}>{c.status}</Badge>
                     </td>
                     <td>{memberName(c.assignedTo) || '—'}</td>
-                    <td className="max-w-[16rem] truncate text-slate-500">
+                    <td className="max-w-[16rem] truncate text-ink-muted">
                       {tab === 'closed'
                         ? days === null
                           ? 'chưa ghi ngày chốt'
@@ -291,7 +291,7 @@ export default function CRM() {
               })}
               {shown.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-2 text-slate-500">
+                  <td colSpan={6} className="py-2 text-ink-muted">
                     {tab === 'lead'
                       ? 'Chưa có khách tiềm năng nào.'
                       : tab === 'closed'
@@ -307,7 +307,7 @@ export default function CRM() {
 
       {/* Modal chi tiết khách */}
       {edit && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setEdit(null)}>
+        <div className="fixed inset-0 z-50 bg-ink/40 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setEdit(null)}>
           <div className="card w-full max-w-2xl my-8" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-semibold">{edit.id ? 'Chi tiết khách hàng' : 'Khách hàng mới'}</h2>
@@ -354,7 +354,7 @@ export default function CRM() {
                   value={edit.dob || ''}
                   onChange={(e) => setEdit({ ...edit, dob: e.target.value })}
                 />
-                <p className="mt-1 text-xs text-slate-500">Để nhắc chuẩn bị quà/lời chúc trong tháng sinh nhật.</p>
+                <p className="mt-1 text-xs text-ink-muted">Để nhắc chuẩn bị quà/lời chúc trong tháng sinh nhật.</p>
               </div>
               <div>
                 <label className="label">🤝 Ngày chốt hợp đồng</label>
@@ -364,7 +364,7 @@ export default function CRM() {
                   value={edit.closedAt || ''}
                   onChange={(e) => setEdit({ ...edit, closedAt: e.target.value })}
                 />
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-ink-muted">
                   Bỏ trống — hệ thống tự ghi khi anh chuyển sang “Đã chốt”.
                 </p>
               </div>
@@ -390,12 +390,12 @@ export default function CRM() {
 
             {/* Lịch hẹn */}
             {edit.id && (
-              <div className="mt-4 border-t border-slate-100 pt-3">
+              <div className="mt-4 border-t border-brand-100 pt-3">
                 <h3 className="font-semibold text-sm mb-2">Lịch hẹn</h3>
                 <ul className="divide-y mb-2">
                   {appts.map((a) => (
                     <li key={a.id} className="py-1.5 flex items-center justify-between text-sm">
-                      <span className={a.done ? 'line-through text-slate-400' : ''}>
+                      <span className={a.done ? 'line-through text-ink-faint' : ''}>
                         {fmtDT(a.at)}
                         {a.note ? ` — ${a.note}` : ''}
                       </span>
@@ -404,10 +404,10 @@ export default function CRM() {
                       </button>
                     </li>
                   ))}
-                  {appts.length === 0 && <li className="py-1.5 text-sm text-slate-500">Chưa có lịch hẹn.</li>}
+                  {appts.length === 0 && <li className="py-1.5 text-sm text-ink-muted">Chưa có lịch hẹn.</li>}
                 </ul>
-                <div className="grid sm:grid-cols-4 gap-2 items-end bg-slate-50 rounded-xl p-3">
-                  <label className="text-xs text-slate-500 sm:col-span-2">
+                <div className="grid sm:grid-cols-4 gap-2 items-end bg-brand-50 rounded-xl p-3">
+                  <label className="text-xs text-ink-muted sm:col-span-2">
                     Thời gian hẹn
                     <input type="datetime-local" className="input py-1" value={apForm.at} onChange={(e) => setApForm({ ...apForm, at: e.target.value })} />
                   </label>

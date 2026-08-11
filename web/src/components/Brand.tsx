@@ -7,8 +7,8 @@ interface BrandProps {
 }
 
 export default function Brand({ variant = 'dark', compact = false, className = '' }: BrandProps) {
-  const main = variant === 'light' ? 'text-white' : 'text-slate-900';
-  const sub = variant === 'light' ? 'text-white/80' : 'text-slate-600';
+  const main = variant === 'light' ? 'text-white' : 'text-ink';
+  const sub = variant === 'light' ? 'text-white/80' : 'text-ink-soft';
   return (
     <div className={`select-none leading-none text-center ${className}`}>
       <div

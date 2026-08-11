@@ -62,7 +62,7 @@ const blankNew = () => ({ ...editableOf({ role: 'member' } as AdminMember), pass
 const same = (a: Editable, b: Editable) => (Object.keys(a) as Array<keyof Editable>).every((k) => a[k] === b[k]);
 
 /** Ô nhập trong bảng — viền mảnh để bảng vẫn đọc được như bảng, không thành rừng ô. */
-const CELL = 'w-full rounded-md border border-transparent bg-transparent px-1.5 py-1 text-sm hover:border-slate-200 focus:border-brand-400 focus:bg-white focus:outline-none';
+const CELL = 'w-full rounded-md border border-transparent bg-transparent px-1.5 py-1 text-sm hover:border-brand-100 focus:border-brand-400 focus:bg-white focus:outline-none';
 
 export default function MemberTable() {
   const { user } = useAuth();
@@ -173,7 +173,7 @@ export default function MemberTable() {
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="font-semibold">Nhân sự ({working.length})</h2>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-ink-muted">
             Sửa thẳng trong ô rồi bấm Lưu ở cuối dòng. Mức lương đổi ở đây là bảng lương tính lại ngay.
           </p>
         </div>
@@ -191,7 +191,7 @@ export default function MemberTable() {
         // cắt mất họ tên và chức vụ (anh Tâm 3/8/2026).
         <div className="overflow-x-auto">
           <table className="w-full min-w-[92rem] text-sm">
-            <thead className="text-left text-xs text-slate-500">
+            <thead className="text-left text-xs text-ink-muted">
               <tr className="whitespace-nowrap">
                 <th className="w-48 py-1 pr-2">Họ tên</th>
                 <th className="w-32 pr-2">Tài khoản</th>
@@ -273,7 +273,7 @@ export default function MemberTable() {
                             Lưu
                           </AsyncButton>
                           <button
-                            className="rounded-lg px-2 py-1 text-xs text-slate-400 hover:bg-slate-100"
+                            className="rounded-lg px-2 py-1 text-xs text-ink-faint hover:bg-brand-100"
                             onClick={() => setDraft((x) => ({ ...x, [m.id]: editableOf(m) }))}
                           >
                             Bỏ
@@ -282,14 +282,14 @@ export default function MemberTable() {
                       ) : (
                         <div className="flex items-center justify-end gap-1">
                           <button
-                            className="rounded-lg px-2 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                            className="rounded-lg px-2 py-1 text-xs text-ink-faint hover:bg-brand-100 hover:text-ink-soft"
                             title="Cho nghỉ việc (ẩn đi, giữ nguyên dữ liệu)"
                             onClick={() => setActive(m, false)}
                           >
                             Cho nghỉ
                           </button>
                           <button
-                            className="rounded-lg px-2 py-1 text-xs text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                            className="rounded-lg px-2 py-1 text-xs text-ink-faint hover:bg-rose-50 hover:text-rose-600"
                             title="Xoá hẳn khỏi hệ thống"
                             aria-label={`Xoá hẳn ${m.fullName}`}
                             onClick={() => openKill(m)}
@@ -307,7 +307,7 @@ export default function MemberTable() {
         </div>
       )}
 
-      <p className="mt-2 text-xs text-slate-400">
+      <p className="mt-2 text-xs text-ink-faint">
         Đổi ô <b>Tài khoản</b> là người đó phải đăng nhập bằng tên mới. Đặt vai trò <b>Leader</b> kèm phòng thì
         người đó thành leader của phòng đó luôn.
       </p>
@@ -315,11 +315,11 @@ export default function MemberTable() {
       {/* Đặt mật khẩu — tách khỏi bảng vì hoạ hoằn mới dùng, để trong bảng thì thừa một cột. */}
       {!loading && working.length > 0 && (
         <details className="mt-3">
-          <summary className="cursor-pointer text-sm text-slate-500">🔑 Đặt lại mật khẩu</summary>
+          <summary className="cursor-pointer text-sm text-ink-muted">🔑 Đặt lại mật khẩu</summary>
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
             {working.map((m) => (
               <div key={m.id} className="flex items-center gap-2">
-                <span className="w-40 shrink-0 truncate text-sm text-slate-600">{m.fullName}</span>
+                <span className="w-40 shrink-0 truncate text-sm text-ink-soft">{m.fullName}</span>
                 <input
                   className="input py-1 text-xs"
                   type="password"
@@ -337,13 +337,13 @@ export default function MemberTable() {
       )}
 
       {retired.length > 0 && (
-        <div className="mt-4 border-t border-slate-100 pt-3">
-          <h3 className="mb-2 text-sm font-semibold text-slate-600">Đã nghỉ ({retired.length})</h3>
+        <div className="mt-4 border-t border-brand-100 pt-3">
+          <h3 className="mb-2 text-sm font-semibold text-ink-soft">Đã nghỉ ({retired.length})</h3>
           <div className="space-y-1">
             {retired.map((m) => (
               <div key={m.id} className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-slate-500">{m.fullName}</span>
-                <span className="text-xs text-slate-400">{m.position || m.teamId}</span>
+                <span className="text-ink-muted">{m.fullName}</span>
+                <span className="text-xs text-ink-faint">{m.position || m.teamId}</span>
                 <button className="text-xs text-brand-600 underline" onClick={() => setActive(m, true)}>
                   Nhận lại
                 </button>
@@ -390,8 +390,8 @@ function AddMemberDialog({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4" onClick={onClose}>
-      <div className="card my-8 w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-ink/40 p-4" onClick={onClose}>
+      <div className="card hien-len my-8 w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
         <h2 className="mb-3 font-semibold">Thêm nhân sự</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
@@ -473,7 +473,7 @@ function AddMemberDialog({
             <input className="input" type="date" value={value.dob} onChange={(e) => onChange({ ...value, dob: e.target.value })} />
           </div>
         </div>
-        <p className="mt-2 text-xs text-slate-400">
+        <p className="mt-2 text-xs text-ink-faint">
           Bỏ trống tài khoản thì máy tự đặt từ họ tên — “Lương Thị Thu Hà” thành <b>luongha</b>. Chưa đặt mật khẩu
           thì người đó chưa đăng nhập được, đặt sau ở mục 🔑 cũng được.
         </p>
@@ -507,30 +507,30 @@ function KillDialog({
   const ok = typed.trim().toLowerCase() === m.fullName.trim().toLowerCase();
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4" onClick={onClose}>
-      <div className="card my-8 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-ink/40 p-4" onClick={onClose}>
+      <div className="card hien-len my-8 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
         <h2 className="mb-2 font-semibold text-rose-700">Xoá hẳn {m.fullName}?</h2>
 
         {isSelf ? (
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-ink-soft">
             Đây là tài khoản bạn đang đăng nhập — không tự xoá được.
           </p>
         ) : (
           <>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-ink-soft">
               Xoá hẳn khỏi hệ thống, <b>không khôi phục được</b>. Nếu chỉ là nghỉ việc thì bấm “Cho nghỉ” sẽ
               giữ lại được mọi thứ.
             </p>
 
-            <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm">
-              <div className="font-medium text-slate-700">Sẽ giữ lại (vẫn còn tên trong báo cáo cũ):</div>
-              <ul className="mt-1 list-disc pl-5 text-slate-600">
+            <div className="mt-3 rounded-xl bg-brand-50 p-3 text-sm">
+              <div className="font-medium text-ink-soft">Sẽ giữ lại (vẫn còn tên trong báo cáo cũ):</div>
+              <ul className="mt-1 list-disc pl-5 text-ink-soft">
                 <li>{foot ? `${foot.tasks} việc đã làm` : 'việc đã làm'}</li>
                 <li>{foot ? `${foot.attendanceDays} ngày chấm công` : 'lịch sử chấm công'}</li>
                 <li>{foot ? `${foot.payrollMonths} tháng bảng lương` : 'bảng lương các tháng cũ'}</li>
               </ul>
-              <div className="mt-2 font-medium text-slate-700">Sẽ mất:</div>
-              <ul className="mt-1 list-disc pl-5 text-slate-600">
+              <div className="mt-2 font-medium text-ink-soft">Sẽ mất:</div>
+              <ul className="mt-1 list-disc pl-5 text-ink-soft">
                 <li>tài khoản đăng nhập</li>
                 <li>thông báo và nhắc hẹn cá nhân</li>
               </ul>

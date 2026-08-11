@@ -54,17 +54,17 @@ export default function PushDiag() {
 
   if (!open) {
     return (
-      <button className="text-xs text-slate-400 underline hover:text-slate-600" onClick={() => setOpen(true)}>
+      <button className="text-xs text-ink-faint underline hover:text-ink-soft" onClick={() => setOpen(true)}>
         Không nhận được thông báo? Kiểm tra tại đây
       </button>
     );
   }
 
   return (
-    <div className="card space-y-2 border border-slate-200">
+    <div className="card space-y-2 border border-brand-100">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">Kiểm tra thông báo đẩy</h2>
-        <button className="text-xs text-slate-400 underline" onClick={() => setOpen(false)}>
+        <button className="text-xs text-ink-faint underline" onClick={() => setOpen(false)}>
           đóng
         </button>
       </div>
@@ -80,19 +80,19 @@ export default function PushDiag() {
           <div>
             {diag.deviceCount > 0 ? '✅' : '❌'} Thiết bị đã đăng ký: <b>{diag.deviceCount}</b>
             {diag.deviceCount === 0 && (
-              <span className="text-slate-500"> — bấm “🔔 Bật đẩy” ở trên trước đã</span>
+              <span className="text-ink-muted"> — bấm “🔔 Bật đẩy” ở trên trước đã</span>
             )}
           </div>
           {diag.devices.map((d) => (
-            <div key={d.tail} className="pl-5 text-xs text-slate-500">
+            <div key={d.tail} className="pl-5 text-xs text-ink-muted">
               · {d.host} …{d.tail}
               {d.tail === myTail && (
                 <span className="ml-1 rounded bg-brand-100 px-1.5 py-0.5 font-medium text-brand-700">máy này</span>
               )}
-              {d.ua && <span className="text-slate-400"> ({d.ua})</span>}
+              {d.ua && <span className="text-ink-faint"> ({d.ua})</span>}
             </div>
           ))}
-          <div className="pt-1 text-xs text-slate-400">
+          <div className="pt-1 text-xs text-ink-faint">
             Địa chỉ liên hệ gửi kèm: {diag.subject}
             {sw && <> · Bộ nhận thông báo: {sw}</>}
           </div>
@@ -104,7 +104,7 @@ export default function PushDiag() {
           <AsyncButton className="btn-primary px-3 py-1 text-sm" busyLabel="Đang gửi…" onClick={guiThu}>
             1. Gửi thử qua máy chủ
           </AsyncButton>
-          <span className="text-xs text-slate-500">Đi đúng đường như mọi thông báo khác.</span>
+          <span className="text-xs text-ink-muted">Đi đúng đường như mọi thông báo khác.</span>
         </div>
         {/* Phép thử tách bạch: hiện thẳng tại máy, không qua mạng. So hai kết quả là biết
             hỏng ở đường đẩy hay ở quyền/cài đặt của chính máy này. */}
@@ -116,13 +116,13 @@ export default function PushDiag() {
           >
             2. Hiện thử ngay tại máy
           </AsyncButton>
-          <span className="text-xs text-slate-500">Không qua máy chủ — để biết máy có chịu hiện không.</span>
+          <span className="text-xs text-ink-muted">Không qua máy chủ — để biết máy có chịu hiện không.</span>
         </div>
-        {local && <div className="text-sm text-slate-700">{local}</div>}
+        {local && <div className="text-sm text-ink-soft">{local}</div>}
       </div>
 
       {res && (
-        <div className="rounded-xl bg-slate-50 p-2 text-sm">
+        <div className="rounded-xl bg-brand-50 p-2 text-sm">
           <div className={res.ok ? 'text-emerald-700' : 'text-rose-700'}>
             {res.ok ? '✅' : '❌'} {res.message}
           </div>
@@ -130,7 +130,7 @@ export default function PushDiag() {
             <div key={r.tail} className="mt-1 text-xs">
               …{r.tail}
               {r.tail === myTail && <span className="text-brand-700"> (máy này)</span>}:{' '}
-              {r.ok ? <span className="text-emerald-600">gửi được</span> : (
+              {r.ok ? <span className="text-emerald-700">gửi được</span> : (
                 <span className="text-rose-600">
                   lỗi {r.status || '—'} · {r.error}
                 </span>
@@ -138,9 +138,9 @@ export default function PushDiag() {
             </div>
           ))}
           {res.ok && (
-            <div className="mt-1.5 space-y-1.5 text-xs text-slate-500">
+            <div className="mt-1.5 space-y-1.5 text-xs text-ink-muted">
               <p>
-                <b className="text-slate-700">Cả hai nút báo được mà màn hình vẫn im?</b> Nghĩa là máy chủ và
+                <b className="text-ink-soft">Cả hai nút báo được mà màn hình vẫn im?</b> Nghĩa là máy chủ và
                 đường truyền đều tốt — Windows đang chặn khâu HIỆN. Làm theo thứ tự:
               </p>
               <p>
