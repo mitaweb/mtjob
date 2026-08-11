@@ -50,7 +50,15 @@ export default function DailyKpiEntry({
 }) {
   const toast = useToast();
   const [draft, setDraft] = useState<Record<string, string>>({});
+  const [moBang, setMoBang] = useState(false);
   const homNay = today.dates[today.dates.length - 1] ?? '';
+
+  // Đếm để dòng tóm tắt lúc đóng nói được việc còn lại là bao nhiêu.
+  const soONhap = today.rows.length * today.dates.length;
+  const soDaNhap = today.rows.reduce(
+    (s, r) => s + today.dates.filter((d) => (r.values?.[d] ?? null) !== null).length,
+    0,
+  );
 
   // Gom chỉ số theo dự án. Sắp xếp theo TÊN (không theo thứ tự máy chủ trả) để mỗi lần
   // tải lại các khối vẫn nằm nguyên chỗ cũ — đang nhập mà thứ tự nhảy là dễ nhầm nhất.
@@ -131,18 +139,52 @@ export default function DailyKpiEntry({
   // mép phải — mắt lại phải dò ngang một quãng trống, đúng cái bệnh đang chữa.
   const cols = `max-content repeat(${today.dates.length}, ${O_NHAP_REM}rem)`;
 
+  // Không có gì để nhập thì đừng chiếm chỗ đầu trang — về một dòng chữ nhạt.
+  if (!today.teamId) {
+    return (
+      <div className="card text-sm text-slate-500">
+        Bạn không thuộc phòng ban nào nên không có chỉ số để nhập. Vẫn xem được tiến độ các dự án bên dưới.
+      </div>
+    );
+  }
+  if (today.rows.length === 0) {
+    return (
+      <div className="card text-sm text-slate-500">
+        Phòng bạn chưa có chỉ số nào trong các dự án đang chạy.
+      </div>
+    );
+  }
+
+  // Bảng nhập ĐÓNG sẵn (anh Tâm 4/8/2026: "bấm nút nhập chỉ số mới hiện ra bảng nhập, để
+  // mọi người xem bảng KPI trước"). Nhập là việc vài phút mỗi ngày; xem tiến độ mới là thứ
+  // người ta mở trang ra để nhìn, nên đừng bắt cuộn qua một bảng nhập dài mới thấy.
+  if (!moBang) {
+    return (
+      <div className="card flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="font-semibold">Chỉ số cần nhập — phòng {today.teamId}</h2>
+          <p className="text-xs text-slate-500">
+            {soONhap} ô cần điền cho {blocks.length} dự án.
+            {soDaNhap > 0 && ` Đã nhập ${soDaNhap} ô.`}
+          </p>
+        </div>
+        <button className="btn-primary text-sm" onClick={() => setMoBang(true)}>
+          Nhập chỉ số
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="card">
-      <h2 className="mb-1 font-semibold">Chỉ số cần nhập {today.teamId && `— phòng ${today.teamId}`}</h2>
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-semibold">Chỉ số cần nhập — phòng {today.teamId}</h2>
+        <button className="btn-ghost px-3 py-1 text-sm" onClick={() => setMoBang(false)}>
+          Thu gọn
+        </button>
+      </div>
 
-      {!today.teamId ? (
-        <p className="text-sm text-slate-500">
-          Bạn không thuộc phòng ban nào nên không có chỉ số để nhập. Vẫn xem được tiến độ các dự án bên dưới.
-        </p>
-      ) : today.rows.length === 0 ? (
-        <p className="text-sm text-slate-500">Phòng bạn chưa có chỉ số nào trong các dự án đang chạy.</p>
-      ) : (
-        <>
+      <>
           <p className="mb-3 text-xs text-slate-500">
             {today.dates.length > 2
               ? 'Cuối tuần không ai đi làm nên số thứ Sáu, thứ Bảy và Chủ nhật nhập bù được tới hết hôm nay.'
@@ -238,8 +280,7 @@ export default function DailyKpiEntry({
               );
             })}
           </div>
-        </>
-      )}
+      </>
     </div>
   );
 }

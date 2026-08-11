@@ -60,18 +60,6 @@ const STATUS: Record<string, { label: string; variant: BadgeVariant }> = {
   done: { label: 'Đã xong', variant: 'neutral' },
 };
 
-/** Tiến độ của một KỲ trên thẻ dự án: 'KPI tuần · Tuần 1 (31/7–6/8) — 122%'. */
-interface NhomKy {
-  /** Kỳ ('week', 'month'…) hoặc 'cumulative' cho nhóm chỉ số luỹ kế. */
-  period: string;
-  ten: string;
-  kyLabel: string;
-  percent: number;
-  measured: number;
-  noTarget: number;
-  kpiCount: number;
-}
-
 /** Một chỉ số kèm số đã đạt, đủ để hiện một dòng trên thẻ dự án. */
 interface KpiTomTat {
   id: string;
@@ -105,8 +93,6 @@ interface ProjectRow {
   teams?: string[];
   /** Từng chỉ số kèm số đã đạt — hiện thẳng trên thẻ, khỏi phải mở dự án ra xem. */
   kpis?: KpiTomTat[];
-  /** Tiến độ tách theo kỳ: mỗi kỳ một thanh, luôn là kỳ đang chạy. */
-  kpiGroups?: NhomKy[];
   /** % thời gian đã trôi; null khi chưa khai ngày bắt đầu/kết thúc. */
   timePercent?: number | null;
   alert?: 'none' | 'warn' | 'danger';
@@ -211,55 +197,6 @@ function Bar100({ percent, thin }: { percent: number; thin?: boolean }) {
 }
 
 /**
- * Tiến độ tách theo KỲ — mỗi kỳ một thanh (anh Tâm 4/8/2026).
- *
- * Gộp chỉ số tuần với chỉ số tháng vào một thanh là con số không đọc được: chỉ số tuần vừa
- * reset về 0 sáng thứ Hai, chỉ số tháng thì đang chạy dở. Mỗi thanh đo ĐÚNG kỳ đang chạy
- * nên qua tuần là tự sang thanh tuần mới, không phải xoá thanh cũ bằng tay.
- */
-function TienDoTheoKy({ groups, percent }: { groups?: NhomKy[]; percent: number }) {
-  // Máy chủ bản cũ chưa trả kpiGroups → vẫn hiện một thanh như trước, không vỡ màn hình.
-  if (!groups || groups.length === 0) {
-    return (
-      <div className="mt-2 flex items-center gap-2">
-        <Bar100 percent={percent} />
-        <span className="w-12 shrink-0 text-right text-sm font-medium text-slate-700">{percent}%</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-2 space-y-1.5">
-      {groups.map((g) => (
-        <div key={g.period}>
-          <div className="flex items-baseline justify-between gap-2 text-xs">
-            <span className="min-w-0 truncate">
-              <span className="font-medium text-slate-600">{g.ten}</span>
-              {g.period === 'total' ? (
-                // Kỳ 'Cả dự án' đã bỏ khỏi lựa chọn; còn thấy dòng này là chỉ số cũ chưa đổi.
-                <span className="text-amber-600"> · kiểu cũ, nên đổi sang tuần/tháng</span>
-              ) : (
-                <span className="text-slate-400"> · {g.kyLabel}</span>
-              )}
-            </span>
-            {g.measured > 0 && (
-              <span className="shrink-0 text-sm font-medium text-slate-700">{g.percent}%</span>
-            )}
-          </div>
-          {g.measured > 0 ? (
-            <div className="mt-0.5">
-              <Bar100 percent={g.percent} />
-            </div>
-          ) : (
-            <div className="text-xs text-amber-600">chưa đặt mục tiêu</div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/**
  * Chi tiết từng chỉ số ngay trên thẻ dự án, gom theo phòng.
  *
  * Anh Tâm 4/8/2026: "hiển thị đầy đủ các chỉ số của các team để theo dõi không cần bấm
@@ -282,10 +219,13 @@ function ChiSoTheoTeam({ kpis }: { kpis: KpiTomTat[] }) {
         <div key={team}>
           <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{team}</div>
           {ks.map((k) => (
-            <div key={k.id} className="mt-1">
+            <div key={k.id} className="mt-1.5">
               <div className="flex items-baseline justify-between gap-2 text-xs">
                 <span className="min-w-0 truncate text-slate-600" title={k.name}>
                   {k.name}
+                  {/* Kỳ đi kèm TỪNG chỉ số — anh Tâm 4/8/2026: "chỉ cần KPI của từng phòng
+                      ban theo thời kỳ". Bỏ thanh gộp rồi thì đây là chỗ duy nhất nói kỳ. */}
+                  <span className="text-slate-400"> · {k.periodLabel}</span>
                 </span>
                 {k.target > 0 ? (
                   <span className="shrink-0 tabular-nums text-slate-500">
@@ -556,11 +496,11 @@ export default function Projects() {
                   </Badge>
                 </div>
                 {/* Chưa chỉ số nào có mục tiêu thì 0% là vô nghĩa — nói thẳng ra thay vì
-                    để anh tưởng nhập số mà tiến độ không nhúc nhích. */}
-                {p.measured === 0 && p.kpiCount > 0 ? (
+                    để anh tưởng nhập số mà tiến độ không nhúc nhích.
+                    KHÔNG còn thanh tổng gộp theo kỳ: anh Tâm 4/8/2026 chốt bỏ, chỉ xem
+                    chỉ số của từng phòng ban. */}
+                {p.measured === 0 && p.kpiCount > 0 && (
                   <div className="mt-2 text-xs text-amber-600">Chưa đặt mục tiêu nên chưa đo được tiến độ</div>
-                ) : (
-                  <TienDoTheoKy groups={p.kpiGroups} percent={p.percent} />
                 )}
                 {/* Thời gian đã trôi — đặt cạnh tiến độ KPI để so được bằng mắt. */}
                 {typeof p.timePercent === 'number' && (
