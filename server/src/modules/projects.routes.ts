@@ -258,6 +258,14 @@ projectsRouter.get(
           ...k,
           progress: progressOf(own, k, today, project.startDate),
           series: seriesFor(own, k.period, 8, today, project.startDate, k.inputMode),
+          // Chỉ số có mốc riêng thì đo theo mốc riêng; không có thì theo thời gian cả dự án.
+          timePercent: timeProgress(
+            k.startDate || project.startDate,
+            k.endDate || project.endDate,
+            today,
+          ),
+          /** Mốc riêng có được khai không — màn hình cần biết để nói "riêng chỉ số này". */
+          ownDates: !!(k.startDate && k.endDate),
           // Nhân viên phòng khác chỉ xem; giám đốc nhập bù được mọi ngày.
           canWrite: canWriteAnyTeam(req.user!.role) || k.teamId === teamId,
         };
@@ -324,6 +332,10 @@ const kpiSchema = z.object({
   // daily = so cua ngay do (cong lai trong ky); cumulative = so tong den ngay do (lay so
   // moi nhat). Thieu thi giu nguyen kieu cu de moi chi so da co khong bi doi cach tinh.
   inputMode: z.enum(['daily', 'cumulative']).optional(),
+  // Khung thời gian riêng của chỉ số — SEO hay có kiểu "120 từ khoá trong 6–8 tháng".
+  // Để trống thì chỉ số chạy theo thời gian của cả dự án như trước.
+  startDate: z.string().optional().default(''),
+  endDate: z.string().optional().default(''),
   target: z.number().int().min(0).optional().default(0),
   active: z.boolean().optional().default(true),
   sortOrder: z.number().int().optional().default(0),
@@ -347,6 +359,8 @@ projectsRouter.post(
       period: b.period as KpiPeriod,
       // Thiếu thì giữ nguyên kiểu cũ của chỉ số — đừng lặng lẽ đổi cách tính của số đã nhập.
       inputMode: b.inputMode || existing?.inputMode || 'daily',
+      startDate: b.startDate,
+      endDate: b.endDate,
       target: b.target,
       active: b.active,
       sortOrder: b.sortOrder,

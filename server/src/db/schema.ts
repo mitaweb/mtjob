@@ -316,9 +316,25 @@ CREATE TABLE IF NOT EXISTS project_kpis (
   sort_order integer DEFAULT 0,
   created_at text DEFAULT ''
 );
--- Cach nhap so (anh Tam 4/8/2026): daily = so cua NGAY do (cong lai trong ky),
--- cumulative = so TONG den ngay do (lay so moi nhat, khong cong).
+-- Cách nhập số (anh Tâm 4/8/2026): daily = số của NGÀY đó (cộng lại trong kỳ),
+-- cumulative = số TỔNG đến ngày đó (lấy số mới nhất, không cộng).
 ALTER TABLE project_kpis ADD COLUMN IF NOT EXISTS input_mode text DEFAULT 'daily';
+
+-- Bỏ hẳn kỳ 'total' (anh Tâm 4/8/2026: "xoá cho anh KPI cả dự án hết nhé, này k cần").
+-- Chuyển sang tính theo THÁNG, KHÔNG xoá chỉ số và không đụng số đã nhập.
+--
+-- Kèm theo phải đổi luôn cách nhập sang 'cumulative': mục tiêu kiểu "cả dự án" vốn là một
+-- con số TỔNG (120 keyword lên top 10 của cả dự án). Để nguyên 'daily' thì từ giờ mỗi lần
+-- nhập lại cộng thêm — đúng cái lỗi 250/120 vừa chữa. Chỉ đổi những chỉ số chưa ai đặt cách
+-- nhập, không đè lên lựa chọn người dùng đã chọn tay.
+UPDATE project_kpis SET input_mode = 'cumulative'
+ WHERE period = 'total' AND COALESCE(input_mode, 'daily') = 'daily';
+UPDATE project_kpis SET period = 'month' WHERE period = 'total';
+
+-- Khung thời gian RIÊNG của chỉ số (anh Tâm 4/8/2026: "SEO hay có KPI kiểu 120 từ trong
+-- 6 đến 8 tháng"). Để trống thì chỉ số chạy theo thời gian của cả dự án như trước.
+ALTER TABLE project_kpis ADD COLUMN IF NOT EXISTS start_date text DEFAULT '';
+ALTER TABLE project_kpis ADD COLUMN IF NOT EXISTS end_date text DEFAULT '';
 CREATE INDEX IF NOT EXISTS project_kpis_project_idx ON project_kpis (project_id);
 CREATE INDEX IF NOT EXISTS project_kpis_team_idx ON project_kpis (team_id, active);
 

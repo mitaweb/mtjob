@@ -131,6 +131,12 @@ interface Kpi {
   unit: string;
   period: Period;
   inputMode: CachNhap;
+  /** Khung thời gian riêng của chỉ số; rỗng = chạy theo thời gian cả dự án. */
+  startDate?: string;
+  endDate?: string;
+  /** Chỉ số có khai mốc riêng hay đang mượn mốc của dự án. */
+  ownDates?: boolean;
+  timePercent?: number | null;
   target: number;
   active: boolean;
   /** `periodLabel` là kỳ đang đo viết cho người đọc: 'Tuần 1 (31/7–6/8)'. */
@@ -156,6 +162,9 @@ const blankKpi = (teamId: string) => ({
   unit: '',
   period: 'month' as Period,
   inputMode: 'daily' as CachNhap,
+  // Khung thời gian riêng của chỉ số; rỗng = chạy theo thời gian cả dự án.
+  startDate: '',
+  endDate: '',
   target: 0,
   active: true,
 });
@@ -166,7 +175,7 @@ type KpiDraft = ReturnType<typeof blankKpi>;
  * Chỉ số hay dùng của từng phòng — bấm một cái là điền sẵn tên/đơn vị/kỳ, leader chỉ
  * còn phải gõ con số mục tiêu. Vẫn tự gõ tên khác được.
  */
-const KPI_PRESETS: Array<Omit<KpiDraft, 'id' | 'active'>> = [
+const KPI_PRESETS: Array<Omit<KpiDraft, 'id' | 'active' | 'startDate' | 'endDate'>> = [
   { teamId: 'Ads', name: 'Tin nhắn khách inbox', unit: 'tin', period: 'week', inputMode: 'daily', target: 0 },
   { teamId: 'Ads', name: 'Khách mới', unit: 'khách', period: 'month', inputMode: 'daily', target: 0 },
   { teamId: 'Ads', name: 'Lượt tiếp cận', unit: 'lượt', period: 'week', inputMode: 'daily', target: 0 },
@@ -176,6 +185,12 @@ const KPI_PRESETS: Array<Omit<KpiDraft, 'id' | 'active'>> = [
   { teamId: 'SEO', name: 'Từ khoá lên top 10', unit: 'từ khoá', period: 'month', inputMode: 'cumulative', target: 0 },
   { teamId: 'SEO', name: 'Bài chuẩn SEO', unit: 'bài', period: 'month', inputMode: 'daily', target: 0 },
 ];
+
+/** '2026-08-04' → '4/8/2026'. Rỗng thì trả rỗng, không hiện 'Invalid Date'. */
+const fmtNgay = (iso?: string) => {
+  const p = (iso || '').split('-');
+  return p.length === 3 ? `${Number(p[2])}/${Number(p[1])}/${p[0]}` : '';
+};
 
 /** Ba mức màu dùng chung cho thanh tiến độ và con số phần trăm — đọc phải khớp nhau. */
 const mucMau = (percent: number) => (percent >= 100 ? 'emerald' : percent >= 60 ? 'brand' : 'amber');
@@ -659,6 +674,22 @@ export default function Projects() {
                             {k.progress.percent}%
                           </span>
                         </div>
+                        {/* Chỉ số có hạn riêng thì so tiến độ với hạn CỦA NÓ, không phải của
+                            cả dự án — "120 từ khoá trong 8 tháng" dài hơn hẳn dự án mẹ. */}
+                        {k.ownDates && typeof k.timePercent === 'number' && (
+                          <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
+                            <span className="shrink-0">
+                              Hạn riêng {fmtNgay(k.startDate)} → {fmtNgay(k.endDate)}
+                            </span>
+                            <div className="h-1 w-full overflow-hidden rounded-full bg-slate-100">
+                              <div
+                                className="h-full rounded-full bg-slate-300"
+                                style={{ width: `${Math.min(100, k.timePercent)}%` }}
+                              />
+                            </div>
+                            <span className="w-10 shrink-0 text-right">{k.timePercent}%</span>
+                          </div>
+                        )}
                         <div className="mt-2 flex flex-wrap gap-2 text-xs">
                           <button className="text-brand-600 underline" onClick={() => setChartKpi(chartKpi?.id === k.id ? null : k)}>
                             {chartKpi?.id === k.id ? 'Ẩn biểu đồ' : 'Xem biểu đồ'}
@@ -754,7 +785,9 @@ export default function Projects() {
                       key={`${p.teamId}-${p.name}`}
                       type="button"
                       className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
-                      onClick={() => setKpiRows((rows) => [...rows, { ...p, id: '', active: true }])}
+                      onClick={() =>
+                        setKpiRows((rows) => [...rows, { ...p, id: '', active: true, startDate: '', endDate: '' }])
+                      }
                     >
                       + {p.teamId}: {p.name}
                     </button>
@@ -900,6 +933,30 @@ export default function Projects() {
                 </select>
                 <p className="mt-1 text-xs text-slate-500">
                   {CACH_NHAP.find((c) => c.value === kpiEdit.inputMode)?.giaiThich}
+                </p>
+
+                {/* Khung thời gian riêng — SEO hay có kiểu "120 từ khoá trong 6–8 tháng",
+                    dài hơn hẳn một tháng nên không mượn được mốc của dự án. */}
+                <label className="label mt-3">Thời gian riêng của chỉ số (nếu có)</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    className="input"
+                    type="date"
+                    aria-label="Ngày bắt đầu chỉ số"
+                    value={kpiEdit.startDate}
+                    onChange={(e) => setKpiEdit({ ...kpiEdit, startDate: e.target.value })}
+                  />
+                  <input
+                    className="input"
+                    type="date"
+                    aria-label="Ngày kết thúc chỉ số"
+                    value={kpiEdit.endDate}
+                    onChange={(e) => setKpiEdit({ ...kpiEdit, endDate: e.target.value })}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Bỏ trống thì chỉ số chạy theo thời gian của cả dự án. Khai riêng khi chỉ tiêu có
+                  hạn riêng — vd “120 từ khoá lên top 10 trong 8 tháng”.
                 </p>
                 {kpiEdit.period === 'total' && (
                   <p className="mt-1 text-xs text-amber-600">

@@ -24,6 +24,9 @@ export interface ProjectKpi {
   target: number;
   /** daily = so cua ngay do; cumulative = so tong den ngay do. */
   inputMode: KpiInputMode;
+  /** Khung thoi gian rieng cua chi so; rong = chay theo thoi gian ca du an. */
+  startDate: string;
+  endDate: string;
   active: boolean;
   sortOrder: number;
   createdAt: string;
@@ -65,6 +68,8 @@ function rowToKpi(r: any): ProjectKpi {
     unit: r.unit || '',
     period: (r.period || 'month') as KpiPeriod,
     inputMode: (r.input_mode === 'cumulative' ? 'cumulative' : 'daily') as KpiInputMode,
+    startDate: r.start_date || '',
+    endDate: r.end_date || '',
     target: Number(r.target || 0) || 0,
     active: !!r.active,
     sortOrder: Number(r.sort_order || 0) || 0,
@@ -100,7 +105,7 @@ export async function upsertProject(p: Project): Promise<void> {
   await q(
     `INSERT INTO projects
        (project_id, name, customer_id, customer_name, status, start_date, end_date, note, created_by, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
      ON CONFLICT (project_id) DO UPDATE SET
        name = EXCLUDED.name, customer_id = EXCLUDED.customer_id, customer_name = EXCLUDED.customer_name,
        status = EXCLUDED.status, start_date = EXCLUDED.start_date, end_date = EXCLUDED.end_date,
@@ -135,13 +140,14 @@ export async function findKpi(id: string): Promise<ProjectKpi | undefined> {
 export async function upsertKpi(k: ProjectKpi): Promise<void> {
   await q(
     `INSERT INTO project_kpis
-       (kpi_id, project_id, team_id, name, unit, period, target, active, sort_order, created_at, input_mode)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       (kpi_id, project_id, team_id, name, unit, period, target, active, sort_order, created_at, input_mode, start_date, end_date)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      ON CONFLICT (kpi_id) DO UPDATE SET
        team_id = EXCLUDED.team_id, name = EXCLUDED.name, unit = EXCLUDED.unit,
        period = EXCLUDED.period, target = EXCLUDED.target, active = EXCLUDED.active,
-       sort_order = EXCLUDED.sort_order, input_mode = EXCLUDED.input_mode`,
-    [k.id, k.projectId, k.teamId, k.name, k.unit, k.period, k.target, k.active, k.sortOrder, k.createdAt, k.inputMode],
+       sort_order = EXCLUDED.sort_order, input_mode = EXCLUDED.input_mode,
+       start_date = EXCLUDED.start_date, end_date = EXCLUDED.end_date`,
+    [k.id, k.projectId, k.teamId, k.name, k.unit, k.period, k.target, k.active, k.sortOrder, k.createdAt, k.inputMode, k.startDate, k.endDate],
   );
 }
 
