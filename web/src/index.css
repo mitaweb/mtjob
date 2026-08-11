@@ -7,13 +7,13 @@
 }
 
 body {
-  @apply bg-[#f5f5f9] text-slate-700 antialiased;
+  @apply bg-app text-ink-muted antialiased;
   margin: 0;
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
 }
 
 .card {
-  @apply bg-white rounded-2xl border border-slate-100 shadow-soft p-5;
+  @apply bg-white rounded-2xl border border-brand-100 shadow-soft p-5;
 }
 
 .btn {
@@ -24,19 +24,35 @@ body {
   @apply btn bg-brand-600 text-white hover:bg-brand-700 shadow-sm shadow-brand-600/25;
 }
 .btn-ghost {
-  @apply btn bg-slate-100 text-slate-600 hover:bg-slate-200;
+  @apply btn bg-brand-50 text-brand-700 hover:bg-brand-100;
 }
 .input {
-  @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-slate-700 outline-none transition
-    placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10;
+  @apply w-full rounded-xl border border-brand-100 bg-white px-3.5 py-2.5 text-ink outline-none transition
+    placeholder:text-ink-muted/60 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10;
 }
 .label {
-  @apply block text-sm font-medium text-slate-600 mb-1.5;
+  @apply block text-sm font-medium text-ink-soft mb-1.5;
+}
+
+/*
+ * Hàng chẵn tô nhạt để mắt dò ngang không trượt hàng — bảng nhiều cột phải cuộn ngang
+ * (nhân sự, bảng lương) là chỗ cần nhất. Anh Tâm hỏi từ 3/8/2026.
+ *
+ * :where() giữ độ ưu tiên BẰNG 0, nên bất kỳ hàng nào tự đặt màu vẫn thắng. Đây là điểm
+ * mấu chốt: dòng đang sửa dở ở bảng nhân sự tô vàng — nếu sọc đè lên thì mất dấu hiệu
+ * "dòng này chưa lưu".
+ */
+:where(table tbody tr:nth-child(even)) {
+  @apply bg-brand-50/60;
+}
+/* Nội dung Lưu ý KH là HTML người dùng dán vào, có thể chứa bảng của riêng họ. */
+.note-rich table tbody tr {
+  background: none;
 }
 
 /* Nội dung lưu ý khách hàng (soạn như Word: chữ + ảnh + link chèn inline) */
 .note-rich {
-  @apply text-sm text-slate-700;
+  @apply text-sm text-ink-soft;
   word-break: break-word;
 }
 .note-rich img {
@@ -54,12 +70,38 @@ body {
 }
 .note-editor:empty::before {
   content: attr(data-placeholder);
-  @apply text-slate-400;
+  @apply text-ink-muted/60;
 }
 
 /* Khối placeholder khi đang tải dữ liệu */
 .skeleton {
-  @apply animate-pulse rounded-xl bg-slate-200/70;
+  @apply animate-pulse rounded-xl bg-brand-100/70;
+}
+
+/*
+ * Hiệu ứng dùng chung (anh Tâm 4/8/2026: "giao diện hiện đại, có hiệu ứng").
+ * Đặt ở đây để mọi trang hưởng, không phải rải từng chỗ.
+ */
+.lift {
+  @apply transition duration-200;
+}
+.lift:hover {
+  @apply -translate-y-0.5 shadow-lift;
+}
+
+/* Hộp thoại trượt vào thay vì hiện đột ngột */
+@keyframes hienLen {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.hien-len {
+  animation: hienLen 0.18s ease-out;
 }
 
 /* Thanh loading chạy trên đỉnh */
@@ -75,13 +117,30 @@ body {
   animation: loadingbar 1.1s ease-in-out infinite;
 }
 
+/*
+ * Ai bật "giảm chuyển động" trong hệ điều hành thì tắt hết — vài người bị chóng mặt với
+ * chuyển động, và đây là app họ phải mở mỗi ngày.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .lift:hover {
+    @apply translate-y-0;
+  }
+}
+
 /* Thanh cuộn mảnh, hiện đại */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d7d7e0;
+  background: #c4d7f1;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-track {

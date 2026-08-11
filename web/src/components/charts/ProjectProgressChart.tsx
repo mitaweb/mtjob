@@ -1,3 +1,4 @@
+import { MAU } from './mau';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 // Xem ghi chú ở PointsBarChart: tách riêng để lazy-load recharts.
@@ -15,7 +16,7 @@ export default function ProjectProgressChart({ data }: { data: ProgressPoint[] }
           <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 12 }} unit="%" />
           <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 12 }} />
           <Tooltip formatter={(v: number) => `${v}%`} />
-          <Bar dataKey="percent" fill="#7367f0" radius={[0, 6, 6, 0]} />
+          <Bar dataKey="percent" fill={MAU.chinh} radius={[0, 6, 6, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

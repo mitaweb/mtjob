@@ -1,3 +1,4 @@
+import { MAU } from './mau';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 // Xem ghi chú ở PointsBarChart: tách riêng để lazy-load recharts.
@@ -16,7 +17,7 @@ export default function KpiLineChart({ data }: { data: SeriesPoint[] }) {
           <XAxis dataKey="label" tick={{ fontSize: 11 }} />
           <YAxis tick={{ fontSize: 11 }} />
           <Tooltip />
-          <Line type="monotone" dataKey="value" stroke="#7367f0" strokeWidth={2} dot={{ r: 3 }} />
+          <Line type="monotone" dataKey="value" stroke={MAU.chinh} strokeWidth={2} dot={{ r: 3 }} />
         </LineChart>
       </ResponsiveContainer>
     </div>
