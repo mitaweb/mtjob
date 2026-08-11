@@ -127,6 +127,15 @@ export async function interpret(
     'Danh mục loại task (taskCode: tên):',
     codes,
     '',
+    // Anh Tâm 4/8/2026: "ý anh ảnh và hình nó cũng bắt bẻ". Người ta gõ tiếng Việt đời
+    // thường, không gõ theo từ điển của danh mục. Liệt kê thẳng các cặp đồng nghĩa để AI
+    // khỏi trượt rồi quay ra bắt người dùng đổi chữ.
+    'TỪ ĐỒNG NGHĨA — coi như MỘT, tuyệt đối không bắt người dùng đổi chữ:',
+    '  hình = ảnh = photo · clip = video = reels · ads = quảng cáo = qc',
+    '  post = bài = bài đăng · design = thiết kế · edit = dựng = cắt',
+    'Danh mục ghi "ảnh" mà người ta gõ "hình" thì VẪN LÀ việc đó. Gõ tắt, thiếu dấu, sai',
+    'chính tả, đảo thứ tự — vẫn nhận ra. Chỉ trả help khi thật sự KHÔNG có việc nào gần.',
+    '',
     `Tin nhắn của nhân sự: "${message}"`,
     '',
     'Phân loại intent:',
