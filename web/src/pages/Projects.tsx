@@ -7,7 +7,6 @@ import AsyncButton from '../components/AsyncButton';
 import DailyKpiEntry, { type TodayData } from '../components/DailyKpiEntry';
 
 // Thư viện biểu đồ nặng 360KB — tải riêng để danh sách dự án và ô nhập chỉ số hiện trước.
-const ProjectProgressChart = lazy(() => import('../components/charts/ProjectProgressChart'));
 const KpiLineChart = lazy(() => import('../components/charts/KpiLineChart'));
 
 // Dự án đo KẾT QUẢ cam kết với khách (bao nhiêu tin nhắn, bao nhiêu khách mới) — khác
@@ -395,11 +394,6 @@ export default function Projects() {
   );
   const soCanhBao = projects.filter((p) => p.alert === 'warn' || p.alert === 'danger').length;
 
-  const overview = useMemo(
-    () => projects.filter((p) => p.status === 'active' && p.kpiCount > 0).map((p) => ({ name: p.name, percent: p.percent })),
-    [projects],
-  );
-
   return (
     <div className="space-y-4">
       <div className="card flex flex-wrap items-center justify-between gap-3">
@@ -418,16 +412,6 @@ export default function Projects() {
 
       {/* Việc hằng ngày của nhân sự — đặt trên cùng vì đây là thứ họ mở app để làm. */}
       {today && <DailyKpiEntry today={today} onSaved={reloadAfterEntry} />}
-
-      {/* Biểu đồ toàn cảnh — chỉ có nghĩa khi nhìn nhiều dự án cùng lúc. */}
-      {isDirector && overview.length > 0 && (
-        <div className="card">
-          <h2 className="mb-2 font-semibold">Tiến độ các dự án đang chạy (kỳ hiện tại)</h2>
-          <Suspense fallback={<Skeleton className="h-40 w-full" />}>
-            <ProjectProgressChart data={overview} />
-          </Suspense>
-        </div>
-      )}
 
       <div className="card">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
