@@ -507,7 +507,7 @@ export default function Chat() {
     <div className="flex flex-col h-[calc(100vh-7rem)]">
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto space-y-3 pr-1"
+        className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden space-y-3 pr-1"
         onScroll={(e) => {
           // Gần chạm đầu thì nối thêm tin cũ. loadOlder tự bỏ qua khi đang tải hoặc đã hết.
           if (e.currentTarget.scrollTop < 80) void loadOlder();
@@ -527,8 +527,14 @@ export default function Chat() {
         )}
         {msgs.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            {/*
+              min-w-0 + break-words: bong bóng là FLEX ITEM, mà flex item mặc định không co
+              nhỏ hơn nội dung dài nhất bên trong nó. `max-w-[85%]` KHÔNG thắng được luật đó
+              — chỉ cần một chuỗi dài không ngắt được (link, mã, tên file) là cả bong bóng
+              phình ra ngoài màn hình điện thoại, chữ bị cắt cả hai bên (anh Tâm 4/8/2026).
+            */}
             <div
-              className={`max-w-[85%] rounded-2xl px-4 py-2 ${
+              className={`min-w-0 max-w-[85%] break-words rounded-2xl px-4 py-2 ${
                 m.role === 'user'
                   ? 'whitespace-pre-wrap bg-brand-600 text-white'
                   : 'border border-brand-100 bg-white'
