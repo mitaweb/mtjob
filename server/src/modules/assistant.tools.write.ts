@@ -40,6 +40,7 @@ import { isStartReport } from '../lib/tasks.js';
 import type { Member } from '../types.js';
 import { ingestInBackground, markCustomerDirty } from './brain.service.js';
 import { describeRule } from '../lib/reminder.js';
+import { timTrung, loiTrung } from './calendar.service.js';
 import { parseVndAmount, formatVnd } from '../lib/money.js';
 import { nowTz, todayIso, toIsoVn, parseVnDate } from '../lib/datetime.js';
 import { removeAccents } from '../lib/people.js';
@@ -317,6 +318,11 @@ export function crmWriteTools(memberId: string): ToolDef[] {
             customerName: { type: 'STRING', description: 'Tên khách hàng.' },
             at: { type: 'STRING', description: 'Thời điểm hẹn, giờ Việt Nam, dạng YYYY-MM-DDTHH:mm (24h).' },
             note: { type: 'STRING', description: 'Nội dung buổi hẹn.' },
+            boQuaTrung: {
+              type: 'BOOLEAN',
+              description:
+                'Chỉ đặt true SAU KHI hàm đã báo trùng giờ và người dùng nói vẫn muốn đặt. Lần gọi đầu luôn để trống.',
+            },
           },
           required: ['customerName', 'at'],
         },
@@ -346,6 +352,23 @@ export function crmWriteTools(memberId: string): ToolDef[] {
         }
         const customer = hits[0];
         const note = String(a.note || '').trim();
+
+        // Trùng giờ thì KHÔNG đặt — báo lại để trợ lý hỏi người dùng, y như create_reminder.
+        if (a.boQuaTrung !== true) {
+          const ts = await timTrung({
+            memberId,
+            // Chỉ vai xem được CRM mới có bộ công cụ này, nên lấy lịch ở mức thấy đủ lịch hẹn.
+            role: 'sale',
+            dip: [{ ngay: at.slice(0, 10), gio: at.slice(11, 16) }],
+          });
+          if (ts.length > 0) {
+            return (
+              `CHƯA ĐẶT ĐƯỢC: ${loiTrung(ts)} ` +
+              'Hỏi người dùng có muốn đặt chồng giờ không. Nếu họ đồng ý thì gọi lại hàm này với boQuaTrung = true.'
+            );
+          }
+        }
+
         const id = newId('A-');
         await addAppointment({
           id,

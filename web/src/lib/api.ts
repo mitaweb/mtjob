@@ -18,6 +18,19 @@ export interface ApiOptions {
   form?: FormData;
 }
 
+/**
+ * Lỗi có kèm mã HTTP. Cần mã để phân biệt "trùng giờ, bấm lại là đặt được" (409) với
+ * lỗi mạng — chỉ nhìn câu chữ thì mất mạng cũng bị hiểu là đã cảnh báo xong.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 // ── Theo dõi số request đang chạy để hiện loading toàn cục ──
 let pending = 0;
 type LoadingListener = (n: number) => void;
@@ -122,12 +135,12 @@ export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Pro
       data = JSON.parse(text);
     } catch {
       // Server trả về trang lỗi dạng text/HTML (vd Vercel "A server error has occurred")
-      throw new Error(`Máy chủ gặp lỗi (${res.status}). Chi tiết: ${text.slice(0, 140)}`);
+      throw new ApiError(`Máy chủ gặp lỗi (${res.status}). Chi tiết: ${text.slice(0, 140)}`, res.status);
     }
   }
   if (!res.ok) {
     if (res.status === 401) setToken(null);
-    throw new Error(data.error || `Lỗi ${res.status}`);
+    throw new ApiError(data.error || `Lỗi ${res.status}`, res.status);
   }
   return data as T;
 }

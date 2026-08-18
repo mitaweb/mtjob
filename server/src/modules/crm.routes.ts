@@ -17,7 +17,8 @@ import {
 } from './crm.repo.js';
 import { getActiveMembers } from './members.repo.js';
 import { newId } from '../util/id.js';
-import { nowTz, toIsoVn } from '../lib/datetime.js';
+import { nowTz, toIsoVn, ngayVn, fmtHm } from '../lib/datetime.js';
+import { timTrung, loiTrung } from './calendar.service.js';
 import { ingestInBackground, removeSource, markCustomerDirty } from './brain.service.js';
 
 export const crmRouter = Router();
@@ -118,6 +119,8 @@ const apptSchema = z.object({
   at: z.string().min(1), // ISO datetime
   note: z.string().optional().default(''),
   ownerId: z.string().optional().default(''),
+  /** Đã đọc cảnh báo trùng giờ và vẫn muốn đặt. Màn hình gửi cờ này ở lần bấm thứ hai. */
+  boQuaTrung: z.boolean().optional().default(false),
 });
 
 crmRouter.post(
@@ -126,6 +129,18 @@ crmRouter.post(
     const b = apptSchema.parse(req.body);
     const customer = await findCustomer(b.customerId);
     if (!customer) throw new ApiError(404, 'Không tìm thấy khách hàng');
+
+    // Trùng giờ: BÁO rồi cho đi tiếp nếu vẫn muốn — xem ghi chú ở reminders.routes.
+    if (!b.boQuaTrung) {
+      const at = toIsoVn(b.at);
+      const ts = await timTrung({
+        memberId: req.user!.sub,
+        role: req.user!.role,
+        dip: [{ ngay: ngayVn(at), gio: fmtHm(at) }],
+      });
+      if (ts.length > 0) throw new ApiError(409, `${loiTrung(ts)} Bấm lần nữa nếu vẫn muốn đặt.`);
+    }
+
     const id = newId('A-');
     await addAppointment({
       id,

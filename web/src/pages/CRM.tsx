@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
 import TimeInput from '../components/TimeInput';
 import { useToast } from '../components/Toaster';
@@ -80,6 +80,8 @@ export default function CRM() {
   const [edit, setEdit] = useState<Partial<Customer> | null>(null);
   const [appts, setAppts] = useState<Appointment[]>([]);
   const [apForm, setApForm] = useState({ at: '', note: '', ownerId: '' });
+  // Máy chủ đã báo trùng giờ cho đúng giờ hẹn đang chọn — bấm lần nữa là đặt chồng.
+  const [daCanhBao, setDaCanhBao] = useState(false);
 
   const now = new Date();
   const thisMonth = now.getMonth() + 1;
@@ -187,21 +189,35 @@ export default function CRM() {
   // Ngày và giờ hẹn nhập ở hai ô nhưng gửi đi vẫn là một chuỗi 'YYYY-MM-DDTHH:mm'.
   const apNgay = apForm.at.slice(0, 10);
   const apGio = apForm.at.slice(11, 16);
-  /** Chọn ngày mà chưa đặt giờ thì mặc định 09:00 — không để trống rồi báo lỗi lúc bấm lưu. */
-  const datNgayHen = (ngay: string) => setApForm({ ...apForm, at: ngay ? `${ngay}T${apGio || '09:00'}` : '' });
-  const datGioHen = (gio: string) => setApForm({ ...apForm, at: apNgay ? `${apNgay}T${gio || '09:00'}` : '' });
+  /**
+   * Chọn ngày mà chưa đặt giờ thì mặc định 09:00 — không để trống rồi báo lỗi lúc bấm lưu.
+   * Đổi ngày/giờ là thành lịch khác nên phải kiểm trùng lại từ đầu.
+   */
+  const datNgayHen = (ngay: string) => {
+    setDaCanhBao(false);
+    setApForm({ ...apForm, at: ngay ? `${ngay}T${apGio || '09:00'}` : '' });
+  };
+  const datGioHen = (gio: string) => {
+    setDaCanhBao(false);
+    setApForm({ ...apForm, at: apNgay ? `${apNgay}T${gio || '09:00'}` : '' });
+  };
 
   async function addAppt() {
     if (!edit?.id || !apForm.at) return toast.error('Lưu khách & chọn thời gian hẹn trước.');
     try {
-      await api('/crm/appointments', { body: { customerId: edit.id, at: apForm.at, note: apForm.note, ownerId: apForm.ownerId } });
+      await api('/crm/appointments', {
+        body: { customerId: edit.id, at: apForm.at, note: apForm.note, ownerId: apForm.ownerId, boQuaTrung: daCanhBao },
+      });
       const r = await api<{ appointments: Appointment[] }>(`/crm/customers/${edit.id}/appointments`);
       setAppts(r.appointments);
       setApForm({ at: '', note: '', ownerId: edit.assignedTo || '' });
+      setDaCanhBao(false);
       await loadUpcoming();
       toast.success('Đã thêm lịch hẹn');
     } catch (e) {
       toast.error((e as Error).message);
+      // 409 = trùng giờ; xem ghi chú trong Reminders.tsx. Lỗi khác không mở cửa bỏ qua.
+      if (e instanceof ApiError && e.status === 409) setDaCanhBao(true);
     }
   }
   async function toggleDone(a: Appointment) {
@@ -507,8 +523,12 @@ export default function CRM() {
                     <TimeInput className="py-1" value={apGio} onChange={datGioHen} />
                   </label>
                   <input className="input py-1" placeholder="Ghi chú hẹn" value={apForm.note} onChange={(e) => setApForm({ ...apForm, note: e.target.value })} />
-                  <AsyncButton className="btn-primary" onClick={addAppt} busyLabel="Đang lưu…">
-                    ＋ Thêm hẹn
+                  <AsyncButton
+                    className={daCanhBao ? 'btn bg-amber-500 text-ink hover:bg-amber-400' : 'btn-primary'}
+                    onClick={addAppt}
+                    busyLabel="Đang lưu…"
+                  >
+                    {daCanhBao ? '⚠️ Vẫn đặt' : '＋ Thêm hẹn'}
                   </AsyncButton>
                 </div>
               </div>

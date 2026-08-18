@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dayNgay, roiVaoNgay, laSinhNhat, thuVn } from './lich.js';
+import { dayNgay, roiVaoNgay, laSinhNhat, thuVn, trungGio, dipSapToi } from './lich.js';
 import type { ReminderRule } from './reminder.js';
 
 const rule = (r: Partial<ReminderRule>): ReminderRule => ({
@@ -77,6 +77,65 @@ describe('laSinhNhat', () => {
   it('rỗng hoặc rác thì không phải sinh nhật', () => {
     expect(laSinhNhat('', '2026-08-18')).toBe(false);
     expect(laSinhNhat('không rõ', '2026-08-18')).toBe(false);
+  });
+});
+
+describe('dipSapToi', () => {
+  it('hẹn một lần trả đúng ngày đã chọn', () => {
+    const r = rule({ repeatKind: 'once', onDate: '2026-08-21', atTime: '14:00' });
+    expect(dipSapToi(r, '2026-08-18')).toEqual([{ ngay: '2026-08-21', gio: '14:00' }]);
+  });
+
+  it('hẹn một lần chưa chọn ngày thì không có dịp nào', () => {
+    expect(dipSapToi(rule({ repeatKind: 'once', onDate: '' }), '2026-08-18')).toEqual([]);
+  });
+
+  it('hằng ngày rơi ngay hôm nay', () => {
+    expect(dipSapToi(rule({ repeatKind: 'daily', atTime: '08:00' }), '2026-08-18')).toEqual([
+      { ngay: '2026-08-18', gio: '08:00' },
+    ]);
+  });
+
+  it('hằng tuần trả lần gần nhất trong 7 ngày tới', () => {
+    // 18/8/2026 là thứ Ba; hẹn thứ Sáu (5) → 21/8.
+    expect(dipSapToi(rule({ repeatKind: 'weekly', weekday: 5, atTime: '15:00' }), '2026-08-18')).toEqual([
+      { ngay: '2026-08-21', gio: '15:00' },
+    ]);
+  });
+
+  it('hằng tháng trả lần gần nhất, kể cả khi phải sang tháng sau', () => {
+    expect(dipSapToi(rule({ repeatKind: 'monthly', dayOfMonth: 5, atTime: '09:00' }), '2026-08-18')).toEqual([
+      { ngay: '2026-09-05', gio: '09:00' },
+    ]);
+  });
+
+  it('chỉ lấy MỘT lần, không trả cả tháng', () => {
+    expect(dipSapToi(rule({ repeatKind: 'daily' }), '2026-08-18')).toHaveLength(1);
+  });
+});
+
+describe('trungGio', () => {
+  it('trùng khít thì đụng', () => {
+    expect(trungGio('14:00', '14:00')).toBe(true);
+  });
+
+  it('cách dưới 30 phút vẫn coi là đụng, đủ 30 phút thì thôi', () => {
+    expect(trungGio('14:00', '14:15')).toBe(true);
+    expect(trungGio('14:15', '14:00')).toBe(true);
+    expect(trungGio('14:00', '14:29')).toBe(true);
+    expect(trungGio('14:00', '14:30')).toBe(false);
+    expect(trungGio('14:00', '15:00')).toBe(false);
+  });
+
+  it('bắc qua đầu giờ vẫn tính đúng', () => {
+    expect(trungGio('08:50', '09:10')).toBe(true);
+    expect(trungGio('08:50', '09:20')).toBe(false);
+  });
+
+  it('giờ hỏng hoặc rỗng thì không đụng', () => {
+    expect(trungGio('', '14:00')).toBe(false);
+    expect(trungGio('25:00', '14:00')).toBe(false);
+    expect(trungGio('14:70', '14:00')).toBe(false);
   });
 });
 

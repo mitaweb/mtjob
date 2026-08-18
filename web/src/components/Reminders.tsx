@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 import AsyncButton from './AsyncButton';
 import { useToast } from './Toaster';
 import { Badge } from './ui';
@@ -59,6 +59,8 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
   // Mở lịch ngay tại đây: đang đặt hẹn mà phải đóng bảng này đi xem lịch rồi quay lại
   // gõ lại từ đầu thì không ai xem. Lịch chồng lên trên, đóng lại là còn nguyên.
   const [xemLich, setXemLich] = useState(false);
+  // Máy chủ đã báo trùng giờ cho đúng lịch đang nhập — bấm lần nữa là đặt chồng.
+  const [daCanhBao, setDaCanhBao] = useState(false);
 
   async function load() {
     const r = await api<{ reminders: Reminder[] }>('/reminders');
@@ -75,14 +77,26 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
     if (!title.trim()) return toast.error('Nhập nội dung cần nhắc.');
     try {
       await api('/reminders', {
-        body: { title: title.trim(), atTime, repeatKind, onDate, weekday, dayOfMonth },
+        body: { title: title.trim(), atTime, repeatKind, onDate, weekday, dayOfMonth, boQuaTrung: daCanhBao },
       });
       setTitle('');
+      setDaCanhBao(false);
       toast.success('Đã đặt nhắc hẹn');
       await load();
     } catch (e) {
       toast.error((e as Error).message);
+      // 409 = trùng giờ. Đã báo rồi thì lần bấm sau cho đi luôn; lỗi khác (mạng, máy chủ)
+      // KHÔNG được mở cửa — nếu không thì mất mạng một lần là lần sau bỏ qua kiểm trùng.
+      if (e instanceof ApiError && e.status === 409) setDaCanhBao(true);
     }
+  }
+
+  /** Đổi giờ hay kiểu lặp là thành lịch khác — phải kiểm trùng lại từ đầu. */
+  function doiLich<T>(dat: (v: T) => void) {
+    return (v: T) => {
+      dat(v);
+      setDaCanhBao(false);
+    };
   }
 
   async function toggle(r: Reminder) {
@@ -141,14 +155,14 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
           <div className="flex flex-wrap gap-2">
             <label className="text-xs text-ink-muted">
               Giờ nhắc
-              <TimeInput className="max-w-[7rem] py-1" value={atTime} onChange={setAtTime} />
+              <TimeInput className="max-w-[7rem] py-1" value={atTime} onChange={doiLich(setAtTime)} />
             </label>
             <label className="text-xs text-ink-muted">
               Lặp lại
               <select
                 className="input py-1"
                 value={repeatKind}
-                onChange={(e) => setRepeatKind(e.target.value as RepeatKind)}
+                onChange={(e) => doiLich(setRepeatKind)(e.target.value as RepeatKind)}
               >
                 {REPEATS.map((r) => (
                   <option key={r.key} value={r.key}>
@@ -160,7 +174,7 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
             {repeatKind === 'weekly' && (
               <label className="text-xs text-ink-muted">
                 Vào thứ
-                <select className="input py-1" value={weekday} onChange={(e) => setWeekday(Number(e.target.value))}>
+                <select className="input py-1" value={weekday} onChange={(e) => doiLich(setWeekday)(Number(e.target.value))}>
                   {WEEKDAYS.map((w, i) => (
                     <option key={w} value={i}>
                       {w}
@@ -178,19 +192,23 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
                   min={1}
                   max={31}
                   value={dayOfMonth}
-                  onChange={(e) => setDayOfMonth(Number(e.target.value))}
+                  onChange={(e) => doiLich(setDayOfMonth)(Number(e.target.value))}
                 />
               </label>
             )}
             {repeatKind === 'once' && (
               <label className="text-xs text-ink-muted">
                 Ngày
-                <input className="input py-1" type="date" value={onDate} onChange={(e) => setOnDate(e.target.value)} />
+                <input className="input py-1" type="date" value={onDate} onChange={(e) => doiLich(setOnDate)(e.target.value)} />
               </label>
             )}
           </div>
-          <AsyncButton className="btn-primary" onClick={create} busyLabel="Đang đặt…">
-            ＋ Đặt nhắc hẹn
+          <AsyncButton
+            className={daCanhBao ? 'btn bg-amber-500 text-ink hover:bg-amber-400' : 'btn-primary'}
+            onClick={create}
+            busyLabel="Đang đặt…"
+          >
+            {daCanhBao ? '⚠️ Vẫn đặt (trùng giờ)' : '＋ Đặt nhắc hẹn'}
           </AsyncButton>
         </div>
 

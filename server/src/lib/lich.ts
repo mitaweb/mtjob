@@ -41,6 +41,23 @@ export function roiVaoNgay(rule: ReminderRule, ngay: string): boolean {
   }
 }
 
+/** Nhìn trước bao nhiêu ngày là đủ thấy MỘT lần lặp của mỗi kiểu. */
+const NHIN_TRUOC: Record<string, number> = { once: 1, daily: 1, weekly: 7, monthly: 31 };
+
+/**
+ * Lần nhắc sắp tới gần nhất của một quy tắc, dạng { ngay, gio } — dùng để bắt trùng giờ.
+ *
+ * Chỉ lấy MỘT lần: hẹn hằng ngày mà quét cả tháng thì báo "trùng 30 lịch", đọc xong
+ * không rõ trùng cái gì. Một lần đại diện là đủ để người ta quyết định.
+ */
+export function dipSapToi(rule: ReminderRule, tuNgay: string): Array<{ ngay: string; gio: string }> {
+  if (rule.repeatKind === 'once') {
+    return rule.onDate ? [{ ngay: rule.onDate, gio: rule.atTime }] : [];
+  }
+  const ngay = dayNgay(tuNgay, NHIN_TRUOC[rule.repeatKind] ?? 1).find((n) => roiVaoNgay(rule, n));
+  return ngay ? [{ ngay, gio: rule.atTime }] : [];
+}
+
 /**
  * Sinh nhật rơi vào ngày này không? So NGÀY-THÁNG, bỏ qua năm sinh.
  * Nhận cả 'YYYY-MM-DD' lẫn 'MM-DD' vì dữ liệu khách cũ nhập không đều tay.
@@ -49,6 +66,31 @@ export function laSinhNhat(dob: string, ngay: string): boolean {
   const md = String(dob || '').trim().slice(-5);
   if (!/^\d{2}-\d{2}$/.test(md)) return false;
   return md === ngay.slice(5);
+}
+
+/**
+ * Hai lịch cách nhau bao nhiêu phút mới coi là KHÔNG đụng nhau.
+ *
+ * Không so bằng nhau tuyệt đối: hẹn 14:00 và nhắc 14:15 thực tế vẫn giẫm lên nhau, mà
+ * báo trùng chỉ khi trùng khít từng phút thì gần như không bao giờ báo.
+ */
+export const CACH_NHAU_PHUT = 30;
+
+/** 'HH:mm' → phút từ nửa đêm; chuỗi hỏng trả NaN. */
+function phut(hhmm: string): number {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || '').trim());
+  if (!m) return Number.NaN;
+  const h = Number(m[1]);
+  const p = Number(m[2]);
+  return h > 23 || p > 59 ? Number.NaN : h * 60 + p;
+}
+
+/** Hai mốc giờ trong CÙNG một ngày có đụng nhau không? Giờ hỏng thì coi như không đụng. */
+export function trungGio(a: string, b: string): boolean {
+  const x = phut(a);
+  const y = phut(b);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+  return Math.abs(x - y) < CACH_NHAU_PHUT;
 }
 
 const THU_VN = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];

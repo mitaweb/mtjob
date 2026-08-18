@@ -10,6 +10,8 @@ import {
   type Reminder,
 } from './reminders.repo.js';
 import { describeRule, isExpiredOnce } from '../lib/reminder.js';
+import { dipSapToi } from '../lib/lich.js';
+import { timTrung, loiTrung } from './calendar.service.js';
 import { newId } from '../util/id.js';
 import { nowTz, todayIso } from '../lib/datetime.js';
 
@@ -23,6 +25,8 @@ const createSchema = z.object({
   onDate: z.string().optional().default(''),
   weekday: z.number().int().min(0).max(6).optional().default(1),
   dayOfMonth: z.number().int().min(1).max(31).optional().default(1),
+  /** Đã đọc cảnh báo trùng giờ và vẫn muốn đặt. Màn hình gửi cờ này ở lần bấm thứ hai. */
+  boQuaTrung: z.boolean().optional().default(false),
 });
 
 /** Nhắc hẹn của chính mình — không ai xem được của người khác. */
@@ -74,6 +78,17 @@ remindersRouter.post(
       lastFired: '',
       createdAt: nowTz().toISOString(),
     };
+    // Trùng giờ: BÁO rồi cho đi tiếp nếu người ta vẫn muốn, chứ không cấm hẳn. Hai việc
+    // cùng giờ là chuyện có thật (họp và nhắc đăng bài) — cấm cứng thì người ta hết đường.
+    if (!b.boQuaTrung) {
+      const ts = await timTrung({
+        memberId: req.user!.sub,
+        role: req.user!.role,
+        dip: dipSapToi(r, todayIso()),
+      });
+      if (ts.length > 0) throw new ApiError(409, `${loiTrung(ts)} Bấm lần nữa nếu vẫn muốn đặt.`);
+    }
+
     await addReminder(r);
     res.json({ ok: true, id: r.id, describe: describeRule(r) });
   }),

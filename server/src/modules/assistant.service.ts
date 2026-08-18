@@ -15,6 +15,8 @@ import { getCustomers } from './crm.repo.js';
 import { addReminder } from './reminders.repo.js';
 import { previewDirectorReport } from '../jobs/dailyReport.js';
 import { describeRule, type RepeatKind } from '../lib/reminder.js';
+import { dipSapToi } from '../lib/lich.js';
+import { timTrung, loiTrung } from './calendar.service.js';
 import { moneyWriteTools, crmWriteTools, reminderManageTools, dedupeTools, pointAdjustTools } from './assistant.tools.write.js';
 import { newId } from '../util/id.js';
 import type { GeminiContent, GeminiPart } from '../gemini/client.js';
@@ -76,7 +78,7 @@ const PROFILE_TOOL: ToolDef = {
  * Đặt nhắc hẹn ngay trong lúc chat: "nhắc tôi đăng bài X Salon 8h hằng ngày".
  * Nhắc hẹn LUÔN thuộc về người đang chat — không tạo hộ người khác được.
  */
-function reminderTool(memberId: string): ToolDef {
+function reminderTool(memberId: string, role: string): ToolDef {
   return {
     declaration: {
       name: 'create_reminder',
@@ -96,6 +98,11 @@ function reminderTool(memberId: string): ToolDef {
           onDate: { type: 'STRING', description: 'Chỉ khi once: ngày YYYY-MM-DD.' },
           weekday: { type: 'NUMBER', description: 'Chỉ khi weekly: 0=CN, 1=T2 … 6=T7.' },
           dayOfMonth: { type: 'NUMBER', description: 'Chỉ khi monthly: ngày trong tháng 1-31.' },
+          boQuaTrung: {
+            type: 'BOOLEAN',
+            description:
+              'Chỉ đặt true SAU KHI hàm đã báo trùng giờ và người dùng nói vẫn muốn đặt. Lần gọi đầu luôn để trống.',
+          },
         },
         required: ['title', 'atTime', 'repeatKind'],
       },
@@ -119,6 +126,18 @@ function reminderTool(memberId: string): ToolDef {
         weekday: Number(a.weekday ?? 1),
         dayOfMonth: Number(a.dayOfMonth ?? 1),
       };
+      // Trùng giờ thì KHÔNG đặt, báo lại để trợ lý hỏi người dùng. Trợ lý không có nút
+      // bấm lần hai như màn hình, nên đường đi tiếp là gọi lại với boQuaTrung = true.
+      if (a.boQuaTrung !== true) {
+        const ts = await timTrung({ memberId, role, dip: dipSapToi(rule, todayIso()) });
+        if (ts.length > 0) {
+          return (
+            `CHƯA ĐẶT ĐƯỢC: ${loiTrung(ts)} ` +
+            'Hỏi người dùng có muốn đặt chồng giờ không. Nếu họ đồng ý thì gọi lại hàm này với boQuaTrung = true.'
+          );
+        }
+      }
+
       await addReminder({
         id: newId('RM-'),
         memberId,
@@ -602,7 +621,7 @@ export async function answerDataQuestion(
     },
     PROFILE_TOOL,
     knowledgeTool({ directorScope: true }),
-    reminderTool(memberId),
+    reminderTool(memberId, members.find((m) => m.id === memberId)?.role || 'director'),
     SHEET_TOOL,
     SAVE_TOOL,
     // Nhóm GHI: giám đốc nhắn một câu là dữ liệu vào thẳng sổ sách.
@@ -690,7 +709,7 @@ export async function answerMemberQuestion(
     PROFILE_TOOL,
     // Quyền xem chặn cứng ở tầng SQL: chỉ thấy đoạn 'all' + đoạn riêng của chính mình.
     knowledgeTool({ directorScope: false, memberId }),
-    reminderTool(memberId),
+    reminderTool(memberId, me.role),
     ...reminderManageTools(memberId),
     SHEET_TOOL,
     SAVE_TOOL,
