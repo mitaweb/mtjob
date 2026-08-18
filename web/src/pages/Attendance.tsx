@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { GIO_VN } from '../lib/gio';
 import { getPosition } from '../lib/geo';
 import { enablePush } from '../lib/push';
 
@@ -29,7 +30,7 @@ const thangNay = () => {
 const CO_GIO: Record<string, string> = { online: 'online', quencham: 'quên chấm' };
 const hm = (iso?: string) =>
   iso && iso.includes('T')
-    ? new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+    ? new Date(iso).toLocaleTimeString('vi-VN', GIO_VN)
     : CO_GIO[iso || ''] || iso || '—';
 
 export default function Attendance() {

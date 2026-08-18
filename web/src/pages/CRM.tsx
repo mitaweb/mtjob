@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
+import TimeInput from '../components/TimeInput';
 import { useToast } from '../components/Toaster';
 import { Badge, type BadgeVariant } from '../components/ui';
 import type { Customer, Appointment } from '../lib/types';
+import { NGAY_GIO_VN } from '../lib/gio';
 
 interface Mem {
   id: string;
@@ -34,7 +36,7 @@ const TABS: Array<{ key: Tab; label: string; hint: string }> = [
 ];
 
 const fmtDT = (iso: string) =>
-  new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
+  new Date(iso).toLocaleString('vi-VN', NGAY_GIO_VN);
 
 function statusVariant(s: string): BadgeVariant {
   if (s === CLOSED) return 'success';
@@ -182,6 +184,13 @@ export default function CRM() {
     setCustomers((list) => list.filter((c) => c.id !== id));
     await loadUpcoming(); // lịch hẹn của khách vừa xoá cũng biến mất
   }
+  // Ngày và giờ hẹn nhập ở hai ô nhưng gửi đi vẫn là một chuỗi 'YYYY-MM-DDTHH:mm'.
+  const apNgay = apForm.at.slice(0, 10);
+  const apGio = apForm.at.slice(11, 16);
+  /** Chọn ngày mà chưa đặt giờ thì mặc định 09:00 — không để trống rồi báo lỗi lúc bấm lưu. */
+  const datNgayHen = (ngay: string) => setApForm({ ...apForm, at: ngay ? `${ngay}T${apGio || '09:00'}` : '' });
+  const datGioHen = (gio: string) => setApForm({ ...apForm, at: apNgay ? `${apNgay}T${gio || '09:00'}` : '' });
+
   async function addAppt() {
     if (!edit?.id || !apForm.at) return toast.error('Lưu khách & chọn thời gian hẹn trước.');
     try {
@@ -482,9 +491,20 @@ export default function CRM() {
                   {appts.length === 0 && <li className="py-1.5 text-sm text-ink-muted">Chưa có lịch hẹn.</li>}
                 </ul>
                 <div className="grid sm:grid-cols-4 gap-2 items-end bg-brand-50 rounded-xl p-3">
-                  <label className="text-xs text-ink-muted sm:col-span-2">
-                    Thời gian hẹn
-                    <input type="datetime-local" className="input py-1" value={apForm.at} onChange={(e) => setApForm({ ...apForm, at: e.target.value })} />
+                  {/* Tách ngày và giờ: ô datetime-local hiện SA/CH theo cài đặt máy người
+                      dùng, không ép 24h được. Giá trị gửi đi vẫn là 'YYYY-MM-DDTHH:mm'. */}
+                  <label className="text-xs text-ink-muted">
+                    Ngày hẹn
+                    <input
+                      type="date"
+                      className="input py-1"
+                      value={apNgay}
+                      onChange={(e) => datNgayHen(e.target.value)}
+                    />
+                  </label>
+                  <label className="text-xs text-ink-muted">
+                    Giờ hẹn
+                    <TimeInput className="py-1" value={apGio} onChange={datGioHen} />
                   </label>
                   <input className="input py-1" placeholder="Ghi chú hẹn" value={apForm.note} onChange={(e) => setApForm({ ...apForm, note: e.target.value })} />
                   <AsyncButton className="btn-primary" onClick={addAppt} busyLabel="Đang lưu…">

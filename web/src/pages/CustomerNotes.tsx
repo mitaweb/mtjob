@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { upload } from '@vercel/blob/client';
 import DOMPurify from 'dompurify';
 import { api, getToken } from '../lib/api';
+import { NGAY_GIO_VN } from '../lib/gio';
 
 interface Note {
   id: string;
@@ -25,7 +26,7 @@ interface HistEntry {
 }
 
 const fmtTime = (iso: string) =>
-  iso ? new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  iso ? new Date(iso).toLocaleString('vi-VN', NGAY_GIO_VN) : '';
 
 const COLORS: { key: string; label: string; card: string; dot: string }[] = [
   { key: 'yellow', label: 'Vàng', card: 'bg-amber-50 border-amber-200', dot: 'bg-amber-300' },

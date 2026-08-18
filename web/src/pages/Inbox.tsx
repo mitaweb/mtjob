@@ -6,6 +6,7 @@ import { useToast } from '../components/Toaster';
 import { Badge, EmptyState, SkeletonRows } from '../components/ui';
 import PushDiag from '../components/PushDiag';
 import type { NotificationItem } from '../lib/types';
+import { GIO_VN, NGAY_GIO_VN } from '../lib/gio';
 
 // Gom thông báo theo nhóm để không bị trôi lẫn lộn — duyệt đơn là nhóm ồn nhất nên tách riêng.
 type Group = 'request' | 'report' | 'remind' | 'work';
@@ -61,8 +62,8 @@ const fmtWhen = (iso: string) => {
   const today = new Date();
   const sameDay = d.toDateString() === today.toDateString();
   return sameDay
-    ? d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-    : d.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    ? d.toLocaleTimeString('vi-VN', GIO_VN)
+    : d.toLocaleString('vi-VN', NGAY_GIO_VN);
 };
 
 export default function Inbox() {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { vnd, currentYm } from '../lib/format';
+import TimeInput from '../components/TimeInput';
 
 interface PayRow {
   memberId: string;
@@ -310,19 +311,19 @@ export default function AdminPayroll() {
                 </label>
                 <label className="text-xs text-ink-muted">
                   Sáng vào
-                  <input type="time" className="input py-1" value={form.morningIn} onChange={(e) => setForm({ ...form, morningIn: e.target.value })} />
+                  <TimeInput className="py-1" value={form.morningIn} onChange={(v) => setForm({ ...form, morningIn: v })} />
                 </label>
                 <label className="text-xs text-ink-muted">
                   Sáng ra
-                  <input type="time" className="input py-1" value={form.morningOut} onChange={(e) => setForm({ ...form, morningOut: e.target.value })} />
+                  <TimeInput className="py-1" value={form.morningOut} onChange={(v) => setForm({ ...form, morningOut: v })} />
                 </label>
                 <label className="text-xs text-ink-muted">
                   Chiều vào
-                  <input type="time" className="input py-1" value={form.afternoonIn} onChange={(e) => setForm({ ...form, afternoonIn: e.target.value })} />
+                  <TimeInput className="py-1" value={form.afternoonIn} onChange={(v) => setForm({ ...form, afternoonIn: v })} />
                 </label>
                 <label className="text-xs text-ink-muted">
                   Chiều ra
-                  <input type="time" className="input py-1" value={form.afternoonOut} onChange={(e) => setForm({ ...form, afternoonOut: e.target.value })} />
+                  <TimeInput className="py-1" value={form.afternoonOut} onChange={(v) => setForm({ ...form, afternoonOut: v })} />
                 </label>
                 <label className="text-xs text-ink-muted">
                   Chế độ

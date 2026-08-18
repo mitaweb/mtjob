@@ -3,6 +3,8 @@ import { api } from '../lib/api';
 import AsyncButton from './AsyncButton';
 import { useToast } from './Toaster';
 import { Badge } from './ui';
+import TimeInput from './TimeInput';
+import MyCalendar from './MyCalendar';
 
 // Nhắc hẹn cá nhân: chỉ người tạo nhận được thông báo.
 
@@ -54,6 +56,9 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
   const [onDate, setOnDate] = useState(todayIso());
   const [weekday, setWeekday] = useState(1);
   const [dayOfMonth, setDayOfMonth] = useState(1);
+  // Mở lịch ngay tại đây: đang đặt hẹn mà phải đóng bảng này đi xem lịch rồi quay lại
+  // gõ lại từ đầu thì không ai xem. Lịch chồng lên trên, đóng lại là còn nguyên.
+  const [xemLich, setXemLich] = useState(false);
 
   async function load() {
     const r = await api<{ reminders: Reminder[] }>('/reminders');
@@ -106,16 +111,22 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
   const dangTheoDoi = list.filter((r) => !r.done);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 p-4"
-      onClick={onClose}
-    >
+    <>
+      <div
+        className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 p-4"
+        onClick={onClose}
+      >
       <div className="card hien-len my-8 w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
         <div className="mb-1 flex items-center justify-between">
           <h2 className="font-semibold">⏰ Nhắc hẹn của tôi</h2>
-          <button className="btn-ghost px-2 py-1 text-sm" onClick={onClose}>
-            ✕ Đóng
-          </button>
+          <div className="flex shrink-0 gap-1">
+            <button className="btn-ghost whitespace-nowrap px-2 py-1 text-sm" onClick={() => setXemLich(true)}>
+              📆 Lịch
+            </button>
+            <button className="btn-ghost px-2 py-1 text-sm" onClick={onClose}>
+              ✕ Đóng
+            </button>
+          </div>
         </div>
         <p className="mb-3 text-sm text-ink-muted">Chỉ mình bạn nhận được thông báo của các nhắc hẹn này.</p>
 
@@ -130,7 +141,7 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
           <div className="flex flex-wrap gap-2">
             <label className="text-xs text-ink-muted">
               Giờ nhắc
-              <input className="input py-1" type="time" value={atTime} onChange={(e) => setAtTime(e.target.value)} />
+              <TimeInput className="max-w-[7rem] py-1" value={atTime} onChange={setAtTime} />
             </label>
             <label className="text-xs text-ink-muted">
               Lặp lại
@@ -245,7 +256,12 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
             </button>
           </details>
         )}
+        </div>
       </div>
-    </div>
+
+      {/* Lịch là anh em RUỘT của lớp phủ trên, không nằm trong nó: nằm trong thì bấm ra
+          nền lịch sẽ đóng luôn bảng nhắc hẹn, mất hết chữ đang gõ. Đặt sau để vẽ đè lên. */}
+      {xemLich && <MyCalendar onClose={() => setXemLich(false)} />}
+    </>
   );
 }

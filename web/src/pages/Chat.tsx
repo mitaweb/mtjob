@@ -6,6 +6,7 @@ import MyCalendar from '../components/MyCalendar';
 import { useToast } from '../components/Toaster';
 import { useAuth } from '../lib/auth';
 import { fmtMin } from '../lib/format';
+import { GIO_VN } from '../lib/gio';
 import type { Assignee, CatalogItem, DoingTask, TodoTask } from '../lib/types';
 
 interface Suggestion {
@@ -503,7 +504,7 @@ export default function Chat() {
   }
 
   const hm = (iso: string) =>
-    new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    new Date(iso).toLocaleTimeString('vi-VN', GIO_VN);
 
   return (
     <div className="flex flex-col h-[calc(100vh-7rem)]">
