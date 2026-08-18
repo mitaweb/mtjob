@@ -7,6 +7,20 @@ export async function getHolidaySet(): Promise<HolidaySet> {
   return new Set(rows.map((r) => String(r.date || '').trim()).filter(Boolean));
 }
 
+export interface Holiday {
+  date: string;
+  name: string;
+}
+
+/** Ngày lễ trong khoảng [from, to] — để vẽ lên lịch. */
+export async function getHolidaysBetween(from: string, to: string): Promise<Holiday[]> {
+  const rows = await q('SELECT date, name FROM holidays WHERE date >= $1 AND date <= $2 ORDER BY date', [
+    from,
+    to,
+  ]);
+  return rows.map((r) => ({ date: String(r.date || ''), name: String(r.name || 'Ngày lễ') }));
+}
+
 export async function upsertHoliday(date: string, name: string): Promise<void> {
   await q(
     `INSERT INTO holidays (date, name, year) VALUES ($1,$2,$3)

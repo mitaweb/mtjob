@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { api, apiStream, cachedGet } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
 import Reminders from '../components/Reminders';
+import MyCalendar from '../components/MyCalendar';
 import { useToast } from '../components/Toaster';
 import { useAuth } from '../lib/auth';
 import { fmtMin } from '../lib/format';
@@ -206,6 +207,7 @@ export default function Chat() {
   const [pickQuery, setPickQuery] = useState('');
   const [stage, setStage] = useState(''); // việc trợ lý đang làm, hiện lúc chờ
   const [showReminders, setShowReminders] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
   const [savingIdx, setSavingIdx] = useState<number | null>(null); // đang mở ô lưu vào kho
   const [saveTitle, setSaveTitle] = useState('');
   const [saveCustomer, setSaveCustomer] = useState('');
@@ -663,9 +665,11 @@ export default function Chat() {
             Gửi
           </button>
         </div>
-        <div className="flex gap-2">
+        {/* Ba nút không vừa một hàng trên máy hẹp — cho xuống dòng, nhưng cấm ngắt chữ
+            giữa nhãn: "Nhắc / hẹn" hai dòng đọc như hai nút khác nhau. */}
+        <div className="flex flex-wrap gap-2">
           <button
-            className={`btn flex-1 ${doing.length ? 'bg-amber-100 text-amber-800 hover:bg-amber-200' : 'bg-brand-100 text-ink-muted'}`}
+            className={`btn flex-1 whitespace-nowrap ${doing.length ? 'bg-amber-100 text-amber-800 hover:bg-amber-200' : 'bg-brand-100 text-ink-muted'}`}
             onClick={() => {
               loadDoing();
               setShowDoing(true);
@@ -673,13 +677,23 @@ export default function Chat() {
           >
             ⏳ Đang làm ({doing.length})
           </button>
-          <button className="btn bg-brand-100 text-ink-soft hover:bg-brand-200" onClick={() => setShowReminders(true)}>
+          <button
+            className="btn whitespace-nowrap bg-brand-100 text-ink-soft hover:bg-brand-200"
+            onClick={() => setShowReminders(true)}
+          >
             ⏰ Nhắc hẹn
+          </button>
+          <button
+            className="btn whitespace-nowrap bg-brand-100 text-ink-soft hover:bg-brand-200"
+            onClick={() => setShowCalendar(true)}
+          >
+            📆 Lịch
           </button>
         </div>
       </div>
 
       {showReminders && <Reminders onClose={() => setShowReminders(false)} />}
+      {showCalendar && <MyCalendar onClose={() => setShowCalendar(false)} />}
 
       {/* Chọn loại task khi bắt đầu việc được giao */}
       {startingTodo && (

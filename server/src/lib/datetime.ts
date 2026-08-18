@@ -70,6 +70,17 @@ export function fmtHm(iso: string): string {
   return d.isValid() ? d.tz(TZ).format('HH:mm') : '';
 }
 
+/**
+ * ISO datetime → 'YYYY-MM-DD' theo giờ VN.
+ *
+ * Cắt thẳng `iso.slice(0,10)` là sai: giờ lưu ở UTC, nên hẹn 6h sáng VN nằm ở 23h UTC
+ * NGÀY HÔM TRƯỚC — lịch sẽ vẽ lệch một ngày.
+ */
+export function ngayVn(iso: string): string {
+  const d = dayjs(iso);
+  return d.isValid() ? d.tz(TZ).format('YYYY-MM-DD') : '';
+}
+
 /** Format an ISO date/datetime as DD/MM/YYYY in app TZ. */
 export function fmtDate(iso: string): string {
   const d = dayjs(iso);
