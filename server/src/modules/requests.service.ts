@@ -16,7 +16,15 @@ import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
 import type { AttendanceRow, Member, RequestScope, RequestStatus } from '../types.js';
 
-const kindVi = (k: RequestKind) => (k === 'online' ? 'làm online' : 'nghỉ phép');
+/** Đọc xuôi trong cả hai câu thông báo: "… xin {x}" và "Đơn {x} (ngày) đã được duyệt". */
+const KIND_VI: Record<RequestKind, string> = {
+  online: 'làm online',
+  leave: 'nghỉ phép',
+  forgot: 'giải trình quên chấm công',
+  late: 'giải trình đi trễ',
+  early: 'giải trình về sớm',
+};
+const kindVi = (k: RequestKind) => KIND_VI[k] ?? k;
 
 async function leaderForMember(member: Member): Promise<string> {
   const lid = await teamLeaderId(member.teamId);
@@ -187,6 +195,101 @@ async function undoOnlineAttendance(req: RequestRow): Promise<void> {
   }
 }
 
+
+/**
+ * Áp tác động của đơn ĐÃ DUYỆT lên chấm công.
+ *
+ * Gom về một chỗ vì luật mỗi loại một khác, và trước đây nó nằm rải ở ba nhánh
+ * `kind === 'online' ? … : …` — thêm loại đơn thứ ba là cả ba chỗ đều phải nhớ sửa.
+ *
+ * Anh Tâm 4/8/2026 chốt:
+ *   forgot (quên chấm công) → TÍNH ĐỦ CÔNG ngày đó. Không thì đơn chỉ là tờ giấy.
+ *   late / early (đi trễ, về sớm) → CHỈ ghi nhận là có xin phép, công vẫn tính theo
+ *     giờ thực. Đây là xin phép, không phải xin bù công.
+ */
+async function apDungKhiDuyet(req: RequestRow): Promise<void> {
+  if (req.kind === 'online') return recordOnlineAttendance(req);
+  if (req.kind === 'leave') return recordLeave(req);
+  if (req.kind === 'forgot') return recordForgot(req);
+  // late / early: không đụng tới chấm công.
+}
+
+/** Gỡ tác động khi đơn bị đổi từ duyệt sang từ chối. */
+async function goKhiHuyDuyet(req: RequestRow): Promise<void> {
+  if (req.kind === 'online') return undoOnlineAttendance(req);
+  if (req.kind === 'leave') return undoLeaveAttendance(req);
+  if (req.kind === 'forgot') return undoForgot(req);
+}
+
+/**
+ * Quên chấm công được duyệt → ghi đủ công ngày đó.
+ *
+ * Dùng cờ 'quencham' ở ô giờ vào, cùng cách đơn online dùng cờ 'online': màn hình biết
+ * đây không phải mốc giờ thật nên không hiện "Invalid Date", và gỡ đơn ra thì biết đâu
+ * là phần do đơn tạo, đâu là giờ chấm thật.
+ */
+async function recordForgot(req: RequestRow): Promise<void> {
+  const member = await findById(req.memberId);
+  if (!member) return;
+  for (const date of req.dates) {
+    const existing = await getMemberDate(member.id, date);
+    const row: AttendanceRow = existing ?? {
+      date,
+      memberId: member.id,
+      name: member.fullName,
+      morningInAt: '',
+      morningOutAt: '',
+      afternoonInAt: '',
+      afternoonOutAt: '',
+      dayFraction: 0,
+      mode: 'office',
+      status: 'absent',
+    };
+    row.name = member.fullName;
+    // CHỈ điền vào buổi còn trống — không đè lên giờ đã chấm thật.
+    if (!row.morningInAt) row.morningInAt = 'quencham';
+    if (!row.afternoonInAt) row.afternoonInAt = 'quencham';
+    row.dayFraction = dayFractionFromShifts({
+      morningIn: row.morningInAt,
+      afternoonIn: row.afternoonInAt,
+      afternoonOut: row.afternoonOutAt,
+    });
+    row.status = row.dayFraction >= 1 ? 'present' : 'half';
+    row.note = `Quên chấm công — đơn ${req.id}`;
+    await saveAttendance(row);
+  }
+}
+
+/** Gỡ phần công do đơn QUÊN CHẤM CÔNG tạo; giữ nguyên giờ chấm thật nếu có. */
+async function undoForgot(req: RequestRow): Promise<void> {
+  for (const date of req.dates) {
+    const row = await getMemberDate(req.memberId, date);
+    if (!row) continue;
+    let touched = false;
+    if (row.morningInAt === 'quencham') {
+      row.morningInAt = '';
+      touched = true;
+    }
+    if (row.afternoonInAt === 'quencham') {
+      row.afternoonInAt = '';
+      touched = true;
+    }
+    if (!touched) continue;
+    if (!row.morningInAt && !row.afternoonInAt) {
+      await deleteAttendance(date, req.memberId);
+      continue;
+    }
+    row.dayFraction = dayFractionFromShifts({
+      morningIn: row.morningInAt,
+      afternoonIn: row.afternoonInAt,
+      afternoonOut: row.afternoonOutAt,
+    });
+    row.status = row.dayFraction >= 1 ? 'present' : 'half';
+    row.note = '';
+    await saveAttendance(row);
+  }
+}
+
 export type Decision = 'approve' | 'reject';
 
 /**
@@ -216,8 +319,7 @@ export async function redecideRequest(
   const now = nowTz().toISOString();
   if (target === 'rejected') {
     // Huỷ duyệt → gỡ công đã ghi TRƯỚC khi đổi trạng thái.
-    if (kind === 'online') await undoOnlineAttendance(req);
-    else await undoLeaveAttendance(req);
+    await goKhiHuyDuyet(req);
   }
 
   const patch: Record<string, unknown> = {
@@ -240,8 +342,7 @@ export async function redecideRequest(
   req.finalStatus = target;
 
   if (target === 'approved') {
-    if (kind === 'online') await recordOnlineAttendance(req);
-    else await recordLeave(req);
+    await apDungKhiDuyet(req);
     await notify(req.memberId, {
       type: 'request',
       title: 'Đơn được duyệt lại ✅',
@@ -313,8 +414,7 @@ export async function decideRequest(
 
   // Side effects + notifications.
   if (req.finalStatus === 'approved') {
-    if (kind === 'online') await recordOnlineAttendance(req);
-    else await recordLeave(req);
+    await apDungKhiDuyet(req);
     await notify(req.memberId, {
       type: 'request',
       title: 'Đơn đã được duyệt ✅',

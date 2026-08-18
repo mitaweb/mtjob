@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
+import { TEN_DON, laGiaiTrinh, homNayIso, homQuaIso, type RequestKind } from '../lib/requests';
 
 interface Req {
   kind: string;
@@ -20,6 +21,14 @@ const statusVi: Record<string, string> = {
   rejected: 'Từ chối',
 };
 
+const TABS: Array<{ key: RequestKind; label: string }> = [
+  { key: 'online', label: 'Làm online' },
+  { key: 'leave', label: 'Nghỉ phép' },
+  { key: 'forgot', label: 'Quên chấm công' },
+  { key: 'late', label: 'Đi trễ' },
+  { key: 'early', label: 'Về sớm' },
+];
+
 // Tiến trình duyệt: Đỏ (chờ leader) → Vàng (leader đã duyệt, chờ giám đốc) → Xanh (duyệt xong).
 function stageOf(r: Req): { label: string; badge: string; border: string } {
   if (r.finalStatus === 'rejected')
@@ -32,12 +41,14 @@ function stageOf(r: Req): { label: string; badge: string; border: string } {
 }
 
 export default function Requests() {
-  const [tab, setTab] = useState<'online' | 'leave'>('online');
+  const [tab, setTab] = useState<RequestKind>('online');
   const [date, setDate] = useState('');
   const [scope, setScope] = useState('full');
   const [reason, setReason] = useState('');
   const [list, setList] = useState<Req[]>([]);
   const [msg, setMsg] = useState('');
+
+  const giaiTrinh = laGiaiTrinh(tab);
 
   async function load() {
     const r = await api<{ requests: Req[] }>('/requests/me');
@@ -47,16 +58,29 @@ export default function Requests() {
     load().catch((e) => setMsg((e as Error).message));
   }, []);
 
+  // Đổi loại đơn thì bỏ ngày đã chọn: ngày hợp lệ của đơn giải trình khác hẳn đơn nghỉ/online.
+  function doiTab(k: RequestKind) {
+    setTab(k);
+    setDate('');
+    setMsg('');
+  }
+
   async function submit() {
     if (!date) {
       setMsg('Chọn ngày trước nhé.');
       return;
     }
+    if (giaiTrinh && !reason.trim()) {
+      setMsg('Đơn giải trình phải ghi lý do.');
+      return;
+    }
     try {
       if (tab === 'online') {
         await api('/requests/online', { body: { dates: [date], scope, reason } });
-      } else {
+      } else if (tab === 'leave') {
         await api('/requests/leave', { body: { dates: [date], reason } });
+      } else {
+        await api(`/requests/${tab}`, { body: { date, reason } });
       }
       setMsg('Đã gửi đơn, chờ leader/giám đốc duyệt ✅');
       setReason('');
@@ -69,19 +93,36 @@ export default function Requests() {
   return (
     <div className="space-y-4">
       <div className="card">
-        <div className="flex gap-2 mb-3">
-          <button className={tab === 'online' ? 'btn-primary' : 'btn-ghost'} onClick={() => setTab('online')}>
-            Làm online
-          </button>
-          <button className={tab === 'leave' ? 'btn-primary' : 'btn-ghost'} onClick={() => setTab('leave')}>
-            Nghỉ phép
-          </button>
+        <div className="mb-3 flex flex-wrap gap-2">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              className={tab === t.key ? 'btn-primary' : 'btn-ghost'}
+              onClick={() => doiTab(t.key)}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
 
-        <div className="grid sm:grid-cols-2 gap-3">
+        {giaiTrinh && (
+          <div className="mb-3 rounded-xl bg-brand-50 px-3 py-2 text-sm text-ink-soft">
+            Đơn <strong>{TEN_DON[tab]}</strong> phải nộp trong <strong>24 giờ</strong>: chỉ chọn được hôm nay hoặc
+            hôm qua. Quá hạn thì hệ thống không nhận đơn nữa.
+          </div>
+        )}
+
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="label">Ngày</label>
-            <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
+            <input
+              type="date"
+              className="input"
+              value={date}
+              min={giaiTrinh ? homQuaIso() : undefined}
+              max={giaiTrinh ? homNayIso() : undefined}
+              onChange={(e) => setDate(e.target.value)}
+            />
           </div>
           {tab === 'online' && (
             <div>
@@ -95,8 +136,13 @@ export default function Requests() {
           )}
         </div>
         <div className="mt-3">
-          <label className="label">Lý do</label>
-          <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} />
+          <label className="label">Lý do{giaiTrinh ? ' (bắt buộc)' : ''}</label>
+          <input
+            className="input"
+            value={reason}
+            placeholder={giaiTrinh ? 'Ví dụ: kẹt xe ở cầu Sài Gòn, tới trễ 20 phút' : ''}
+            onChange={(e) => setReason(e.target.value)}
+          />
         </div>
         <AsyncButton className="btn-primary mt-3" onClick={submit}>
           Gửi đơn
@@ -111,11 +157,11 @@ export default function Requests() {
             const stage = stageOf(r);
             return (
               <li key={r.id} className={`py-2 pl-3 text-sm border-l-4 ${stage.border}`}>
-                <div className="flex justify-between">
-                  <span className="font-medium">
-                    {r.kind === 'online' ? 'Làm online' : 'Nghỉ phép'} · {r.dates.join(', ')}
+                <div className="flex justify-between gap-2">
+                  <span className="min-w-0 font-medium">
+                    {TEN_DON[r.kind] ?? r.kind} · {r.dates.join(', ')}
                   </span>
-                  <span className={`rounded-full px-2 py-0.5 text-xs ${stage.badge}`}>{stage.label}</span>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${stage.badge}`}>{stage.label}</span>
                 </div>
                 <div className="text-xs text-ink-muted">
                   Leader: {statusVi[r.leaderStatus]} · Giám đốc: {statusVi[r.directorStatus]}
@@ -130,4 +176,3 @@ export default function Requests() {
     </div>
   );
 }
-

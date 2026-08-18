@@ -1,7 +1,7 @@
 import { q } from '../db/client.js';
 import type { RequestScope, RequestStatus } from '../types.js';
 
-export type RequestKind = 'online' | 'leave';
+export type RequestKind = 'online' | 'leave' | 'forgot' | 'late' | 'early';
 
 export interface RequestRow {
   kind: RequestKind;

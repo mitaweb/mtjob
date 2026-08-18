@@ -3,9 +3,10 @@ import { api } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
 import { useToast } from '../components/Toaster';
 import { Badge, EmptyState, SkeletonRows } from '../components/ui';
+import { TEN_DON, type RequestKind } from '../lib/requests';
 
 interface Req {
-  kind: 'online' | 'leave';
+  kind: RequestKind;
   id: string;
   name: string;
   dates: string[];
@@ -25,9 +26,9 @@ const TABS: Array<{ key: Tab; label: string }> = [
 ];
 
 function kindLabel(r: Req): string {
-  return r.kind === 'online'
-    ? `Làm online (${r.scope === 'full' ? 'cả ngày' : r.scope === 'half_am' ? 'sáng' : 'chiều'})`
-    : 'Nghỉ phép';
+  if (r.kind === 'online')
+    return `Làm online (${r.scope === 'full' ? 'cả ngày' : r.scope === 'half_am' ? 'sáng' : 'chiều'})`;
+  return TEN_DON[r.kind] ?? r.kind;
 }
 
 const fmtD = (iso?: string) =>

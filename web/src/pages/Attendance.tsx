@@ -25,7 +25,12 @@ const thangNay = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
-const hm = (iso?: string) => (iso && iso.includes('T') ? new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : iso || '—');
+// Ô giờ có thể chứa cờ thay cho mốc giờ thật (đơn online, đơn quên chấm công) — dịch ra tiếng Việt.
+const CO_GIO: Record<string, string> = { online: 'online', quencham: 'quên chấm' };
+const hm = (iso?: string) =>
+  iso && iso.includes('T')
+    ? new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+    : CO_GIO[iso || ''] || iso || '—';
 
 export default function Attendance() {
   const [data, setData] = useState<MeResponse | null>(null);
