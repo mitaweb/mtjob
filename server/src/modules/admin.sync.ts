@@ -159,8 +159,6 @@ export interface PointSyncResult extends PointChangeSummary {
   ngoaiBang: TenNgoaiBang[];
   /** Tên bị ghi nhiều mức điểm trong bảng điểm — bỏ qua, xem `TenTrungDiem`. */
   tenTrung: TenTrungDiem[];
-  /** true = mới chỉ dò, chưa sửa gì trong dữ liệu. */
-  chiXem?: boolean;
 }
 
 /**
@@ -236,11 +234,8 @@ export const SQL_AP_DIEM = `
  *
  * CHỈ đụng tháng CHƯA khoá lương. Lưu ý `isMonthLocked` (payroll.service) chỉ bảo vệ
  * công/lương — bảng điểm luôn tính lại live từ `tasks.points`, nên phải tự chặn ở đây.
- *
- * @param chiXem Chỉ dò và báo cáo, KHÔNG sửa gì. Dùng cho nút "Xem trước": muốn biết đợt
- *   đồng bộ sẽ đụng vào phòng nào, ai, bao nhiêu điểm — trước khi cho nó chạy thật.
  */
-export async function applyCatalogPoints(chiXem = false): Promise<PointSyncResult> {
+export async function applyCatalogPoints(): Promise<PointSyncResult> {
   const locked = (await q('SELECT year, month FROM payroll_locks')).map(
     (r: { year: number; month: number }) => `${String(r.year).padStart(4, '0')}-${String(r.month).padStart(2, '0')}`,
   );
@@ -261,8 +256,8 @@ export async function applyCatalogPoints(chiXem = false): Promise<PointSyncResul
   const rows: PointChange[] = await q(SQL_SE_DOI, P);
   if (rows.length === 0) return { ...empty, ngoaiBang, tenTrung };
 
-  if (!chiXem) await q(SQL_AP_DIEM, P);
-  return { ...summarizePointChanges(rows), lockedMonths: locked, ngoaiBang, tenTrung, chiXem };
+  await q(SQL_AP_DIEM, P);
+  return { ...summarizePointChanges(rows), lockedMonths: locked, ngoaiBang, tenTrung };
 }
 
 /**
