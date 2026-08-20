@@ -9,8 +9,10 @@ import {
   summarizePointChanges,
   type PointChange,
   type PointChangeSummary,
-  type MaDoiNghia,
+  type TenNgoaiBang,
+  type TenTrungDiem,
 } from '../lib/scores.js';
+import { ADJUST_SOURCE } from '../lib/adjust.js';
 import { q } from '../db/client.js';
 import { newId } from '../util/id.js';
 import { ApiError } from '../util/errors.js';
@@ -151,8 +153,10 @@ export interface PointSyncResult extends PointChangeSummary {
   skipped?: string;
   /** Tháng đã khoá lương, được giữ nguyên. */
   lockedMonths: string[];
-  /** Mã việc nay trỏ sang loại việc khác — đã bỏ qua, xem `MaDoiNghia`. */
-  doiNghia: MaDoiNghia[];
+  /** Tên việc đã ghi không còn trong bảng điểm — giữ nguyên điểm, xem `TenNgoaiBang`. */
+  ngoaiBang: TenNgoaiBang[];
+  /** Tên bị ghi nhiều mức điểm trong bảng điểm — bỏ qua, xem `TenTrungDiem`. */
+  tenTrung: TenTrungDiem[];
 }
 
 /**
@@ -164,11 +168,75 @@ export interface PointSyncResult extends PointChangeSummary {
  * CHỈ đụng tháng CHƯA khoá lương. Lưu ý `isMonthLocked` (payroll.service) chỉ bảo vệ
  * công/lương — bảng điểm luôn tính lại live từ `tasks.points`, nên phải tự chặn ở đây.
  */
+/**
+ * Nhận dạng việc bằng TÊN, không bằng mã. Anh Tâm 20/8/2026 chốt.
+ *
+ * Mã sinh theo VỊ TRÍ dòng trong Sheet (ADS + số thứ tự), nên chèn/xoá/đổi chỗ một dòng
+ * là mọi dòng dưới tụt mã và mã cũ trên việc đã ghi trỏ sang loại việc khác — đó là đường
+ * làm đổi điểm của người chẳng liên quan gì tới chỗ vừa sửa. Tên không tụt theo vị trí
+ * nên khớp theo tên là hết hẳn đường đó.
+ *
+ * Khớp theo tên thì mỗi tên phải trỏ về ĐÚNG MỘT mức điểm — `HAVING COUNT(DISTINCT points)
+ * = 1` loại thẳng tên nào bảng điểm ghi hai mức, không đoán bừa.
+ *
+ * Bốn câu lệnh tách hằng số ở đây để test chạy được đúng chuỗi này trên Postgres thật:
+ * typecheck không nhìn thấy gì bên trong chuỗi SQL, mà mấy câu này quyết định điểm mọi người.
+ */
+const BANG = `
+  bang AS (
+    SELECT lower(btrim(task_name)) AS ten, MIN(points)::int AS points
+    FROM task_catalog
+    WHERE btrim(COALESCE(task_name, '')) <> '' AND points > 0
+    GROUP BY lower(btrim(task_name))
+    HAVING COUNT(DISTINCT points) = 1
+  )`;
+
+const TEN_VIEC = `lower(btrim(COALESCE(t.task_name, '')))`;
+
+/**
+ * Nền lọc việc được phép đổi điểm. $1 = các tháng đã khoá lương, $2 = nguồn dòng bù điểm.
+ *
+ * Tháng của việc lấy theo ngày hoàn thành, chưa xong thì theo ngày tạo. Bỏ qua việc leader
+ * giao chưa chọn loại (task_code rỗng, điểm 0 — khớp tên vào là tự dưng có điểm) và dòng
+ * bù điểm giám đốc nhập tay.
+ */
+const NEN = `
+  t.task_code <> '' AND t.source <> $2
+  AND substring(COALESCE(NULLIF(t.completed_at, ''), t.created_at), 1, 7) <> ALL($1::text[])`;
+
+export const SQL_TEN_TRUNG = `
+  SELECT MIN(task_name) AS ten, string_agg(DISTINCT points::text, ' / ') AS diems
+  FROM task_catalog
+  WHERE btrim(COALESCE(task_name, '')) <> '' AND points > 0
+  GROUP BY lower(btrim(task_name))
+  HAVING COUNT(DISTINCT points) > 1
+  LIMIT 30`;
+
+export const SQL_NGOAI_BANG = `
+  WITH ${BANG}
+  SELECT t.task_name AS ten, COUNT(*)::int AS "soViec", MIN(t.points)::int AS diem
+  FROM tasks t
+  WHERE ${NEN} AND ${TEN_VIEC} NOT IN (SELECT ten FROM bang)
+  GROUP BY t.task_name
+  ORDER BY COUNT(*) DESC
+  LIMIT 30`;
+
+export const SQL_SE_DOI = `
+  WITH ${BANG}
+  SELECT t.member_name AS "memberName", t.task_name AS "taskName", t.points AS cu, b.points AS moi
+  FROM tasks t JOIN bang b ON b.ten = ${TEN_VIEC}
+  WHERE ${NEN} AND t.points <> b.points`;
+
+export const SQL_AP_DIEM = `
+  WITH ${BANG}
+  UPDATE tasks t SET points = b.points
+  FROM bang b WHERE b.ten = ${TEN_VIEC} AND ${NEN} AND t.points <> b.points`;
+
 export async function applyCatalogPoints(): Promise<PointSyncResult> {
   const locked = (await q('SELECT year, month FROM payroll_locks')).map(
     (r: { year: number; month: number }) => `${String(r.year).padStart(4, '0')}-${String(r.month).padStart(2, '0')}`,
   );
-  const empty = { ...summarizePointChanges([]), lockedMonths: locked, doiNghia: [] };
+  const empty = { ...summarizePointChanges([]), lockedMonths: locked, ngoaiBang: [], tenTrung: [] };
 
   // Chốt chặn: một ô sai trong Google Sheet là cả bảng điểm bay. Thà không làm gì.
   const bad = await q('SELECT task_code, task_name FROM task_catalog WHERE points IS NULL OR points <= 0 LIMIT 5');
@@ -177,47 +245,16 @@ export async function applyCatalogPoints(): Promise<PointSyncResult> {
     return { ...empty, skipped: `Bảng điểm có mục 0đ (${ten}) — không đổi điểm việc cũ. Kiểm tra lại Google Sheet.` };
   }
 
-  // Tháng của việc: lấy theo ngày hoàn thành, chưa xong thì theo ngày tạo.
-  // Việc leader giao chưa chọn loại (task_code rỗng) thì bỏ qua.
-  const CHUA_KHOA = `substring(COALESCE(NULLIF(t.completed_at, ''), t.created_at), 1, 7) <> ALL($1::text[])`;
+  const P = [locked, ADJUST_SOURCE];
 
-  /**
-   * Việc cũ phải còn ĐÚNG TÊN mới được đổi điểm — mã không đủ để nhận dạng.
-   *
-   * Mã sinh theo vị trí trong Sheet (ADS + số thứ tự). Chèn một dòng giữa bảng là mọi
-   * dòng dưới tụt mã, và mã cũ trên việc đã ghi bỗng trỏ sang loại việc khác. Chỉ join
-   * theo mã thì đồng bộ sẽ lấy điểm của việc MỚI áp lên việc CŨ, làm đổi điểm người
-   * chẳng liên quan gì tới chỗ vừa sửa. So thêm tên là chặn được đúng chỗ đó.
-   */
-  const CUNG_TEN = `lower(btrim(COALESCE(t.task_name, ''))) = lower(btrim(COALESCE(c.task_name, '')))`;
-  const WHERE = `t.task_code <> '' AND t.points <> c.points AND ${CHUA_KHOA} AND ${CUNG_TEN}`;
+  const tenTrung: TenTrungDiem[] = await q(SQL_TEN_TRUNG);
+  // Tên việc đã ghi mà bảng điểm không còn — giữ nguyên điểm, chỉ báo cho biết.
+  const ngoaiBang: TenNgoaiBang[] = await q(SQL_NGOAI_BANG, P);
+  const rows: PointChange[] = await q(SQL_SE_DOI, P);
+  if (rows.length === 0) return { ...empty, ngoaiBang, tenTrung };
 
-  // Mã đã đổi nghĩa: KHÔNG sửa gì, chỉ báo để người ta vào Sheet soi lại.
-  const doiNghia: MaDoiNghia[] = await q(
-    `SELECT t.task_code AS code, t.task_name AS "tenCu", c.task_name AS "tenMoi",
-            COUNT(*)::int AS "soViec", MIN(t.points)::int AS "diemCu", MIN(c.points)::int AS "diemMoi"
-     FROM tasks t JOIN task_catalog c ON c.task_code = t.task_code
-     WHERE t.task_code <> '' AND ${CHUA_KHOA} AND NOT (${CUNG_TEN})
-     GROUP BY t.task_code, t.task_name, c.task_name
-     ORDER BY COUNT(*) DESC
-     LIMIT 30`,
-    [locked],
-  );
-
-  const rows: PointChange[] = await q(
-    `SELECT t.member_name AS "memberName", c.task_name AS "taskName", t.points AS cu, c.points AS moi
-     FROM tasks t JOIN task_catalog c ON c.task_code = t.task_code
-     WHERE ${WHERE}`,
-    [locked],
-  );
-  if (rows.length === 0) return { ...empty, doiNghia };
-
-  await q(
-    `UPDATE tasks t SET points = c.points
-     FROM task_catalog c WHERE c.task_code = t.task_code AND ${WHERE}`,
-    [locked],
-  );
-  return { ...summarizePointChanges(rows), lockedMonths: locked, doiNghia };
+  await q(SQL_AP_DIEM, P);
+  return { ...summarizePointChanges(rows), lockedMonths: locked, ngoaiBang, tenTrung };
 }
 
 /**

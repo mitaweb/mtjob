@@ -5,9 +5,9 @@ import {
   aggregateByMember,
   rankMembers,
   summarizePointChanges,
-  moTaDoiNghia,
+  moTaNgoaiBang,
 } from './scores.js';
-import type { ScoreTask, PointChange, MaDoiNghia } from './scores.js';
+import type { ScoreTask, PointChange, TenNgoaiBang } from './scores.js';
 
 describe('summarizePointChanges', () => {
   // Ca thật: anh Tâm hạ "Báo cáo Ads" từ 35đ xuống 10đ.
@@ -103,25 +103,18 @@ describe('rankMembers', () => {
   });
 });
 
-describe('moTaDoiNghia', () => {
-  const md = (code: string, tenCu: string, tenMoi: string, soViec: number): MaDoiNghia => ({
-    code,
-    tenCu,
-    tenMoi,
-    soViec,
-    diemCu: 10,
-    diemMoi: 25,
+describe('moTaNgoaiBang', () => {
+  const tb = (ten: string, soViec: number): TenNgoaiBang => ({ ten, soViec, diem: 35 });
+
+  it('mọi tên còn trong bảng điểm thì không cảnh báo', () => {
+    expect(moTaNgoaiBang([])).toBe('');
   });
 
-  it('không có mã nào đổi nghĩa thì không cảnh báo', () => {
-    expect(moTaDoiNghia([])).toBe('');
-  });
-
-  it('nói rõ bao nhiêu mã, bao nhiêu việc, và đã giữ nguyên điểm', () => {
-    // Ca thật: chèn một dòng giữa tab Ads làm ADS05 tụt xuống thành việc khác.
-    const s = moTaDoiNghia([md('ADS05', 'Lên ads', 'Viết bài', 12), md('ADS06', 'Tối ưu ads', 'Lên ads', 3)]);
-    expect(s).toContain('2 mã việc');
-    expect(s).toContain('15 việc');
-    expect(s).toContain('GIỮ NGUYÊN');
+  it('nói rõ bao nhiêu tên, bao nhiêu việc, và đã giữ nguyên điểm', () => {
+    // Ca thật 20/8/2026: anh Tâm đổi tên "Tối ưu Quảng Cáo" → "Tối ưu Quảng Cáo FB".
+    const s = moTaNgoaiBang([tb('Tối ưu Quảng Cáo', 186), tb('Chuẩn bị nội dung quảng cáo', 35)]);
+    expect(s).toContain('2 tên việc');
+    expect(s).toContain('221 việc');
+    expect(s).toContain('giữ nguyên điểm cũ');
   });
 });

@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { syncCatalogFromSource } from '../src/modules/admin.sync.js';
-import { moTaDoiNghia } from '../src/lib/scores.js';
+import { moTaNgoaiBang } from '../src/lib/scores.js';
 import { closePool } from '../src/db/client.js';
 
 async function main(): Promise<void> {
@@ -8,13 +8,16 @@ async function main(): Promise<void> {
   const r = await syncCatalogFromSource();
   console.log(`✅ Đã cập nhật ${r.updated} đầu việc từ: ${r.tabs.join(', ')}`);
 
-  // Mã đổi nghĩa là dấu hiệu Sheet bị lệch dòng — im lặng bỏ qua thì lần sau vẫn lệch.
-  const canh = moTaDoiNghia(r.points.doiNghia);
+  // Tên việc rơi ra ngoài bảng điểm — im lặng thì mấy trăm việc đứng yên mà không ai biết.
+  const canh = moTaNgoaiBang(r.points.ngoaiBang);
   if (canh) {
     console.warn(`⚠️  ${canh}`);
-    for (const d of r.points.doiNghia) {
-      console.warn(`    ${d.code}: việc cũ ghi "${d.tenCu}" — bảng điểm nay là "${d.tenMoi}" (${d.soViec} việc)`);
+    for (const d of r.points.ngoaiBang) {
+      console.warn(`    "${d.ten}" — ${d.soViec} việc, giữ ${d.diem}đ`);
     }
+  }
+  for (const t of r.points.tenTrung) {
+    console.warn(`⚠️  "${t.ten}" bị ghi nhiều mức điểm (${t.diems}) — bỏ qua tên này.`);
   }
   console.log('Lưu ý: thêm tab mới bằng cách bổ sung "gid:PREFIX" vào SHEET_TASKS_SOURCE_GIDS.');
   await closePool();

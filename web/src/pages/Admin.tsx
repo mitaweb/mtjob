@@ -106,15 +106,10 @@ export default function Admin() {
     byTask: Array<{ taskName: string; cu: number; moi: number; tasks: number }>;
     lockedMonths: string[];
     skipped?: string;
-    /** Mã việc nay trỏ sang loại việc khác — máy chủ đã giữ nguyên điểm, không đồng bộ. */
-    doiNghia: Array<{
-      code: string;
-      tenCu: string;
-      tenMoi: string;
-      soViec: number;
-      diemCu: number;
-      diemMoi: number;
-    }>;
+    /** Tên việc đã ghi không còn trong bảng điểm — giữ nguyên điểm cũ. */
+    ngoaiBang: Array<{ ten: string; soViec: number; diem: number }>;
+    /** Tên bị ghi nhiều mức điểm trong bảng điểm — bỏ qua vì không quyết được lấy mức nào. */
+    tenTrung: Array<{ ten: string; diems: string }>;
   }
 
   interface CatalogSync {
@@ -439,43 +434,58 @@ export default function Admin() {
             </>
           )}
 
-          {/* Mã đổi nghĩa — thứ đáng xem nhất khi điểm nhảy sai, nên để ngay dưới bảng. */}
-          {pointSync.doiNghia?.length > 0 && (
+          {/* Tên việc rơi ra ngoài bảng điểm — không phải lỗi, nhưng phải cho thấy. */}
+          {pointSync.ngoaiBang?.length > 0 && (
             <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
               <div className="text-sm font-semibold text-amber-900">
-                ⚠️ {pointSync.doiNghia.length} mã việc đang trỏ sang loại việc khác — đã giữ nguyên điểm
+                {pointSync.ngoaiBang.length} tên việc đã ghi không còn trong bảng điểm — giữ nguyên điểm
               </div>
               <p className="mt-1 text-xs text-amber-800">
-                Mã việc sinh theo <b>số thứ tự dòng</b> trong Google Sheet. Chèn hoặc xoá một dòng giữa bảng
-                là mọi dòng bên dưới tụt mã, và việc đã ghi từ trước bỗng trỏ sang loại việc khác. Vào Sheet
-                trả lại đúng thứ tự dòng, rồi đồng bộ lại.
+                Đồng bộ khớp việc cũ với bảng điểm theo <b>tên việc</b>. Đổi tên một đầu việc trong Sheet thì
+                việc ghi trước đó vẫn mang tên cũ nên không còn chỗ bám — điểm đứng yên ở mức dưới đây.
+                Để yên cũng được (việc cũ giữ đúng điểm lúc làm); muốn chúng ăn theo bảng điểm mới thì đổi
+                tên trong Sheet về đúng tên cũ rồi đồng bộ lại.
               </p>
               <div className="mt-2 overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead className="text-left text-amber-800">
                     <tr>
-                      <th className="py-1 pr-2">Mã</th>
-                      <th className="pr-2">Việc đã ghi</th>
-                      <th className="pr-2">Nay bảng điểm là</th>
-                      <th className="pr-2 text-right">Điểm</th>
+                      <th className="py-1 pr-2">Tên việc đã ghi</th>
+                      <th className="pr-2 text-right">Đang giữ</th>
                       <th className="text-right">Số việc</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {pointSync.doiNghia.map((d) => (
-                      <tr key={`${d.code}-${d.tenCu}`} className="border-t border-amber-200">
-                        <td className="py-1 pr-2 font-mono">{d.code}</td>
-                        <td className="pr-2">{d.tenCu || '(trống)'}</td>
-                        <td className="pr-2">{d.tenMoi}</td>
-                        <td className="whitespace-nowrap pr-2 text-right">
-                          {d.diemCu}đ ≠ {d.diemMoi}đ
-                        </td>
+                    {pointSync.ngoaiBang.map((d) => (
+                      <tr key={d.ten} className="border-t border-amber-200">
+                        <td className="py-1 pr-2">{d.ten || '(trống)'}</td>
+                        <td className="whitespace-nowrap pr-2 text-right">{d.diem}đ</td>
                         <td className="text-right">{d.soViec}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {/* Cùng một tên mà bảng điểm ghi hai mức — không đoán được, phải sửa Sheet. */}
+          {pointSync.tenTrung?.length > 0 && (
+            <div className="mt-3 rounded-xl border border-rose-300 bg-rose-50 p-3">
+              <div className="text-sm font-semibold text-rose-800">
+                ⚠️ {pointSync.tenTrung.length} tên việc bị ghi nhiều mức điểm — đã bỏ qua
+              </div>
+              <p className="mt-1 text-xs text-rose-700">
+                Cùng một tên việc mà bảng điểm để hai mức điểm khác nhau thì không quyết được lấy mức nào.
+                Vào Sheet gộp lại còn một mức, hoặc đặt tên khác nhau cho hai việc khác nhau.
+              </p>
+              <ul className="mt-2 space-y-0.5 text-xs text-rose-800">
+                {pointSync.tenTrung.map((t) => (
+                  <li key={t.ten}>
+                    <b>{t.ten}</b> — {t.diems} điểm
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 

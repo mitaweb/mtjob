@@ -84,30 +84,37 @@ export interface PointChangeSummary {
 }
 
 /**
- * Một mã việc mà việc CŨ ghi tên khác với tên hiện tại trong bảng điểm.
+ * Một TÊN việc đã ghi mà bảng điểm hiện không còn dòng nào tên đó.
  *
- * Mã sinh theo VỊ TRÍ trong Google Sheet (ADS + số thứ tự), nên chèn/xoá/đổi chỗ một dòng
- * là mọi dòng bên dưới tụt mã: ADS05 hôm qua là "Lên ads" hôm nay thành "Viết bài". Đồng
- * bộ mà chỉ nhìn mã thì lấy điểm của việc MỚI áp lên việc CŨ — người chẳng liên quan tự
- * dưng đổi điểm. Đây là dấu vết duy nhất phát hiện được, vì mỗi việc có lưu tên lúc ghi.
+ * Anh Tâm 20/8/2026: "k quan tâm mã cv, chỉ quan tâm tên cv". Đồng bộ khớp theo TÊN, nên
+ * đổi tên một đầu việc trong Sheet là việc cũ mang tên cũ hết chỗ bám — điểm giữ nguyên.
+ * Không phải lỗi, nhưng phải nói ra: im lặng thì mấy trăm việc đứng yên mãi mà không ai biết.
  */
-export interface MaDoiNghia {
-  code: string;
-  tenCu: string;
-  tenMoi: string;
+export interface TenNgoaiBang {
+  ten: string;
   soViec: number;
-  diemCu: number;
-  diemMoi: number;
+  diem: number;
 }
 
-/** Câu cảnh báo cho giám đốc đọc, hoặc '' nếu không có mã nào đổi nghĩa. */
-export function moTaDoiNghia(list: MaDoiNghia[]): string {
+/** Câu tóm tắt cho giám đốc đọc, hoặc '' nếu mọi tên việc đều còn trong bảng điểm. */
+export function moTaNgoaiBang(list: TenNgoaiBang[]): string {
   if (list.length === 0) return '';
   const viec = list.reduce((s, x) => s + x.soViec, 0);
   return (
-    `${list.length} mã việc đang trỏ sang loại việc khác (ảnh hưởng ${viec} việc đã ghi) — ` +
-    'đã GIỮ NGUYÊN điểm cũ, không đồng bộ. Thường là do chèn/xoá dòng giữa bảng điểm làm lệch số thứ tự.'
+    `${list.length} tên việc đã ghi không còn trong bảng điểm (${viec} việc) — giữ nguyên điểm cũ. ` +
+    'Thường là do đổi tên đầu việc trong Sheet.'
   );
+}
+
+/**
+ * Một tên việc mà bảng điểm ghi NHIỀU mức điểm khác nhau.
+ *
+ * Khớp theo tên thì tên phải trỏ về đúng một mức điểm. Hai dòng cùng tên khác điểm là
+ * không quyết được lấy mức nào — bỏ qua và báo, chứ đoán bừa thì sai mà không ai hay.
+ */
+export interface TenTrungDiem {
+  ten: string;
+  diems: string;
 }
 
 /**
