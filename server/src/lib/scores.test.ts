@@ -11,8 +11,9 @@ import type { ScoreTask, PointChange, TenNgoaiBang } from './scores.js';
 
 describe('summarizePointChanges', () => {
   // Ca thật: anh Tâm hạ "Báo cáo Ads" từ 35đ xuống 10đ.
-  const ch = (memberName: string, taskName: string, cu: number, moi: number): PointChange => ({
+  const ch = (memberName: string, taskName: string, cu: number, moi: number, teamId = 'Ads'): PointChange => ({
     memberName,
+    teamId,
     taskName,
     cu,
     moi,
@@ -26,8 +27,8 @@ describe('summarizePointChanges', () => {
     ]);
     expect(r.updated).toBe(3);
     expect(r.byMember).toEqual([
-      { memberName: 'Anh Tú', tasks: 2, delta: -50 },
-      { memberName: 'Thảo Nhiên', tasks: 1, delta: -25 },
+      { memberName: 'Anh Tú', teamId: 'Ads', tasks: 2, delta: -50 },
+      { memberName: 'Thảo Nhiên', teamId: 'Ads', tasks: 1, delta: -25 },
     ]);
   });
 
@@ -36,7 +37,7 @@ describe('summarizePointChanges', () => {
       ch('Ít', 'Lên Ads', 20, 25),
       ...Array.from({ length: 5 }, () => ch('Nhiều', 'Lên Ads', 20, 40)),
     ]);
-    expect(r.byMember[0]).toEqual({ memberName: 'Nhiều', tasks: 5, delta: 100 });
+    expect(r.byMember[0]).toEqual({ memberName: 'Nhiều', teamId: 'Ads', tasks: 5, delta: 100 });
   });
 
   it('tách riêng khi cùng loại việc đổi từ nhiều mức cũ khác nhau', () => {
@@ -51,7 +52,7 @@ describe('summarizePointChanges', () => {
   });
 
   it('không có gì đổi thì báo cáo rỗng', () => {
-    expect(summarizePointChanges([])).toEqual({ updated: 0, byMember: [], byTask: [] });
+    expect(summarizePointChanges([])).toEqual({ updated: 0, byMember: [], byTask: [], byTeam: [] });
   });
 });
 

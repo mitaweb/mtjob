@@ -102,8 +102,11 @@ export default function Admin() {
   /** Kết quả áp bảng điểm mới lên việc đã ghi (trả kèm khi đồng bộ bảng điểm). */
   interface PointSync {
     updated: number;
-    byMember: Array<{ memberName: string; tasks: number; delta: number }>;
+    byMember: Array<{ memberName: string; teamId: string; tasks: number; delta: number }>;
     byTask: Array<{ taskName: string; cu: number; moi: number; tasks: number }>;
+    byTeam: Array<{ teamId: string; tasks: number; delta: number }>;
+    /** true = mới chỉ dò, chưa sửa gì. */
+    chiXem?: boolean;
     lockedMonths: string[];
     skipped?: string;
     /** Tên việc đã ghi không còn trong bảng điểm — giữ nguyên điểm cũ. */
@@ -257,6 +260,17 @@ export default function Admin() {
     }
   }
 
+  /** Dò xem đồng bộ sẽ đụng vào ai, phòng nào — KHÔNG sửa gì. */
+  async function checkPoints() {
+    try {
+      const r = await api<PointSync>('/admin/check-points', { method: 'POST' });
+      setPointSync(r);
+      toast.success(r.updated === 0 ? 'Không có việc nào lệch điểm.' : `${r.updated} việc đang lệch điểm.`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
   async function saveApiKey() {
     const value = apiKey.trim();
     if (!value.startsWith('AIza') || value.length < 30) {
@@ -354,6 +368,9 @@ export default function Admin() {
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <AsyncButton className="btn-ghost" onClick={checkPoints} busyLabel="Đang dò…">
+            👀 Xem trước điểm sẽ đổi
+          </AsyncButton>
           <AsyncButton className="btn-primary" onClick={syncCatalog} busyLabel="Đang đồng bộ…">
             Đồng bộ bảng điểm
           </AsyncButton>
@@ -386,8 +403,40 @@ export default function Admin() {
           ) : (
             <>
               <p className="text-sm text-ink-soft">
-                Đã đổi điểm <b>{pointSync.updated}</b> việc cũ theo bảng điểm mới.
+                {pointSync.chiXem ? (
+                  <>
+                    <b>{pointSync.updated}</b> việc cũ đang lệch bảng điểm.{' '}
+                    <b className="text-amber-700">Chưa sửa gì</b> — bấm “Đồng bộ bảng điểm” mới áp.
+                  </>
+                ) : (
+                  <>
+                    Đã đổi điểm <b>{pointSync.updated}</b> việc cũ theo bảng điểm mới.
+                  </>
+                )}
               </p>
+
+              {/* Theo PHÒNG trước: câu hỏi hay gặp nhất là "phòng nào bị đụng tới". */}
+              <table className="mt-3 w-full text-sm">
+                <thead className="text-left text-ink-muted">
+                  <tr>
+                    <th className="py-1">Phòng</th>
+                    <th className="text-right">Việc đổi</th>
+                    <th className="text-right">Điểm thay đổi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pointSync.byTeam?.map((g) => (
+                    <tr key={g.teamId} className="border-t">
+                      <td className="py-1 font-medium">{g.teamId}</td>
+                      <td className="text-right">{g.tasks}</td>
+                      <td className={`text-right font-medium ${g.delta < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                        {g.delta > 0 ? '+' : ''}
+                        {g.delta}đ
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
 
               <table className="mt-3 w-full text-sm">
                 <thead className="text-left text-ink-muted">
@@ -414,6 +463,7 @@ export default function Admin() {
                 <thead className="text-left text-ink-muted">
                   <tr>
                     <th className="py-1">Nhân sự</th>
+                    <th>Phòng</th>
                     <th className="text-right">Việc đổi</th>
                     <th className="text-right">Điểm thay đổi</th>
                   </tr>
@@ -422,6 +472,7 @@ export default function Admin() {
                   {pointSync.byMember.map((m) => (
                     <tr key={m.memberName} className="border-t">
                       <td className="py-1">{m.memberName}</td>
+                      <td className="text-ink-muted">{m.teamId}</td>
                       <td className="text-right">{m.tasks}</td>
                       <td className={`text-right ${m.delta < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
                         {m.delta > 0 ? '+' : ''}

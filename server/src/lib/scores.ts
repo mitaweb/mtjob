@@ -71,6 +71,8 @@ export function rankMembers(scores: Map<string, number> | Array<[string, number]
 /** Một dòng việc sắp đổi điểm: `cu` là điểm đang lưu, `moi` là điểm trong danh mục. */
 export interface PointChange {
   memberName: string;
+  /** Phòng của người làm — để trả lời được câu "phòng nào bị đổi điểm". */
+  teamId: string;
   taskName: string;
   cu: number;
   moi: number;
@@ -79,8 +81,10 @@ export interface PointChange {
 export interface PointChangeSummary {
   updated: number;
   /** Ai bị ảnh hưởng nặng nhất lên đầu — `delta` âm là bị trừ điểm. */
-  byMember: Array<{ memberName: string; tasks: number; delta: number }>;
+  byMember: Array<{ memberName: string; teamId: string; tasks: number; delta: number }>;
   byTask: Array<{ taskName: string; cu: number; moi: number; tasks: number }>;
+  /** Cộng theo phòng — nhìn một dòng là biết phòng nào đang bị đụng tới. */
+  byTeam: Array<{ teamId: string; tasks: number; delta: number }>;
 }
 
 /**
@@ -122,14 +126,18 @@ export interface TenTrungDiem {
  * Thuần, không đụng DB — vì con số này ăn thẳng vào thưởng nên phải kiểm được bằng test.
  */
 export function summarizePointChanges(rows: PointChange[]): PointChangeSummary {
-  const byMember = new Map<string, { tasks: number; delta: number }>();
+  const byMember = new Map<string, { teamId: string; tasks: number; delta: number }>();
   const byTask = new Map<string, { taskName: string; cu: number; moi: number; tasks: number }>();
+  const byTeam = new Map<string, { tasks: number; delta: number }>();
 
   for (const r of rows) {
     const cu = Number(r.cu) || 0;
     const moi = Number(r.moi) || 0;
-    const m = byMember.get(r.memberName) || { tasks: 0, delta: 0 };
-    byMember.set(r.memberName, { tasks: m.tasks + 1, delta: m.delta + (moi - cu) });
+    const team = (r.teamId || '').trim() || '—';
+    const m = byMember.get(r.memberName) || { teamId: team, tasks: 0, delta: 0 };
+    byMember.set(r.memberName, { teamId: team, tasks: m.tasks + 1, delta: m.delta + (moi - cu) });
+    const g = byTeam.get(team) || { tasks: 0, delta: 0 };
+    byTeam.set(team, { tasks: g.tasks + 1, delta: g.delta + (moi - cu) });
     // Cùng loại việc có thể đổi từ nhiều mức cũ khác nhau → tách theo cặp (cũ → mới).
     const key = `${r.taskName}|${cu}|${moi}`;
     const t = byTask.get(key) || { taskName: r.taskName, cu, moi, tasks: 0 };
@@ -142,5 +150,8 @@ export function summarizePointChanges(rows: PointChange[]): PointChangeSummary {
       .map(([memberName, v]) => ({ memberName, ...v }))
       .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)),
     byTask: [...byTask.values()].sort((a, b) => b.tasks - a.tasks),
+    byTeam: [...byTeam.entries()]
+      .map(([teamId, v]) => ({ teamId, ...v }))
+      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)),
   };
 }

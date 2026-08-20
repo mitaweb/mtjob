@@ -157,6 +157,8 @@ export interface PointSyncResult extends PointChangeSummary {
   ngoaiBang: TenNgoaiBang[];
   /** Tên bị ghi nhiều mức điểm trong bảng điểm — bỏ qua, xem `TenTrungDiem`. */
   tenTrung: TenTrungDiem[];
+  /** true = mới chỉ dò, chưa sửa gì trong dữ liệu. */
+  chiXem?: boolean;
 }
 
 /**
@@ -223,7 +225,8 @@ export const SQL_NGOAI_BANG = `
 
 export const SQL_SE_DOI = `
   WITH ${BANG}
-  SELECT t.member_name AS "memberName", t.task_name AS "taskName", t.points AS cu, b.points AS moi
+  SELECT t.member_name AS "memberName", t.team_id AS "teamId", t.task_name AS "taskName",
+         t.points AS cu, b.points AS moi
   FROM tasks t JOIN bang b ON b.ten = ${TEN_VIEC}
   WHERE ${NEN} AND t.points <> b.points`;
 
@@ -232,7 +235,11 @@ export const SQL_AP_DIEM = `
   UPDATE tasks t SET points = b.points
   FROM bang b WHERE b.ten = ${TEN_VIEC} AND ${NEN} AND t.points <> b.points`;
 
-export async function applyCatalogPoints(): Promise<PointSyncResult> {
+/**
+ * @param chiXem Chỉ dò và báo cáo, KHÔNG sửa gì. Dùng cho nút "Xem trước": muốn biết đợt
+ *   đồng bộ sẽ đụng vào phòng nào, ai, bao nhiêu điểm — trước khi cho nó chạy thật.
+ */
+export async function applyCatalogPoints(chiXem = false): Promise<PointSyncResult> {
   const locked = (await q('SELECT year, month FROM payroll_locks')).map(
     (r: { year: number; month: number }) => `${String(r.year).padStart(4, '0')}-${String(r.month).padStart(2, '0')}`,
   );
@@ -253,8 +260,8 @@ export async function applyCatalogPoints(): Promise<PointSyncResult> {
   const rows: PointChange[] = await q(SQL_SE_DOI, P);
   if (rows.length === 0) return { ...empty, ngoaiBang, tenTrung };
 
-  await q(SQL_AP_DIEM, P);
-  return { ...summarizePointChanges(rows), lockedMonths: locked, ngoaiBang, tenTrung };
+  if (!chiXem) await q(SQL_AP_DIEM, P);
+  return { ...summarizePointChanges(rows), lockedMonths: locked, ngoaiBang, tenTrung, chiXem };
 }
 
 /**

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler, ApiError } from '../util/errors.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
-import { syncCatalogFromSource } from './admin.sync.js';
+import { syncCatalogFromSource, applyCatalogPoints } from './admin.sync.js';
 import { adminMembersRouter } from './admin.members.routes.js';
 import { adminPayrollRouter } from './admin.payroll.routes.js';
 import { upsertCatalogItem } from './catalog.repo.js';
@@ -28,6 +28,19 @@ adminRouter.post(
   '/sync-catalog',
   asyncHandler(async (_req, res) => {
     res.json(await syncCatalogFromSource());
+  }),
+);
+
+/**
+ * Xem trước điểm sẽ đổi — CHỈ ĐỌC, không sửa gì.
+ *
+ * Đồng bộ ghi đè thẳng vào tasks.points, không để lại lịch sử. Nên muốn trả lời câu
+ * "đợt vừa rồi có cộng nhầm điểm cho phòng nào không" thì phải xem được TRƯỚC khi chạy.
+ */
+adminRouter.post(
+  '/check-points',
+  asyncHandler(async (_req, res) => {
+    res.json(await applyCatalogPoints(true));
   }),
 );
 
