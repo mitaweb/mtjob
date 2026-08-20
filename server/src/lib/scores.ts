@@ -84,6 +84,33 @@ export interface PointChangeSummary {
 }
 
 /**
+ * Một mã việc mà việc CŨ ghi tên khác với tên hiện tại trong bảng điểm.
+ *
+ * Mã sinh theo VỊ TRÍ trong Google Sheet (ADS + số thứ tự), nên chèn/xoá/đổi chỗ một dòng
+ * là mọi dòng bên dưới tụt mã: ADS05 hôm qua là "Lên ads" hôm nay thành "Viết bài". Đồng
+ * bộ mà chỉ nhìn mã thì lấy điểm của việc MỚI áp lên việc CŨ — người chẳng liên quan tự
+ * dưng đổi điểm. Đây là dấu vết duy nhất phát hiện được, vì mỗi việc có lưu tên lúc ghi.
+ */
+export interface MaDoiNghia {
+  code: string;
+  tenCu: string;
+  tenMoi: string;
+  soViec: number;
+  diemCu: number;
+  diemMoi: number;
+}
+
+/** Câu cảnh báo cho giám đốc đọc, hoặc '' nếu không có mã nào đổi nghĩa. */
+export function moTaDoiNghia(list: MaDoiNghia[]): string {
+  if (list.length === 0) return '';
+  const viec = list.reduce((s, x) => s + x.soViec, 0);
+  return (
+    `${list.length} mã việc đang trỏ sang loại việc khác (ảnh hưởng ${viec} việc đã ghi) — ` +
+    'đã GIỮ NGUYÊN điểm cũ, không đồng bộ. Thường là do chèn/xoá dòng giữa bảng điểm làm lệch số thứ tự.'
+  );
+}
+
+/**
  * Gom danh sách việc đổi điểm thành báo cáo cho giám đốc xem.
  * Thuần, không đụng DB — vì con số này ăn thẳng vào thưởng nên phải kiểm được bằng test.
  */

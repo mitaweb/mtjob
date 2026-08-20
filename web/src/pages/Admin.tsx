@@ -106,6 +106,15 @@ export default function Admin() {
     byTask: Array<{ taskName: string; cu: number; moi: number; tasks: number }>;
     lockedMonths: string[];
     skipped?: string;
+    /** Mã việc nay trỏ sang loại việc khác — máy chủ đã giữ nguyên điểm, không đồng bộ. */
+    doiNghia: Array<{
+      code: string;
+      tenCu: string;
+      tenMoi: string;
+      soViec: number;
+      diemCu: number;
+      diemMoi: number;
+    }>;
   }
 
   interface CatalogSync {
@@ -428,6 +437,46 @@ export default function Admin() {
                 </tbody>
               </table>
             </>
+          )}
+
+          {/* Mã đổi nghĩa — thứ đáng xem nhất khi điểm nhảy sai, nên để ngay dưới bảng. */}
+          {pointSync.doiNghia?.length > 0 && (
+            <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
+              <div className="text-sm font-semibold text-amber-900">
+                ⚠️ {pointSync.doiNghia.length} mã việc đang trỏ sang loại việc khác — đã giữ nguyên điểm
+              </div>
+              <p className="mt-1 text-xs text-amber-800">
+                Mã việc sinh theo <b>số thứ tự dòng</b> trong Google Sheet. Chèn hoặc xoá một dòng giữa bảng
+                là mọi dòng bên dưới tụt mã, và việc đã ghi từ trước bỗng trỏ sang loại việc khác. Vào Sheet
+                trả lại đúng thứ tự dòng, rồi đồng bộ lại.
+              </p>
+              <div className="mt-2 overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="text-left text-amber-800">
+                    <tr>
+                      <th className="py-1 pr-2">Mã</th>
+                      <th className="pr-2">Việc đã ghi</th>
+                      <th className="pr-2">Nay bảng điểm là</th>
+                      <th className="pr-2 text-right">Điểm</th>
+                      <th className="text-right">Số việc</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pointSync.doiNghia.map((d) => (
+                      <tr key={`${d.code}-${d.tenCu}`} className="border-t border-amber-200">
+                        <td className="py-1 pr-2 font-mono">{d.code}</td>
+                        <td className="pr-2">{d.tenCu || '(trống)'}</td>
+                        <td className="pr-2">{d.tenMoi}</td>
+                        <td className="whitespace-nowrap pr-2 text-right">
+                          {d.diemCu}đ ≠ {d.diemMoi}đ
+                        </td>
+                        <td className="text-right">{d.soViec}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
 
           {pointSync.lockedMonths.length > 0 && (

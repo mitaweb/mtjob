@@ -5,8 +5,9 @@ import {
   aggregateByMember,
   rankMembers,
   summarizePointChanges,
+  moTaDoiNghia,
 } from './scores.js';
-import type { ScoreTask, PointChange } from './scores.js';
+import type { ScoreTask, PointChange, MaDoiNghia } from './scores.js';
 
 describe('summarizePointChanges', () => {
   // Ca thật: anh Tâm hạ "Báo cáo Ads" từ 35đ xuống 10đ.
@@ -99,5 +100,28 @@ describe('rankMembers', () => {
     expect(ranked[1]).toMatchObject({ points: 200, rank: 1 });
     expect(ranked[2]).toMatchObject({ memberId: 'm1', points: 150, rank: 3 });
     expect(ranked[3]).toMatchObject({ memberId: 'm4', points: 50, rank: 4 });
+  });
+});
+
+describe('moTaDoiNghia', () => {
+  const md = (code: string, tenCu: string, tenMoi: string, soViec: number): MaDoiNghia => ({
+    code,
+    tenCu,
+    tenMoi,
+    soViec,
+    diemCu: 10,
+    diemMoi: 25,
+  });
+
+  it('không có mã nào đổi nghĩa thì không cảnh báo', () => {
+    expect(moTaDoiNghia([])).toBe('');
+  });
+
+  it('nói rõ bao nhiêu mã, bao nhiêu việc, và đã giữ nguyên điểm', () => {
+    // Ca thật: chèn một dòng giữa tab Ads làm ADS05 tụt xuống thành việc khác.
+    const s = moTaDoiNghia([md('ADS05', 'Lên ads', 'Viết bài', 12), md('ADS06', 'Tối ưu ads', 'Lên ads', 3)]);
+    expect(s).toContain('2 mã việc');
+    expect(s).toContain('15 việc');
+    expect(s).toContain('GIỮ NGUYÊN');
   });
 });
