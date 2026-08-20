@@ -7,6 +7,9 @@ async function main(): Promise<void> {
   console.log('Đồng bộ bảng điểm task từ Google Sheet (CSV công khai)...');
   const r = await syncCatalogFromSource();
   console.log(`✅ Đã cập nhật ${r.updated} đầu việc từ: ${r.tabs.join(', ')}`);
+  if (r.daTat.length) {
+    console.log(`🚫 Đã tắt ${r.daTat.length} đầu việc không còn trong Sheet: ${r.daTat.join(', ')}`);
+  }
 
   // Tên việc rơi ra ngoài bảng điểm — im lặng thì mấy trăm việc đứng yên mà không ai biết.
   const canh = moTaNgoaiBang(r.points.ngoaiBang);

@@ -41,6 +41,27 @@ export function sortCatalogForTeam<T extends { code: string }>(items: T[], teamI
   return [...items].sort((a, b) => Number(b.code.startsWith(p)) - Number(a.code.startsWith(p)));
 }
 
+/**
+ * Tắt các đầu việc KHÔNG còn trong Google Sheet. Trả về tên các mục vừa tắt.
+ *
+ * Tắt chứ không xoá hẳn: bảng này dựng lại được từ Sheet, nhưng lỡ tay xoá một dòng trong
+ * Sheet rồi đồng bộ thì mục đó biến mất không dấu vết. Tắt thì app không còn thấy nó nữa
+ * (giống hệt xoá với người dùng), mà thêm lại dòng trong Sheet là nó sống lại nguyên vẹn.
+ * Cùng cách đồng bộ nhân sự đang ẩn người đã nghỉ.
+ *
+ * `codes` RỖNG thì không làm gì — mảng rỗng sẽ khớp mọi dòng và tắt sạch bảng điểm.
+ */
+export async function deactivateCatalogExcept(codes: string[]): Promise<string[]> {
+  if (codes.length === 0) return [];
+  const rows = await q(
+    `UPDATE task_catalog SET active = false
+     WHERE active = true AND upper(task_code) <> ALL($1::text[])
+     RETURNING task_name`,
+    [codes.map((c) => c.trim().toUpperCase())],
+  );
+  return rows.map((r) => String(r.task_name || '').trim()).filter(Boolean);
+}
+
 export async function upsertCatalogItem(i: TaskCatalogItem): Promise<void> {
   await q(
     `INSERT INTO task_catalog (task_code, task_name, points, active, note)

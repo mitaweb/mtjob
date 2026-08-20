@@ -83,6 +83,8 @@ export default function Admin() {
   const [autoCapture, setAutoCapture] = useState(true);
   const [checks, setChecks] = useState<Check[] | null>(null);
   const [pointSync, setPointSync] = useState<PointSync | null>(null);
+  // Đầu việc vừa bị tắt vì không còn trong Sheet — nằm lại trên màn hình, không trôi theo toast.
+  const [daTat, setDaTat] = useState<string[]>([]);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [modelsError, setModelsError] = useState('');
   const [loadingModels, setLoadingModels] = useState(false);
@@ -118,6 +120,7 @@ export default function Admin() {
   interface CatalogSync {
     updated: number;
     tabs: string[];
+    daTat: string[];
     points: PointSync;
   }
 
@@ -252,7 +255,11 @@ export default function Admin() {
   async function syncCatalog() {
     try {
       const r = await api<CatalogSync>('/admin/sync-catalog', { method: 'POST' });
-      toast.success(`Đã cập nhật ${r.updated} đầu việc từ: ${r.tabs.join(', ')}`);
+      toast.success(
+        `Đã cập nhật ${r.updated} đầu việc từ: ${r.tabs.join(', ')}` +
+          (r.daTat.length ? ` · tắt ${r.daTat.length} việc không còn trong Sheet` : ''),
+      );
+      setDaTat(r.daTat);
       // Điểm ăn thẳng vào thưởng — kết quả phải nằm lại trên màn hình, không trôi theo toast.
       setPointSync(r.points);
     } catch (e) {
@@ -483,6 +490,26 @@ export default function Admin() {
                 </tbody>
               </table>
             </>
+          )}
+
+          {/* Đầu việc bị bỏ khỏi Sheet — phải liệt kê tên, không chỉ đếm số. */}
+          {daTat.length > 0 && (
+            <div className="mt-3 rounded-xl border bg-brand-50 p-3">
+              <div className="text-sm font-semibold">
+                🚫 Đã tắt {daTat.length} đầu việc không còn trong Sheet
+              </div>
+              <p className="mt-1 text-xs text-ink-muted">
+                Không còn hiện trong danh sách chọn việc, và không còn dùng để chấm điểm. Việc đã ghi trước
+                đó vẫn nguyên. Thêm lại dòng vào Sheet rồi đồng bộ là mục đó sống lại.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {daTat.map((t) => (
+                  <span key={t} className="rounded-md bg-white px-2 py-0.5 text-xs text-ink-soft">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Tên việc rơi ra ngoài bảng điểm — không phải lỗi, nhưng phải cho thấy. */}

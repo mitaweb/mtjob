@@ -3,7 +3,7 @@
 // the source sheet just has to be shared "anyone with the link – viewer".
 import { getAllMembers, upsertMember } from './members.repo.js';
 import { upsertTeam } from './teams.repo.js';
-import { upsertCatalogItem } from './catalog.repo.js';
+import { upsertCatalogItem, deactivateCatalogExcept } from './catalog.repo.js';
 import { parseHrRow, vnUsername, type HrPerson } from '../lib/people.js';
 import {
   summarizePointChanges,
@@ -144,6 +144,8 @@ export function parseCsv(text: string): string[][] {
 export interface CatalogSyncResult {
   updated: number;
   tabs: string[];
+  /** Đầu việc không còn trong Sheet, đã tắt khỏi app. */
+  daTat: string[];
   /** Kết quả áp bảng điểm mới lên việc đã ghi — xem `applyCatalogPoints`. */
   points: PointSyncResult;
 }
@@ -162,15 +164,6 @@ export interface PointSyncResult extends PointChangeSummary {
 }
 
 /**
- * Áp bảng điểm hiện tại lên những việc ĐÃ GHI.
- *
- * Điểm vốn được copy một lần vào từng việc lúc ghi, nên sửa bảng điểm chỉ ăn với việc
- * ghi từ đó về sau. Anh Tâm chốt 26/7/2026: sửa bảng điểm thì việc cũ phải đổi theo.
- *
- * CHỈ đụng tháng CHƯA khoá lương. Lưu ý `isMonthLocked` (payroll.service) chỉ bảo vệ
- * công/lương — bảng điểm luôn tính lại live từ `tasks.points`, nên phải tự chặn ở đây.
- */
-/**
  * Nhận dạng việc bằng TÊN, không bằng mã. Anh Tâm 20/8/2026 chốt.
  *
  * Mã sinh theo VỊ TRÍ dòng trong Sheet (ADS + số thứ tự), nên chèn/xoá/đổi chỗ một dòng
@@ -188,7 +181,7 @@ const BANG = `
   bang AS (
     SELECT lower(btrim(task_name)) AS ten, MIN(points)::int AS points
     FROM task_catalog
-    WHERE btrim(COALESCE(task_name, '')) <> '' AND points > 0
+    WHERE active = true AND btrim(COALESCE(task_name, '')) <> '' AND points > 0
     GROUP BY lower(btrim(task_name))
     HAVING COUNT(DISTINCT points) = 1
   )`;
@@ -209,7 +202,7 @@ const NEN = `
 export const SQL_TEN_TRUNG = `
   SELECT MIN(task_name) AS ten, string_agg(DISTINCT points::text, ' / ') AS diems
   FROM task_catalog
-  WHERE btrim(COALESCE(task_name, '')) <> '' AND points > 0
+  WHERE active = true AND btrim(COALESCE(task_name, '')) <> '' AND points > 0
   GROUP BY lower(btrim(task_name))
   HAVING COUNT(DISTINCT points) > 1
   LIMIT 30`;
@@ -236,6 +229,14 @@ export const SQL_AP_DIEM = `
   FROM bang b WHERE b.ten = ${TEN_VIEC} AND ${NEN} AND t.points <> b.points`;
 
 /**
+ * Áp bảng điểm hiện tại lên những việc ĐÃ GHI.
+ *
+ * Điểm vốn được copy một lần vào từng việc lúc ghi, nên sửa bảng điểm chỉ ăn với việc
+ * ghi từ đó về sau. Anh Tâm chốt 26/7/2026: sửa bảng điểm thì việc cũ phải đổi theo.
+ *
+ * CHỈ đụng tháng CHƯA khoá lương. Lưu ý `isMonthLocked` (payroll.service) chỉ bảo vệ
+ * công/lương — bảng điểm luôn tính lại live từ `tasks.points`, nên phải tự chặn ở đây.
+ *
  * @param chiXem Chỉ dò và báo cáo, KHÔNG sửa gì. Dùng cho nút "Xem trước": muốn biết đợt
  *   đồng bộ sẽ đụng vào phòng nào, ai, bao nhiêu điểm — trước khi cho nó chạy thật.
  */
@@ -286,6 +287,8 @@ export async function syncCatalogFromSource(): Promise<CatalogSyncResult> {
 
   let updated = 0;
   const tabs: string[] = [];
+  /** Mã đọc được từ Sheet lần này — dòng nào của bảng điểm không nằm trong đây là đã bị bỏ. */
+  const daThay = new Set<string>();
   for (const { gid, prefix } of pairs) {
     const url = `https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gid}`;
     const res = await fetch(url, { redirect: 'follow' });
@@ -296,23 +299,30 @@ export async function syncCatalogFromSource(): Promise<CatalogSyncResult> {
     if (/<html/i.test(text.slice(0, 300))) {
       throw new ApiError(502, `Tab gid=${gid}: sheet điểm chưa share công khai.`);
     }
+    let dongTab = 0;
     for (const r of parseCsv(text)) {
       const stt = Number(String(r[0] ?? '').trim());
       const name = String(r[1] ?? '').trim();
       const points = Number(String(r[2] ?? '').trim());
       // Header/empty rows have a non-numeric STT or EXPERT column — skip them.
       if (!Number.isFinite(stt) || stt <= 0 || !name || !Number.isFinite(points) || points <= 0) continue;
-      await upsertCatalogItem({
-        code: `${prefix}${String(stt).padStart(2, '0')}`,
-        name,
-        points,
-        active: true,
-        note: String(r[5] ?? '').trim(),
-      });
+      const code = `${prefix}${String(stt).padStart(2, '0')}`;
+      await upsertCatalogItem({ code, name, points, active: true, note: String(r[5] ?? '').trim() });
+      daThay.add(code.toUpperCase());
       updated++;
+      dongTab++;
+    }
+    // Tab đọc được nhưng không ra dòng việc nào = Sheet đổi cấu trúc hoặc tải hụt. Dừng
+    // lại, vì đi tiếp là tắt sạch đầu việc của tab đó.
+    if (dongTab === 0) {
+      throw new ApiError(502, `Tab gid=${gid}: không đọc được dòng việc nào — dừng lại, chưa đổi gì.`);
     }
     tabs.push(`${prefix} (gid=${gid})`);
   }
+
+  // Đầu việc không còn trong Sheet thì tắt đi — anh Tâm 20/8/2026: "việc không có trong
+  // sheet đang lưu trong hệ thống thì xoá đi, cập nhật việc từ sheet".
+  const daTat = await deactivateCatalogExcept([...daThay]);
   // Đặt trong hàm này (không phải trong route) để CLI `npm run sync-catalog` cũng được hưởng.
-  return { updated, tabs, points: await applyCatalogPoints() };
+  return { updated, tabs, daTat, points: await applyCatalogPoints() };
 }
