@@ -15,9 +15,10 @@ import {
   getEntries,
   addEntry,
   deleteEntry,
+  paidByPartyMonth,
   type FinanceEntry,
 } from './finance.repo.js';
-import { collectReceivable } from './finance.service.js';
+import { addPayment } from './finance.service.js';
 import {
   getCustomers,
   upsertCustomer,
@@ -130,8 +131,10 @@ const COLLECT: ToolDef = {
   declaration: {
     name: 'collect_receivable',
     description:
-      'Đánh dấu ĐÃ THU công nợ của một bên đang có hợp đồng định kỳ (tương đương tick "đã thu" ở trang Tài chính). ' +
-      'Dùng khi giám đốc nói "khách A đã trả tiền tháng này". Nếu bên đó không có trong danh sách công nợ ' +
+      'Ghi nhận MỘT lần khách trả tiền công nợ (tương đương ghi nhận thu ở trang Tài chính). ' +
+      'Dùng khi giám đốc nói "khách A đã trả tiền tháng này", "khách A vừa trả thêm 5tr". ' +
+      'Mỗi lần gọi là THÊM một lần trả, KHÔNG thay thế lần trước — khách trả 3 lần thì gọi 3 lần, ' +
+      'mỗi lần truyền số của riêng lần đó. Nếu bên đó không có trong danh sách công nợ ' +
       'thì dùng add_finance_entry thay thế.',
     parameters: {
       type: 'OBJECT',
@@ -139,7 +142,8 @@ const COLLECT: ToolDef = {
         partyName: { type: 'STRING', description: 'Tên bên/khách hàng đã trả tiền.' },
         amount: {
           type: 'STRING',
-          description: 'Số thực thu nếu chỉ thu một phần. Bỏ trống = thu đủ số phải thu của kỳ.',
+          description:
+            'Số tiền của RIÊNG lần trả này (không phải tổng đã trả). Bỏ trống = trả đủ số phải thu của kỳ.',
         },
         month: { type: 'STRING', description: 'Tháng ghi nhận YYYY-MM. Bỏ trống = tháng này.' },
       },
@@ -166,11 +170,15 @@ const COLLECT: ToolDef = {
     if (raw !== undefined && (!Number.isFinite(raw) || raw < 0)) {
       return `Không hiểu số tiền "${a.amount}". Hỏi lại số thực thu.`;
     }
-    const r = await collectReceivable({ partyId: party.id, month, collected: true, amount: raw });
+    const r = await addPayment({ partyId: party.id, month, amount: raw ?? party.receivable });
     if (!r.ok) return r.message || 'Chưa ghi nhận được.';
-    const remain = party.receivable - r.amount;
+    // Còn nợ tính trên TỔNG đã thu của kỳ, không phải riêng lần này — khách trả nhiều lần
+    // mà chỉ trừ lần cuối thì câu trả lời sai số.
+    const daThu = ((await paidByPartyMonth(month))[party.id] || {})[month] || 0;
+    const remain = party.receivable - daThu;
     return (
-      `Đã ghi nhận thu ${formatVnd(r.amount)} của ${party.name} (tháng ${month}).` +
+      `Đã ghi nhận thu ${formatVnd(r.amount)} của ${party.name} (tháng ${month}). ` +
+      `Tổng đã thu kỳ này: ${formatVnd(daThu)}.` +
       (remain > 0 ? ` Còn nợ ${formatVnd(remain)}.` : '')
     );
   },

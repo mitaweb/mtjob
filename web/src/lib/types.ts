@@ -38,6 +38,8 @@ export interface Party {
   carryOver?: number;
   /** Nợ cũ + kỳ này − đã thu kỳ này. */
   totalDue?: number;
+  /** Khách trả trước, còn dư sau khi trừ hết nợ và kỳ đang xem — để dành cho kỳ sau. */
+  credit?: number;
   /** Các kỳ cũ còn thiếu, dạng YYYY-MM. */
   unpaidMonths?: string[];
 }

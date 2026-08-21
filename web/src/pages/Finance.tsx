@@ -101,36 +101,52 @@ export default function Finance() {
     await api(`/finance/parties/${id}`, { method: 'DELETE' }).catch(() => {});
     await loadAll();
   }
-  // Số đã thu của 1 bên trong tháng (khoản Thu mã RECV-<bên>-<tháng>); 0 = chưa thu.
+  /**
+   * Các lần khách trả trong tháng đang xem. Mỗi lần trả là MỘT khoản Thu riêng gắn
+   * party_id — không còn gộp vào một dòng mã cố định như trước.
+   */
+  function payments(id: string): FinanceEntry[] {
+    return (sum?.entries || []).filter((e) => e.kind === 'thu' && e.partyId === id);
+  }
   function collectedAmount(id: string): number {
-    return (sum?.entries || []).find((e) => e.id === `RECV-${id}-${ym}`)?.amount ?? 0;
+    return payments(id).reduce((s, e) => s + e.amount, 0);
   }
   function isCollected(id: string): boolean {
     return collectedAmount(id) > 0;
   }
 
   function openCollect(p: Party) {
-    const already = collectedAmount(p.id);
     setCollectFor(p);
-    setCollectInput(String(already || p.receivable));
+    // Gợi ý sẵn phần CÒN LẠI, không phải tổng — người nhập chỉ gõ số của lần này.
+    // Thu đủ rồi thì để TRỐNG: điền sẵn số nữa là chỉ cần bấm nhầm một cái đã ghi trùng.
+    const con = Math.max(0, p.receivable - collectedAmount(p.id));
+    setCollectInput(con > 0 ? String(con) : '');
   }
 
-  /** Ghi nhận số thực thu (bỏ trống amount = thu toàn bộ; 0 = gỡ đánh dấu). */
+  /** Ghi nhận MỘT lần khách trả. Gọi nhiều lần = nhiều dòng, không đè lên nhau. */
   async function saveCollect(amount: number) {
     if (!collectFor) return;
     const p = collectFor;
+    if (amount <= 0) return toast.error('Nhập số tiền lớn hơn 0.');
     try {
-      await api(`/finance/parties/${p.id}/collect`, {
-        body: { month: ym, collected: amount > 0, amount },
-      });
-      setCollectFor(null);
+      await api(`/finance/parties/${p.id}/collect`, { body: { month: ym, amount } });
+      const tong = collectedAmount(p.id) + amount;
+      const con = p.receivable - tong;
       toast.success(
-        amount === 0
-          ? 'Đã bỏ đánh dấu thu.'
-          : amount >= p.receivable
-            ? `Đã thu đủ ${vnd(amount)}`
-            : `Đã ghi nhận thu ${vnd(amount)} — còn ${vnd(p.receivable - amount)}`,
+        con > 0 ? `Đã ghi nhận ${vnd(amount)} — còn thiếu ${vnd(con)}` : `Đã ghi nhận ${vnd(amount)} — đủ kỳ này`,
       );
+      await loadAll();
+      setCollectInput('');
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
+  /** Xoá một lần trả ghi nhầm. */
+  async function xoaLanTra(id: string) {
+    if (!window.confirm('Xoá lần thu này?')) return;
+    try {
+      await api(`/finance/entries/${id}`, { method: 'DELETE' });
       await loadAll();
     } catch (e) {
       toast.error((e as Error).message);
@@ -439,11 +455,39 @@ export default function Finance() {
                   {vnd(Math.max(0, collectFor.receivable - collectedAmount(collectFor.id)))}
                 </span>
               </div>
+              {!!collectFor.credit && (
+                <div className="mt-1 flex justify-between border-t border-brand-100 pt-1.5">
+                  <span className="text-ink-muted">Khách trả trước, để dành kỳ sau</span>
+                  <span className="font-medium text-emerald-700">{vnd(collectFor.credit)}</span>
+                </div>
+              )}
             </div>
+
+            {/* Từng lần trả — công nợ cần biết trả mấy lần, ngày nào, chứ không chỉ tổng. */}
+            {payments(collectFor.id).length > 0 && (
+              <div className="mt-3">
+                <div className="mb-1 text-xs font-medium text-ink-muted">
+                  Đã thu {payments(collectFor.id).length} lần trong tháng {ym}
+                </div>
+                <ul className="divide-y rounded-xl border">
+                  {payments(collectFor.id).map((e) => (
+                    <li key={e.id} className="flex items-center justify-between gap-2 px-3 py-1.5 text-sm">
+                      <span className="min-w-0">
+                        <span className="font-medium">{vnd(e.amount)}</span>
+                        {e.date ? <span className="text-ink-muted"> · {e.date}</span> : null}
+                      </span>
+                      <button className="shrink-0 text-xs text-rose-600 underline" onClick={() => xoaLanTra(e.id)}>
+                        xoá
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="mt-3">
               <label className="label" htmlFor="collect-amount">
-                Số tiền đã thu (tổng của tháng này)
+                Số tiền thu lần này
               </label>
               <input
                 id="collect-amount"
@@ -455,28 +499,26 @@ export default function Finance() {
                 onKeyDown={(e) => e.key === 'Enter' && saveCollect(Number(collectInput) || 0)}
               />
               <p className="mt-1 text-xs text-ink-muted">
-                Thu làm nhiều lần thì nhập <b>tổng cộng</b> đã thu tới hiện tại. Nhập 0 để bỏ đánh dấu.
+                Nhập số của <b>riêng lần này</b>, không phải tổng. Khách trả 2–3 lần thì ghi nhận 2–3 lần,
+                mỗi lần một dòng. Trả dư sẽ tự để dành trừ cho các kỳ sau.
               </p>
             </div>
 
             <div className="mt-3 flex flex-wrap gap-2">
               <AsyncButton
                 className="btn-primary"
-                onClick={() => saveCollect(collectFor.receivable)}
-                busyLabel="Đang lưu…"
-              >
-                ✓ Đã thu toàn bộ ({vnd(collectFor.receivable)})
-              </AsyncButton>
-              <AsyncButton
-                className="btn-ghost"
                 onClick={() => saveCollect(Number(collectInput) || 0)}
                 busyLabel="Đang lưu…"
               >
-                Lưu số đã nhập
+                ＋ Ghi nhận lần thu này
               </AsyncButton>
-              {isCollected(collectFor.id) && (
-                <AsyncButton className="btn-ghost text-rose-600" onClick={() => saveCollect(0)} busyLabel="Đang xoá…">
-                  Bỏ đánh dấu
+              {collectFor.receivable - collectedAmount(collectFor.id) > 0 && (
+                <AsyncButton
+                  className="btn-ghost"
+                  onClick={() => saveCollect(collectFor.receivable - collectedAmount(collectFor.id))}
+                  busyLabel="Đang lưu…"
+                >
+                  ✓ Thu nốt phần còn lại ({vnd(collectFor.receivable - collectedAmount(collectFor.id))})
                 </AsyncButton>
               )}
             </div>

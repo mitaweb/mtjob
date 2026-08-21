@@ -81,6 +81,50 @@ describe('computeDebt', () => {
   it('thu dư (khách trả trước) không làm tổng âm', () => {
     const r = computeDebt({ ...base, month: '2026-08', paid: { '2026-08': 50_000_000 } });
     expect(r.total).toBe(0);
+    expect(r.credit).toBe(29_000_000);
+  });
+
+  // Anh Tâm 21/8/2026: "khách trả trước 2-3 lần thì sao".
+  describe('khách trả trước cho nhiều kỳ', () => {
+    it('trả gọn 3 kỳ một lần thì hai kỳ sau không còn nợ', () => {
+      const paid = { '2026-08': 63_000_000 }; // 3 × 21tr, đóng hết trong tháng 8
+      expect(computeDebt({ ...base, month: '2026-08', paid }).total).toBe(0);
+      expect(computeDebt({ ...base, month: '2026-09', paid }).total).toBe(0);
+      expect(computeDebt({ ...base, month: '2026-10', paid }).total).toBe(0);
+      // Sang kỳ thứ tư thì hết tiền trả trước, đòi lại bình thường.
+      expect(computeDebt({ ...base, month: '2026-11', paid }).total).toBe(21_000_000);
+    });
+
+    it('trả trước làm 2-3 lần, cộng lại vẫn đủ thì kết quả y như trả một lần', () => {
+      const nhieuLan = { '2026-08': 30_000_000, '2026-09': 33_000_000 }; // tổng 63tr
+      const r = computeDebt({ ...base, month: '2026-10', paid: nhieuLan });
+      expect(r.total).toBe(0);
+      expect(r.carryOver).toBe(0);
+      expect(r.unpaidMonths).toEqual([]);
+    });
+
+    it('trả trước chưa đủ một kỳ thì chỉ trừ phần đã trả', () => {
+      // 50tr cho 21tr/kỳ: đủ tháng 8 và 9, còn 8tr gối sang tháng 10.
+      const r = computeDebt({ ...base, month: '2026-10', paid: { '2026-08': 50_000_000 } });
+      expect(r.carryOver).toBe(0);
+      expect(r.total).toBe(13_000_000);
+      expect(r.credit).toBe(0);
+    });
+
+    it('tiền vào trả NỢ CŨ trước rồi mới tới kỳ của chính nó', () => {
+      // Tháng 8 bỏ trống, tháng 9 đóng bù 42tr → sạch cả hai kỳ.
+      const r = computeDebt({ ...base, month: '2026-10', paid: { '2026-09': 42_000_000 } });
+      expect(r.carryOver).toBe(0);
+      expect(r.unpaidMonths).toEqual([]);
+      expect(r.total).toBe(21_000_000); // chỉ còn kỳ tháng 10
+    });
+
+    it('trả dư không xoá nợ của kỳ mà khách vẫn thiếu', () => {
+      // Tháng 8 đóng 10tr (thiếu 11tr), tháng 9 đóng đúng 21tr → nợ cũ giữ nguyên 11tr.
+      const r = computeDebt({ ...base, paid: { '2026-08': 10_000_000, '2026-09': 21_000_000 } });
+      expect(r.carryOver).toBe(11_000_000);
+      expect(r.unpaidMonths).toEqual(['2026-08']);
+    });
   });
 
   it('bên mới thêm giữa chừng không bị tính nợ các tháng chưa hợp tác', () => {

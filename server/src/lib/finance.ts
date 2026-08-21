@@ -62,8 +62,10 @@ export interface DebtResult {
   thisMonth: number;
   /** Còn nợ của các kỳ TRƯỚC kỳ đang xem. */
   carryOver: number;
-  /** Tổng phải đòi = nợ cũ + kỳ này − đã thu kỳ này. */
+  /** Tổng phải đòi = nợ cũ + kỳ này − đã thu kỳ này − tiền trả trước còn lại. */
   total: number;
+  /** Tiền khách đã trả trước, còn dư sau khi trừ hết nợ và kỳ đang xem. */
+  credit: number;
   /** Các kỳ cũ còn thiếu, để hiện khi rê chuột. */
   unpaidMonths: string[];
 }
@@ -73,29 +75,52 @@ export interface DebtResult {
  *
  * Tính theo SỐ TIỀN còn thiếu chứ không đếm kỳ chưa tick: thu một phần (ví dụ đóng 10tr
  * trên 21tr) vẫn phải giữ lại 11tr trong nợ cũ.
+ *
+ * Tiền thu dư CHẢY SANG KỲ SAU. Anh Tâm 21/8/2026 hỏi "khách trả trước 2-3 lần thì sao":
+ * trước đây mỗi kỳ bị kẹp riêng bằng `max(0, per - paid[m])`, nên khách đóng 3 tháng một
+ * lần thì phần dư bốc hơi và tháng sau app vẫn đòi tiền người đã trả rồi.
+ *
+ * Tiền vào trả cho KỲ CỦA CHÍNH NÓ trước, dư mới quay lại bù kỳ cũ nhất, còn dư nữa thì
+ * để dành cho kỳ sau. Thứ tự này quan trọng: bù nợ cũ trước sẽ làm kỳ thiếu bị gán nhầm
+ * sang tháng gần nhất, trong khi tháng thiếu thật là tháng cũ.
  */
 export function computeDebt(input: DebtInput): DebtResult {
   const per = Math.max(0, Math.round(input.receivable) || 0);
   const months = debtMonths(input.startMonth, input.month);
 
-  let carryOver = 0;
-  const unpaidMonths: string[] = [];
+  /** Kỳ cũ còn thiếu, cũ nhất đứng đầu. */
+  const con: Array<{ month: string; amount: number }> = [];
+  /** Tiền khách đã trả nhưng chưa dùng tới. */
+  let du = 0;
+
+  const traNoCu = (): void => {
+    while (du > 0 && con.length > 0) {
+      const dau = con[0]!;
+      const tra = Math.min(du, dau.amount);
+      dau.amount -= tra;
+      du -= tra;
+      if (dau.amount === 0) con.shift();
+    }
+  };
+
   for (const m of months) {
     if (m >= input.month) continue; // kỳ đang xem tính riêng bên dưới
-    const con = Math.max(0, per - (input.paid[m] || 0));
-    if (con > 0) {
-      carryOver += con;
-      unpaidMonths.push(m);
-    }
+    du += input.paid[m] || 0;
+    const tra = Math.min(du, per);
+    du -= tra;
+    if (per - tra > 0) con.push({ month: m, amount: per - tra });
+    traNoCu();
   }
 
+  const carryOver = con.reduce((s, x) => s + x.amount, 0);
   // Kỳ đang xem chỉ tính khi đã tới mốc theo dõi.
   const thisMonth = months.includes(input.month) ? per : 0;
-  const paidThis = input.paid[input.month] || 0;
+  const paidThis = (input.paid[input.month] || 0) + du;
   return {
     thisMonth,
     carryOver,
     total: Math.max(0, carryOver + thisMonth - paidThis),
-    unpaidMonths,
+    credit: Math.max(0, paidThis - thisMonth - carryOver),
+    unpaidMonths: con.map((x) => x.month),
   };
 }

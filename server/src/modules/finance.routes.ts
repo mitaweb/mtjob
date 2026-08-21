@@ -12,7 +12,7 @@ import {
   paidByPartyMonth,
   type Party,
 } from './finance.repo.js';
-import { collectReceivable } from './finance.service.js';
+import { addPayment } from './finance.service.js';
 import { payrollForMonth } from './payroll.service.js';
 import { getActiveMembers } from './members.repo.js';
 import { nextDueDateIso, computeDebt, DEBT_TRACK_FROM } from '../lib/finance.js';
@@ -56,6 +56,7 @@ financeRouter.get(
           nextDue: nextDueDateIso(p.dueDay, today),
           carryOver: debt.carryOver,
           totalDue: debt.total,
+          credit: debt.credit,
           unpaidMonths: debt.unpaidMonths,
         };
       }),
@@ -103,21 +104,21 @@ financeRouter.delete(
   }),
 );
 
-// Đánh dấu ĐÃ THU công nợ của 1 bên trong tháng → tự tạo/gỡ 1 khoản Thu (income).
-// Mã cố định RECV-<bên>-<tháng> để tick/bỏ tick không nhân bản.
+// Ghi nhận MỘT lần khách trả → thêm 1 khoản Thu. Khách trả nhiều lần thì gọi nhiều lần,
+// mỗi lần một dòng riêng; gỡ nhầm thì xoá dòng đó qua DELETE /finance/entries/:id.
 const collectSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
-  collected: z.boolean(),
-  /** Số thực thu. Bỏ trống khi collected=true = thu toàn bộ số phải thu. */
-  amount: z.number().min(0).optional(),
+  /** Số tiền của RIÊNG lần trả này — không phải tổng luỹ kế. */
+  amount: z.number().min(1),
+  note: z.string().max(200).optional().default(''),
 });
 financeRouter.post(
   '/parties/:id/collect',
   canEdit,
   asyncHandler(async (req, res) => {
     const b = collectSchema.parse(req.body);
-    const r = await collectReceivable({ partyId: String(req.params.id), ...b });
-    if (!r.ok) throw new ApiError(404, r.message || 'Không thu được');
+    const r = await addPayment({ partyId: String(req.params.id), ...b });
+    if (!r.ok) throw new ApiError(400, r.message || 'Không ghi nhận được');
     res.json({ ok: true, collected: r.collected, amount: r.amount });
   }),
 );
