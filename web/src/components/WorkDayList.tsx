@@ -35,7 +35,17 @@ const fmtDay = (iso: string) => {
   return `${weekday}, ${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 };
 
-export default function WorkDayList({ days, emptyText }: { days: DayBlock[]; emptyText: string }) {
+export default function WorkDayList({
+  days,
+  emptyText,
+  onDelete,
+}: {
+  days: DayBlock[];
+  emptyText: string;
+  /** Có truyền thì mỗi dòng hiện nút xoá. Chỉ màn hình giám đốc truyền — trang Điểm của
+   *  nhân viên KHÔNG, để không ai tự xoá việc đã tính điểm của mình. */
+  onDelete?: (t: DetailTask) => void;
+}) {
   if (days.length === 0) return <EmptyState icon="📭" text={emptyText} />;
 
   return (
@@ -57,8 +67,22 @@ export default function WorkDayList({ days, emptyText }: { days: DayBlock[]; emp
             {d.tasks.map((t) => (
               <li key={t.id} className={t.overlap ? 'border-l-2 border-amber-400 pl-2' : 'pl-2'}>
                 <div className="flex items-start justify-between gap-2 text-sm">
-                  <span className="text-ink-soft">{t.title}</span>
-                  <span className="whitespace-nowrap text-xs text-ink-faint">{signed(t.points)}</span>
+                  <span className="min-w-0 text-ink-soft">{t.title}</span>
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    <span className="whitespace-nowrap text-xs text-ink-faint">{signed(t.points)}</span>
+                    {onDelete && (
+                      <button
+                        // 28×28: nút xoá dữ liệu mà bằng cỡ chữ thì trên điện thoại bấm
+                        // nhầm sang dòng bên cạnh. Tối thiểu theo WCAG là 24×24.
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-base leading-none text-rose-600 hover:bg-rose-50"
+                        title={`Xoá "${t.title}"`}
+                        aria-label={`Xoá việc ${t.title}`}
+                        onClick={() => onDelete(t)}
+                      >
+                        −
+                      </button>
+                    )}
+                  </span>
                 </div>
                 {/* Giờ làm là dữ liệu gốc để đối chiếu điểm — hiện rõ từng việc. */}
                 <div className="text-xs text-ink-faint">

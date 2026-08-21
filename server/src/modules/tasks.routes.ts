@@ -1,12 +1,20 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../util/errors.js';
-import { requireAuth } from '../auth/middleware.js';
+import { requireAuth, requireRole } from '../auth/middleware.js';
 import { getActiveCatalog, sortCatalogForTeam } from './catalog.repo.js';
 import { findById, getActiveMembers, membersInTeam } from './members.repo.js';
 import { getDoneTasksForMemberRange, getDoingTasks, getTodoTasks } from './tasks.repo.js';
 import { getCustomers } from './crm.repo.js';
-import { logTask, startTask, completeTask, startAssignedTask, canAssign, deleteOwnTask } from './tasks.service.js';
+import {
+  logTask,
+  startTask,
+  completeTask,
+  startAssignedTask,
+  canAssign,
+  deleteOwnTask,
+  deleteTaskAsBoss,
+} from './tasks.service.js';
 import { nowTz, monthRange, todayIso } from '../lib/datetime.js';
 import { taskTitle } from '../lib/tasks.js';
 import { getConfig } from '../config.js';
@@ -163,6 +171,21 @@ tasksRouter.delete(
   '/:id',
   asyncHandler(async (req, res) => {
     const task = await deleteOwnTask(req.user!.sub, String(req.params.id));
+    res.json({ ok: true, task });
+  }),
+);
+
+/**
+ * Giám đốc/admin xoá dòng việc của bất kỳ ai — dùng để dọn dòng ghi trùng.
+ *
+ * Đường RIÊNG chứ không nới lỏng DELETE /:id ở trên: đường kia chốt chặn "chỉ việc của
+ * mình" nằm ngay trong câu SQL, nới ra là mất luôn hàng rào đó cho mọi người dùng.
+ */
+tasksRouter.delete(
+  '/:id/force',
+  requireRole('director', 'admin'),
+  asyncHandler(async (req, res) => {
+    const task = await deleteTaskAsBoss(String(req.params.id));
     res.json({ ok: true, task });
   }),
 );

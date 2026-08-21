@@ -22,6 +22,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
   const [detail, setDetail] = useState<{ id: string; name: string } | null>(null);
+  // Tăng lên để tải lại bảng xếp hạng — điểm đổi trong hộp thoại chi tiết thì thứ hạng
+  // phía sau phải đổi theo, không thì anh đóng ra vẫn thấy số cũ.
+  const [refresh, setRefresh] = useState(0);
 
   // Cột "⏱ Hôm nay" là số phút làm việc CỦA HÔM NAY, không dính gì tới tháng đang xem.
   // Để nó nằm trong bảng tháng 6 thì đọc thành "tháng 6 làm 6g11p" — sai hẳn.
@@ -36,7 +39,7 @@ export default function Dashboard() {
       .then((r) => setScores(r.members))
       .catch((e) => setMsg((e as Error).message))
       .finally(() => setLoading(false));
-  }, [isDirector, ym]);
+  }, [isDirector, ym, refresh]);
 
   const chartData = scores.map((s) => ({ name: s.fullName.split(' ').slice(-1)[0], points: s.monthPoints }));
   const nhanThang = laThangNay ? 'tháng này' : `tháng ${Number(ym.slice(5))}/${ym.slice(0, 4)}`;
@@ -116,6 +119,7 @@ export default function Dashboard() {
           fullName={detail.name}
           initialYm={ym}
           onClose={() => setDetail(null)}
+          onChanged={() => setRefresh((n) => n + 1)}
         />
       )}
     </div>

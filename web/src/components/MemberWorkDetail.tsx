@@ -5,7 +5,7 @@ import { useToast } from './Toaster';
 import { Badge, SkeletonRows } from './ui';
 import { vnd } from '../lib/format';
 import AsyncButton from './AsyncButton';
-import WorkDayList, { type DayBlock } from './WorkDayList';
+import WorkDayList, { type DayBlock, type DetailTask } from './WorkDayList';
 
 // Chi tiết công việc THEO NGÀY của một thành viên — giám đốc/leader bấm vào tên
 // trong bảng xếp hạng là xem được họ làm gì mỗi ngày.
@@ -42,12 +42,15 @@ export default function MemberWorkDetail({
   fullName,
   onClose,
   initialYm,
+  onChanged,
 }: {
   memberId: string;
   fullName: string;
   onClose: () => void;
   /** Tháng mở sẵn ('2026-07'). Bảng xếp hạng đang xem tháng nào thì mở đúng tháng đó. */
   initialYm?: string;
+  /** Gọi khi điểm của người này vừa đổi, để bảng xếp hạng phía sau tải lại. */
+  onChanged?: () => void;
 }) {
   const { user } = useAuth();
   const toast = useToast();
@@ -80,6 +83,27 @@ export default function MemberWorkDetail({
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [memberId, ym]);
+
+  /**
+   * Xoá hẳn một dòng việc — dùng dọn dòng ghi trùng (cùng giờ, cùng tên).
+   *
+   * Hỏi lại kèm ĐÚNG tên việc và số điểm sẽ mất: nút "−" nằm sát nhau trong danh sách
+   * dài, bấm nhầm là xoá mất việc thật của người ta.
+   */
+  async function xoaViec(t: DetailTask) {
+    const mat = `${t.title} (${t.points >= 0 ? '+' : ''}${t.points}đ)`;
+    if (!window.confirm(`Xoá việc này khỏi bảng điểm?\n\n${mat}\n\nĐiểm sẽ bị trừ lại và không khôi phục được.`)) {
+      return;
+    }
+    try {
+      await api(`/tasks/${t.id}/force`, { method: 'DELETE' });
+      toast.success(`Đã xoá "${t.title}".`);
+      await Promise.all([loadDetail(), loadAdjustments()]);
+      onChanged?.();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
 
   async function saveAdjust() {
     const points = Number(form.points);
@@ -214,7 +238,11 @@ export default function MemberWorkDetail({
         {loading && <div className="mt-3"><SkeletonRows rows={4} /></div>}
 
         {!loading && data && (
-          <WorkDayList days={data.days} emptyText="Tháng này chưa ghi nhận việc nào." />
+          <WorkDayList
+            days={data.days}
+            emptyText="Tháng này chưa ghi nhận việc nào."
+            onDelete={canAdjust ? xoaViec : undefined}
+          />
         )}
       </div>
     </div>

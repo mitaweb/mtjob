@@ -5,8 +5,10 @@ import {
   getDoingTasks,
   findTask,
   deleteOwnTaskRow,
+  deleteTaskRow,
 } from './tasks.repo.js';
 import { findById } from './members.repo.js';
+import { isMonthLocked } from './payroll.service.js';
 import { findCatalogItem } from './catalog.repo.js';
 import { teamLeaderId } from './teams.repo.js';
 import { notify } from './notifications.service.js';
@@ -298,6 +300,32 @@ export async function completeTask(
  * Trợ lý đọc câu chat rồi đoán loại việc trong danh mục — đoán sai là điểm sai. Trước
  * đây không có đường nào tự sửa, phải nhờ giám đốc. Luật xoá nằm ở `taskDeleteBlock`.
  */
+/**
+ * Giám đốc/admin xoá HẲN một dòng việc của bất kỳ ai.
+ *
+ * Anh Tâm 21/8/2026: bảng việc có dòng ghi trùng (cùng giờ, cùng tên) cần dọn. Nhân viên
+ * chỉ xoá được việc đang làm dở của mình, nên việc đã tính điểm phải có đường cho cấp trên.
+ *
+ * Xoá là ĐIỂM BIẾN MẤT, nên chặn tháng đã chốt lương: thưởng đã trả theo điểm cũ rồi, xoá
+ * thêm chỉ làm bảng điểm lệch khỏi phiếu lương đã phát. Cùng luật với `addAdjustment`.
+ */
+export async function deleteTaskAsBoss(taskId: string): Promise<TaskRow> {
+  const task = await findTask(taskId);
+  if (!task) throw new ApiError(404, 'Không tìm thấy việc này');
+
+  const ngay = (task.completedAt || task.createdAt || '').slice(0, 10);
+  const [y, m] = ngay.split('-').map(Number);
+  if (y && m && (await isMonthLocked(y, m))) {
+    throw new ApiError(
+      409,
+      `Tháng ${m}/${y} đã chốt lương nên không xoá được việc. Mở khoá tháng đó ở trang Bảng lương rồi làm lại.`,
+    );
+  }
+
+  await deleteTaskRow(taskId);
+  return task;
+}
+
 export async function deleteOwnTask(memberId: string, taskId: string): Promise<TaskRow> {
   const task = await findTask(taskId);
   // Không phân biệt "không tồn tại" với "của người khác": trả lời khác nhau là để lộ

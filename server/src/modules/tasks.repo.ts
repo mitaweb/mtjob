@@ -147,6 +147,11 @@ export async function findTask(taskId: string): Promise<TaskRow | null> {
  * kiểm ở tầng trên: gọi nhầm mã task của người khác vào đây cũng không xoá được gì.
  * Trả về số dòng đã xoá.
  */
+/** Xoá hẳn một dòng việc, không xét chủ sở hữu. CHỈ gọi sau khi đã kiểm quyền ở tầng trên. */
+export async function deleteTaskRow(taskId: string): Promise<void> {
+  await q('DELETE FROM tasks WHERE task_id = $1', [taskId]);
+}
+
 export async function deleteOwnTaskRow(taskId: string, memberId: string): Promise<number> {
   const rows = await q('DELETE FROM tasks WHERE task_id = $1 AND member_id = $2 RETURNING task_id', [
     taskId,
