@@ -217,6 +217,40 @@ async function section(name: string, fn: () => Promise<void>): Promise<void> {
 }
 
 /** Daily personal + leader + director reports (birthdays + bonus included). */
+/**
+ * Khối sinh nhật NHÂN SỰ trong tháng, gắn vào cuối mọi báo cáo hằng ngày.
+ *
+ * Anh Tâm 21/8/2026: "sinh nhật thành viên công ty nhắc cho mọi người trong phần thông
+ * báo điểm luôn, cả giám đốc lẫn leader trong thông báo tổng". Trước đây chỉ báo cáo điểm
+ * CÁ NHÂN mới có dòng này — mà giám đốc không nhận báo cáo cá nhân (không làm task), nên
+ * người cần biết nhất lại không bao giờ thấy.
+ *
+ * Ghi kèm ngày và đánh dấu HÔM NAY: chỉ liệt kê tên thì vẫn phải tự tra xem hôm nay là ai.
+ */
+export function dongSinhNhatNhanSu(
+  members: Array<{ fullName: string; dob: string | null }>,
+  month: number,
+  today: number,
+): string {
+  const ngay = (dob: string) => Number(dob.slice(-2)) || 0;
+  const list = birthdaysInMonth(
+    // Nhân sự chưa khai ngày sinh thì dob rỗng — bỏ qua, đừng để lọt dòng trống.
+    members.map((m) => ({ fullName: m.fullName, dob: m.dob || '' })),
+    month,
+  ).sort((a, b) => ngay(a.dob) - ngay(b.dob));
+  if (list.length === 0) return '';
+
+  const one = (b: { fullName: string; dob: string }) => {
+    const d = ngay(b.dob);
+    return d === today ? `${b.fullName} — HÔM NAY 🎉` : `${b.fullName} — ${d}/${month}`;
+  };
+  const homNay = list.some((b) => ngay(b.dob) === today);
+  return (
+    `\n\n🎂 Sinh nhật nhân sự tháng ${month}:\n${list.map((b) => `• ${one(b)}`).join('\n')}` +
+    (homNay ? '\nGửi lời chúc cho mọi người nhé!' : '')
+  );
+}
+
 export async function runDailyReports(): Promise<void> {
   const now = nowTz();
   const dd = now.format('DD/MM');
@@ -239,19 +273,13 @@ export async function runDailyReports(): Promise<void> {
   // Bảng xếp hạng công ty: chỉ nhân viên, giống ranking() nhưng không tốn thêm truy vấn.
   const all = withRanks(scores.filter((s) => byId.get(s.memberId)?.role === 'member'));
 
-  const birthdays = birthdaysInMonth(
-    members.map((m) => ({ fullName: m.fullName, dob: m.dob })),
-    month,
-  );
-  const birthdayLine = birthdays.length
-    ? `\n🎂 Sinh nhật tháng này: ${birthdays.map((b) => b.fullName).join(', ')}. Chúc mừng sinh nhật! 🎉`
-    : '';
+  const birthdayLine = dongSinhNhatNhanSu(members, month, now.date());
 
   // 1) GIÁM ĐỐC TRƯỚC — báo cáo quan trọng nhất, trước đây nằm cuối nên hay bị bỏ lỡ.
   await section('báo cáo giám đốc', async () => {
     const dirBody =
-      memberWorkLines(all, allTasks, today, (id) => byId.get(id)?.teamId) ||
-      'Hôm nay chưa có dữ liệu công việc.';
+      (memberWorkLines(all, allTasks, today, (id) => byId.get(id)?.teamId) ||
+        'Hôm nay chưa có dữ liệu công việc.') + birthdayLine;
     for (const d of await getDirectors()) {
       await notify(d.id, {
         type: 'daily_all',
@@ -270,7 +298,7 @@ export async function runDailyReports(): Promise<void> {
       await notify(t.leaderMemberId, {
         type: 'daily_team',
         title: `Báo cáo team ${t.name} — ${dd}`,
-        body: memberWorkLines(teamLines, allTasks, today) || 'Chưa có dữ liệu.',
+        body: (memberWorkLines(teamLines, allTasks, today) || 'Chưa có dữ liệu.') + birthdayLine,
         url: '/dashboard',
       });
     }
