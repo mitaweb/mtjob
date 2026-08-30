@@ -7,7 +7,7 @@ import { getProjects, getKpis, getEntries, getTeamBonuses, getAssignees, getBonu
 import { getActiveMembers } from './members.repo.js';
 import { getTeams } from './teams.repo.js';
 import { getHolidaySet } from './holidays.repo.js';
-import { isMonthLocked } from './payroll.service.js';
+import { isMonthLocked } from './payrollLock.js';
 import { phanTramTheoThang, tyLeTheoThang } from '../lib/kpi.js';
 import { thuongLeader, thuongThanhVien } from '../lib/money.js';
 import { todayIso } from '../lib/datetime.js';

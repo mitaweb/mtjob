@@ -14,10 +14,18 @@ import {
   getEntries,
   getEntriesForDates,
   saveEntry,
+  getTeamBonuses,
+  upsertTeamBonus,
+  getAssignees,
+  addAssignee,
+  endAssignee,
   type Project,
   type ProjectKpi,
 } from './projects.repo.js';
-import { findById } from './members.repo.js';
+import { projectBonusForMonth, projectBonusForMember } from './projectBonus.service.js';
+import { isMonthLocked } from './payroll.service.js';
+import { phanCongBlock } from '../lib/assign.js';
+import { findById, getActiveMembers } from './members.repo.js';
 import { findCustomer, getCustomers } from './crm.repo.js';
 import {
   progressOf,
@@ -380,5 +388,184 @@ projectsRouter.post(
       updatedAt: nowTz().toISOString(),
     });
     res.json({ ok: true });
+  }),
+);
+
+// ── Thưởng KPI dự án (anh Tâm 21/8/2026) ──
+//
+// KHÔNG dùng lại `canManage` cho phần tiền — nó bao gồm leader, mà anh Tâm chốt leader
+// không được thấy con số tiền.
+const canMoney = requireRole('director', 'admin');
+
+/** Năm/tháng từ query, mặc định tháng này. */
+function ymQuery(req: { query: Record<string, unknown> }): { year: number; month: number } {
+  const now = nowTz();
+  return {
+    year: Number(req.query.year) || now.year(),
+    month: Number(req.query.month) || now.month() + 1,
+  };
+}
+
+/** Mức thưởng của mọi phòng trong dự án — CHỈ giám đốc/admin. */
+projectsRouter.get(
+  '/:id/bonus',
+  canMoney,
+  asyncHandler(async (req, res) => {
+    res.json({ bonuses: await getTeamBonuses(String(req.params.id)) });
+  }),
+);
+
+const bonusSchema = z.object({
+  amount: z.number().int().min(0).max(2_000_000_000),
+  note: z.string().max(200).optional().default(''),
+});
+
+/**
+ * Đặt mức thưởng cho một (dự án × phòng). Chỉ giám đốc/admin.
+ * Chặn tháng đã chốt lương: đổi mức lúc này là làm lệch số đã trả.
+ */
+projectsRouter.put(
+  '/:id/bonus/:teamId',
+  canMoney,
+  asyncHandler(async (req, res) => {
+    const b = bonusSchema.parse(req.body);
+    const now = nowTz();
+    if (await isMonthLocked(now.year(), now.month() + 1)) {
+      throw new ApiError(409, 'Tháng này đã chốt lương nên không đổi được mức thưởng.');
+    }
+    const project = await findProject(String(req.params.id));
+    if (!project) throw new ApiError(404, 'Không tìm thấy dự án');
+    const teamId = String(req.params.teamId);
+    const coKpi = (await getKpis(project.id)).some((k) => k.active && k.teamId === teamId);
+    if (!coKpi) throw new ApiError(400, `Dự án này chưa có chỉ số nào của phòng ${teamId}.`);
+
+    await upsertTeamBonus({ projectId: project.id, teamId, amount: b.amount, note: b.note }, req.user!.name);
+    res.json({ ok: true });
+  }),
+);
+
+/** Danh sách phân công của dự án. Ai xem được dự án thì xem được danh sách này. */
+projectsRouter.get(
+  '/:id/assignees',
+  asyncHandler(async (req, res) => {
+    res.json({ assignees: await getAssignees(String(req.params.id)) });
+  }),
+);
+
+/**
+ * Leader phân công người trong PHÒNG MÌNH vào dự án.
+ *
+ * `teamId` LUÔN lấy từ hồ sơ người đang bấm, không đọc từ body — đọc từ body là mở đường
+ * cho leader phòng này phân công người phòng khác. Giám đốc/admin thì lấy theo phòng của
+ * chính người được thêm.
+ */
+projectsRouter.post(
+  '/:id/assignees',
+  requireRole('leader', 'director', 'admin'),
+  asyncHandler(async (req, res) => {
+    const { memberId } = z.object({ memberId: z.string().min(1) }).parse(req.body);
+    const now = nowTz();
+    if (await isMonthLocked(now.year(), now.month() + 1)) {
+      throw new ApiError(409, 'Tháng này đã chốt lương nên không đổi được danh sách dự án.');
+    }
+    const project = await findProject(String(req.params.id));
+    if (!project) throw new ApiError(404, 'Không tìm thấy dự án');
+
+    const nguoi = await findById(memberId);
+    if (!nguoi) throw new ApiError(404, 'Không tìm thấy nhân sự');
+
+    const boss = req.user!.role === 'director' || req.user!.role === 'admin';
+    const teamId = boss ? nguoi.teamId : await myTeam(req.user!.sub);
+    const coKpi = (await getKpis(project.id)).some((k) => k.active && k.teamId === teamId);
+
+    const chan = phanCongBlock(teamId, { teamId: nguoi.teamId, role: nguoi.role, active: nguoi.active }, coKpi);
+    if (chan) throw new ApiError(403, chan);
+
+    await addAssignee({
+      projectId: project.id,
+      memberId,
+      teamId,
+      startDate: todayIso(),
+      endDate: '',
+      assignedBy: req.user!.name,
+    });
+    res.json({ ok: true });
+  }),
+);
+
+/** Gỡ người khỏi dự án — ghi ngày kết thúc, không xoá dòng. */
+projectsRouter.delete(
+  '/:id/assignees/:memberId',
+  requireRole('leader', 'director', 'admin'),
+  asyncHandler(async (req, res) => {
+    const now = nowTz();
+    if (await isMonthLocked(now.year(), now.month() + 1)) {
+      throw new ApiError(409, 'Tháng này đã chốt lương nên không đổi được danh sách dự án.');
+    }
+    const memberId = String(req.params.memberId);
+    if (req.user!.role === 'leader') {
+      const nguoi = await findById(memberId);
+      const phong = await myTeam(req.user!.sub);
+      if (!nguoi || nguoi.teamId !== phong) throw new ApiError(403, 'Chỉ gỡ được người trong phòng của bạn.');
+    }
+    await endAssignee(String(req.params.id), memberId, todayIso());
+    res.json({ ok: true });
+  }),
+);
+
+/** Thưởng KPI dự án của CHÍNH MÌNH. */
+projectsRouter.get(
+  '/bonus/me',
+  asyncHandler(async (req, res) => {
+    const { year, month } = ymQuery(req);
+    res.json({ year, month, lines: await projectBonusForMember(req.user!.sub, year, month) });
+  }),
+);
+
+/**
+ * Leader xem phòng mình — CHỈ tỉ lệ đạt, KHÔNG có tiền.
+ * Anh Tâm chốt leader không thấy con số tiền; chặn ở đây chứ không ẩn ở giao diện.
+ */
+projectsRouter.get(
+  '/bonus/team',
+  requireRole('leader', 'director', 'admin'),
+  asyncHandler(async (req, res) => {
+    const { year, month } = ymQuery(req);
+    const phong = await myTeam(req.user!.sub);
+    const lines = (await projectBonusForMonth(year, month)).filter((l) => l.teamId === phong);
+    res.json({
+      year,
+      month,
+      teamId: phong,
+      lines: lines.map((l) => ({
+        memberId: l.memberId,
+        fullName: l.fullName,
+        projectId: l.projectId,
+        projectName: l.projectName,
+        vaiTro: l.vaiTro,
+        tyLe: l.tyLe,
+      })),
+    });
+  }),
+);
+
+/** Toàn công ty — chỉ giám đốc/admin. */
+projectsRouter.get(
+  '/bonus/all',
+  canMoney,
+  asyncHandler(async (req, res) => {
+    const { year, month } = ymQuery(req);
+    const [lines, members, assignees] = await Promise.all([
+      projectBonusForMonth(year, month),
+      getActiveMembers(),
+      getAssignees(),
+    ]);
+    // Ai chưa được phân công dự án nào — anh Tâm chốt "luôn luôn phân công", nên đây là
+    // danh sách phải rỗng. Hiện ra để người bị quên không âm thầm mất thưởng.
+    const coDuAn = new Set(assignees.filter((a) => !a.endDate).map((a) => a.memberId));
+    const chuaPhanCong = members
+      .filter((m) => m.role === 'member' && !coDuAn.has(m.id))
+      .map((m) => ({ id: m.id, fullName: m.fullName, teamId: m.teamId }));
+    res.json({ year, month, lines, chuaPhanCong });
   }),
 );

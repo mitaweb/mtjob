@@ -2,6 +2,7 @@ import { getScoringTasks, getDoneTasksForMemberRange } from './tasks.repo.js';
 import { getActiveMembers, findById } from './members.repo.js';
 import { sumPointsForMember, aggregateByMember, rankMembers } from '../lib/scores.js';
 import { computeBonus, type BonusConfig } from '../lib/money.js';
+import { heSoThuongDiem } from './projectBonus.service.js';
 import { unionMinutes, taskIntervalsForDay, overlappingIds } from '../lib/worktime.js';
 import { taskTitle } from '../lib/tasks.js';
 import { ADJUST_SOURCE } from '../lib/adjust.js';
@@ -29,7 +30,12 @@ export interface MemberScore {
   month: number;
   todayPoints: number;
   monthPoints: number;
+  /** Thưởng điểm ĐÃ nhân hệ số KPI — đây là số người ta thực nhận. */
   bonus: number;
+  /** Thưởng điểm trước khi soi kết quả dự án. Để màn hình giải thích được vì sao bị cắt. */
+  bonusGoc: number;
+  /** 1 hoặc 0,5. Bằng 0,5 khi có dự án đạt dưới 50%. */
+  heSoKpi: number;
   workMinutesToday: number;
 }
 
@@ -49,7 +55,10 @@ export async function memberScore(memberId: string, year?: number, month?: numbe
   const member = await findById(memberId);
   const monthPoints = sumPointsForMember(doneTasks, memberId, start, end);
   const todayPoints = sumPointsForMember(doneTasks, memberId, today, today);
-  const bonus = computeBonus(monthPoints, await bonusCfg());
+  const bonusGoc = computeBonus(monthPoints, await bonusCfg());
+  // Kết quả dự án cắt vào thưởng điểm — trả số THỰC NHẬN, không trả số gốc rồi để người
+  // ta trông chờ vào con số không có thật.
+  const heSoKpi = (await heSoThuongDiem(y, m)).get(memberId) ?? 1;
   return {
     memberId,
     fullName: member?.fullName || '',
@@ -58,7 +67,9 @@ export async function memberScore(memberId: string, year?: number, month?: numbe
     month: m,
     todayPoints,
     monthPoints,
-    bonus,
+    bonus: Math.round(bonusGoc * heSoKpi),
+    bonusGoc,
+    heSoKpi,
     workMinutesToday: workMinutesForDay(tasks, memberId, today),
   };
 }
@@ -78,12 +89,20 @@ export async function scoresFor(
   const m = month ?? now.month() + 1;
   const { start, end } = monthRange(y, m);
   const today = todayIso();
-  const [tasks, cfg] = await Promise.all([getScoringTasks(start, end, today), bonusCfg()]);
+  // MỘT lượt cho cả danh sách — gọi heSoThuongDiem trong .map là lặp lại đúng lỗi đã
+  // làm job báo cáo hết giờ.
+  const [tasks, cfg, heSo] = await Promise.all([
+    getScoringTasks(start, end, today),
+    bonusCfg(),
+    heSoThuongDiem(y, m),
+  ]);
   const doneTasks = tasks.filter((t) => t.status === 'done');
   const agg = aggregateByMember(doneTasks, start, end);
 
   return members.map((mem) => {
     const monthPoints = agg.get(mem.id) || 0;
+    const bonusGoc = computeBonus(monthPoints, cfg);
+    const heSoKpi = heSo.get(mem.id) ?? 1;
     return {
       memberId: mem.id,
       fullName: mem.fullName,
@@ -92,7 +111,9 @@ export async function scoresFor(
       month: m,
       todayPoints: sumPointsForMember(doneTasks, mem.id, today, today),
       monthPoints,
-      bonus: computeBonus(monthPoints, cfg),
+      bonus: Math.round(bonusGoc * heSoKpi),
+      bonusGoc,
+      heSoKpi,
       workMinutesToday: workMinutesForDay(tasks, mem.id, today),
     };
   });

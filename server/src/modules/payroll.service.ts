@@ -8,6 +8,8 @@ import { computeNetSalary } from '../lib/money.js';
 import { inRange } from '../lib/scores.js';
 import { monthRange } from '../lib/datetime.js';
 import { upsertEntry, deleteEntry } from './finance.repo.js';
+import { isMonthLocked } from './payrollLock.js';
+import { snapshotProjectBonus } from './projectBonus.service.js';
 import type { AttendanceRow } from '../types.js';
 
 /** Tháng kế tiếp (lương tháng M được trả vào tháng M+1). */
@@ -111,11 +113,9 @@ export async function savePayrollSnapshot(year: number, month: number): Promise<
   return lines;
 }
 
-/** Tháng đã chốt lương chưa? */
-export async function isMonthLocked(year: number, month: number): Promise<boolean> {
-  const r = await q('SELECT 1 FROM payroll_locks WHERE year = $1 AND month = $2 LIMIT 1', [year, month]);
-  return r.length > 0;
-}
+// Tháng đã chốt lương chưa — nằm ở payrollLock.ts để cắt vòng lặp import, xuất lại ở đây
+// cho mọi chỗ đang import từ file này vẫn chạy nguyên.
+export { isMonthLocked };
 
 /** Đọc snapshot lương đã chốt (đóng băng — gồm cả nhân sự đã nghỉ). */
 export async function getPayrollSnapshot(year: number, month: number): Promise<PayrollLine[]> {
@@ -142,6 +142,9 @@ export async function getPayrollSnapshot(year: number, month: number): Promise<P
 /** Chốt lương tháng: chụp snapshot + ghi khoá + đẩy tổng lương vào Chi của tháng SAU. */
 export async function lockPayrollMonth(year: number, month: number, byName: string, atIso: string): Promise<void> {
   const lines = await savePayrollSnapshot(year, month);
+  // Chụp thưởng KPI dự án TRƯỚC khi ghi dòng khoá: sau khi khoá thì projectBonusForMonth
+  // chuyển sang đọc snapshot, chụp lúc đó sẽ ra bảng rỗng.
+  await snapshotProjectBonus(year, month);
   await q(
     `INSERT INTO payroll_locks (year, month, locked_at, locked_by) VALUES ($1,$2,$3,$4)
      ON CONFLICT (year, month) DO UPDATE SET locked_at = EXCLUDED.locked_at, locked_by = EXCLUDED.locked_by`,
