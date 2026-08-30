@@ -1,13 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
 import MemberTable from '../components/MemberTable';
 import StorageCard from '../components/StorageCard';
 import { useToast } from '../components/Toaster';
+import { locModel } from '../lib/model';
 
 /**
  * Chọn model: danh sách lấy từ API của nhà cung cấp, nhưng vẫn gõ tay được
  * (endpoint tuỳ biến có thể không hỗ trợ liệt kê model).
+ *
+ * Tự dựng danh sách chứ KHÔNG dùng <input list> + <datalist>. Anh Tâm 21/8/2026: "bấm dấu
+ * mũi tên thì không hiện ra model". Datalist LỌC theo nội dung đang có trong ô — ô đang
+ * chứa sẵn tên model hiện tại nên chỉ đúng một dòng đó khớp, phải xoá trắng ô mới thấy
+ * danh sách. Không ai đoán ra được điều đó.
  */
 function ModelPicker({
   id,
@@ -29,7 +35,30 @@ function ModelPicker({
   onSave: (v: string) => void;
 }) {
   const [draft, setDraft] = useState(value);
+  const [open, setOpen] = useState(false);
+  // Đã gõ để tìm chưa? Chưa gõ thì hiện ĐỦ danh sách — đó chính là chỗ datalist làm hỏng.
+  const [daGo, setDaGo] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => setDraft(value), [value]);
+
+  // Bấm ra ngoài thì đóng. Không có cái này thì danh sách dính lại khi bấm chỗ khác.
+  useEffect(() => {
+    if (!open) return;
+    const ngoai = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', ngoai);
+    return () => document.removeEventListener('mousedown', ngoai);
+  }, [open]);
+
+  const hien = locModel(models, draft, daGo);
+
+  function chon(mId: string) {
+    setDraft(mId);
+    setDaGo(false);
+    setOpen(false);
+  }
 
   return (
     <div className="mt-3">
@@ -37,22 +66,67 @@ function ModelPicker({
         Model {loading ? '(đang lấy danh sách…)' : `(${models.length} model khả dụng)`}
       </label>
       <div className="flex flex-wrap gap-2">
-        <input
-          id={id}
-          className="input max-w-[24rem]"
-          list={`${id}-list`}
-          placeholder={placeholder}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && onSave(draft.trim())}
-        />
-        <datalist id={`${id}-list`}>
-          {models.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label}
-            </option>
-          ))}
-        </datalist>
+        {/* Máy hẹp: ô chiếm trọn dòng, hai nút xuống dòng dưới. Để chung một dòng thì ô
+            còn ~190px, tên model dài đọc không ra. */}
+        <div className="relative w-full max-w-[24rem] sm:w-auto sm:flex-1" ref={boxRef}>
+          <input
+            id={id}
+            className="input pr-9"
+            placeholder={placeholder}
+            value={draft}
+            autoComplete="off"
+            onFocus={() => setOpen(true)}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              setDaGo(true);
+              setOpen(true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                setOpen(false);
+                onSave(draft.trim());
+              }
+              if (e.key === 'Escape') setOpen(false);
+            }}
+          />
+          <button
+            type="button"
+            className="absolute inset-y-0 right-0 flex w-9 items-center justify-center rounded-r-xl text-ink-muted hover:text-ink"
+            aria-label={open ? 'Đóng danh sách model' : 'Mở danh sách model'}
+            aria-expanded={open}
+            onClick={() => {
+              // Mở lại là bỏ bộ lọc: bấm mũi tên nghĩa là muốn xem TẤT CẢ.
+              setDaGo(false);
+              setOpen((v) => !v);
+            }}
+          >
+            ▾
+          </button>
+
+          {open && (
+            <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border bg-white shadow-lift">
+              {hien.map((m) => (
+                <li key={m.id}>
+                  <button
+                    type="button"
+                    className={`block w-full px-3 py-1.5 text-left text-sm hover:bg-brand-50 ${
+                      m.id === draft ? 'bg-brand-50 font-medium text-brand-700' : 'text-ink-soft'
+                    }`}
+                    onClick={() => chon(m.id)}
+                  >
+                    {m.label}
+                    {m.label !== m.id && <span className="block text-xs text-ink-faint">{m.id}</span>}
+                  </button>
+                </li>
+              ))}
+              {hien.length === 0 && (
+                <li className="px-3 py-2 text-sm text-ink-muted">
+                  {models.length === 0 ? 'Chưa lấy được danh sách model.' : 'Không có model nào khớp.'}
+                </li>
+              )}
+            </ul>
+          )}
+        </div>
         <AsyncButton className="btn-primary whitespace-nowrap" onClick={() => onSave(draft.trim())} busyLabel="Đang lưu…">
           Lưu model
         </AsyncButton>
@@ -63,7 +137,9 @@ function ModelPicker({
       {error ? (
         <p className="mt-1 text-xs text-amber-700">Không lấy được danh sách ({error}) — bạn gõ tên model trực tiếp nhé.</p>
       ) : (
-        <p className="mt-1 text-xs text-ink-muted">Bấm vào ô để chọn từ danh sách, hoặc gõ tên model bất kỳ.</p>
+        <p className="mt-1 text-xs text-ink-muted">
+          Bấm ▾ để xem cả {models.length} model, hoặc gõ để lọc — gõ tên model bất kỳ cũng được.
+        </p>
       )}
     </div>
   );
