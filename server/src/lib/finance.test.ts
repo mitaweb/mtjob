@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { nextDueDateIso, daysUntil, debtMonths, computeDebt } from './finance.js';
+import {
+  nextDueDateIso,
+  daysUntil,
+  debtMonths,
+  computeDebt,
+  doanhThuTheoNguon,
+  CHUA_RO_NGUON,
+} from './finance.js';
 
 describe('nextDueDateIso', () => {
   it('lấy ngày thu trong tháng nếu chưa qua', () => {
@@ -44,6 +51,44 @@ describe('debtMonths', () => {
 
   it('vắt qua năm vẫn đúng', () => {
     expect(debtMonths('2026-11', '2027-01')).toEqual(['2026-11', '2026-12', '2027-01']);
+  });
+});
+
+describe('doanhThuTheoNguon', () => {
+  const e = (kind: string, amount: number, source?: string) => ({ kind, amount, source });
+
+  it('gom theo nguồn, xếp tiền nhiều nhất lên đầu', () => {
+    const r = doanhThuTheoNguon([
+      e('thu', 10_000_000, 'BNI'),
+      e('thu', 30_000_000, 'Giới thiệu'),
+      e('thu', 10_000_000, 'BNI'),
+    ]);
+    expect(r.map((x) => x.nguon)).toEqual(['Giới thiệu', 'BNI']);
+    expect(r[0]).toEqual({ nguon: 'Giới thiệu', tien: 30_000_000, soKhoan: 1, tyLe: 60 });
+    expect(r[1]).toEqual({ nguon: 'BNI', tien: 20_000_000, soKhoan: 2, tyLe: 40 });
+  });
+
+  it('BỎ QUA khoản chi — chi không có nguồn khách', () => {
+    const r = doanhThuTheoNguon([e('thu', 10_000_000, 'BNI'), e('chi', 90_000_000, 'BNI')]);
+    expect(r).toEqual([{ nguon: 'BNI', tien: 10_000_000, soKhoan: 1, tyLe: 100 }]);
+  });
+
+  it('khoản chưa gắn nguồn vẫn hiện, gom vào "Chưa rõ nguồn"', () => {
+    const r = doanhThuTheoNguon([e('thu', 10_000_000, 'BNI'), e('thu', 40_000_000), e('thu', 50_000_000, '  ')]);
+    const chuaRo = r.find((x) => x.nguon === CHUA_RO_NGUON);
+    expect(chuaRo).toEqual({ nguon: CHUA_RO_NGUON, tien: 90_000_000, soKhoan: 2, tyLe: 90 });
+  });
+
+  it('tổng các dòng luôn bằng tổng doanh thu — không được rơi mất khoản nào', () => {
+    const list = [e('thu', 11_111_111, 'BNI'), e('thu', 22_222_222), e('thu', 3_333_333, 'Zalo')];
+    const r = doanhThuTheoNguon(list);
+    expect(r.reduce((s, x) => s + x.tien, 0)).toBe(36_666_666);
+    expect(r.reduce((s, x) => s + x.soKhoan, 0)).toBe(3);
+  });
+
+  it('tháng chưa có khoản thu nào thì trả rỗng, không chia cho 0', () => {
+    expect(doanhThuTheoNguon([])).toEqual([]);
+    expect(doanhThuTheoNguon([e('chi', 5_000_000)])).toEqual([]);
   });
 });
 

@@ -33,6 +33,8 @@ export interface Party {
   notifyMemberIds: string[];
   note: string;
   active: boolean;
+  /** Nguồn khách của bên này — mọi khoản thu sinh ra từ đây đều mang nguồn này. */
+  source: string;
   nextDue?: string;
   /** Tiền các kỳ TRƯỚC còn thiếu (đã trừ phần đã thu một phần). */
   carryOver?: number;

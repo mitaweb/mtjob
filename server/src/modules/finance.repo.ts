@@ -9,6 +9,8 @@ export interface Party {
   notifyMemberIds: string[];
   note: string;
   active: boolean;
+  /** Nguồn khách của bên này — mọi khoản thu sinh ra từ đây đều mang nguồn này. */
+  source: string;
 }
 
 export interface FinanceEntry {
@@ -20,6 +22,10 @@ export interface FinanceEntry {
   date: string;
   recurring: boolean;
   partyId: string;
+  /** Nguồn khách của khoản thu — để thống kê doanh thu theo nguồn. */
+  source: string;
+  /** Khách hàng CRM gắn với khoản này (nếu có). */
+  customerId: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -33,6 +39,7 @@ function rowToParty(r: any): Party {
     notifyMemberIds: String(r.notify_member_ids || '').split(',').map((s: string) => s.trim()).filter(Boolean),
     note: r.note || '',
     active: !!r.active,
+    source: r.source || '',
   };
 }
 
@@ -47,6 +54,8 @@ function rowToEntry(r: any): FinanceEntry {
     date: r.date || '',
     recurring: !!r.recurring,
     partyId: r.party_id || '',
+    source: r.source || '',
+    customerId: r.customer_id || '',
   };
 }
 
@@ -56,15 +65,15 @@ export async function getParties(): Promise<Party[]> {
 
 export async function upsertParty(p: Party): Promise<void> {
   await q(
-    `INSERT INTO parties (party_id, name, start_date, due_day, receivable, notify_member_ids, note, active, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    `INSERT INTO parties (party_id, name, start_date, due_day, receivable, notify_member_ids, note, active, source, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
      ON CONFLICT (party_id) DO UPDATE SET
        name = EXCLUDED.name, start_date = EXCLUDED.start_date, due_day = EXCLUDED.due_day,
        receivable = EXCLUDED.receivable, notify_member_ids = EXCLUDED.notify_member_ids,
-       note = EXCLUDED.note, active = EXCLUDED.active`,
+       note = EXCLUDED.note, active = EXCLUDED.active, source = EXCLUDED.source`,
     [
       p.id, p.name, p.startDate || '', p.dueDay, p.receivable,
-      p.notifyMemberIds.join(','), p.note || '', p.active, new Date().toISOString(),
+      p.notifyMemberIds.join(','), p.note || '', p.active, p.source || '', new Date().toISOString(),
     ],
   );
 }
@@ -79,21 +88,28 @@ export async function getEntries(month: string): Promise<FinanceEntry[]> {
 
 export async function addEntry(e: FinanceEntry): Promise<void> {
   await q(
-    `INSERT INTO finance_entries (entry_id, month, kind, name, amount, date, recurring, party_id, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-    [e.id, e.month, e.kind, e.name, e.amount, e.date || '', e.recurring, e.partyId || '', new Date().toISOString()],
+    `INSERT INTO finance_entries (entry_id, month, kind, name, amount, date, recurring, party_id, source, customer_id, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    [
+      e.id, e.month, e.kind, e.name, e.amount, e.date || '', e.recurring, e.partyId || '',
+      e.source || '', e.customerId || '', new Date().toISOString(),
+    ],
   );
 }
 
 /** Thêm hoặc cập nhật 1 khoản thu/chi theo entry_id (dùng cho khoản tự sinh như lương). */
 export async function upsertEntry(e: FinanceEntry): Promise<void> {
   await q(
-    `INSERT INTO finance_entries (entry_id, month, kind, name, amount, date, recurring, party_id, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    `INSERT INTO finance_entries (entry_id, month, kind, name, amount, date, recurring, party_id, source, customer_id, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
      ON CONFLICT (entry_id) DO UPDATE SET
        month = EXCLUDED.month, kind = EXCLUDED.kind, name = EXCLUDED.name, amount = EXCLUDED.amount,
-       date = EXCLUDED.date, recurring = EXCLUDED.recurring, party_id = EXCLUDED.party_id`,
-    [e.id, e.month, e.kind, e.name, e.amount, e.date || '', e.recurring, e.partyId || '', new Date().toISOString()],
+       date = EXCLUDED.date, recurring = EXCLUDED.recurring, party_id = EXCLUDED.party_id,
+       source = EXCLUDED.source, customer_id = EXCLUDED.customer_id`,
+    [
+      e.id, e.month, e.kind, e.name, e.amount, e.date || '', e.recurring, e.partyId || '',
+      e.source || '', e.customerId || '', new Date().toISOString(),
+    ],
   );
 }
 

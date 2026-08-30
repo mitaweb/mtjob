@@ -122,7 +122,20 @@ const ADD_ENTRY: ToolDef = {
       }
     }
 
-    await addEntry({ id: newId('F-'), month, kind, name, amount, date, recurring: false, partyId: '' });
+    // Trợ lý không hỏi nguồn khách — khoản này vào nhóm "Chưa rõ nguồn", giám đốc gắn
+    // nguồn sau ở trang Tài chính. Đoán nguồn từ tên khoản là cách làm bẩn thống kê.
+    await addEntry({
+      id: newId('F-'),
+      month,
+      kind,
+      name,
+      amount,
+      date,
+      recurring: false,
+      partyId: '',
+      source: '',
+      customerId: '',
+    });
     return `Đã ghi ${kind === 'thu' ? 'khoản THU' : 'khoản CHI'} "${name}" ${formatVnd(amount)} ngày ${date} (sổ tháng ${month}).`;
   },
 };

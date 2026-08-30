@@ -5,6 +5,7 @@ import { useToast } from '../components/Toaster';
 import { SkeletonRows } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { vnd, currentYm } from '../lib/format';
+import { NGUON, CHUA_RO_NGUON } from '../lib/nguon';
 import type { Party, FinanceEntry } from '../lib/types';
 
 interface Summary {
@@ -14,6 +15,8 @@ interface Summary {
   receivableTotal: number;
   /** Nợ tồn từ các kỳ trước của mọi bên đang hoạt động. */
   carryOverTotal?: number;
+  /** Doanh thu tháng gom theo nguồn khách. */
+  theoNguon?: Array<{ nguon: string; tien: number; soKhoan: number; tyLe: number }>;
   entries: FinanceEntry[];
 }
 interface PayRow {
@@ -30,7 +33,9 @@ interface Mem {
   fullName: string;
 }
 
-const emptyParty = (): Partial<Party> => ({ name: '', dueDay: 30, receivable: 0, startDate: '', notifyMemberIds: [], active: true });
+const emptyParty = (): Partial<Party> => ({
+  name: '', dueDay: 30, receivable: 0, startDate: '', notifyMemberIds: [], active: true, source: '',
+});
 
 export default function Finance() {
   const { user } = useAuth();
@@ -48,7 +53,17 @@ export default function Finance() {
   // Hộp thoại ghi nhận thu công nợ của 1 bên.
   const [collectFor, setCollectFor] = useState<Party | null>(null);
   const [collectInput, setCollectInput] = useState('');
-  const [eForm, setEForm] = useState({ kind: 'thu', name: '', amount: 0, date: '', recurring: false });
+  const [eForm, setEForm] = useState({
+    kind: 'thu',
+    name: '',
+    amount: 0,
+    date: '',
+    recurring: false,
+    source: '',
+    customerId: '',
+  });
+  // Danh sách khách để gắn khoản thu lẻ vào một khách cụ thể.
+  const [customers, setCustomers] = useState<Array<{ id: string; name: string; source: string }>>([]);
 
   function ymQuery() {
     const [y, m] = ym.split('-');
@@ -56,17 +71,19 @@ export default function Finance() {
   }
 
   async function loadAll() {
-    const [s, p, mb, py] = await Promise.all([
+    const [s, p, mb, py, kh] = await Promise.all([
       api<Summary>(`/finance/summary?month=${ym}`),
       // Truyền tháng: nợ cũ phải tính tới đúng tháng anh đang xem, không phải tháng hiện tại.
       api<{ parties: Party[] }>(`/finance/parties?month=${ym}`),
       api<{ members: Mem[] }>('/finance/members'),
       api<{ rows: PayRow[] }>(`/finance/payroll?${ymQuery()}`),
+      api<{ customers: Array<{ id: string; name: string; source: string }> }>('/finance/customers'),
     ]);
     setSum(s);
     setParties(p.parties);
     setMembers(mb.members);
     setPay(py.rows);
+    setCustomers(kh.customers);
   }
   useEffect(() => {
     setLoading(true);
@@ -88,6 +105,7 @@ export default function Finance() {
           receivable: Number(pForm.receivable) || 0,
           notifyMemberIds: pForm.notifyMemberIds || [],
           active: pForm.active ?? true,
+          source: pForm.source || '',
         },
       });
       setPForm(emptyParty());
@@ -156,7 +174,7 @@ export default function Finance() {
     if (!eForm.name) return toast.error('Nhập tên khoản.');
     try {
       await api('/finance/entries', { body: { month: ym, ...eForm, amount: Number(eForm.amount) || 0 } });
-      setEForm({ kind: 'thu', name: '', amount: 0, date: '', recurring: false });
+      setEForm({ kind: 'thu', name: '', amount: 0, date: '', recurring: false, source: '', customerId: '' });
       toast.success('Đã lưu khoản');
       await loadAll();
     } catch (e) {
@@ -292,6 +310,22 @@ export default function Finance() {
                 Ngày bắt đầu
                 <input className="input py-1" type="date" value={pForm.startDate || ''} onChange={(e) => setPForm({ ...pForm, startDate: e.target.value })} />
               </label>
+              {/* Chọn MỘT LẦN ở đây, mọi khoản thu của bên này tự mang nguồn đó. */}
+              <label className="text-xs text-ink-muted">
+                Nguồn khách
+                <select
+                  className="input py-1"
+                  value={pForm.source || ''}
+                  onChange={(e) => setPForm({ ...pForm, source: e.target.value })}
+                >
+                  <option value="">— chưa rõ —</option>
+                  {NGUON.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
             <div>
               <div className="text-xs text-ink-muted mb-1">Người nhận nhắc thu (5 ngày trước hạn):</div>
@@ -375,10 +409,102 @@ export default function Finance() {
               <input type="checkbox" checked={eForm.recurring} onChange={(e) => setEForm({ ...eForm, recurring: e.target.checked })} />
               Hàng tháng
             </label>
+            {/* Chỉ khoản THU mới có nguồn khách — khoản chi hỏi nguồn là vô nghĩa. */}
+            {eForm.kind === 'thu' && (
+              <>
+                <label className="text-xs text-ink-muted sm:col-span-3">
+                  Nguồn khách
+                  <select
+                    className="input py-1"
+                    value={eForm.source}
+                    onChange={(e) => setEForm({ ...eForm, source: e.target.value })}
+                  >
+                    <option value="">— chưa rõ —</option>
+                    {NGUON.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-xs text-ink-muted sm:col-span-3">
+                  Khách hàng (bỏ trống cũng được)
+                  <select
+                    className="input py-1"
+                    value={eForm.customerId}
+                    onChange={(e) => setEForm({ ...eForm, customerId: e.target.value })}
+                  >
+                    <option value="">— không gắn khách —</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                        {c.source ? ` · ${c.source}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            )}
             <AsyncButton className="btn-primary sm:col-span-6" onClick={saveEntry} busyLabel="Đang lưu…">
               ➕ Thêm khoản
             </AsyncButton>
           </div>
+        )}
+      </div>
+
+      {/* Doanh thu theo nguồn khách — anh Tâm 21/8/2026. */}
+      <div className="card">
+        <h2 className="font-semibold mb-2">Doanh thu theo nguồn khách (tháng {ym})</h2>
+        {!sum?.theoNguon?.length ? (
+          <p className="text-sm text-ink-muted">Tháng này chưa có khoản thu nào.</p>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-left text-ink-muted">
+                  <tr>
+                    <th className="py-1">Nguồn</th>
+                    <th className="text-right">Doanh thu</th>
+                    <th className="text-right">Số khoản</th>
+                    <th className="text-right">Tỉ trọng</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sum.theoNguon.map((n) => (
+                    <tr key={n.nguon} className="border-t">
+                      <td className="py-1 font-medium">
+                        {n.nguon === CHUA_RO_NGUON ? (
+                          <span className="text-amber-700">⚠️ {n.nguon}</span>
+                        ) : (
+                          n.nguon
+                        )}
+                      </td>
+                      <td className="text-right font-medium">{vnd(n.tien)}</td>
+                      <td className="text-right text-ink-muted">{n.soKhoan}</td>
+                      <td className="text-right">
+                        <span className="inline-flex items-center gap-1.5">
+                          {/* Thanh tỉ trọng: nhìn một cái là biết nguồn nào gánh doanh thu. */}
+                          <span className="hidden h-1.5 w-16 overflow-hidden rounded-full bg-brand-100 sm:inline-block">
+                            <span
+                              className="block h-full rounded-full bg-brand-600"
+                              style={{ width: `${n.tyLe}%` }}
+                            />
+                          </span>
+                          {n.tyLe}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {sum.theoNguon.some((n) => n.nguon === CHUA_RO_NGUON) && (
+              <p className="mt-2 text-xs text-amber-700">
+                Khoản chưa gắn nguồn vẫn được đếm vào tổng. Gắn nguồn cho bên công nợ ở mục trên, hoặc
+                chọn nguồn khi thêm khoản thu.
+              </p>
+            )}
+          </>
         )}
       </div>
 

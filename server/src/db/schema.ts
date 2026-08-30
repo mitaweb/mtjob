@@ -197,6 +197,13 @@ CREATE TABLE IF NOT EXISTS finance_entries (
   created_at text DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS finance_entries_month_idx ON finance_entries (month);
+-- Doanh thu theo NGUỒN KHÁCH (anh Tâm 21/8/2026). Ghi thẳng trên khoản thu chứ không
+-- suy ra từ CRM: khoản thu lẻ không gắn khách nào vẫn phải phân loại được.
+ALTER TABLE finance_entries ADD COLUMN IF NOT EXISTS source text DEFAULT '';
+ALTER TABLE finance_entries ADD COLUMN IF NOT EXISTS customer_id text DEFAULT '';
+-- Bên công nợ giữ nguồn của riêng nó: thu định kỳ hằng tháng mà bắt chọn lại nguồn mỗi
+-- lần thì sớm muộn cũng có tháng quên, và bảng thống kê thủng một lỗ.
+ALTER TABLE parties ADD COLUMN IF NOT EXISTS source text DEFAULT '';
 
 -- CRM: khách hàng + lịch hẹn.
 CREATE TABLE IF NOT EXISTS customers (

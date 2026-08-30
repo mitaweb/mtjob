@@ -55,6 +55,10 @@ export async function addPayment(input: {
     date: input.month === todayIso().slice(0, 7) ? todayIso() : `${input.month}-01`,
     recurring: false,
     partyId: input.partyId,
+    // Thừa hưởng nguồn của bên: thu định kỳ mà bắt chọn nguồn lại mỗi tháng thì sớm muộn
+    // cũng có tháng quên, và bảng doanh thu theo nguồn thủng một lỗ.
+    source: party.source || '',
+    customerId: '',
   });
   return { ok: true, collected: true, amount };
 }

@@ -160,6 +160,9 @@ export async function lockPayrollMonth(year: number, month: number, byName: stri
     date: '',
     recurring: false,
     partyId: '',
+    // Khoản CHI — không có nguồn khách. Bảng doanh thu theo nguồn cũng chỉ đọc khoản thu.
+    source: '',
+    customerId: '',
   });
 }
 

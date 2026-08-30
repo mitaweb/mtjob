@@ -46,6 +46,49 @@ export function debtMonths(fromMonth: string, toMonth: string): string[] {
   return out;
 }
 
+/** Nhóm cho khoản thu chưa gắn nguồn — luôn hiện, để không ai tưởng đã phân loại xong. */
+export const CHUA_RO_NGUON = 'Chưa rõ nguồn';
+
+export interface DoanhThuNguon {
+  nguon: string;
+  tien: number;
+  soKhoan: number;
+  /** Tỉ trọng trên tổng doanh thu, làm tròn tới %. */
+  tyLe: number;
+}
+
+/**
+ * Doanh thu tháng gom theo NGUỒN KHÁCH (anh Tâm 21/8/2026).
+ *
+ * Chỉ tính khoản THU. Khoản chi không có nguồn khách — gộp vào là ra con số vô nghĩa.
+ *
+ * Nguồn để trống thì gom vào "Chưa rõ nguồn" chứ KHÔNG bỏ đi: bỏ đi thì tổng các dòng
+ * nhỏ hơn doanh thu thật mà nhìn bảng không biết thiếu ở đâu.
+ */
+export function doanhThuTheoNguon(
+  entries: Array<{ kind: string; amount: number; source?: string }>,
+): DoanhThuNguon[] {
+  const thu = entries.filter((e) => e.kind === 'thu');
+  const tong = thu.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+
+  const m = new Map<string, { tien: number; soKhoan: number }>();
+  for (const e of thu) {
+    const nguon = (e.source || '').trim() || CHUA_RO_NGUON;
+    const o = m.get(nguon) || { tien: 0, soKhoan: 0 };
+    o.tien += Number(e.amount) || 0;
+    o.soKhoan += 1;
+    m.set(nguon, o);
+  }
+
+  return [...m.entries()]
+    .map(([nguon, o]) => ({
+      nguon,
+      ...o,
+      tyLe: tong > 0 ? Math.round((o.tien / tong) * 100) : 0,
+    }))
+    .sort((a, b) => b.tien - a.tien || a.nguon.localeCompare(b.nguon));
+}
+
 export interface DebtInput {
   /** Phải thu mỗi kỳ. */
   receivable: number;

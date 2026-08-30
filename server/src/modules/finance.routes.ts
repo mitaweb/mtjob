@@ -15,7 +15,8 @@ import {
 import { addPayment } from './finance.service.js';
 import { payrollForMonth } from './payroll.service.js';
 import { getActiveMembers } from './members.repo.js';
-import { nextDueDateIso, computeDebt, DEBT_TRACK_FROM } from '../lib/finance.js';
+import { findCustomer, getCustomers } from './crm.repo.js';
+import { nextDueDateIso, computeDebt, doanhThuTheoNguon, DEBT_TRACK_FROM } from '../lib/finance.js';
 import { todayIso, nowTz } from '../lib/datetime.js';
 import { newId } from '../util/id.js';
 
@@ -73,6 +74,8 @@ const partySchema = z.object({
   notifyMemberIds: z.array(z.string()).optional().default([]),
   note: z.string().optional().default(''),
   active: z.boolean().optional().default(true),
+  /** Nguồn khách — mọi khoản thu của bên này thừa hưởng, khỏi chọn lại mỗi tháng. */
+  source: z.string().max(60).optional().default(''),
 });
 
 financeRouter.post(
@@ -89,6 +92,7 @@ financeRouter.post(
       notifyMemberIds: b.notifyMemberIds,
       note: b.note,
       active: b.active,
+      source: b.source,
     };
     await upsertParty(party);
     res.json({ ok: true, id: party.id });
@@ -150,7 +154,16 @@ financeRouter.get(
       0,
     );
 
-    res.json({ month, income, expense, profit: income - expense, receivableTotal, carryOverTotal, entries });
+    res.json({
+      month,
+      income,
+      expense,
+      profit: income - expense,
+      receivableTotal,
+      carryOverTotal,
+      theoNguon: doanhThuTheoNguon(entries),
+      entries,
+    });
   }),
 );
 
@@ -162,6 +175,8 @@ const entrySchema = z.object({
   date: z.string().optional().default(''),
   recurring: z.boolean().optional().default(false),
   partyId: z.string().optional().default(''),
+  source: z.string().max(60).optional().default(''),
+  customerId: z.string().optional().default(''),
 });
 
 financeRouter.post(
@@ -169,8 +184,14 @@ financeRouter.post(
   canEdit,
   asyncHandler(async (req, res) => {
     const b = entrySchema.parse(req.body);
+    // Chọn khách mà chưa chọn nguồn → lấy nguồn của khách đó. Bắt gõ lại nguồn khi hệ
+    // thống đã biết là cách nhanh nhất để hai nơi ghi hai nguồn khác nhau.
+    let source = b.source;
+    if (!source && b.customerId) {
+      source = (await findCustomer(b.customerId))?.source || '';
+    }
     const id = newId('F-');
-    await addEntry({ id, ...b });
+    await addEntry({ ...b, id, source });
     res.json({ ok: true, id });
   }),
 );
@@ -207,6 +228,22 @@ financeRouter.get(
         netSalary: l.netSalary,
       })),
     });
+  }),
+);
+
+/**
+ * Khách hàng để gắn vào khoản thu — CHỈ tên + nguồn.
+ *
+ * Không dùng /crm/customers: đường đó chỉ mở cho sale/giám đốc/admin nên kế toán gọi sẽ
+ * 403 và vỡ cả trang Tài chính. Ở đây cũng KHÔNG trả số điện thoại — kế toán không cần,
+ * và số điện thoại khách chỉ giám đốc mới được xem.
+ */
+financeRouter.get(
+  '/customers',
+  canView,
+  asyncHandler(async (_req, res) => {
+    const list = await getCustomers();
+    res.json({ customers: list.map((c) => ({ id: c.id, name: c.name, source: c.source || '' })) });
   }),
 );
 

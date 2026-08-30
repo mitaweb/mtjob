@@ -7,6 +7,7 @@ import { useToast } from '../components/Toaster';
 import { Badge, type BadgeVariant } from '../components/ui';
 import type { Customer, Appointment } from '../lib/types';
 import { NGAY_GIO_VN } from '../lib/gio';
+import { NGUON } from '../lib/nguon';
 
 interface Mem {
   id: string;
@@ -15,14 +16,6 @@ interface Mem {
 
 const STATUSES = ['Mới', 'Đang chăm sóc', 'Đã chốt', 'Tạm dừng', 'Mất'];
 
-/**
- * Nguồn khách — danh sách CỐ ĐỊNH, không cho gõ tự do.
- *
- * Anh Tâm 4/8/2026 muốn thống kê theo nguồn. Gõ tự do thì mỗi người viết một kiểu
- * (FB / Facebook / face / fb ads) và bảng thống kê vỡ thành hàng chục dòng trùng ý nhau —
- * đúng thứ làm cho con số không dùng được.
- */
-const NGUON = ['Facebook Ads', 'Google Ads', 'Zalo', 'Website', 'Giới thiệu', 'BNI', 'Sự kiện', 'Khác'];
 const CLOSED = 'Đã chốt';
 const LOST = ['Tạm dừng', 'Mất'];
 const blankCustomer = (): Partial<Customer> => ({
