@@ -15,6 +15,16 @@ interface Detail {
   days: DayBlock[];
 }
 
+/** Một dòng thưởng KPI của một dự án. */
+interface KpiBonusLine {
+  projectId: string;
+  projectName: string;
+  vaiTro: 'leader' | 'member';
+  /** null = tháng đó chưa đo được (dự án chưa chạy, chưa có kỳ nào chốt…). */
+  tyLe: number | null;
+  amount: number;
+}
+
 const currentYm = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -28,6 +38,7 @@ export default function Scores() {
   const [loading, setLoading] = useState(true);
   const [loadingDays, setLoadingDays] = useState(true);
   const [msg, setMsg] = useState('');
+  const [kpiBonus, setKpiBonus] = useState<KpiBonusLine[]>([]);
 
   useEffect(() => {
     api<MemberScore>('/scores/me')
@@ -46,6 +57,11 @@ export default function Scores() {
       .then(setDetail)
       .catch((e) => setMsg((e as Error).message))
       .finally(() => setLoadingDays(false));
+    // Thưởng KPI đi theo tháng đang xem. Lỗi thì để trống — không chặn cả trang Điểm
+    // chỉ vì phần thưởng dự án chưa cấu hình xong.
+    api<{ lines: KpiBonusLine[] }>(`/projects/bonus/me?year=${y}&month=${Number(m)}`)
+      .then((r) => setKpiBonus(r.lines))
+      .catch(() => setKpiBonus([]));
   }, [ym]);
 
   const totalTasks = detail?.days.reduce((s, d) => s + d.tasks.length, 0) ?? 0;
@@ -72,7 +88,13 @@ export default function Scores() {
             </div>
             <div className="card text-center">
               <div className="text-2xl font-bold text-emerald-700">{vnd(score?.bonus ?? 0)}</div>
-              <div className="text-xs text-ink-muted">Thưởng hiện tại</div>
+              <div className="text-xs text-ink-muted">Thưởng điểm</div>
+              {/* Cắt nửa mà không nói vì sao thì người ta tưởng hệ thống tính sai. */}
+              {(score?.heSoKpi ?? 1) < 1 && (
+                <div className="mt-1 text-xs text-amber-700">
+                  Đã cắt một nửa (từ {vnd(score?.bonusGoc ?? 0)}) vì có dự án đạt dưới 50%
+                </div>
+              )}
             </div>
             <div className="card text-center">
               <div className="text-2xl font-bold text-brand-600">{fmtMin(score?.workMinutesToday ?? 0)}</div>
@@ -83,6 +105,34 @@ export default function Scores() {
       </div>
 
       {msg && <div className="text-sm text-ink-soft">{msg}</div>}
+
+      {/* Thưởng KPI dự án — tách riêng khỏi thưởng điểm, tính theo kết quả dự án. */}
+      {kpiBonus.length > 0 && (
+        <div className="card">
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="font-semibold">🎯 Thưởng KPI dự án</h2>
+            <span className="text-lg font-bold text-emerald-700">
+              {vnd(kpiBonus.reduce((s, l) => s + l.amount, 0))}
+            </span>
+          </div>
+          <ul className="divide-y">
+            {kpiBonus.map((l) => (
+              <li key={`${l.projectId}-${l.vaiTro}`} className="flex items-center justify-between gap-2 py-2 text-sm">
+                <span className="min-w-0">
+                  <span className="font-medium">{l.projectName}</span>
+                  {l.vaiTro === 'leader' && <span className="ml-1 text-xs text-brand-600">(leader)</span>}
+                  <span className="block text-xs text-ink-muted">
+                    {l.tyLe === null ? 'Tháng này chưa đo được' : `Đạt ${l.tyLe}% KPI`}
+                  </span>
+                </span>
+                <span className={`shrink-0 font-medium ${l.amount > 0 ? 'text-emerald-700' : 'text-ink-faint'}`}>
+                  {vnd(l.amount)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="card">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">

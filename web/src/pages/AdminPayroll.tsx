@@ -390,6 +390,128 @@ export default function AdminPayroll() {
           </div>
         </div>
       )}
+
+      <ThuongKpiThang ym={ym} />
+    </div>
+  );
+}
+
+interface BonusLine {
+  memberId: string;
+  fullName: string;
+  teamId: string;
+  projectId: string;
+  projectName: string;
+  vaiTro: 'leader' | 'member';
+  tyLe: number | null;
+  amount: number;
+}
+
+/**
+ * Thưởng KPI dự án của cả công ty trong tháng — để giám đốc xem rồi tự chi.
+ * KHÔNG cộng vào lương thực lãnh (anh Tâm chốt để riêng như thưởng điểm).
+ */
+function ThuongKpiThang({ ym }: { ym: string }) {
+  const [lines, setLines] = useState<BonusLine[]>([]);
+  const [chuaPhanCong, setChuaPhanCong] = useState<Array<{ id: string; fullName: string; teamId: string }>>([]);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    const [y, m] = ym.split('-');
+    api<{ lines: BonusLine[]; chuaPhanCong: Array<{ id: string; fullName: string; teamId: string }> }>(
+      `/projects/bonus/all?year=${y}&month=${Number(m)}`,
+    )
+      .then((r) => {
+        setLines(r.lines);
+        setChuaPhanCong(r.chuaPhanCong);
+        setMsg('');
+      })
+      .catch((e) => setMsg((e as Error).message));
+  }, [ym]);
+
+  // Gom theo người: một người có thể ăn thưởng từ nhiều dự án.
+  const theoNguoi = new Map<string, { fullName: string; teamId: string; tong: number; duAn: BonusLine[] }>();
+  for (const l of lines) {
+    const o = theoNguoi.get(l.memberId) || { fullName: l.fullName, teamId: l.teamId, tong: 0, duAn: [] };
+    o.tong += l.amount;
+    o.duAn.push(l);
+    theoNguoi.set(l.memberId, o);
+  }
+  const dsNguoi = [...theoNguoi.entries()].sort((a, b) => b[1].tong - a[1].tong);
+  const tongChi = lines.reduce((s, l) => s + l.amount, 0);
+
+  return (
+    <div className="card">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-semibold">🎯 Thưởng KPI dự án (tháng {ym})</h2>
+        <span className="text-lg font-bold text-emerald-700">{vnd(tongChi)}</span>
+      </div>
+      <p className="mb-2 text-xs text-ink-muted">
+        Không cộng vào lương thực lãnh — bảng này để anh xem rồi chi riêng.
+      </p>
+
+      {msg && <p className="text-sm text-amber-700">{msg}</p>}
+
+      {/* Ai chưa được phân công — bảng này PHẢI rỗng, vì không phân công là không có thưởng. */}
+      {chuaPhanCong.length > 0 && (
+        <div className="mb-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
+          <div className="text-sm font-semibold text-amber-900">
+            ⚠️ {chuaPhanCong.length} người chưa được phân công dự án nào
+          </div>
+          <p className="mt-1 text-xs text-amber-800">
+            Không thuộc dự án nào thì không có thưởng KPI. Nhắc leader phân công trước khi chốt lương —
+            chốt rồi thì không sửa được nữa.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {chuaPhanCong.map((m) => (
+              <span key={m.id} className="rounded-md bg-white px-2 py-0.5 text-xs text-amber-800">
+                {m.fullName}
+                {m.teamId ? ` · ${m.teamId}` : ''}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {dsNguoi.length === 0 ? (
+        <p className="text-sm text-ink-muted">
+          Tháng này chưa có thưởng KPI nào. Đặt mức thưởng cho từng (dự án × phòng) ở trang Dự án.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left text-ink-muted">
+              <tr>
+                <th className="py-1">Nhân sự</th>
+                <th>Phòng</th>
+                <th>Dự án</th>
+                <th className="text-right">Thưởng</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dsNguoi.map(([id, o]) => (
+                <tr key={id} className="border-t align-top">
+                  <td className="py-1 font-medium">{o.fullName}</td>
+                  <td className="text-ink-muted">{o.teamId}</td>
+                  <td className="text-xs text-ink-muted">
+                    {o.duAn.map((l) => (
+                      <div key={`${l.projectId}-${l.vaiTro}`}>
+                        {l.projectName}
+                        {l.vaiTro === 'leader' && <span className="text-brand-600"> (leader)</span>}
+                        {' · '}
+                        {l.tyLe === null ? 'chưa đo được' : `${l.tyLe}%`}
+                        {' → '}
+                        {vnd(l.amount)}
+                      </div>
+                    ))}
+                  </td>
+                  <td className="text-right font-medium text-emerald-700">{vnd(o.tong)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

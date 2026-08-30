@@ -309,7 +309,10 @@ export async function runDailyReports(): Promise<void> {
     for (const m of staff) {
       const s = scoreById.get(m.id);
       if (!s) continue;
-      const bonusLine = s.bonus > 0 ? `\n💰 Thưởng hiện tại: ${formatVnd(s.bonus)}.` : '';
+      // Ghi rõ khi thưởng bị cắt nửa vì kết quả dự án — không nói thì người ta tưởng
+      // hệ thống tính sai và đi hỏi vòng vo.
+      const catNua = s.heSoKpi < 1 ? ` (đã cắt một nửa vì có dự án đạt dưới 50%)` : '';
+      const bonusLine = s.bonus > 0 ? `\n💰 Thưởng điểm: ${formatVnd(s.bonus)}${catNua}.` : '';
       const tasksLine = doneTasksLine(tasksDoneToday(allTasks, m.id, today));
       await notify(m.id, {
         type: 'daily',

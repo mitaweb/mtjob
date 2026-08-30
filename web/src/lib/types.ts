@@ -73,7 +73,12 @@ export interface MemberScore {
   teamId: string;
   todayPoints: number;
   monthPoints: number;
+  /** Thưởng điểm ĐÃ nhân hệ số KPI — số thực nhận. */
   bonus: number;
+  /** Thưởng điểm trước khi soi kết quả dự án. */
+  bonusGoc?: number;
+  /** 1 hoặc 0,5. Bằng 0,5 khi có dự án đạt dưới 50%. */
+  heSoKpi?: number;
   workMinutesToday: number;
   rank?: number;
 }

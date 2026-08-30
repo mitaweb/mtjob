@@ -5,6 +5,7 @@ import { useToast } from '../components/Toaster';
 import { Badge, EmptyState, Skeleton, SkeletonRows, type BadgeVariant } from '../components/ui';
 import AsyncButton from '../components/AsyncButton';
 import DailyKpiEntry, { type TodayData } from '../components/DailyKpiEntry';
+import { vnd } from '../lib/format';
 
 // Thư viện biểu đồ nặng 360KB — tải riêng để danh sách dự án và ô nhập chỉ số hiện trước.
 const KpiLineChart = lazy(() => import('../components/charts/KpiLineChart'));
@@ -258,6 +259,8 @@ export default function Projects() {
   const toast = useToast();
   const canManage = user?.role === 'leader' || user?.role === 'director' || user?.role === 'admin';
   const isDirector = user?.role === 'director' || user?.role === 'admin';
+  // Leader chỉ phân công được người phòng mình — lấy phòng từ hồ sơ đang đăng nhập.
+  const myTeamId = user?.teamId || '';
 
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [today, setToday] = useState<TodayData | null>(null);
@@ -643,6 +646,13 @@ export default function Projects() {
                       </div>
                     ))}
                 </div>
+                <ThuongVaThanhVien
+                  projectId={open.project.id}
+                  team={team}
+                  isDirector={isDirector}
+                  myTeam={myTeamId}
+                  canAssign={canManage}
+                />
               </div>
             ))}
 
@@ -950,6 +960,163 @@ function BackfillRow({ kpiId, onSaved }: { kpiId: string; onSaved: () => Promise
       <AsyncButton className="btn-ghost px-3 py-1 text-sm" busyLabel="…" onClick={save}>
         Lưu
       </AsyncButton>
+    </div>
+  );
+}
+/**
+ * Thưởng KPI và thành viên của một phòng trong một dự án.
+ *
+ * Giám đốc đặt mức thưởng; leader tích người phòng mình. Leader KHÔNG thấy con số tiền —
+ * chặn thật ở tầng route (`GET /:id/bonus` chỉ mở cho giám đốc), đây chỉ là không vẽ ra.
+ */
+function ThuongVaThanhVien({
+  projectId,
+  team,
+  isDirector,
+  myTeam,
+  canAssign,
+}: {
+  projectId: string;
+  team: string;
+  isDirector: boolean;
+  /** Phòng của người đang xem — leader chỉ sửa được phòng mình. */
+  myTeam: string;
+  canAssign: boolean;
+}) {
+  const toast = useToast();
+  const [muc, setMuc] = useState('');
+  const [mucLuu, setMucLuu] = useState(0);
+  const [assignees, setAssignees] = useState<Array<{ memberId: string; endDate: string }>>([]);
+  const [nguoi, setNguoi] = useState<Array<{ id: string; fullName: string; teamId: string }>>([]);
+  const [mo, setMo] = useState(false);
+
+  const suaDuoc = canAssign && (isDirector || myTeam === team);
+
+  async function load() {
+    const [as, ds] = await Promise.all([
+      api<{ assignees: Array<{ memberId: string; endDate: string }> }>(`/projects/${projectId}/assignees`),
+      api<{ assignees: Array<{ id: string; fullName: string; teamId: string }> }>('/tasks/assignees').catch(
+        () => ({ assignees: [] }),
+      ),
+    ]);
+    setAssignees(as.assignees);
+    setNguoi(ds.assignees.filter((m) => m.teamId === team));
+    if (isDirector) {
+      const b = await api<{ bonuses: Array<{ teamId: string; amount: number }> }>(
+        `/projects/${projectId}/bonus`,
+      ).catch(() => ({ bonuses: [] }));
+      const m = b.bonuses.find((x) => x.teamId === team)?.amount ?? 0;
+      setMucLuu(m);
+      setMuc(m ? String(m) : '');
+    }
+  }
+
+  useEffect(() => {
+    if (mo) load().catch((e) => toast.error((e as Error).message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mo, projectId, team]);
+
+  const dangThamGia = assignees.filter((a) => !a.endDate).map((a) => a.memberId);
+
+  async function luuMuc() {
+    try {
+      await api(`/projects/${projectId}/bonus/${team}`, {
+        method: 'PUT',
+        body: { amount: Number(muc) || 0 },
+      });
+      toast.success('Đã lưu mức thưởng');
+      await load();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
+  async function doiThamGia(memberId: string, them: boolean) {
+    try {
+      if (them) await api(`/projects/${projectId}/assignees`, { body: { memberId } });
+      else await api(`/projects/${projectId}/assignees/${memberId}`, { method: 'DELETE' });
+      await load();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
+  if (!mo) {
+    return (
+      <button className="mt-2 text-xs text-brand-600 underline" onClick={() => setMo(true)}>
+        ⚙️ Thưởng KPI &amp; thành viên phòng {team}
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-2 rounded-xl border border-brand-100 bg-brand-50/40 p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-medium text-ink-soft">Thưởng KPI &amp; thành viên</span>
+        <button className="text-xs text-ink-muted underline" onClick={() => setMo(false)}>
+          thu gọn
+        </button>
+      </div>
+
+      {isDirector && (
+        <div className="mb-3">
+          <label className="label text-xs">Mức thưởng nếu đạt 100% KPI (mỗi tháng)</label>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              className="input max-w-[12rem] py-1"
+              type="number"
+              min={0}
+              placeholder="0"
+              value={muc}
+              onChange={(e) => setMuc(e.target.value)}
+            />
+            <AsyncButton className="btn-primary px-3 py-1 text-sm" onClick={luuMuc} busyLabel="Đang lưu…">
+              Lưu mức
+            </AsyncButton>
+            {mucLuu > 0 && <span className="text-xs text-ink-muted">đang là {vnd(mucLuu)}</span>}
+          </div>
+          <p className="mt-1 text-xs text-ink-muted">
+            Leader phòng {team} nhận số này khi đạt 100%; đạt 50% thì nhận một nửa. Thành viên đạt 80–99%
+            nhận nửa mức, từ 100% nhận trọn mức.
+          </p>
+        </div>
+      )}
+
+      <div>
+        <div className="mb-1 text-xs font-medium text-ink-soft">
+          Thành viên tham gia ({dangThamGia.length})
+        </div>
+        {nguoi.length === 0 ? (
+          <p className="text-xs text-ink-muted">Phòng {team} chưa có ai để phân công.</p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {nguoi.map((m) => {
+              const co = dangThamGia.includes(m.id);
+              return (
+                <button
+                  key={m.id}
+                  disabled={!suaDuoc}
+                  onClick={() => doiThamGia(m.id, !co)}
+                  className={`rounded-lg border px-2 py-1 text-xs ${
+                    co ? 'border-brand-600 bg-brand-600 text-white' : 'border-brand-200 bg-white text-ink-soft'
+                  } ${suaDuoc ? '' : 'cursor-not-allowed opacity-60'}`}
+                >
+                  {co ? '✓ ' : '+ '}
+                  {m.fullName}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {!suaDuoc && (
+          <p className="mt-1 text-xs text-ink-muted">Chỉ leader phòng {team} phân công được.</p>
+        )}
+        {suaDuoc && dangThamGia.length === 0 && (
+          <p className="mt-1 text-xs text-amber-700">
+            Chưa phân công ai — phòng này sẽ không có ai được thưởng KPI dự án.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
