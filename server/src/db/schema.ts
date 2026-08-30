@@ -364,6 +364,53 @@ CREATE TABLE IF NOT EXISTS kpi_entries (
 );
 -- PK dẫn đầu bằng kpi_id nên lọc theo ngày (bảng nhập hôm nay) cần index riêng.
 CREATE INDEX IF NOT EXISTS kpi_entries_date_idx ON kpi_entries (date);
+
+-- ── Thưởng KPI dự án (anh Tâm 21/8/2026) ──
+
+-- Mức thưởng cho một (dự án × phòng): số tiền leader nhận khi đạt 100% KPI tháng.
+-- Là MỨC, không phải khoản đã trả — nên không có cột năm/tháng.
+CREATE TABLE IF NOT EXISTS project_team_bonus (
+  project_id text NOT NULL,
+  team_id    text NOT NULL,           -- Ads | Content | SEO
+  amount     integer DEFAULT 0,       -- VND
+  note       text DEFAULT '',
+  updated_by text DEFAULT '',
+  updated_at text DEFAULT '',
+  PRIMARY KEY (project_id, team_id)
+);
+
+-- Leader phân công ai vào dự án. LEADER KHÔNG nằm ở đây — leader ăn thưởng theo
+-- teams.leader_member_id của phòng có KPI trong dự án, bảng này chỉ là "thành viên".
+-- Gỡ người = ghi end_date, KHÔNG xoá dòng: thưởng chốt theo tháng nên phải biết được
+-- ai đang tham gia trong tháng 8 dù tháng 9 đã rời.
+CREATE TABLE IF NOT EXISTS project_assignees (
+  project_id  text NOT NULL,
+  member_id   text NOT NULL,
+  team_id     text DEFAULT '',        -- chụp lại phòng lúc phân công: đổi phòng tháng sau
+  start_date  text DEFAULT '',        -- không làm xô lệch thưởng tháng trước
+  end_date    text DEFAULT '',        -- rỗng = còn tham gia
+  assigned_by text DEFAULT '',
+  created_at  text DEFAULT '',
+  PRIMARY KEY (project_id, member_id)
+);
+CREATE INDEX IF NOT EXISTS project_assignees_member_idx ON project_assignees (member_id);
+
+-- Chốt cứng thưởng của một tháng khi chốt lương.
+-- Thưởng tính LIVE, nên giám đốc nâng mức thưởng tháng 11 sẽ làm số tháng 8 đổi theo
+-- trong khi tháng 8 đã khoá lương. Tháng đã khoá thì đọc bảng này, chưa khoá thì tính
+-- live — đúng khuôn payrollForMonth / getPayrollSnapshot đang chạy.
+CREATE TABLE IF NOT EXISTS project_bonus_lines (
+  year       integer NOT NULL,
+  month      integer NOT NULL,
+  member_id  text NOT NULL,
+  project_id text NOT NULL,
+  team_id    text DEFAULT '',
+  vai_tro    text DEFAULT 'member',   -- leader | member
+  ty_le      integer DEFAULT 0,       -- % đạt KPI đã làm tròn
+  muc_thuong integer DEFAULT 0,       -- mức lúc chốt
+  amount     integer DEFAULT 0,       -- tiền thực nhận
+  PRIMARY KEY (year, month, member_id, project_id)
+);
 `;
 
 /**
