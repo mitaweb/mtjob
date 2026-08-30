@@ -24,6 +24,60 @@ export function computeBonus(points: number, cfg: BonusConfig = DEFAULT_BONUS): 
   return Math.round((extra / cfg.step) * cfg.amount);
 }
 
+// ── Thưởng KPI dự án (anh Tâm 21/8/2026) ──
+//
+// Mỗi cặp (dự án × phòng) có một MỨC THƯỞNG: số tiền leader nhận khi đạt 100% KPI tháng.
+// Để cạnh computeBonus để mọi luật tiền nằm một chỗ, soi một lượt là thấy hết.
+
+/**
+ * Trần 100%: vượt KPI không được thưởng thêm.
+ * Anh Tâm: "khách hàng không trả thêm khi mình vượt KPI".
+ */
+export const TRAN_KPI = 100;
+/** Dưới ngưỡng này thành viên không có thưởng thêm. */
+export const NGUONG_THANH_VIEN = 80;
+/** Có dự án dưới ngưỡng này thì thưởng điểm còn một nửa. */
+export const NGUONG_NUA_DIEM = 50;
+
+/** `r` là % đạt KPI; `null` = tháng đó không đo được → không thưởng, cũng không phạt. */
+export function thuongLeader(mucThuong: number, r: number | null): number {
+  const muc = Math.max(0, Math.round(mucThuong) || 0);
+  if (r === null || !Number.isFinite(r) || r <= 0) return 0;
+  return Math.round((muc * Math.min(r, TRAN_KPI)) / 100);
+}
+
+/**
+ * Thưởng thêm của MỘT thành viên cho MỘT dự án. Nhiều dự án thì gọi nhiều lần rồi cộng —
+ * đúng luật "tính riêng từng dự án rồi cộng lại", và giữ hàm này đủ đơn giản để test.
+ *
+ *   r < 80%        → 0
+ *   80% ≤ r < 100% → một nửa mức
+ *   r ≥ 100%       → trọn mức (trần 100%, vượt không thêm)
+ */
+export function thuongThanhVien(mucThuong: number, r: number | null): number {
+  const muc = Math.max(0, Math.round(mucThuong) || 0);
+  if (r === null || !Number.isFinite(r) || r < NGUONG_THANH_VIEN) return 0;
+  if (r < TRAN_KPI) return Math.round(muc / 2);
+  return muc;
+}
+
+/**
+ * Thưởng điểm sau khi soi kết quả dự án.
+ *
+ * BẤT KỲ dự án nào dưới 50% là còn một nửa — anh Tâm chốt "tất cả dự án đạt trên 50%"
+ * mới giữ nguyên. Dự án không đo được (`null`) bị bỏ qua: người được phân vào một dự án
+ * đang tạm dừng không đáng bị cắt thưởng vì chuyện đó.
+ *
+ * Không có dự án nào đo được thì giữ nguyên — hàm này không phải chỗ phạt người chưa
+ * được phân công, việc đó nằm ở tầng service.
+ */
+export function nhanThuongDiem(thuongDiem: number, rCacDuAn: Array<number | null>): number {
+  const tien = Math.max(0, Math.round(thuongDiem) || 0);
+  const doDuoc = rCacDuAn.filter((r): r is number => r !== null && Number.isFinite(r));
+  if (doDuoc.length === 0) return tien;
+  return doDuoc.some((r) => r < NGUONG_NUA_DIEM) ? Math.round(tien / 2) : tien;
+}
+
 export type BhxhMode = 'direct' | 'percent';
 /** Employee-side compulsory insurance rate in Vietnam (BHXH 8% + BHYT 1.5% + BHTN 1%). */
 export const BHXH_EMPLOYEE_RATE = 0.105;

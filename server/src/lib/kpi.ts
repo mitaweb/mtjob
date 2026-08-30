@@ -63,6 +63,42 @@ export function periodKey(date: string, period: KpiPeriod, moc?: string): string
 }
 
 /**
+ * Khoảng ngày của một khoá kỳ, dạng ISO. `null` khi khoá không suy ra được ngày —
+ * 'total', kỳ neo mà thiếu mốc dự án, kỳ trước lúc dự án bắt đầu, hoặc khoá lạ.
+ *
+ * Tách khỏi `periodLabel` vì thưởng KPI theo tháng cần biết "kỳ này kết thúc ngày nào"
+ * để xếp kỳ vào đúng tháng. `periodLabel` gọi lại hàm này nên nhãn hiển thị và mốc tính
+ * tiền không bao giờ lệch nhau.
+ */
+export function khoangKy(key: string, moc?: string): { dau: string; cuoi: string } | null {
+  const neo = key.match(/^([WM])(-?\d+)$/);
+  if (neo) {
+    const n = Number(neo[2]);
+    if (n < 1) return null; // trước khi dự án bắt đầu
+    const m = dayjs(moc);
+    if (!moc || !m.isValid()) return null;
+    const doDai = neo[1] === 'W' ? DO_DAI_KY.week : DO_DAI_KY.month;
+    const dau = m.add((n - 1) * doDai, 'day');
+    return { dau: dau.format('YYYY-MM-DD'), cuoi: dau.add(doDai - 1, 'day').format('YYYY-MM-DD') };
+  }
+
+  const week = key.match(/^(\d{4})-W(\d{2})$/);
+  if (week) {
+    // Chuẩn ISO: tuần 1 là tuần CHỨA ngày 4/1. Tính từ đó thay vì dùng setter
+    // isoWeekYear() — plugin chỉ cấp getter, gọi kiểu setter sẽ vỡ.
+    const dau = dayjs(`${week[1]}-01-04`).startOf('isoWeek').add(Number(week[2]) - 1, 'week');
+    return { dau: dau.format('YYYY-MM-DD'), cuoi: dau.add(6, 'day').format('YYYY-MM-DD') };
+  }
+
+  if (/^\d{4}-\d{2}$/.test(key)) {
+    const d = dayjs(`${key}-01`);
+    return { dau: d.format('YYYY-MM-DD'), cuoi: d.endOf('month').format('YYYY-MM-DD') };
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(key)) return { dau: key, cuoi: key };
+  return null;
+}
+
+/**
  * Nhãn tiếng Việt cho một khoá kỳ. Luôn kèm khoảng ngày để khỏi phải nhẩm —
  * "Tuần 2" của dự án không trùng tuần 2 trên lịch nên nói trống không là dễ hiểu nhầm.
  */
@@ -72,25 +108,18 @@ export function periodLabel(key: string, moc?: string): string {
   const neo = key.match(/^([WM])(-?\d+)$/);
   if (neo) {
     const n = Number(neo[2]);
-    const laTuan = neo[1] === 'W';
-    const ten = laTuan ? 'Tuần' : 'Tháng';
+    const ten = neo[1] === 'W' ? 'Tuần' : 'Tháng';
     // Chỉ xảy ra khi nhập bù cho ngày trước lúc dự án khởi động.
     if (n < 1) return 'Trước khi bắt đầu';
-    const m = dayjs(moc);
-    if (!moc || !m.isValid()) return `${ten} ${n}`;
-    const doDai = laTuan ? DO_DAI_KY.week : DO_DAI_KY.month;
-    const dau = m.add((n - 1) * doDai, 'day');
-    return `${ten} ${n} (${dau.format('D/M')}–${dau.add(doDai - 1, 'day').format('D/M')})`;
+    const kho = khoangKy(key, moc);
+    if (!kho) return `${ten} ${n}`;
+    return `${ten} ${n} (${dayjs(kho.dau).format('D/M')}–${dayjs(kho.cuoi).format('D/M')})`;
   }
 
   const week = key.match(/^(\d{4})-W(\d{2})$/);
   if (week) {
-    // Chuẩn ISO: tuần 1 là tuần CHỨA ngày 4/1. Tính từ đó thay vì dùng setter
-    // isoWeekYear() — plugin chỉ cấp getter, gọi kiểu setter sẽ vỡ.
-    const week1 = dayjs(`${week[1]}-01-04`).startOf('isoWeek');
-    const start = week1.add(Number(week[2]) - 1, 'week');
-    const end = start.add(6, 'day');
-    return `Tuần ${Number(week[2])} (${start.format('D/M')}–${end.format('D/M')})`;
+    const kho = khoangKy(key)!;
+    return `Tuần ${Number(week[2])} (${dayjs(kho.dau).format('D/M')}–${dayjs(kho.cuoi).format('D/M')})`;
   }
   if (/^\d{4}-\d{2}$/.test(key)) return `Tháng ${Number(key.slice(5))}/${key.slice(0, 4)}`;
   if (/^\d{4}-\d{2}-\d{2}$/.test(key)) return dayjs(key).format('D/M/YYYY');
@@ -183,6 +212,37 @@ export interface KpiPoint {
 }
 
 /**
+ * Gom số đã nhập về theo kỳ.
+ *
+ * `daily` cộng các số trong kỳ; `cumulative` lấy số nhập MUỘN NHẤT của kỳ — con số đó
+ * đã là tổng rồi, cộng lại là sai (SAVAX DOOR từng ra 250/120 vì vậy).
+ *
+ * Tách khỏi `seriesFor` để phần tính thưởng theo tháng dùng lại đúng một cách gom số,
+ * không viết bản thứ hai rồi lệch nhau.
+ */
+export function tongTheoKy(
+  entries: KpiEntryLike[],
+  period: KpiPeriod,
+  moc?: string,
+  inputMode?: KpiInputMode,
+): Map<string, number> {
+  const luyKe = inputMode === 'cumulative';
+  const sum = new Map<string, number>();
+  const ngayCuaKy = new Map<string, string>();
+  for (const e of entries) {
+    const k = periodKey(e.date, period, moc);
+    if (!k) continue;
+    if (!luyKe) {
+      sum.set(k, (sum.get(k) || 0) + (Number(e.value) || 0));
+    } else if (!ngayCuaKy.has(k) || e.date > ngayCuaKy.get(k)!) {
+      ngayCuaKy.set(k, e.date);
+      sum.set(k, Number(e.value) || 0);
+    }
+  }
+  return sum;
+}
+
+/**
  * `n` kỳ gần nhất cho biểu đồ, cũ → mới. Kỳ không có số vẫn trả 0 để đường biểu đồ
  * liền mạch, không đứt quãng gây hiểu nhầm là chưa tới kỳ đó.
  */
@@ -203,20 +263,7 @@ export function seriesFor(
     return [{ key: 'total', label: 'Cả dự án', value }];
   }
 
-  // 'daily' cộng các số trong kỳ; 'cumulative' lấy số nhập MUỘN NHẤT của kỳ — con số đó đã
-  // là tổng rồi.
-  const sum = new Map<string, number>();
-  const ngayCuaKy = new Map<string, string>();
-  for (const e of entries) {
-    const k = periodKey(e.date, period, moc);
-    if (!k) continue;
-    if (!luyKe) {
-      sum.set(k, (sum.get(k) || 0) + (Number(e.value) || 0));
-    } else if (!ngayCuaKy.has(k) || e.date > ngayCuaKy.get(k)!) {
-      ngayCuaKy.set(k, e.date);
-      sum.set(k, Number(e.value) || 0);
-    }
-  }
+  const sum = tongTheoKy(entries, period, moc, inputMode);
   const out: KpiPoint[] = [];
 
   const doDai = period === 'week' ? DO_DAI_KY.week : period === 'month' ? DO_DAI_KY.month : 0;
@@ -355,6 +402,153 @@ export function projectProgress(percents: Array<{ percent: number; target: numbe
   if (coMucTieu.length === 0) return { percent: 0, counted: 0, noTarget };
   const tong = coMucTieu.reduce((s, p) => s + (Number(p.percent) || 0), 0);
   return { percent: Math.round(tong / coMucTieu.length), counted: coMucTieu.length, noTarget };
+}
+
+// ── Quy tỉ lệ đạt KPI về THÁNG DƯƠNG LỊCH (để chốt thưởng cùng lương) ──
+
+export interface KpiThangLike extends KpiLike {
+  /** Khung riêng của chỉ số; rỗng = theo khung dự án. */
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface PhanTramThang {
+  /** `null` = KHÔNG ĐO ĐƯỢC, khác hẳn 0 = có làm mà không đạt. */
+  percent: number | null;
+  /** Bao nhiêu kỳ đã góp vào con số này — để màn hình giải thích được. */
+  soKy: number;
+  /** '' khi đo được; câu tiếng Việt khi null. */
+  lyDo: string;
+}
+
+const KHONG_DO = (lyDo: string): PhanTramThang => ({ percent: null, soKy: 0, lyDo });
+
+/** Số tháng (tính cả hai đầu) giữa hai ngày ISO. */
+function soThang(dau: string, cuoi: string): number {
+  const a = dayjs(dau).startOf('month');
+  const b = dayjs(cuoi).startOf('month');
+  return Math.max(1, b.diff(a, 'month') + 1);
+}
+
+/**
+ * Tỉ lệ đạt KPI của MỘT chỉ số trong MỘT tháng dương lịch.
+ *
+ * Kỳ KPI không trùng tháng lịch — tuần là 7 ngày, tháng là khối 30 ngày, đều đếm từ ngày
+ * bắt đầu dự án. `progressOf` chỉ cho kỳ ĐANG CHẠY hôm nay nên không dùng để chốt tháng.
+ *
+ * Luật: **một kỳ thuộc về tháng mà nó KẾT THÚC**, và chỉ tính kỳ đã kết thúc trước hôm nay.
+ *   - Tính "kỳ giao với tháng" thì kỳ 31/7–6/8 bị chấm cho cả tháng 7 lẫn tháng 8 → trả
+ *     tiền hai lần cho một tuần làm việc.
+ *   - Không đòi "kỳ đã xong" thì xem giữa tháng sẽ thấy kỳ đang chạy dở hiện 0%, trông
+ *     như đang trượt trong khi mới làm được nửa kỳ.
+ *
+ * KHÔNG cắt trần ở đây. Trần 100% là luật TIỀN, nằm ở money.ts — cắt sớm thì một tuần
+ * bùng nổ không bù được tuần yếu, sai ý "trung bình các kỳ".
+ */
+export function phanTramTheoThang(
+  entries: KpiEntryLike[],
+  kpi: KpiThangLike,
+  thang: string,
+  duAn: { startDate?: string; endDate?: string },
+  today?: string,
+  holidays: Set<string> = new Set(),
+): PhanTramThang {
+  const target = Number(kpi.target) || 0;
+  if (target <= 0) return KHONG_DO('Chưa đặt mục tiêu');
+  if (!/^\d{4}-\d{2}$/.test(thang)) return KHONG_DO('Tháng không hợp lệ');
+
+  const moc = duAn.startDate || '';
+  if (!moc || !dayjs(moc).isValid()) return KHONG_DO('Dự án chưa khai ngày bắt đầu');
+
+  const homNay = today || dayjs().tz(TZ).format('YYYY-MM-DD');
+  const dauThang = `${thang}-01`;
+  const cuoiThang = dayjs(dauThang).endOf('month').format('YYYY-MM-DD');
+
+  // Khung hiệu lực: của riêng chỉ số nếu có, không thì của dự án.
+  const khungDau = kpi.startDate || moc;
+  const khungCuoi = kpi.endDate || duAn.endDate || '';
+
+  if (cuoiThang < khungDau) return KHONG_DO('Chưa tới khung tính của chỉ số này');
+  if (khungCuoi && dauThang > khungCuoi) return KHONG_DO('Đã qua khung tính của chỉ số này');
+
+  // ── Luỹ kế: đo PHẦN TĂNG trong tháng so với phần đáng lẽ phải tăng ──
+  if (kpi.inputMode === 'cumulative') {
+    if (!khungCuoi) return KHONG_DO('Chỉ số luỹ kế chưa khai ngày kết thúc');
+    // Mục tiêu chia đều cho các tháng trong khung — anh Tâm 21/8/2026: "120 từ khoá trong
+    // 6 tháng, 3 tháng đầu xây nền nên chưa tính, tháng 4-5-6 chia đều các tháng".
+    const mucThang = target / soThang(khungDau, khungCuoi);
+    if (!(mucThang > 0)) return KHONG_DO('Khung chỉ số không hợp lệ');
+
+    const den = cuoiThang < homNay ? cuoiThang : homNay;
+    if (den < dauThang) return KHONG_DO('Tháng chưa tới');
+    const truoc = dayjs(dauThang).subtract(1, 'day').format('YYYY-MM-DD');
+    const vNay = Number(soMoiNhat(entries, den)?.value || 0) || 0;
+    const vTruoc = Number(soMoiNhat(entries, truoc)?.value || 0) || 0;
+    // Số tụt (từ khoá rớt top) không sinh thưởng âm — khớp luật "không đạt thì không trừ".
+    const tang = Math.max(0, vNay - vTruoc);
+    return { percent: Math.round((tang / mucThang) * 100), soKy: 1, lyDo: '' };
+  }
+
+  // ── Kỳ NGÀY: chia cho số NGÀY LÀM VIỆC, không phải ngày lịch ──
+  // Chia cho ngày lịch thì T7/CN thành 0% và trần thực tế chỉ còn ~71%.
+  if (kpi.period === 'day') {
+    const tu = dauThang > khungDau ? dauThang : khungDau;
+    let den = cuoiThang < homNay ? cuoiThang : homNay;
+    if (khungCuoi && khungCuoi < den) den = khungCuoi;
+    if (den < tu) return KHONG_DO('Chưa có ngày nào trong tháng để tính');
+
+    let soNgay = 0;
+    for (let d = dayjs(tu); !d.isAfter(dayjs(den)); d = d.add(1, 'day')) {
+      if (isWorkday(d.format('YYYY-MM-DD'), holidays)) soNgay++;
+    }
+    if (soNgay === 0) return KHONG_DO('Tháng này không có ngày làm việc nào trong khung');
+    const tong = entries
+      .filter((e) => e.date >= tu && e.date <= den)
+      .reduce((s, e) => s + (Number(e.value) || 0), 0);
+    return { percent: Math.round((tong / (target * soNgay)) * 100), soKy: soNgay, lyDo: '' };
+  }
+
+  // ── Kỳ TUẦN / THÁNG: trung bình các kỳ KẾT THÚC trong tháng và đã xong ──
+  if (kpi.period !== 'week' && kpi.period !== 'month') {
+    return KHONG_DO('Kỳ "cả dự án" không chốt được theo tháng');
+  }
+  const doDai = DO_DAI_KY[kpi.period];
+  const dauKy = chiSoKy(dauThang, moc, doDai);
+  const cuoiKy = chiSoKy(cuoiThang, moc, doDai);
+  if (dauKy === null || cuoiKy === null) return KHONG_DO('Không tính được kỳ');
+
+  const sum = tongTheoKy(entries, kpi.period, moc, kpi.inputMode);
+  const tien = kpi.period === 'week' ? 'W' : 'M';
+  const percents: number[] = [];
+  for (let i = Math.max(1, dauKy); i <= cuoiKy; i++) {
+    const key = `${tien}${i}`;
+    const kho = khoangKy(key, moc);
+    if (!kho) continue;
+    // Kỳ thuộc tháng mà nó KẾT THÚC, và phải đã xong.
+    if (kho.cuoi < dauThang || kho.cuoi > cuoiThang) continue;
+    if (kho.cuoi > homNay) continue;
+    if (kho.cuoi < khungDau) continue;
+    if (khungCuoi && kho.cuoi > khungCuoi) continue;
+    percents.push(((sum.get(key) || 0) / target) * 100);
+  }
+  if (percents.length === 0) return KHONG_DO('Chưa có kỳ nào chốt trong tháng này');
+  const tb = percents.reduce((s, p) => s + p, 0) / percents.length;
+  return { percent: Math.round(tb), soKy: percents.length, lyDo: '' };
+}
+
+/**
+ * Tỉ lệ đạt của một (dự án × phòng): trung bình các chỉ số ĐO ĐƯỢC.
+ *
+ * `null` bị loại khỏi trung bình — giống cách `projectProgress` loại chỉ số chưa đặt mục
+ * tiêu. Không chỉ số nào đo được thì trả `null`, KHÔNG trả 0: 0 sẽ kích hoạt luật cắt nửa
+ * thưởng điểm cho một tháng mà dự án còn chưa chạy.
+ */
+export function tyLeTheoThang(percents: Array<PhanTramThang | number | null>): number | null {
+  const so = percents
+    .map((p) => (p === null || typeof p === 'number' ? p : p.percent))
+    .filter((p): p is number => typeof p === 'number' && Number.isFinite(p));
+  if (so.length === 0) return null;
+  return Math.round(so.reduce((s, p) => s + p, 0) / so.length);
 }
 
 /** Mức cảnh báo của một dự án. */

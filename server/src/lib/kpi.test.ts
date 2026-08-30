@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
+  khoangKy,
+  phanTramTheoThang,
+  tyLeTheoThang,
   periodKey,
   periodLabel,
   progressOf,
@@ -441,5 +444,182 @@ describe('projectAlert', () => {
 
   it('thiếu ngày bắt đầu/kết thúc thì không cảnh báo', () => {
     expect(projectAlert(null, 0, 3).level).toBe('none');
+  });
+});
+
+// ── Quy tỉ lệ đạt KPI về tháng dương lịch (thưởng KPI dự án) ──
+//
+// Dự án mốc 31/7/2026 nên kỳ tuần là: W1 31/7–6/8 · W2 7–13/8 · W3 14–20/8 · W4 21–27/8
+// · W5 28/8–3/9. Chú ý W1 KẾT THÚC trong tháng 8 dù bắt đầu từ tháng 7.
+
+describe('khoangKy', () => {
+  it('kỳ neo theo mốc dự án', () => {
+    expect(khoangKy('W1', '2026-07-31')).toEqual({ dau: '2026-07-31', cuoi: '2026-08-06' });
+    expect(khoangKy('W2', '2026-07-31')).toEqual({ dau: '2026-08-07', cuoi: '2026-08-13' });
+    expect(khoangKy('M1', '2026-07-31')).toEqual({ dau: '2026-07-31', cuoi: '2026-08-29' });
+  });
+
+  it('thiếu mốc hoặc kỳ trước khi bắt đầu thì không suy ra được ngày', () => {
+    expect(khoangKy('W2')).toBeNull();
+    expect(khoangKy('W0', '2026-07-31')).toBeNull();
+  });
+
+  it('khoá theo lịch vẫn ra khoảng đúng', () => {
+    expect(khoangKy('2026-08')).toEqual({ dau: '2026-08-01', cuoi: '2026-08-31' });
+    expect(khoangKy('2026-08-18')).toEqual({ dau: '2026-08-18', cuoi: '2026-08-18' });
+  });
+});
+
+describe('phanTramTheoThang', () => {
+  const duAn = { startDate: '2026-07-31', endDate: '2026-12-31' };
+  const tuan = { period: 'week' as const, target: 100, inputMode: 'daily' as const };
+  const e = (date: string, value: number) => ({ date, value });
+
+  it('trung bình các kỳ KẾT THÚC trong tháng, không cắt trần', () => {
+    const entries = [e('2026-08-06', 100), e('2026-08-13', 50), e('2026-08-20', 200), e('2026-08-27', 0)];
+    const r = phanTramTheoThang(entries, tuan, '2026-08', duAn, '2026-09-01');
+    expect(r).toEqual({ percent: 88, soKy: 4, lyDo: '' }); // (100+50+200+0)/4 = 87.5
+  });
+
+  it('KỲ VẮT QUA THÁNG chỉ được tính MỘT lần, ở tháng nó kết thúc', () => {
+    const entries = [e('2026-07-31', 100)]; // nằm trong W1, mà W1 kết thúc 6/8
+    // Tháng 7 không có kỳ nào chốt → không đo được, KHÔNG bị chấm 0.
+    expect(phanTramTheoThang(entries, tuan, '2026-07', duAn, '2026-09-01').percent).toBeNull();
+    // Tháng 8 có 4 tuần chốt (W1–W4); W1 đạt 100%, ba tuần sau trống nên 0% → 25%.
+    expect(phanTramTheoThang(entries, tuan, '2026-08', duAn, '2026-09-01')).toEqual({
+      percent: 25,
+      soKy: 4,
+      lyDo: '',
+    });
+  });
+
+  it('kỳ chưa xong thì BỎ QUA, không chấm 0', () => {
+    const entries = [e('2026-08-06', 100), e('2026-08-13', 50)];
+    // Xem ngày 15/8: W3 (14–20/8) chưa xong nên không được tính là 0%.
+    const r = phanTramTheoThang(entries, tuan, '2026-08', duAn, '2026-08-15');
+    expect(r).toEqual({ percent: 75, soKy: 2, lyDo: '' });
+  });
+
+  it('kỳ vắt sang tháng sau không lọt vào tháng này', () => {
+    const entries = [e('2026-08-06', 100), e('2026-09-03', 999)]; // W5 kết thúc 3/9
+    // 4 kỳ chốt trong tháng 8 (không có W5), và số 999 của tháng 9 không lọt vào.
+    expect(phanTramTheoThang(entries, tuan, '2026-08', duAn, '2026-09-30')).toEqual({
+      percent: 25,
+      soKy: 4,
+      lyDo: '',
+    });
+  });
+
+  it('tháng không có kỳ nào chốt thì không đo được', () => {
+    const r = phanTramTheoThang([], tuan, '2026-07', duAn, '2026-09-01');
+    expect(r.percent).toBeNull();
+    expect(r.lyDo).toContain('Chưa có kỳ nào chốt');
+  });
+
+  it('kỳ tháng là khối 30 ngày, không phải tháng lịch', () => {
+    const entries = [e('2026-08-29', 100)]; // M1 = 31/7–29/8
+    const thang = { period: 'month' as const, target: 100, inputMode: 'daily' as const };
+    expect(phanTramTheoThang(entries, thang, '2026-08', duAn, '2026-10-01').soKy).toBe(1);
+  });
+
+  it('chỉ số có khung riêng thì kỳ ngoài khung bị loại', () => {
+    const entries = [e('2026-08-06', 100), e('2026-08-13', 100), e('2026-08-20', 100), e('2026-08-27', 100)];
+    const rieng = { ...tuan, startDate: '2026-08-15' };
+    // Chỉ W3 (kết thúc 20/8) và W4 (27/8) nằm trong khung.
+    expect(phanTramTheoThang(entries, rieng, '2026-08', duAn, '2026-09-01').soKy).toBe(2);
+  });
+
+  it('kỳ NGÀY chia cho số ngày làm việc, không phải ngày lịch', () => {
+    const ngay = { period: 'day' as const, target: 10, inputMode: 'daily' as const };
+    // Tháng 8/2026 có 21 ngày làm việc (1/8 là thứ Bảy) → mẫu = 210.
+    const entries = [e('2026-08-03', 168)];
+    const r = phanTramTheoThang(entries, ngay, '2026-08', duAn, '2026-09-01');
+    expect(r).toEqual({ percent: 80, soKy: 21, lyDo: '' });
+  });
+
+  it('kỳ NGÀY trừ luôn ngày lễ khỏi mẫu', () => {
+    const ngay = { period: 'day' as const, target: 10, inputMode: 'daily' as const };
+    const le = new Set(['2026-08-03']); // thứ Hai
+    const r = phanTramTheoThang([e('2026-08-04', 200)], ngay, '2026-08', duAn, '2026-09-01', le);
+    expect(r.soKy).toBe(20);
+    expect(r.percent).toBe(100); // 200 / (10 × 20)
+  });
+
+  it('chưa đặt mục tiêu thì không đo được', () => {
+    expect(phanTramTheoThang([], { ...tuan, target: 0 }, '2026-08', duAn).percent).toBeNull();
+  });
+
+  it('tháng trước khi dự án bắt đầu hoặc sau khi kết thúc đều không đo được', () => {
+    expect(phanTramTheoThang([], tuan, '2026-06', duAn, '2026-09-01').percent).toBeNull();
+    expect(phanTramTheoThang([], tuan, '2027-03', duAn, '2027-04-01').percent).toBeNull();
+  });
+
+  // Anh Tâm 21/8/2026: "120 từ khoá trong 6 tháng, 3 tháng đầu xây nền nên chưa tính,
+  // tháng 4-5-6 chia đều các tháng".
+  describe('chỉ số luỹ kế — đo phần TĂNG trong tháng', () => {
+    const seo = {
+      period: 'month' as const,
+      target: 120,
+      inputMode: 'cumulative' as const,
+      startDate: '2026-10-01',
+      endDate: '2026-12-31',
+    };
+    const duAnSeo = { startDate: '2026-07-01', endDate: '2026-12-31' };
+
+    it('ba tháng xây nền nằm ngoài khung → không tính, không phạt', () => {
+      for (const t of ['2026-07', '2026-08', '2026-09']) {
+        const r = phanTramTheoThang([], seo, t, duAnSeo, '2027-01-01');
+        expect(r.percent).toBeNull();
+        expect(r.lyDo).toContain('Chưa tới khung tính');
+      }
+    });
+
+    it('mục tiêu chia đều 3 tháng trong khung: mỗi tháng cần tăng 40', () => {
+      const entries = [e('2026-10-31', 40), e('2026-11-30', 40), e('2026-12-31', 120)];
+      expect(phanTramTheoThang(entries, seo, '2026-10', duAnSeo, '2027-01-01').percent).toBe(100);
+      // Tháng 11 số đứng yên ở 40 → không tăng gì.
+      expect(phanTramTheoThang(entries, seo, '2026-11', duAnSeo, '2027-01-01').percent).toBe(0);
+      // Tháng 12 nhảy từ 40 lên 120 = tăng 80 = 200% của mức tháng.
+      expect(phanTramTheoThang(entries, seo, '2026-12', duAnSeo, '2027-01-01').percent).toBe(200);
+    });
+
+    it('số TỤT không sinh thưởng âm', () => {
+      const entries = [e('2026-10-31', 60), e('2026-11-30', 45)];
+      expect(phanTramTheoThang(entries, seo, '2026-11', duAnSeo, '2027-01-01').percent).toBe(0);
+    });
+
+    it('KHÔNG trả tiền cho tồn kho: đạt đủ rồi mà tháng sau không nhích thì 0%', () => {
+      const entries = [e('2026-10-31', 120)];
+      expect(phanTramTheoThang(entries, seo, '2026-10', duAnSeo, '2027-01-01').percent).toBe(300);
+      expect(phanTramTheoThang(entries, seo, '2026-11', duAnSeo, '2027-01-01').percent).toBe(0);
+      expect(phanTramTheoThang(entries, seo, '2026-12', duAnSeo, '2027-01-01').percent).toBe(0);
+    });
+
+    it('luỹ kế thiếu ngày kết thúc thì không chia đều được → không đo', () => {
+      const thieu = { ...seo, endDate: '' };
+      const r = phanTramTheoThang([], thieu, '2026-10', { startDate: '2026-07-01' }, '2027-01-01');
+      expect(r.percent).toBeNull();
+      expect(r.lyDo).toContain('chưa khai ngày kết thúc');
+    });
+  });
+});
+
+describe('tyLeTheoThang', () => {
+  it('loại chỉ số không đo được, giữ chỉ số 0%', () => {
+    expect(tyLeTheoThang([88, null, 0, null])).toBe(44);
+  });
+
+  it('nhận cả dạng PhanTramThang', () => {
+    expect(
+      tyLeTheoThang([
+        { percent: 100, soKy: 1, lyDo: '' },
+        { percent: null, soKy: 0, lyDo: 'x' },
+      ]),
+    ).toBe(100);
+  });
+
+  it('không chỉ số nào đo được thì trả null, KHÔNG trả 0', () => {
+    expect(tyLeTheoThang([null, null])).toBeNull();
+    expect(tyLeTheoThang([])).toBeNull();
   });
 });
