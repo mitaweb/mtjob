@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
 import TimeInput from '../components/TimeInput';
+import DateInput from '../components/DateInput';
 import { useToast } from '../components/Toaster';
 import { Badge, type BadgeVariant } from '../components/ui';
 import type { Customer, Appointment } from '../lib/types';
@@ -21,7 +22,7 @@ const STATUSES = ['Mới', 'Đang chăm sóc', 'Đã chốt', 'Tạm dừng', 'M
  * (FB / Facebook / face / fb ads) và bảng thống kê vỡ thành hàng chục dòng trùng ý nhau —
  * đúng thứ làm cho con số không dùng được.
  */
-const NGUON = ['Facebook Ads', 'Google Ads', 'Zalo', 'Website', 'Giới thiệu', 'Sự kiện', 'Khác'];
+const NGUON = ['Facebook Ads', 'Google Ads', 'Zalo', 'Website', 'Giới thiệu', 'BNI', 'Sự kiện', 'Khác'];
 const CLOSED = 'Đã chốt';
 const LOST = ['Tạm dừng', 'Mất'];
 const blankCustomer = (): Partial<Customer> => ({
@@ -159,7 +160,7 @@ export default function CRM() {
   async function saveCustomer() {
     if (!edit?.name) return toast.error('Nhập tên khách.');
     try {
-      const r = await api<{ id: string }>('/crm/customers', {
+      await api<{ id: string }>('/crm/customers', {
         body: {
           id: edit.id,
           name: edit.name,
@@ -174,8 +175,11 @@ export default function CRM() {
         },
       });
       toast.success('Đã lưu khách hàng');
+      // Đóng luôn sau khi lưu — anh Tâm 21/8/2026. Lịch hẹn của khách MỚI thì mở lại hồ sơ
+      // rồi thêm, vì phải có mã khách mới gắn hẹn vào được.
+      setEdit(null);
+      setAppts([]);
       await loadCustomers();
-      setEdit({ ...edit, id: r.id });
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -448,22 +452,12 @@ export default function CRM() {
               </div>
               <div>
                 <label className="label">🎂 Ngày sinh khách</label>
-                <input
-                  className="input"
-                  type="date"
-                  value={edit.dob || ''}
-                  onChange={(e) => setEdit({ ...edit, dob: e.target.value })}
-                />
+                <DateInput value={edit.dob || ''} onChange={(v) => setEdit({ ...edit, dob: v })} />
                 <p className="mt-1 text-xs text-ink-muted">Để nhắc chuẩn bị quà/lời chúc trong tháng sinh nhật.</p>
               </div>
               <div>
                 <label className="label">🤝 Ngày chốt hợp đồng</label>
-                <input
-                  className="input"
-                  type="date"
-                  value={edit.closedAt || ''}
-                  onChange={(e) => setEdit({ ...edit, closedAt: e.target.value })}
-                />
+                <DateInput value={edit.closedAt || ''} onChange={(v) => setEdit({ ...edit, closedAt: v })} />
                 <p className="mt-1 text-xs text-ink-muted">
                   Bỏ trống — hệ thống tự ghi khi anh chuyển sang “Đã chốt”.
                 </p>
