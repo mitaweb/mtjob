@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { vnd, currentYm } from '../lib/format';
 import TimeInput from '../components/TimeInput';
+import KyLuatThang, { type TongKetKyLuat } from '../components/KyLuatThang';
 
 interface PayRow {
   memberId: string;
@@ -14,6 +15,9 @@ interface PayRow {
   proratedSalary: number;
   bhxhDeduction: number;
   netSalary: number;
+  soLanTre: number;
+  soLanSom: number;
+  soLanKhongDon: number;
 }
 interface AttnRow {
   date: string;
@@ -52,6 +56,7 @@ export default function AdminPayroll() {
   const [records, setRecords] = useState<AttnRow[]>([]);
   const [form, setForm] = useState<AttnRow>(blankAttn());
   const [savingAttn, setSavingAttn] = useState(false);
+  const [kyLuat, setKyLuat] = useState<TongKetKyLuat | null>(null);
 
   function qs() {
     const [y, m] = ym.split('-');
@@ -66,9 +71,25 @@ export default function AdminPayroll() {
   }
 
   async function lockMonth() {
+    // Bày số đi trễ/về sớm NGAY TRÊN hộp xác nhận: chốt xong là mỗi người nhận một tin
+    // nhắn cảnh báo, nên anh phải nhìn thấy danh sách trước khi nó gửi đi.
+    const viPham = rows.filter((r) => r.soLanTre > 0 || r.soLanSom > 0);
+    const bang = viPham
+      .map((r) => {
+        const ve = [r.soLanTre > 0 ? `trễ ${r.soLanTre}` : '', r.soLanSom > 0 ? `sớm ${r.soLanSom}` : '']
+          .filter(Boolean)
+          .join(', ');
+        return `• ${r.fullName}: ${ve}${r.soLanKhongDon > 0 ? ` (${r.soLanKhongDon} lần chưa có đơn)` : ''}`;
+      })
+      .join('\n');
+    const nhac = viPham.length
+      ? `\n\nTháng này có ${viPham.length} người đi trễ / về sớm:\n${bang}\n\nChốt xong, mỗi người sẽ nhận một thông báo nhắc nhở.`
+      : '\n\nTháng này không ai đi trễ hay về sớm.';
+
     if (
       !confirm(
-        'Chốt lương tháng này? Số liệu sẽ được đóng băng — nhân sự nghỉ sau vẫn giữ nguyên, sửa mức lương/công về sau không làm đổi tháng này. Vẫn có thể "Mở lại" nếu cần.',
+        'Chốt lương tháng này? Số liệu sẽ được đóng băng — nhân sự nghỉ sau vẫn giữ nguyên, sửa mức lương/công về sau không làm đổi tháng này. Vẫn có thể "Mở lại" nếu cần.' +
+          nhac,
       )
     )
       return;
@@ -99,8 +120,11 @@ export default function AdminPayroll() {
     setEditing(row);
     setForm(blankAttn());
     try {
-      const r = await api<{ records: AttnRow[] }>(`/admin/attendance?memberId=${row.memberId}&${qs()}`);
+      const r = await api<{ records: AttnRow[]; kyLuat: TongKetKyLuat }>(
+        `/admin/attendance?memberId=${row.memberId}&${qs()}`,
+      );
       setRecords(r.records);
+      setKyLuat(r.kyLuat);
     } catch (e) {
       setMsg((e as Error).message);
     }
@@ -125,8 +149,12 @@ export default function AdminPayroll() {
         },
       });
       // reload danh sách ngày + bảng lương (công/net đổi theo)
-      const r = await api<{ records: AttnRow[] }>(`/admin/attendance?memberId=${editing.memberId}&${qs()}`);
+      const r = await api<{ records: AttnRow[]; kyLuat: TongKetKyLuat }>(
+        `/admin/attendance?memberId=${editing.memberId}&${qs()}`,
+      );
       setRecords(r.records);
+      setKyLuat(r.kyLuat); // sửa giờ vào/ra là số lần trễ đổi theo — phải tính lại ngay
+
       const fresh = await loadPayroll();
       // Cập nhật lại khối chi tiết lương trong modal theo công mới.
       const updated = fresh.find((x) => x.memberId === editing.memberId);
@@ -194,6 +222,13 @@ export default function AdminPayroll() {
                   Chi tiết
                 </button>
               </div>
+              {(r.soLanTre > 0 || r.soLanSom > 0) && (
+                // Trên điện thoại cho ô này đứng riêng một dòng: nhét chung với dòng chữ
+                // phụ thì nền vàng bị ngắt giữa chừng, đọc như lỗi hiển thị.
+                <div className="mt-1">
+                  <TreSom tre={r.soLanTre} som={r.soLanSom} khongDon={r.soLanKhongDon} />
+                </div>
+              )}
             </li>
           ))}
           {rows.length === 0 && <li className="py-3 text-sm text-ink-muted">Chưa có dữ liệu.</li>}
@@ -205,6 +240,7 @@ export default function AdminPayroll() {
               <th>Team</th>
               <th className="text-right">Mức lương</th>
               <th className="text-center">Công</th>
+              <th className="text-center">Trễ / Sớm</th>
               <th className="text-right">Lương thực lãnh</th>
               <th></th>
             </tr>
@@ -225,6 +261,9 @@ export default function AdminPayroll() {
                 <td className="text-center">
                   {r.actualDays}/{r.standardDays}
                 </td>
+                <td className="text-center">
+                  <TreSom tre={r.soLanTre} som={r.soLanSom} khongDon={r.soLanKhongDon} />
+                </td>
                 <td className="text-right font-medium text-emerald-700">{vnd(r.netSalary)}</td>
                 <td className="text-right">
                   <button className="btn-ghost text-xs px-2 py-1" onClick={() => openEditor(r)}>
@@ -235,7 +274,7 @@ export default function AdminPayroll() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-3 text-ink-muted">
+                <td colSpan={7} className="py-3 text-ink-muted">
                   Chưa có dữ liệu.
                 </td>
               </tr>
@@ -288,6 +327,10 @@ export default function AdminPayroll() {
               <p className="mt-1.5 text-xs text-ink-faint">
                 Lương theo công = mức lương ÷ công chuẩn × công thực tế. Sửa giờ vào/ra bên dưới, số liệu tự tính lại.
               </p>
+            </div>
+
+            <div className="mb-3">
+              <KyLuatThang kyLuat={kyLuat} tieuDe="Đi trễ / về sớm tháng này" />
             </div>
 
             {locked && (
@@ -513,5 +556,22 @@ function ThuongKpiThang({ ym }: { ym: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Số lần đi trễ / về sớm của một người trong tháng.
+ *
+ * Tháng sạch hiện dấu gạch chứ không hiện "0/0": mắt lướt xuống cột này chỉ cần thấy chỗ
+ * nào có chữ, chỗ nào không.
+ */
+function TreSom({ tre, som, khongDon }: { tre: number; som: number; khongDon: number }) {
+  if (tre === 0 && som === 0) return <span className="text-ink-faint">—</span>;
+  const ve = [tre > 0 ? `trễ ${tre}` : '', som > 0 ? `sớm ${som}` : ''].filter(Boolean).join(', ');
+  return (
+    <span className="inline-block whitespace-nowrap rounded-lg bg-accent-100 px-2 py-0.5 text-xs font-medium text-ink">
+      {ve}
+      {khongDon > 0 && <span className="font-normal"> · {khongDon} chưa đơn</span>}
+    </span>
   );
 }

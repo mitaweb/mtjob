@@ -40,6 +40,15 @@ const PHANS: Phan[] = [
         dap: [
           'Vào mục Chấm công, bấm ⬇️ Giờ vào khi tới và ⬆️ Giờ ra khi về.',
           'Ca sáng 08:30–12:00, ca chiều 13:30–17:00. Vào sau giờ bắt đầu ca thì tính là đi trễ.',
+          'Chấm giờ ra buổi chiều trước 17:00 thì tính là về sớm.',
+        ],
+      },
+      {
+        hoi: 'Đi trễ, về sớm nhiều lần thì sao?',
+        dap: [
+          'Cuối tháng, lúc chốt lương, bạn nhận một thông báo ghi rõ tháng đó đi trễ mấy lần, về sớm mấy lần và những ngày nào.',
+          'Xem lại chi tiết ở mục Lương & Công. Nếu giờ trong đó sai, báo quản trị sửa lại chấm công.',
+          'Đi trễ hay về sớm vẫn phải nộp đơn giải trình trong 24h — có đơn là có xin phép, không đơn thì bị ghi nhận là vi phạm không báo.',
         ],
       },
       {

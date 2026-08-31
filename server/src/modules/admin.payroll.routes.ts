@@ -10,7 +10,9 @@ import {
   lockPayrollMonth,
   unlockPayrollMonth,
 } from './payroll.service.js';
+import { kyLuatThang, kyLuatCuaThanhVien } from './kyluat.service.js';
 import { dayFractionFromShifts } from '../lib/attendance.js';
+import { RONG } from '../lib/kyluat.js';
 import { nowTz, monthRange, fmtHm, dayjs, TZ } from '../lib/datetime.js';
 
 // Bảng lương và chấm công của quản trị: xem lương tháng, chốt/mở khoá, sửa giờ vào ra.
@@ -36,8 +38,12 @@ adminPayrollRouter.get(
     // Đã chốt → đọc snapshot đóng băng (gồm cả nhân sự đã nghỉ); chưa chốt → tính live.
     const lines = locked ? await getPayrollSnapshot(year, month) : await payrollForMonth(year, month);
     const byId = new Map((await getActiveMembers()).map((m) => [m.id, m]));
+    // Đi trễ/về sớm đọc lại từ mốc giờ chấm công chứ không lấy từ snapshot lương: tháng đã
+    // chốt thì chấm công cũng bị khoá sửa, nên con số vẫn đứng yên.
+    const kyLuat = await kyLuatThang(year, month);
     const rows = lines.map((l) => {
       const m = byId.get(l.memberId);
+      const k = kyLuat.get(l.memberId) ?? RONG;
       return {
         memberId: l.memberId,
         fullName: l.fullName,
@@ -49,6 +55,9 @@ adminPayrollRouter.get(
         proratedSalary: l.proratedSalary, // lương theo công (trước trừ BHXH)
         bhxhDeduction: l.bhxh, // khoản trừ BHXH thực tế
         netSalary: l.netSalary,
+        soLanTre: k.soLanTre,
+        soLanSom: k.soLanSom,
+        soLanKhongDon: k.soLanKhongDon,
       };
     });
     res.json({ year, month, locked, rows });
@@ -96,7 +105,7 @@ adminPayrollRouter.get(
       dayFraction: r.dayFraction,
       mode: r.mode,
     }));
-    res.json({ year, month, records });
+    res.json({ year, month, records, kyLuat: await kyLuatCuaThanhVien(memberId, year, month) });
   }),
 );
 

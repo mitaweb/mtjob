@@ -1,19 +1,26 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { vnd, currentYm } from '../lib/format';
+import KyLuatThang, { type TongKetKyLuat } from '../components/KyLuatThang';
 import type { PayrollLine } from '../lib/types';
 
 export default function Payroll() {
   const init = currentYm();
   const [ym, setYm] = useState(`${init.year}-${String(init.month).padStart(2, '0')}`);
   const [line, setLine] = useState<PayrollLine | null>(null);
+  const [kyLuat, setKyLuat] = useState<TongKetKyLuat | null>(null);
+  const [canhBao, setCanhBao] = useState('');
   const [msg, setMsg] = useState('');
 
   useEffect(() => {
     const [y, m] = ym.split('-');
-    api<{ line: PayrollLine | null }>(`/payroll/me?year=${y}&month=${m}`)
+    api<{ line: PayrollLine | null; kyLuat: TongKetKyLuat | null; canhBao: string }>(
+      `/payroll/me?year=${y}&month=${m}`,
+    )
       .then((r) => {
         setLine(r.line);
+        setKyLuat(r.kyLuat);
+        setCanhBao(r.canhBao || '');
         if (!r.line) setMsg('Chưa có dữ liệu lương cho kỳ này (hoặc bạn là giám đốc — không tính payroll).');
         else setMsg('');
       })
@@ -28,6 +35,8 @@ export default function Payroll() {
           <input type="month" className="input max-w-[10rem]" value={ym} onChange={(e) => setYm(e.target.value)} />
         </div>
       </div>
+
+      <KyLuatThang kyLuat={kyLuat} canhBao={canhBao} />
 
       {line ? (
         <div className="card space-y-2">

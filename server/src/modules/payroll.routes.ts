@@ -3,6 +3,8 @@ import { asyncHandler } from '../util/errors.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
 import { payrollForMember, payrollForMonth } from './payroll.service.js';
 import { findById, membersInTeam } from './members.repo.js';
+import { kyLuatCuaThanhVien } from './kyluat.service.js';
+import { cauCanhBao } from '../lib/kyluat.js';
 import { nowTz } from '../lib/datetime.js';
 
 export const payrollRouter = Router();
@@ -19,7 +21,15 @@ payrollRouter.get(
   '/me',
   asyncHandler(async (req, res) => {
     const { year, month } = ym(req);
-    res.json({ year, month, line: await payrollForMember(req.user!.sub, year, month) });
+    // Đi trễ/về sớm của CHÍNH mình — kể cả giám đốc (không có dòng lương nhưng vẫn chấm công).
+    const kyLuat = await kyLuatCuaThanhVien(req.user!.sub, year, month);
+    res.json({
+      year,
+      month,
+      line: await payrollForMember(req.user!.sub, year, month),
+      kyLuat,
+      canhBao: cauCanhBao(kyLuat, `${month}/${year}`),
+    });
   }),
 );
 

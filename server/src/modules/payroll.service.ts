@@ -10,6 +10,9 @@ import { monthRange } from '../lib/datetime.js';
 import { upsertEntry, deleteEntry } from './finance.repo.js';
 import { isMonthLocked } from './payrollLock.js';
 import { snapshotProjectBonus } from './projectBonus.service.js';
+import { kyLuatThang } from './kyluat.service.js';
+import { cauCanhBao } from '../lib/kyluat.js';
+import { notify } from './notifications.service.js';
 import type { AttendanceRow } from '../types.js';
 
 /** Tháng kế tiếp (lương tháng M được trả vào tháng M+1). */
@@ -139,8 +142,36 @@ export async function getPayrollSnapshot(year: number, month: number): Promise<P
   }));
 }
 
+/**
+ * Nhắc từng người số lần đi trễ / về sớm của tháng vừa chốt.
+ *
+ * Thông báo là việc PHỤ: hỏng thì ghi log, TUYỆT ĐỐI không kéo đổ việc chốt lương —
+ * lương đã đóng băng rồi mà route trả lỗi thì giám đốc tưởng chưa chốt, bấm lại.
+ */
+async function nhacKyLuat(year: number, month: number): Promise<void> {
+  try {
+    const bang = await kyLuatThang(year, month);
+    for (const [memberId, k] of bang) {
+      const cau = cauCanhBao(k, `${month}/${year}`);
+      if (!cau) continue;
+      await notify(memberId, {
+        type: 'kyluat',
+        title: `Chấm công tháng ${month}/${year}`,
+        body: cau,
+        url: '/payroll',
+        refId: `KL-${year}-${String(month).padStart(2, '0')}`,
+      });
+    }
+  } catch (e) {
+    console.error('[kyluat] không gửi được cảnh báo chấm công:', (e as Error).message);
+  }
+}
+
 /** Chốt lương tháng: chụp snapshot + ghi khoá + đẩy tổng lương vào Chi của tháng SAU. */
 export async function lockPayrollMonth(year: number, month: number, byName: string, atIso: string): Promise<void> {
+  // Mở lại rồi chốt lại là chuyện thường khi sửa công — nhớ trạng thái cũ để không bắn
+  // lại cảnh báo đi trễ cho cả công ty mỗi lần bấm.
+  const daChot = await isMonthLocked(year, month);
   const lines = await savePayrollSnapshot(year, month);
   // Chụp thưởng KPI dự án TRƯỚC khi ghi dòng khoá: sau khi khoá thì projectBonusForMonth
   // chuyển sang đọc snapshot, chụp lúc đó sẽ ra bảng rỗng.
@@ -167,6 +198,8 @@ export async function lockPayrollMonth(year: number, month: number, byName: stri
     source: '',
     customerId: '',
   });
+
+  if (!daChot) await nhacKyLuat(year, month);
 }
 
 /** Mở lại tháng đã chốt (cho phép sửa + tính lại) + gỡ khoản chi lương tự sinh. */
