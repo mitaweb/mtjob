@@ -60,8 +60,26 @@ Tạo bảng + seed config/danh mục task/ngày lễ/**13 thành viên** + admi
 - **Settings → Cron Jobs**: 2 job `15 10 * * *` (= 17:15 VN) và `30 1 1 * *` (= 08:30 VN ngày 1).
 - Test cron tay: `curl -H "Authorization: Bearer <CRON_SECRET>" https://<domain>/api/jobs/daily`
 
+### 6. Lịch chạy cho NHẮC HẸN (bắt buộc, không có thì nhắc hẹn trễ)
+
+Hai cron trong `vercel.json` chỉ lo báo cáo ngày/tháng. **Nhắc hẹn cần quét vài phút một
+lần** mà gói Hobby không cho — nên phải gắn một dịch vụ cron ngoài:
+
+1. Mở [cron-job.org](https://cron-job.org) (miễn phí) → **Create cronjob**.
+2. URL: `https://<domain>/api/jobs/reminders` · Method **GET** · Every **5 minutes**.
+3. Tab **Advanced → Headers**, thêm một dòng:
+   `Authorization: Bearer <CRON_SECRET>` — đúng chuỗi đã đặt trong Vercel env.
+4. Bấm chạy thử, phải nhận `{"ok":true,"job":"reminders","sent":0}`.
+   Trả `401` là sai `CRON_SECRET`.
+
+Chưa gắn thì nhắc hẹn **chỉ bắn khi có người mở app** (middleware tự quét, 5 phút/lần) —
+hẹn 08:00 mà 08:49 mới có người vào thì 08:49 mới báo. Quá 3 tiếng không ai mở app thì
+mất luôn lần nhắc đó (`graceMinutes` trong `lib/reminder.ts`).
+
 ## Giới hạn cần biết (gói Hobby)
 
 - **Cron Hobby tối đa 2 job, mỗi job 1 lần/ngày, giờ chạy có thể lệch trong ~1 tiếng** — đủ cho báo cáo ngày/tháng.
+- **Không đủ cho nhắc hẹn** — xem bước 6. Lên gói Pro thì thêm thẳng vào `vercel.json`:
+  `{ "path": "/api/jobs/reminders", "schedule": "*/5 * * * *" }` và bỏ cron ngoài đi.
 - Function timeout 60s (`vercel.json`); nếu thiếu thì bật Fluid Compute / tăng `maxDuration`.
 - Neon free tier có thể "ngủ" khi lâu không dùng → request đầu tiên hơi chậm (~1s đánh thức).
