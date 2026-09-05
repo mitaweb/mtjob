@@ -217,18 +217,12 @@ export default function AdminPayroll() {
               <div className="mt-0.5 flex items-center justify-between gap-2">
                 <span className="text-xs text-ink-muted">
                   {r.teamId || '—'} · Công {r.actualDays}/{r.standardDays} · Mức lương {vnd(r.salary)}
+                  {r.bhxhDeduction > 0 && <> · BHXH −{vnd(r.bhxhDeduction)}</>}
                 </span>
                 <button className="btn-ghost text-xs px-2 py-1 whitespace-nowrap" onClick={() => openEditor(r)}>
                   Chi tiết
                 </button>
               </div>
-              {(r.soLanTre > 0 || r.soLanSom > 0) && (
-                // Trên điện thoại cho ô này đứng riêng một dòng: nhét chung với dòng chữ
-                // phụ thì nền vàng bị ngắt giữa chừng, đọc như lỗi hiển thị.
-                <div className="mt-1">
-                  <TreSom tre={r.soLanTre} som={r.soLanSom} khongDon={r.soLanKhongDon} />
-                </div>
-              )}
             </li>
           ))}
           {rows.length === 0 && <li className="py-3 text-sm text-ink-muted">Chưa có dữ liệu.</li>}
@@ -240,7 +234,7 @@ export default function AdminPayroll() {
               <th>Team</th>
               <th className="text-right">Mức lương</th>
               <th className="text-center">Công</th>
-              <th className="text-center">Trễ / Sớm</th>
+              <th className="text-right">Trừ BHXH</th>
               <th className="text-right">Lương thực lãnh</th>
               <th></th>
             </tr>
@@ -261,8 +255,12 @@ export default function AdminPayroll() {
                 <td className="text-center">
                   {r.actualDays}/{r.standardDays}
                 </td>
-                <td className="text-center">
-                  <TreSom tre={r.soLanTre} som={r.soLanSom} khongDon={r.soLanKhongDon} />
+                <td className="text-right">
+                  {r.bhxhDeduction > 0 ? (
+                    <span className="text-rose-700">−{vnd(r.bhxhDeduction)}</span>
+                  ) : (
+                    <span className="text-ink-faint">—</span>
+                  )}
                 </td>
                 <td className="text-right font-medium text-emerald-700">{vnd(r.netSalary)}</td>
                 <td className="text-right">
@@ -556,22 +554,5 @@ function ThuongKpiThang({ ym }: { ym: string }) {
         </div>
       )}
     </div>
-  );
-}
-
-/**
- * Số lần đi trễ / về sớm của một người trong tháng.
- *
- * Tháng sạch hiện dấu gạch chứ không hiện "0/0": mắt lướt xuống cột này chỉ cần thấy chỗ
- * nào có chữ, chỗ nào không.
- */
-function TreSom({ tre, som, khongDon }: { tre: number; som: number; khongDon: number }) {
-  if (tre === 0 && som === 0) return <span className="text-ink-faint">—</span>;
-  const ve = [tre > 0 ? `trễ ${tre}` : '', som > 0 ? `sớm ${som}` : ''].filter(Boolean).join(', ');
-  return (
-    <span className="inline-block whitespace-nowrap rounded-lg bg-accent-100 px-2 py-0.5 text-xs font-medium text-ink">
-      {ve}
-      {khongDon > 0 && <span className="font-normal"> · {khongDon} chưa đơn</span>}
-    </span>
   );
 }
