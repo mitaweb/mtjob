@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { vnd, currentYm } from '../lib/format';
 import TimeInput from '../components/TimeInput';
 import KyLuatThang, { type TongKetKyLuat } from '../components/KyLuatThang';
+import { sapXep, TEN_COT, type XepTheo } from '../lib/xep';
 
 interface PayRow {
   memberId: string;
@@ -45,6 +46,23 @@ export default function AdminPayroll() {
   const [rows, setRows] = useState<PayRow[]>([]);
   const [locked, setLocked] = useState(false);
   const [msg, setMsg] = useState('');
+  const [xep, setXep] = useState<XepTheo>('');
+  const [nguoc, setNguoc] = useState(false);
+
+  // Chưa chọn cột nào thì giữ nguyên thứ tự máy chủ trả về (theo tên).
+  const daXep = useMemo(() => sapXep(rows, xep, nguoc), [rows, xep, nguoc]);
+
+  /**
+   * Bấm một cột: cột mới thì xếp theo chiều DỄ ĐỌC NHẤT của kiểu dữ liệu đó
+   * (chữ A→Z, số cao→thấp); bấm lại chính cột đó thì đảo chiều.
+   */
+  function bamCot(cot: XepTheo) {
+    if (cot === xep) setNguoc((v) => !v);
+    else {
+      setXep(cot);
+      setNguoc(false);
+    }
+  }
 
   function ymNums() {
     const [y, m] = ym.split('-');
@@ -201,9 +219,31 @@ export default function AdminPayroll() {
       {msg && <div className="text-sm text-ink-soft bg-brand-50 rounded-lg px-3 py-2">{msg}</div>}
 
       <div className="card overflow-x-auto">
+        {/* Điện thoại không có tiêu đề cột để bấm → chọn thứ tự bằng ô này. */}
+        <label className="mb-2 flex items-center gap-2 md:hidden">
+          <span className="text-xs text-ink-muted whitespace-nowrap">Xếp theo</span>
+          <select
+            className="input py-1 text-sm"
+            value={xep ? `${xep}:${nguoc ? 'd' : 'a'}` : ''}
+            onChange={(e) => {
+              const [cot, chieu] = e.target.value.split(':');
+              setXep(cot as XepTheo);
+              setNguoc(chieu === 'd');
+            }}
+          >
+            <option value="">Mặc định (theo tên)</option>
+            <option value="teamId:a">Team A → Z</option>
+            <option value="salary:a">Mức lương cao → thấp</option>
+            <option value="salary:d">Mức lương thấp → cao</option>
+            <option value="bhxhDeduction:a">Trừ BHXH cao → thấp</option>
+            <option value="netSalary:a">Thực lãnh cao → thấp</option>
+            <option value="actualDays:d">Công ít → nhiều</option>
+          </select>
+        </label>
+
         {/* Mobile: dạng thẻ cho dễ đọc */}
         <ul className="md:hidden divide-y">
-          {rows.map((r) => (
+          {daXep.map((r) => (
             <li key={r.memberId} className="py-2 text-sm">
               <div className="flex items-center justify-between gap-2">
                 <button
@@ -230,17 +270,17 @@ export default function AdminPayroll() {
         <table className="w-full text-sm hidden md:table">
           <thead className="text-left text-ink-muted">
             <tr>
-              <th className="py-1">Họ tên</th>
-              <th>Team</th>
-              <th className="text-right">Mức lương</th>
-              <th className="text-center">Công</th>
-              <th className="text-right">Trừ BHXH</th>
-              <th className="text-right">Lương thực lãnh</th>
+              <ThXep cot="fullName" xep={xep} nguoc={nguoc} onBam={bamCot} className="py-1" />
+              <ThXep cot="teamId" xep={xep} nguoc={nguoc} onBam={bamCot} />
+              <ThXep cot="salary" xep={xep} nguoc={nguoc} onBam={bamCot} canh="right" />
+              <ThXep cot="actualDays" xep={xep} nguoc={nguoc} onBam={bamCot} canh="center" />
+              <ThXep cot="bhxhDeduction" xep={xep} nguoc={nguoc} onBam={bamCot} canh="right" />
+              <ThXep cot="netSalary" xep={xep} nguoc={nguoc} onBam={bamCot} canh="right" />
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
+            {daXep.map((r) => (
               <tr key={r.memberId} className="border-t">
                 <td className="py-2">
                   <button
@@ -554,5 +594,49 @@ function ThuongKpiThang({ ym }: { ym: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Tiêu đề cột bấm được để xếp thứ tự.
+ *
+ * Cả ô `th` là nút chứ không phải chỉ chữ bên trong: vùng bấm rộng bằng cả ô, không phải
+ * nhắm đúng mấy chữ nhỏ. Mũi tên chỉ hiện ở cột đang xếp — hiện ở mọi cột thì rối mắt mà
+ * không nói thêm được gì.
+ */
+function ThXep({
+  cot,
+  xep,
+  nguoc,
+  onBam,
+  canh = 'left',
+  className = '',
+}: {
+  cot: Exclude<XepTheo, ''>;
+  xep: XepTheo;
+  nguoc: boolean;
+  onBam: (c: XepTheo) => void;
+  canh?: 'left' | 'center' | 'right';
+  className?: string;
+}) {
+  const dangXep = xep === cot;
+  const canhCol = canh === 'right' ? 'text-right' : canh === 'center' ? 'text-center' : 'text-left';
+  const canhNut = canh === 'right' ? 'justify-end' : canh === 'center' ? 'justify-center' : 'justify-start';
+  return (
+    <th className={`${canhCol} ${className}`} aria-sort={dangXep ? (nguoc ? 'descending' : 'ascending') : 'none'}>
+      <button
+        type="button"
+        onClick={() => onBam(cot)}
+        title={`Xếp theo ${TEN_COT[cot]}`}
+        className={`flex w-full items-center gap-1 py-1 ${canhNut} ${
+          dangXep ? 'font-semibold text-ink' : 'text-ink-muted'
+        } hover:text-ink`}
+      >
+        <span>{TEN_COT[cot]}</span>
+        <span aria-hidden="true" className={dangXep ? '' : 'invisible'}>
+          {nguoc ? '▲' : '▼'}
+        </span>
+      </button>
+    </th>
   );
 }
