@@ -382,9 +382,17 @@ export default function Chat() {
             if (last?.streaming) return [...m.slice(0, -1), { ...last, text: streamed }];
             return [...m, { role: 'bot', text: streamed, streaming: true }];
           });
+        } else if (ev.type === 'reset') {
+          // Máy chủ báo: đoạn vừa rồi chỉ là lời dẫn trước khi tra dữ liệu. Xoá bong bóng
+          // đang viết dở và quay lại nhãn chờ, chứ không để nó dính vào câu trả lời thật.
+          streamed = '';
+          setStage('Đang tra dữ liệu');
+          setMsgs((m) => (m[m.length - 1]?.streaming ? m.slice(0, -1) : m));
         } else if (ev.type === 'done') {
           const res = ev.payload as ChatResponse;
-          finish(res, streamed || res.reply);
+          // Ưu tiên `res.reply` — đó là câu trả lời chốt của máy chủ và cũng là bản được
+          // lưu vào lịch sử. Lấy `streamed` trước sẽ khác với bản đã lưu.
+          finish(res, res.reply || streamed);
           if (res.action === 'task_started' || res.action === 'task_logged') void loadDoing();
         } else if (ev.type === 'error') {
           throw new Error(ev.message || 'Lỗi không rõ');

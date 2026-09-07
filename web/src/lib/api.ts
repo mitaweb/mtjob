@@ -57,7 +57,8 @@ export async function cachedGet<T = unknown>(path: string, ttlMs = 5 * 60_000): 
 
 /** Sự kiện máy chủ đẩy về trong lúc trợ lý làm việc. */
 export interface StreamEvent {
-  type: 'tool' | 'text' | 'done' | 'error';
+  // 'reset': chữ đã nhận chỉ là lời dẫn giữa chừng — xoá đi, câu trả lời thật đến sau.
+  type: 'tool' | 'text' | 'reset' | 'done' | 'error';
   name?: string; // type=tool: tên hàm đang chạy
   delta?: string; // type=text: mẩu chữ mới
   message?: string; // type=error

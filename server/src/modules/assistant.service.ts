@@ -377,7 +377,9 @@ async function catalogText(): Promise<string> {
 /** Sự kiện phát ra trong lúc trợ lý làm việc — để màn hình hiện tiến trình và chữ dần. */
 export type AssistantEvent =
   | { type: 'tool'; name: string } // đang chạy hàm nào
-  | { type: 'text'; delta: string }; // một mẩu chữ AI vừa viết
+  | { type: 'text'; delta: string } // một mẩu chữ AI vừa viết
+  // Chữ vừa gửi chỉ là LỜI DẪN giữa chừng, không phải câu trả lời — màn hình phải xoá đi.
+  | { type: 'reset' };
 
 export type OnAssistantEvent = (ev: AssistantEvent) => void;
 
@@ -412,7 +414,7 @@ function resolveTool(name: string, byName: Map<string, ToolDef>): ToolDef | null
   return hit ? byName.get(hit) || null : null;
 }
 
-async function runToolLoop(opts: {
+export async function runToolLoop(opts: {
   system: string;
   question: string;
   history: ChatTurn[];
@@ -454,6 +456,10 @@ async function runToolLoop(opts: {
     if (calls.length === 0) {
       return parts.map((p) => p.text || '').join('').trim();
     }
+    // Lượt này CÒN gọi hàm → chữ vừa stream chỉ là lời AI tự nói trong lúc tra cứu
+    // ("để em kiểm tra trong CRM…"), không phải câu trả lời. Bảo màn hình xoá đi, nếu
+    // không nó dính vào đầu câu trả lời thật và lượt sau còn bị gửi lại làm lịch sử.
+    if (parts.some((p) => p.text)) opts.onEvent?.({ type: 'reset' });
     contents.push({ role: 'model', parts });
     const responses: GeminiPart[] = await Promise.all(
       calls.map(async (p) => {
