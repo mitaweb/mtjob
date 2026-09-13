@@ -233,8 +233,8 @@ export const SQL_AP_DIEM = `
  * Điểm vốn được copy một lần vào từng việc lúc ghi, nên sửa bảng điểm chỉ ăn với việc
  * ghi từ đó về sau. Anh Tâm chốt 26/7/2026: sửa bảng điểm thì việc cũ phải đổi theo.
  *
- * CHỈ đụng tháng mà điểm còn sửa được — chưa chốt thưởng VÀ chưa chốt lương (luật ở
- * `bonusLock.ts`). Bảng điểm luôn tính lại live từ `tasks.points`, nên phải tự chặn ở đây.
+ * CHỈ đụng tháng CHƯA chốt thưởng (luật ở `bonusLock.ts`; chốt lương không liên quan).
+ * Bảng điểm luôn tính lại live từ `tasks.points`, nên phải tự chặn ở đây.
  */
 export async function applyCatalogPoints(): Promise<PointSyncResult> {
   const locked = (await q(SQL_THANG_KHOA_DIEM)).map(

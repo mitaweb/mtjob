@@ -59,12 +59,12 @@ export async function addAdjustment(req: AdjustRequest): Promise<AdjustRow> {
   const bad = validateAdjust(req, todayIso());
   if (bad) throw new ApiError(400, bad);
 
-  // Tháng đã chốt thưởng (hoặc chốt lương từ trước khi có nút chốt thưởng) thì thưởng đã
-  // trả rồi — cộng thêm điểm chỉ làm bảng điểm lệch khỏi số đã chi. Luật ở bonusLock.ts.
+  // Tháng đã chốt thưởng thì thưởng đã trả rồi — cộng thêm điểm chỉ làm bảng điểm lệch
+  // khỏi số đã chi. Chốt LƯƠNG không chặn: hai thứ chốt riêng (bonusLock.ts).
   const [y, m] = req.date.split('-').map(Number);
   const khoa = await lyDoKhoaDiem(y!, m!);
   if (khoa) {
-    throw new ApiError(409, `${khoa} nên không bù điểm được. Mở lại tháng đó ở trang Bảng lương rồi làm lại.`);
+    throw new ApiError(409, `${khoa} nên không bù điểm được. Bấm "Mở lại" ở khối Thưởng tháng trên trang Bảng lương rồi làm lại.`);
   }
 
   const at = adjustIsoAt(req.date);
@@ -127,7 +127,7 @@ export async function deleteAdjustment(id: string): Promise<AdjustRow> {
   const [y, m] = row.date.split('-').map(Number);
   const khoa = y && m ? await lyDoKhoaDiem(y, m) : '';
   if (khoa) {
-    throw new ApiError(409, `${khoa} nên không gỡ được. Mở lại tháng đó ở trang Bảng lương rồi làm lại.`);
+    throw new ApiError(409, `${khoa} nên không gỡ được. Bấm "Mở lại" ở khối Thưởng tháng trên trang Bảng lương rồi làm lại.`);
   }
 
   await q('DELETE FROM tasks WHERE task_id = $1 AND source = $2', [id, ADJUST_SOURCE]);

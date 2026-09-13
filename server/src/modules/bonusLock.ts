@@ -1,10 +1,14 @@
 import { q } from '../db/client.js';
-import { isMonthLocked } from './payrollLock.js';
 
 // Khoá THƯỞNG của một tháng — tách khỏi khoá lương (payrollLock.ts).
 //
 // Anh Tâm 13/9/2026: "thưởng và lương chốt khác nhau". Lương đi theo công; thưởng đi theo
 // điểm và kết quả dự án — chốt vào hai lúc khác nhau.
+//
+// Điểm (bù điểm, xoá việc, áp lại bảng điểm) CHỈ khoá theo khoá thưởng. Bản đầu em còn
+// giữ thêm khoá lương cho các tháng chốt lương trước khi có nút này; anh Tâm gặp ngay:
+// tháng 8 chốt lương rồi mà chưa chốt thưởng, cần dọn việc ghi trùng thì bị chặn "đã chốt
+// lương". Một khoá cho một chuyện — tháng nào thưởng đã trả thì bấm chốt thưởng tháng đó.
 //
 // Module LÁ giống payrollLock.ts: projectBonus.service, scores.adjust, tasks.service,
 // admin.sync cùng cần hỏi, không được import vòng qua các service lớn.
@@ -15,20 +19,10 @@ export async function isBonusLocked(year: number, month: number): Promise<boolea
   return rows.length > 0;
 }
 
-/**
- * Điểm của tháng này còn sửa được không. Trả câu lý do, hoặc '' nếu sửa được.
- *
- * Điểm chỉ quyết định THƯỞNG, nên đúng ra chỉ cần khoá thưởng. Vẫn giữ cả khoá lương vì
- * các tháng chốt lương TRƯỚC khi có nút chốt thưởng chưa hề có dòng khoá thưởng — bỏ khoá
- * lương ra là mở điểm tháng 7, tháng 8 cho sửa và cho áp lại bảng điểm, trong khi thưởng
- * các tháng đó đã trả rồi.
- */
+/** Điểm của tháng này còn sửa được không. Trả câu lý do, hoặc '' nếu sửa được. */
 export async function lyDoKhoaDiem(year: number, month: number): Promise<string> {
-  if (await isBonusLocked(year, month)) return `Tháng ${month}/${year} đã chốt thưởng`;
-  if (await isMonthLocked(year, month)) return `Tháng ${month}/${year} đã chốt lương`;
-  return '';
+  return (await isBonusLocked(year, month)) ? `Tháng ${month}/${year} đã chốt thưởng` : '';
 }
 
 /** Mọi tháng mà điểm không được đổi nữa — cùng luật với `lyDoKhoaDiem`, cho câu SQL áp bảng điểm. */
-export const SQL_THANG_KHOA_DIEM =
-  'SELECT year, month FROM bonus_locks UNION SELECT year, month FROM payroll_locks';
+export const SQL_THANG_KHOA_DIEM = 'SELECT year, month FROM bonus_locks';

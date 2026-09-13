@@ -317,7 +317,7 @@ export async function deleteTaskAsBoss(taskId: string): Promise<TaskRow> {
   const [y, m] = ngay.split('-').map(Number);
   const khoa = y && m ? await lyDoKhoaDiem(y, m) : '';
   if (khoa) {
-    throw new ApiError(409, `${khoa} nên không xoá được việc. Mở lại tháng đó ở trang Bảng lương rồi làm lại.`);
+    throw new ApiError(409, `${khoa} nên không xoá được việc. Bấm "Mở lại" ở khối Thưởng tháng trên trang Bảng lương rồi làm lại.`);
   }
 
   await deleteTaskRow(taskId);
