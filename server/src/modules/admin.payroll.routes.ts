@@ -11,6 +11,8 @@ import {
   unlockPayrollMonth,
 } from './payroll.service.js';
 import { kyLuatThang, kyLuatCuaThanhVien } from './kyluat.service.js';
+import { bangThuongThang, chotThuong, moThuong } from './bonusMonth.service.js';
+import { chuaPhanCongDuAn } from './projectBonus.service.js';
 import { dayFractionFromShifts } from '../lib/attendance.js';
 import { RONG } from '../lib/kyluat.js';
 import { nowTz, monthRange, fmtHm, dayjs, TZ } from '../lib/datetime.js';
@@ -82,6 +84,38 @@ adminPayrollRouter.post(
   asyncHandler(async (req, res) => {
     const { year, month } = lockSchema.parse(req.body);
     await unlockPayrollMonth(year, month);
+    res.json({ ok: true, locked: false });
+  }),
+);
+
+// ── Thưởng tháng: thưởng điểm + thưởng KPI dự án — chốt RIÊNG với lương ──
+// Anh Tâm 13/9/2026: "thưởng và lương chốt khác nhau".
+
+adminPayrollRouter.get(
+  '/bonus',
+  asyncHandler(async (req, res) => {
+    const { year, month } = ymOf(req);
+    const [bang, chuaPhanCong] = await Promise.all([bangThuongThang(year, month), chuaPhanCongDuAn()]);
+    res.json({ ...bang, chuaPhanCong });
+  }),
+);
+
+// Chốt thưởng: đóng băng cả hai loại thưởng + tự ghi khoản chi "Thưởng tháng M" vào tháng sau.
+adminPayrollRouter.post(
+  '/bonus/lock',
+  asyncHandler(async (req, res) => {
+    const { year, month } = lockSchema.parse(req.body);
+    const bang = await chotThuong(year, month, req.user!.name, nowTz().toISOString());
+    res.json({ ok: true, locked: true, tong: bang.tong });
+  }),
+);
+
+// Mở lại thưởng: gỡ khoá và gỡ khoản chi thưởng tự ghi.
+adminPayrollRouter.post(
+  '/bonus/unlock',
+  asyncHandler(async (req, res) => {
+    const { year, month } = lockSchema.parse(req.body);
+    await moThuong(year, month);
     res.json({ ok: true, locked: false });
   }),
 );

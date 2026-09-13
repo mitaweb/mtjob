@@ -395,9 +395,9 @@ CREATE TABLE IF NOT EXISTS project_assignees (
 );
 CREATE INDEX IF NOT EXISTS project_assignees_member_idx ON project_assignees (member_id);
 
--- Chốt cứng thưởng của một tháng khi chốt lương.
+-- Chốt cứng thưởng KPI dự án của một tháng lúc CHỐT THƯỞNG (bonus_locks, không phải khoá lương).
 -- Thưởng tính LIVE, nên giám đốc nâng mức thưởng tháng 11 sẽ làm số tháng 8 đổi theo
--- trong khi tháng 8 đã khoá lương. Tháng đã khoá thì đọc bảng này, chưa khoá thì tính
+-- trong khi thưởng tháng 8 đã trả. Tháng đã chốt thì đọc bảng này, chưa chốt thì tính
 -- live — đúng khuôn payrollForMonth / getPayrollSnapshot đang chạy.
 CREATE TABLE IF NOT EXISTS project_bonus_lines (
   year       integer NOT NULL,
@@ -410,6 +410,32 @@ CREATE TABLE IF NOT EXISTS project_bonus_lines (
   muc_thuong integer DEFAULT 0,       -- mức lúc chốt
   amount     integer DEFAULT 0,       -- tiền thực nhận
   PRIMARY KEY (year, month, member_id, project_id)
+);
+
+-- Chốt THƯỞNG của một tháng — tách khỏi chốt lương (payroll_locks).
+-- Anh Tâm 13/9/2026: "thưởng và lương chốt khác nhau". Chốt thưởng đóng băng cả thưởng
+-- điểm lẫn thưởng KPI dự án, và tự ghi MỘT khoản chi vào tháng sau.
+CREATE TABLE IF NOT EXISTS bonus_locks (
+  year      integer NOT NULL,
+  month     integer NOT NULL,
+  locked_at text DEFAULT '',
+  locked_by text DEFAULT '',
+  PRIMARY KEY (year, month)
+);
+
+-- Thưởng ĐIỂM đã chụp lúc chốt thưởng (thưởng KPI dự án chụp ở project_bonus_lines).
+-- Lưu cả họ tên: người nghỉ việc sau đó vẫn phải hiện đúng trong tháng đã trả.
+CREATE TABLE IF NOT EXISTS point_bonus_lines (
+  year      integer NOT NULL,
+  month     integer NOT NULL,
+  member_id text NOT NULL,
+  full_name text DEFAULT '',
+  team_id   text DEFAULT '',
+  points    integer DEFAULT 0,
+  bonus_goc integer DEFAULT 0,
+  he_so_pct integer DEFAULT 100,
+  amount    integer DEFAULT 0,
+  PRIMARY KEY (year, month, member_id)
 );
 `;
 

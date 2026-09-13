@@ -13,6 +13,7 @@ import {
   type TenTrungDiem,
 } from '../lib/scores.js';
 import { ADJUST_SOURCE } from '../lib/adjust.js';
+import { SQL_THANG_KHOA_DIEM } from './bonusLock.js';
 import { q } from '../db/client.js';
 import { newId } from '../util/id.js';
 import { ApiError } from '../util/errors.js';
@@ -232,11 +233,11 @@ export const SQL_AP_DIEM = `
  * Điểm vốn được copy một lần vào từng việc lúc ghi, nên sửa bảng điểm chỉ ăn với việc
  * ghi từ đó về sau. Anh Tâm chốt 26/7/2026: sửa bảng điểm thì việc cũ phải đổi theo.
  *
- * CHỈ đụng tháng CHƯA khoá lương. Lưu ý `isMonthLocked` (payroll.service) chỉ bảo vệ
- * công/lương — bảng điểm luôn tính lại live từ `tasks.points`, nên phải tự chặn ở đây.
+ * CHỈ đụng tháng mà điểm còn sửa được — chưa chốt thưởng VÀ chưa chốt lương (luật ở
+ * `bonusLock.ts`). Bảng điểm luôn tính lại live từ `tasks.points`, nên phải tự chặn ở đây.
  */
 export async function applyCatalogPoints(): Promise<PointSyncResult> {
-  const locked = (await q('SELECT year, month FROM payroll_locks')).map(
+  const locked = (await q(SQL_THANG_KHOA_DIEM)).map(
     (r: { year: number; month: number }) => `${String(r.year).padStart(4, '0')}-${String(r.month).padStart(2, '0')}`,
   );
   const empty = { ...summarizePointChanges([]), lockedMonths: locked, ngoaiBang: [], tenTrung: [] };

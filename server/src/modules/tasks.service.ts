@@ -8,7 +8,7 @@ import {
   deleteTaskRow,
 } from './tasks.repo.js';
 import { findById } from './members.repo.js';
-import { isMonthLocked } from './payroll.service.js';
+import { lyDoKhoaDiem } from './bonusLock.js';
 import { findCatalogItem } from './catalog.repo.js';
 import { teamLeaderId } from './teams.repo.js';
 import { notify } from './notifications.service.js';
@@ -306,8 +306,8 @@ export async function completeTask(
  * Anh Tâm 21/8/2026: bảng việc có dòng ghi trùng (cùng giờ, cùng tên) cần dọn. Nhân viên
  * chỉ xoá được việc đang làm dở của mình, nên việc đã tính điểm phải có đường cho cấp trên.
  *
- * Xoá là ĐIỂM BIẾN MẤT, nên chặn tháng đã chốt lương: thưởng đã trả theo điểm cũ rồi, xoá
- * thêm chỉ làm bảng điểm lệch khỏi phiếu lương đã phát. Cùng luật với `addAdjustment`.
+ * Xoá là ĐIỂM BIẾN MẤT, nên chặn tháng đã chốt thưởng: thưởng đã trả theo điểm cũ rồi, xoá
+ * thêm chỉ làm bảng điểm lệch khỏi số đã chi. Cùng luật với `addAdjustment` (bonusLock.ts).
  */
 export async function deleteTaskAsBoss(taskId: string): Promise<TaskRow> {
   const task = await findTask(taskId);
@@ -315,11 +315,9 @@ export async function deleteTaskAsBoss(taskId: string): Promise<TaskRow> {
 
   const ngay = (task.completedAt || task.createdAt || '').slice(0, 10);
   const [y, m] = ngay.split('-').map(Number);
-  if (y && m && (await isMonthLocked(y, m))) {
-    throw new ApiError(
-      409,
-      `Tháng ${m}/${y} đã chốt lương nên không xoá được việc. Mở khoá tháng đó ở trang Bảng lương rồi làm lại.`,
-    );
+  const khoa = y && m ? await lyDoKhoaDiem(y, m) : '';
+  if (khoa) {
+    throw new ApiError(409, `${khoa} nên không xoá được việc. Mở lại tháng đó ở trang Bảng lương rồi làm lại.`);
   }
 
   await deleteTaskRow(taskId);

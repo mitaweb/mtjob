@@ -298,35 +298,57 @@ export interface BonusLine {
   projectId: string;
   teamId: string;
   vaiTro: 'leader' | 'member';
-  tyLe: number;
+  /**
+   * null = tháng đó không đo được. PHẢI giữ null khi chụp và khi đọc lại: đọc ra 0 thì
+   * `heSoThuongDiem` tưởng dự án đạt 0% và cắt oan nửa thưởng điểm của cả phòng.
+   */
+  tyLe: number | null;
   mucThuong: number;
   amount: number;
 }
 
+export const SQL_DOC_THUONG_KPI = 'SELECT * FROM project_bonus_lines WHERE year = $1 AND month = $2';
+export const SQL_XOA_THUONG_KPI = 'DELETE FROM project_bonus_lines WHERE year = $1 AND month = $2';
+export const SQL_GHI_THUONG_KPI = `INSERT INTO project_bonus_lines
+  (year, month, member_id, project_id, team_id, vai_tro, ty_le, muc_thuong, amount)
+  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+  ON CONFLICT (year, month, member_id, project_id) DO UPDATE SET
+    team_id = EXCLUDED.team_id, vai_tro = EXCLUDED.vai_tro, ty_le = EXCLUDED.ty_le,
+    muc_thuong = EXCLUDED.muc_thuong, amount = EXCLUDED.amount`;
+
 export async function getBonusLines(year: number, month: number): Promise<BonusLine[]> {
-  const rows = await q('SELECT * FROM project_bonus_lines WHERE year = $1 AND month = $2', [year, month]);
+  const rows = await q(SQL_DOC_THUONG_KPI, [year, month]);
   return rows.map((r) => ({
     memberId: String(r.member_id || ''),
     projectId: String(r.project_id || ''),
     teamId: String(r.team_id || ''),
     vaiTro: r.vai_tro === 'leader' ? ('leader' as const) : ('member' as const),
-    tyLe: Number(r.ty_le || 0) || 0,
+    tyLe: r.ty_le == null ? null : Number(r.ty_le),
     mucThuong: Number(r.muc_thuong || 0) || 0,
     amount: Number(r.amount || 0) || 0,
   }));
 }
 
-/** Chụp lại thưởng của tháng lúc chốt lương. Chạy lại được — ghi đè theo khoá. */
+/**
+ * Chụp lại thưởng KPI của tháng lúc chốt thưởng.
+ *
+ * XOÁ bản chụp cũ trước rồi mới ghi. Chỉ ghi đè theo khoá thì mở khoá → gỡ một người khỏi
+ * dự án → chốt lại, người đó vẫn còn dòng cũ, và tổng đọc ra lệch với khoản chi.
+ */
 export async function saveBonusLines(year: number, month: number, lines: BonusLine[]): Promise<void> {
+  await q(SQL_XOA_THUONG_KPI, [year, month]);
   for (const l of lines) {
-    await q(
-      `INSERT INTO project_bonus_lines
-         (year, month, member_id, project_id, team_id, vai_tro, ty_le, muc_thuong, amount)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-       ON CONFLICT (year, month, member_id, project_id) DO UPDATE SET
-         team_id = EXCLUDED.team_id, vai_tro = EXCLUDED.vai_tro, ty_le = EXCLUDED.ty_le,
-         muc_thuong = EXCLUDED.muc_thuong, amount = EXCLUDED.amount`,
-      [year, month, l.memberId, l.projectId, l.teamId, l.vaiTro, l.tyLe, l.mucThuong, l.amount],
-    );
+    await q(SQL_GHI_THUONG_KPI, [
+      year,
+      month,
+      l.memberId,
+      l.projectId,
+      l.teamId,
+      l.vaiTro,
+      // Cột là integer: 85,5% đưa thẳng vào là Postgres báo lỗi cú pháp số nguyên.
+      l.tyLe == null ? null : Math.round(l.tyLe),
+      l.mucThuong,
+      l.amount,
+    ]);
   }
 }

@@ -9,7 +9,6 @@ import { inRange } from '../lib/scores.js';
 import { monthRange } from '../lib/datetime.js';
 import { upsertEntry, deleteEntry } from './finance.repo.js';
 import { isMonthLocked } from './payrollLock.js';
-import { snapshotProjectBonus } from './projectBonus.service.js';
 import { kyLuatThang } from './kyluat.service.js';
 import { cauCanhBao } from '../lib/kyluat.js';
 import { notify } from './notifications.service.js';
@@ -173,9 +172,7 @@ export async function lockPayrollMonth(year: number, month: number, byName: stri
   // lại cảnh báo đi trễ cho cả công ty mỗi lần bấm.
   const daChot = await isMonthLocked(year, month);
   const lines = await savePayrollSnapshot(year, month);
-  // Chụp thưởng KPI dự án TRƯỚC khi ghi dòng khoá: sau khi khoá thì projectBonusForMonth
-  // chuyển sang đọc snapshot, chụp lúc đó sẽ ra bảng rỗng.
-  await snapshotProjectBonus(year, month);
+  // Thưởng KHÔNG chụp ở đây nữa — chốt riêng bằng nút "Chốt thưởng" (bonusMonth.service).
   await q(
     `INSERT INTO payroll_locks (year, month, locked_at, locked_by) VALUES ($1,$2,$3,$4)
      ON CONFLICT (year, month) DO UPDATE SET locked_at = EXCLUDED.locked_at, locked_by = EXCLUDED.locked_by`,

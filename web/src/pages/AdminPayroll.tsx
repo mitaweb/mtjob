@@ -472,15 +472,12 @@ export default function AdminPayroll() {
         </div>
       )}
 
-      <ThuongKpiThang ym={ym} />
+      <ThuongThang ym={ym} />
     </div>
   );
 }
 
-interface BonusLine {
-  memberId: string;
-  fullName: string;
-  teamId: string;
+interface DuAnThuong {
   projectId: string;
   projectName: string;
   vaiTro: 'leader' | 'member';
@@ -488,111 +485,241 @@ interface BonusLine {
   amount: number;
 }
 
+interface ThuongNguoi {
+  memberId: string;
+  fullName: string;
+  teamId: string;
+  points: number;
+  thuongDiemGoc: number;
+  heSo: number;
+  thuongDiem: number;
+  thuongKpi: number;
+  duAn: DuAnThuong[];
+  tong: number;
+}
+
+interface BangThuong {
+  locked: boolean;
+  lockedAt: string;
+  lockedBy: string;
+  rows: ThuongNguoi[];
+  tong: number;
+  chuaPhanCong: Array<{ id: string; fullName: string; teamId: string }>;
+}
+
 /**
- * Thưởng KPI dự án của cả công ty trong tháng — để giám đốc xem rồi tự chi.
- * KHÔNG cộng vào lương thực lãnh (anh Tâm chốt để riêng như thưởng điểm).
+ * Thưởng tháng: thưởng điểm + thưởng KPI dự án, CHỐT RIÊNG với lương.
+ *
+ * Anh Tâm 13/9/2026: "Phần thưởng cũng có nút chốt riêng, chốt xong sẽ qua phần chi phí
+ * luôn" và "thưởng và lương chốt khác nhau". Không cộng vào lương thực lãnh — chốt thì máy
+ * chủ tự ghi một khoản chi riêng vào tháng sau.
  */
-function ThuongKpiThang({ ym }: { ym: string }) {
-  const [lines, setLines] = useState<BonusLine[]>([]);
-  const [chuaPhanCong, setChuaPhanCong] = useState<Array<{ id: string; fullName: string; teamId: string }>>([]);
+function ThuongThang({ ym }: { ym: string }) {
+  const [bang, setBang] = useState<BangThuong | null>(null);
   const [msg, setMsg] = useState('');
+  const [dangLam, setDangLam] = useState(false);
+
+  const [y, m] = ym.split('-').map(Number);
+  const thangSau = m >= 12 ? `1/${y + 1}` : `${m + 1}/${y}`;
+
+  async function tai() {
+    setBang(await api<BangThuong>(`/admin/bonus?year=${y}&month=${m}`));
+  }
 
   useEffect(() => {
-    const [y, m] = ym.split('-');
-    api<{ lines: BonusLine[]; chuaPhanCong: Array<{ id: string; fullName: string; teamId: string }> }>(
-      `/projects/bonus/all?year=${y}&month=${Number(m)}`,
-    )
-      .then((r) => {
-        setLines(r.lines);
-        setChuaPhanCong(r.chuaPhanCong);
-        setMsg('');
-      })
-      .catch((e) => setMsg((e as Error).message));
+    setMsg('');
+    setBang(null);
+    tai().catch((e) => setMsg((e as Error).message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ym]);
 
-  // Gom theo người: một người có thể ăn thưởng từ nhiều dự án.
-  const theoNguoi = new Map<string, { fullName: string; teamId: string; tong: number; duAn: BonusLine[] }>();
-  for (const l of lines) {
-    const o = theoNguoi.get(l.memberId) || { fullName: l.fullName, teamId: l.teamId, tong: 0, duAn: [] };
-    o.tong += l.amount;
-    o.duAn.push(l);
-    theoNguoi.set(l.memberId, o);
+  async function chot() {
+    if (!bang) return;
+    const nhac = bang.chuaPhanCong.length
+      ? `\n\n⚠️ Còn ${bang.chuaPhanCong.length} người chưa được phân công dự án nào — chốt rồi họ không có thưởng KPI tháng này.`
+      : '';
+    if (
+      !confirm(
+        `Chốt thưởng tháng ${m}/${y}?\n\nTổng ${vnd(bang.tong)} sẽ được đóng băng và tự ghi một khoản CHI ` +
+          `"Thưởng tháng ${m}/${y}" vào tháng ${thangSau}. Vẫn "Mở lại" được nếu cần.${nhac}`,
+      )
+    )
+      return;
+    const tong = bang.tong;
+    setDangLam(true);
+    try {
+      await api('/admin/bonus/lock', { body: { year: y, month: m } });
+      await tai();
+      setMsg(`Đã chốt thưởng 🔒 — đã ghi ${vnd(tong)} vào chi phí tháng ${thangSau}.`);
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setDangLam(false);
+    }
   }
-  const dsNguoi = [...theoNguoi.entries()].sort((a, b) => b[1].tong - a[1].tong);
-  const tongChi = lines.reduce((s, l) => s + l.amount, 0);
+
+  async function mo() {
+    if (
+      !confirm(
+        `Mở lại thưởng tháng ${m}/${y}? Số thưởng sẽ tính lại theo dữ liệu hiện tại, ` +
+          `và khoản chi "Thưởng tháng ${m}/${y}" tự ghi sẽ bị gỡ khỏi chi phí.`,
+      )
+    )
+      return;
+    setDangLam(true);
+    try {
+      await api('/admin/bonus/unlock', { body: { year: y, month: m } });
+      await tai();
+      setMsg('Đã mở lại thưởng — khoản chi thưởng tự ghi đã được gỡ.');
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setDangLam(false);
+    }
+  }
 
   return (
     <div className="card">
-      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-semibold">🎯 Thưởng KPI dự án (tháng {ym})</h2>
-        <span className="text-lg font-bold text-emerald-700">{vnd(tongChi)}</span>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 font-semibold">
+            🎁 Thưởng tháng {m}/{y}
+            {bang?.locked && (
+              <span className="rounded-full bg-ink px-2 py-0.5 text-xs font-medium text-white">🔒 Đã chốt</span>
+            )}
+          </h2>
+          <p className="text-xs text-ink-muted">
+            {bang?.locked
+              ? `Đã chốt${bang.lockedBy ? ` bởi ${bang.lockedBy}` : ''} — số đóng băng, đã ghi vào chi phí tháng ${thangSau}.`
+              : `Thưởng điểm + thưởng KPI dự án. Chốt riêng với lương; chốt xong tự ghi vào chi phí tháng ${thangSau}.`}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-lg font-bold text-emerald-700">{vnd(bang?.tong ?? 0)}</span>
+          {bang &&
+            (bang.locked ? (
+              <button className="btn-ghost whitespace-nowrap" onClick={mo} disabled={dangLam}>
+                Mở lại
+              </button>
+            ) : (
+              <button className="btn-primary whitespace-nowrap" onClick={chot} disabled={dangLam}>
+                🔒 Chốt thưởng
+              </button>
+            ))}
+        </div>
       </div>
-      <p className="mb-2 text-xs text-ink-muted">
-        Không cộng vào lương thực lãnh — bảng này để anh xem rồi chi riêng.
-      </p>
 
-      {msg && <p className="text-sm text-amber-700">{msg}</p>}
+      {msg && <div className="mb-2 rounded-lg bg-brand-50 px-3 py-2 text-sm text-ink-soft">{msg}</div>}
 
-      {/* Ai chưa được phân công — bảng này PHẢI rỗng, vì không phân công là không có thưởng. */}
-      {chuaPhanCong.length > 0 && (
+      {/* Ai chưa được phân công — bảng này PHẢI rỗng, vì không phân công là không có thưởng KPI. */}
+      {bang && !bang.locked && bang.chuaPhanCong.length > 0 && (
         <div className="mb-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
           <div className="text-sm font-semibold text-amber-900">
-            ⚠️ {chuaPhanCong.length} người chưa được phân công dự án nào
+            ⚠️ {bang.chuaPhanCong.length} người chưa được phân công dự án nào
           </div>
           <p className="mt-1 text-xs text-amber-800">
-            Không thuộc dự án nào thì không có thưởng KPI. Nhắc leader phân công trước khi chốt lương —
-            chốt rồi thì không sửa được nữa.
+            Không thuộc dự án nào thì không có thưởng KPI. Nhắc leader phân công trước khi chốt thưởng.
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {chuaPhanCong.map((m) => (
-              <span key={m.id} className="rounded-md bg-white px-2 py-0.5 text-xs text-amber-800">
-                {m.fullName}
-                {m.teamId ? ` · ${m.teamId}` : ''}
+            {bang.chuaPhanCong.map((p) => (
+              <span key={p.id} className="rounded-md bg-white px-2 py-0.5 text-xs text-amber-800">
+                {p.fullName}
+                {p.teamId ? ` · ${p.teamId}` : ''}
               </span>
             ))}
           </div>
         </div>
       )}
 
-      {dsNguoi.length === 0 ? (
-        <p className="text-sm text-ink-muted">
-          Tháng này chưa có thưởng KPI nào. Đặt mức thưởng cho từng (dự án × phòng) ở trang Dự án.
-        </p>
+      {!bang ? null : bang.rows.length === 0 ? (
+        <p className="text-sm text-ink-muted">Tháng này chưa có ai có thưởng.</p>
       ) : (
-        <div className="overflow-x-auto">
+        <>
+          {/* Điện thoại: mỗi người một thẻ. Bảng 5 cột ở 375px ép tên xuống 4 dòng và cắt cụt cột dự án. */}
+          <ul className="md:hidden divide-y">
+            {bang.rows.map((r) => (
+              <li key={r.memberId} className="py-2 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold">{r.fullName}</span>
+                  <span className="font-semibold text-emerald-700 whitespace-nowrap">{vnd(r.tong)}</span>
+                </div>
+                <div className="mt-0.5 text-xs text-ink-muted">
+                  {r.teamId || '—'} · Thưởng điểm {vnd(r.thuongDiem)} ({r.points}đ
+                  {r.heSo < 1 && <> · ×{String(r.heSo).replace('.', ',')}, gốc {vnd(r.thuongDiemGoc)}</>})
+                </div>
+                {r.duAn.map((l) => (
+                  <div key={`${l.projectId}-${l.vaiTro}`} className="text-xs text-ink-muted">
+                    {l.projectName}
+                    {l.vaiTro === 'leader' && <span className="text-brand-700"> (leader)</span>}
+                    {' · '}
+                    {l.tyLe === null ? 'chưa đo được' : `${l.tyLe}%`}
+                    {' → '}
+                    {vnd(l.amount)}
+                  </div>
+                ))}
+              </li>
+            ))}
+          </ul>
+
+          <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-ink-muted">
               <tr>
                 <th className="py-1">Nhân sự</th>
                 <th>Phòng</th>
-                <th>Dự án</th>
-                <th className="text-right">Thưởng</th>
+                <th className="text-right">Thưởng điểm</th>
+                <th className="pl-4">Thưởng KPI dự án</th>
+                <th className="text-right">Tổng</th>
               </tr>
             </thead>
             <tbody>
-              {dsNguoi.map(([id, o]) => (
-                <tr key={id} className="border-t align-top">
-                  <td className="py-1 font-medium">{o.fullName}</td>
-                  <td className="text-ink-muted">{o.teamId}</td>
-                  <td className="text-xs text-ink-muted">
-                    {o.duAn.map((l) => (
-                      <div key={`${l.projectId}-${l.vaiTro}`}>
-                        {l.projectName}
-                        {l.vaiTro === 'leader' && <span className="text-brand-600"> (leader)</span>}
-                        {' · '}
-                        {l.tyLe === null ? 'chưa đo được' : `${l.tyLe}%`}
-                        {' → '}
-                        {vnd(l.amount)}
-                      </div>
-                    ))}
+              {bang.rows.map((r) => (
+                <tr key={r.memberId} className="border-t align-top">
+                  <td className="py-1.5 font-medium">{r.fullName}</td>
+                  <td className="text-ink-muted">{r.teamId}</td>
+                  <td className="text-right whitespace-nowrap">
+                    <div>{vnd(r.thuongDiem)}</div>
+                    <div className="text-xs text-ink-muted">
+                      {r.points}đ
+                      {r.heSo < 1 && (
+                        <>
+                          {' '}
+                          · ×{String(r.heSo).replace('.', ',')} (gốc {vnd(r.thuongDiemGoc)})
+                        </>
+                      )}
+                    </div>
                   </td>
-                  <td className="text-right font-medium text-emerald-700">{vnd(o.tong)}</td>
+                  <td className="pl-4">
+                    {r.duAn.length === 0 ? (
+                      <span className="text-ink-faint">—</span>
+                    ) : (
+                      <>
+                        <div>{vnd(r.thuongKpi)}</div>
+                        {r.duAn.map((l) => (
+                          <div key={`${l.projectId}-${l.vaiTro}`} className="text-xs text-ink-muted">
+                            {l.projectName}
+                            {l.vaiTro === 'leader' && <span className="text-brand-700"> (leader)</span>}
+                            {' · '}
+                            {l.tyLe === null ? 'chưa đo được' : `${l.tyLe}%`}
+                            {' → '}
+                            {vnd(l.amount)}
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </td>
+                  <td className="text-right font-medium text-emerald-700 whitespace-nowrap">{vnd(r.tong)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
       )}
+
+      <p className="mt-2 text-xs text-ink-muted">
+        Thưởng điểm bị ×0,5 khi người đó có dự án đạt dưới 50% KPI. Không cộng vào lương thực lãnh.
+      </p>
     </div>
   );
 }

@@ -3,11 +3,11 @@
 // Mỗi (dự án × phòng) có một mức thưởng bằng tiền. Leader phòng đó ăn theo tỉ lệ đạt KPI
 // của phòng mình trong dự án đó; thành viên được phân công ăn theo bậc. Luật tiền nằm ở
 // lib/money.ts, luật quy tỉ lệ về tháng nằm ở lib/kpi.ts — file này chỉ đọc DB và ghép.
-import { getProjects, getKpis, getEntries, getTeamBonuses, getAssignees, getBonusLines, saveBonusLines } from './projects.repo.js';
+import { getProjects, getKpis, getEntries, getTeamBonuses, getAssignees, getBonusLines } from './projects.repo.js';
 import { getActiveMembers } from './members.repo.js';
 import { getTeams } from './teams.repo.js';
 import { getHolidaySet } from './holidays.repo.js';
-import { isMonthLocked } from './payrollLock.js';
+import { isBonusLocked } from './bonusLock.js';
 import { phanTramTheoThang, tyLeTheoThang } from '../lib/kpi.js';
 import { thuongLeader, thuongThanhVien } from '../lib/money.js';
 import { todayIso } from '../lib/datetime.js';
@@ -77,8 +77,9 @@ export async function tyLeDuAnTheoThang(
 /**
  * Thưởng KPI dự án của cả công ty trong một tháng.
  *
- * Tháng ĐÃ CHỐT LƯƠNG thì đọc số đã chụp lại, không tính lại: giám đốc nâng mức thưởng
- * tháng 11 không được phép làm đổi tiền của tháng 8 đã trả.
+ * Tháng ĐÃ CHỐT THƯỞNG thì đọc số đã chụp lại, không tính lại: giám đốc nâng mức thưởng
+ * tháng 11 không được phép làm đổi tiền của tháng 8 đã trả. Khoá LƯƠNG không liên quan ở
+ * đây — anh Tâm chốt 13/9/2026 hai thứ chốt riêng.
  */
 export async function projectBonusForMonth(year: number, month: number): Promise<ProjectBonusLine[]> {
   const [projects, kpis, members, teams, rates, assignees] = await Promise.all([
@@ -94,8 +95,8 @@ export async function projectBonusForMonth(year: number, month: number): Promise
   const mucTheoKhoa = new Map(rates.map((r) => [khoa(r.projectId, r.teamId), r.amount]));
   const leaderCuaPhong = new Map(teams.map((t) => [t.id, t.leaderMemberId || '']));
 
-  // Tháng đã khoá lương → trả đúng số đã chụp.
-  if (await isMonthLocked(year, month)) {
+  // Tháng đã chốt thưởng → trả đúng số đã chụp.
+  if (await isBonusLocked(year, month)) {
     return (await getBonusLines(year, month)).map((l) => ({
       memberId: l.memberId,
       fullName: nguoi.get(l.memberId)?.fullName || '',
@@ -208,21 +209,18 @@ export async function heSoThuongDiem(year: number, month: number): Promise<Map<s
   return ra;
 }
 
-/** Chụp lại thưởng của tháng — gọi lúc chốt lương để số không trôi về sau. */
-export async function snapshotProjectBonus(year: number, month: number): Promise<number> {
-  const lines = await projectBonusForMonth(year, month);
-  await saveBonusLines(
-    year,
-    month,
-    lines.map((l) => ({
-      memberId: l.memberId,
-      projectId: l.projectId,
-      teamId: l.teamId,
-      vaiTro: l.vaiTro,
-      tyLe: l.tyLe ?? 0,
-      mucThuong: l.mucThuong,
-      amount: l.amount,
-    })),
-  );
-  return lines.length;
+/**
+ * Ai chưa được phân công dự án nào.
+ *
+ * Anh Tâm chốt "luôn luôn phân công", nên đây là danh sách phải rỗng — hiện ra để người bị
+ * quên không âm thầm mất thưởng KPI. Dùng chung cho trang Dự án và bảng thưởng trang lương.
+ *
+ * (Việc chụp thưởng lúc chốt đã chuyển sang `bonusMonth.service.chotThuong`.)
+ */
+export async function chuaPhanCongDuAn(): Promise<Array<{ id: string; fullName: string; teamId: string }>> {
+  const [members, assignees] = await Promise.all([getActiveMembers(), getAssignees()]);
+  const coDuAn = new Set(assignees.filter((a) => !a.endDate).map((a) => a.memberId));
+  return members
+    .filter((m) => m.role === 'member' && !coDuAn.has(m.id))
+    .map((m) => ({ id: m.id, fullName: m.fullName, teamId: m.teamId }));
 }

@@ -22,8 +22,8 @@ import {
   type Project,
   type ProjectKpi,
 } from './projects.repo.js';
-import { projectBonusForMonth, projectBonusForMember } from './projectBonus.service.js';
-import { isMonthLocked } from './payroll.service.js';
+import { projectBonusForMonth, projectBonusForMember, chuaPhanCongDuAn } from './projectBonus.service.js';
+import { isBonusLocked } from './bonusLock.js';
 import { phanCongBlock } from '../lib/assign.js';
 import { findById, getActiveMembers } from './members.repo.js';
 import { findCustomer, getCustomers } from './crm.repo.js';
@@ -422,7 +422,7 @@ const bonusSchema = z.object({
 
 /**
  * Đặt mức thưởng cho một (dự án × phòng). Chỉ giám đốc/admin.
- * Chặn tháng đã chốt lương: đổi mức lúc này là làm lệch số đã trả.
+ * Chặn tháng đã chốt thưởng: đổi mức lúc này là làm lệch số đã trả.
  */
 projectsRouter.put(
   '/:id/bonus/:teamId',
@@ -430,8 +430,8 @@ projectsRouter.put(
   asyncHandler(async (req, res) => {
     const b = bonusSchema.parse(req.body);
     const now = nowTz();
-    if (await isMonthLocked(now.year(), now.month() + 1)) {
-      throw new ApiError(409, 'Tháng này đã chốt lương nên không đổi được mức thưởng.');
+    if (await isBonusLocked(now.year(), now.month() + 1)) {
+      throw new ApiError(409, 'Tháng này đã chốt thưởng nên không đổi được mức thưởng.');
     }
     const project = await findProject(String(req.params.id));
     if (!project) throw new ApiError(404, 'Không tìm thấy dự án');
@@ -465,8 +465,8 @@ projectsRouter.post(
   asyncHandler(async (req, res) => {
     const { memberId } = z.object({ memberId: z.string().min(1) }).parse(req.body);
     const now = nowTz();
-    if (await isMonthLocked(now.year(), now.month() + 1)) {
-      throw new ApiError(409, 'Tháng này đã chốt lương nên không đổi được danh sách dự án.');
+    if (await isBonusLocked(now.year(), now.month() + 1)) {
+      throw new ApiError(409, 'Tháng này đã chốt thưởng nên không đổi được danh sách dự án.');
     }
     const project = await findProject(String(req.params.id));
     if (!project) throw new ApiError(404, 'Không tìm thấy dự án');
@@ -499,8 +499,8 @@ projectsRouter.delete(
   requireRole('leader', 'director', 'admin'),
   asyncHandler(async (req, res) => {
     const now = nowTz();
-    if (await isMonthLocked(now.year(), now.month() + 1)) {
-      throw new ApiError(409, 'Tháng này đã chốt lương nên không đổi được danh sách dự án.');
+    if (await isBonusLocked(now.year(), now.month() + 1)) {
+      throw new ApiError(409, 'Tháng này đã chốt thưởng nên không đổi được danh sách dự án.');
     }
     const memberId = String(req.params.memberId);
     if (req.user!.role === 'leader') {
@@ -555,17 +555,7 @@ projectsRouter.get(
   canMoney,
   asyncHandler(async (req, res) => {
     const { year, month } = ymQuery(req);
-    const [lines, members, assignees] = await Promise.all([
-      projectBonusForMonth(year, month),
-      getActiveMembers(),
-      getAssignees(),
-    ]);
-    // Ai chưa được phân công dự án nào — anh Tâm chốt "luôn luôn phân công", nên đây là
-    // danh sách phải rỗng. Hiện ra để người bị quên không âm thầm mất thưởng.
-    const coDuAn = new Set(assignees.filter((a) => !a.endDate).map((a) => a.memberId));
-    const chuaPhanCong = members
-      .filter((m) => m.role === 'member' && !coDuAn.has(m.id))
-      .map((m) => ({ id: m.id, fullName: m.fullName, teamId: m.teamId }));
+    const [lines, chuaPhanCong] = await Promise.all([projectBonusForMonth(year, month), chuaPhanCongDuAn()]);
     res.json({ year, month, lines, chuaPhanCong });
   }),
 );
