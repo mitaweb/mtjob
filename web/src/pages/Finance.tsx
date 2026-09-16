@@ -50,6 +50,9 @@ export default function Finance() {
   const toast = useToast();
 
   const [pForm, setPForm] = useState<Partial<Party>>(emptyParty());
+  // Form bên hiện trong popup — anh Tâm 16/9/2026: bấm "sửa" ở đâu cũng phải thấy ngay,
+  // không phải kéo xuống cuối bảng tìm form.
+  const [pFormOpen, setPFormOpen] = useState(false);
   // Hộp thoại ghi nhận thu công nợ của 1 bên.
   const [collectFor, setCollectFor] = useState<Party | null>(null);
   const [collectInput, setCollectInput] = useState('');
@@ -109,6 +112,7 @@ export default function Finance() {
         },
       });
       setPForm(emptyParty());
+      setPFormOpen(false);
       toast.success('Đã lưu bên');
       await loadAll();
     } catch (e) {
@@ -294,7 +298,13 @@ export default function Finance() {
                             ? '✓ Đã thu đủ'
                             : `Thu ${vnd(collectedAmount(p.id))}`}
                       </button>
-                      <button className="text-brand-600 underline text-xs mr-2" onClick={() => setPForm({ ...p })}>
+                      <button
+                        className="text-brand-600 underline text-xs mr-2"
+                        onClick={() => {
+                          setPForm({ ...p });
+                          setPFormOpen(true);
+                        }}
+                      >
                         sửa
                       </button>
                       <button className="text-rose-600 underline text-xs" onClick={() => delParty(p.id)}>
@@ -316,9 +326,34 @@ export default function Finance() {
         </div>
 
         {canEdit && (
-          <div className="bg-brand-50 rounded-xl p-3 mt-3 space-y-2">
-            <div className="font-medium text-sm">{pForm.id ? 'Sửa bên' : '➕ Thêm bên'}</div>
-            <div className="grid sm:grid-cols-4 gap-2">
+          <div className="mt-3">
+            <button
+              className="btn-ghost"
+              onClick={() => {
+                setPForm(emptyParty());
+                setPFormOpen(true);
+              }}
+            >
+              ➕ Thêm bên
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Popup thêm / sửa bên — mở từ nút "sửa" ở bất kỳ dòng nào hoặc nút "Thêm bên". */}
+      {canEdit && pFormOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 p-4"
+          onClick={() => setPFormOpen(false)}
+        >
+          <div className="card hien-len my-8 w-full max-w-2xl space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold">{pForm.id ? `Sửa bên — ${pForm.name || ''}` : '➕ Thêm bên'}</h2>
+              <button className="btn-ghost px-2 py-1 text-sm" onClick={() => setPFormOpen(false)}>
+                ✕ Đóng
+              </button>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-2">
               <input className="input py-1" placeholder="Tên bên / khách hàng" value={pForm.name || ''} onChange={(e) => setPForm({ ...pForm, name: e.target.value })} />
               <input className="input py-1" type="number" placeholder="Số tiền phải thu" value={pForm.receivable || ''} onChange={(e) => setPForm({ ...pForm, receivable: Number(e.target.value) })} />
               <label className="text-xs text-ink-muted">
@@ -361,15 +396,19 @@ export default function Finance() {
               <AsyncButton className="btn-primary" onClick={saveParty} busyLabel="Đang lưu…">
                 {pForm.id ? 'Lưu' : 'Thêm bên'}
               </AsyncButton>
-              {pForm.id && (
-                <button className="btn-ghost" onClick={() => setPForm(emptyParty())}>
-                  Hủy
-                </button>
-              )}
+              <button
+                className="btn-ghost"
+                onClick={() => {
+                  setPForm(emptyParty());
+                  setPFormOpen(false);
+                }}
+              >
+                Hủy
+              </button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Thu / Chi */}
       <div className="card">
