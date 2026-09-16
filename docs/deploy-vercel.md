@@ -93,4 +93,5 @@ mất luôn lần nhắc đó (`graceMinutes` trong `lib/reminder.ts`).
   App dùng cả ngày làm việc đã tốn ~75–90/tháng, sát trần. Hết hạn mức là DB bị tắt tới
   đầu tháng sau. Đặt **Max compute = 0.25 CU** (Branches → main → Compute) để không bị
   tự phóng to; dùng thật cho công ty thì nên lên gói Launch (300 giờ-compute)
-  — hoặc chuyển DB về máy chủ riêng, xem `deploy-db-directadmin.md`.
+  — hoặc chuyển DB đi: Supabase Free không giới hạn giờ chạy (`deploy-db-supabase.md`),
+  hay máy chủ riêng (`deploy-db-directadmin.md`).
