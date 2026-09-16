@@ -29,7 +29,10 @@ Dashboard → **Connect** (nút trên cùng) → tab **Transaction pooler** (c�
 ```
 postgresql://postgres.<ref>:<MẬT-KHẨU>@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres
 ```
-Thêm `?sslmode=require` vào cuối.
+**Không thêm `?sslmode=require`.** Pooler Supabase dùng chứng chỉ tự ký; app đã tự bật SSL
+không xác thực chứng chỉ, còn `sslmode=require` trong URL làm `pg` đòi xác thực đầy đủ và
+văng `SELF_SIGNED_CERT_IN_CHAIN`. (Driver đã tự bỏ tham số này — `stripSslMode` trong
+`client.ts` — nhưng đừng tự thêm vào cho khỏi rối.)
 
 > Dùng **pooler**, không dùng *Direct connection*: kết nối trực tiếp ở gói Free chỉ có IPv6,
 > Vercel không gọi ra IPv6 được. Transaction pooler còn gom kết nối của nhiều instance

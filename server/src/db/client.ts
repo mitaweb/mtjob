@@ -25,12 +25,23 @@ function neonSql() {
 }
 
 /**
- * pg.Pool — chỉ dành cho scripts chạy tay (setup-db, migrate…): driver HTTP của Neon
- * không chạy được DDL nhiều câu lệnh trong một query.
+ * Bỏ `sslmode=…` khỏi chuỗi kết nối. SSL do code đặt (`ssl: { rejectUnauthorized: false }`),
+ * nhưng `pg` ≥ 8.12 đọc `sslmode=require` trong URL thành "xác thực đầy đủ chứng chỉ" và
+ * ĐÈ lên cài đặt đó → Supabase pooler (chứng chỉ tự ký) văng SELF_SIGNED_CERT_IN_CHAIN.
+ * Neon may mắn có chứng chỉ công cộng nên trước giờ không lộ.
+ */
+export function stripSslMode(url: string): string {
+  return url.replace(/([?&])sslmode=[^&]*(&|$)/, (_m, dau: string, sau: string) => (sau ? dau : '')).replace(/[?&]$/, '');
+}
+
+/**
+ * pg.Pool — dùng cho mọi Postgres không phải Neon (Supabase, máy chủ riêng, local) và cho
+ * scripts chạy tay (setup-db, migrate…): driver HTTP của Neon không chạy được DDL nhiều
+ * câu lệnh trong một query.
  */
 export function pool(): pg.Pool {
   if (!_pool) {
-    const url = dbUrl();
+    const url = stripSslMode(dbUrl());
     _pool = new pg.Pool({
       connectionString: url,
       max: 3, // serverless-friendly: vài kết nối mỗi instance là đủ
