@@ -245,7 +245,17 @@ export default function Finance() {
             <tbody>
               {parties.map((p) => (
                 <tr key={p.id} className="border-t">
-                  <td className="py-1">{p.name}</td>
+                  <td className="py-1">
+                    {/* Nguồn khách ở góc phải phía trên tên — anh Tâm 16/9/2026. */}
+                    <div className="flex flex-col">
+                      {p.source && (
+                        <span className="self-end rounded-md bg-brand-50 px-1.5 text-[10px] leading-4 text-ink-muted">
+                          {p.source}
+                        </span>
+                      )}
+                      <span>{p.name}</span>
+                    </div>
+                  </td>
                   <td className="text-right">{vnd(p.receivable)}</td>
                   {/* Nợ cũ = tiền các kỳ TRƯỚC còn thiếu. Rê chuột để xem thiếu tháng nào. */}
                   <td className="text-right" title={(p.unpaidMonths || []).join(', ')}>
