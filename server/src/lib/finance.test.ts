@@ -112,7 +112,45 @@ describe('computeDebt', () => {
   it('THU MỘT PHẦN vẫn giữ lại phần còn thiếu', () => {
     const r = computeDebt({ ...base, paid: { '2026-08': 10_000_000, '2026-09': 21_000_000 } });
     expect(r.carryOver).toBe(11_000_000);
-    expect(r.unpaidMonths).toEqual(['2026-08']);
+    // FIFO: 21tr tháng 9 bù nốt 11tr tháng 8 trước, nên phần thiếu dồn về tháng 9.
+    expect(r.unpaidMonths).toEqual(['2026-09']);
+  });
+
+  // Anh Tâm 16/9/2026: "khi anh thu ở tháng sau thì tự trừ, không phải quay lại tháng cũ".
+  describe('thu ở tháng sau tự trừ nợ tháng trước', () => {
+    const xemT9 = { ...base, month: '2026-09' };
+
+    it('khách trả tiền tháng 8 vào tháng 9 → tháng 8 sạch, kỳ tháng 9 còn nguyên', () => {
+      const r = computeDebt({ ...xemT9, paid: { '2026-09': 21_000_000 } });
+      expect(r.carryOver).toBe(0);
+      expect(r.unpaidMonths).toEqual([]);
+      expect(r.paidToOld).toBe(21_000_000);
+      expect(r.thisMonthRemaining).toBe(21_000_000);
+      expect(r.total).toBe(21_000_000);
+    });
+
+    it('trả 42tr trong tháng 9 → sạch cả hai kỳ, không phải quay về tháng 8', () => {
+      const r = computeDebt({ ...xemT9, paid: { '2026-09': 42_000_000 } });
+      expect(r.total).toBe(0);
+      expect(r.paidToOld).toBe(21_000_000);
+      expect(r.thisMonthRemaining).toBe(0);
+      expect(r.credit).toBe(0);
+    });
+
+    it('trả một phần trong tháng 9 → trừ nợ cũ trước, kỳ này chưa đụng', () => {
+      const r = computeDebt({ ...xemT9, paid: { '2026-09': 10_000_000 } });
+      expect(r.carryOver).toBe(11_000_000);
+      expect(r.unpaidMonths).toEqual(['2026-08']);
+      expect(r.paidToOld).toBe(10_000_000);
+      expect(r.thisMonthRemaining).toBe(21_000_000);
+      expect(r.total).toBe(32_000_000);
+    });
+
+    it('không có nợ cũ thì tiền tháng này trả kỳ này, paidToOld = 0', () => {
+      const r = computeDebt({ ...xemT9, paid: { '2026-08': 21_000_000, '2026-09': 21_000_000 } });
+      expect(r.paidToOld).toBe(0);
+      expect(r.total).toBe(0);
+    });
   });
 
   it('đã thu kỳ đang xem thì trừ khỏi tổng', () => {
@@ -164,11 +202,12 @@ describe('computeDebt', () => {
       expect(r.total).toBe(21_000_000); // chỉ còn kỳ tháng 10
     });
 
-    it('trả dư không xoá nợ của kỳ mà khách vẫn thiếu', () => {
-      // Tháng 8 đóng 10tr (thiếu 11tr), tháng 9 đóng đúng 21tr → nợ cũ giữ nguyên 11tr.
+    it('thiếu bao nhiêu vẫn thiếu bấy nhiêu, chỉ dồn về kỳ mới nhất', () => {
+      // Tháng 8 đóng 10tr (thiếu 11tr), tháng 9 đóng đúng 21tr → tổng thiếu vẫn 11tr;
+      // FIFO đem 11tr của tháng 9 bù tháng 8, nên kỳ còn treo là tháng 9.
       const r = computeDebt({ ...base, paid: { '2026-08': 10_000_000, '2026-09': 21_000_000 } });
       expect(r.carryOver).toBe(11_000_000);
-      expect(r.unpaidMonths).toEqual(['2026-08']);
+      expect(r.unpaidMonths).toEqual(['2026-09']);
     });
   });
 

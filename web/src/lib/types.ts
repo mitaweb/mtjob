@@ -36,9 +36,13 @@ export interface Party {
   /** Nguồn khách của bên này — mọi khoản thu sinh ra từ đây đều mang nguồn này. */
   source: string;
   nextDue?: string;
-  /** Tiền các kỳ TRƯỚC còn thiếu (đã trừ phần đã thu một phần). */
+  /** Tiền các kỳ TRƯỚC còn thiếu — đã trừ cả tiền thu trong tháng đang xem (FIFO). */
   carryOver?: number;
-  /** Nợ cũ + kỳ này − đã thu kỳ này. */
+  /** Kỳ đang xem còn thiếu bao nhiêu. */
+  thisMonthRemaining?: number;
+  /** Phần tiền thu tháng này đã đem trừ nợ cũ. */
+  paidToOld?: number;
+  /** Nợ cũ còn lại + kỳ này còn thiếu. */
   totalDue?: number;
   /** Khách trả trước, còn dư sau khi trừ hết nợ và kỳ đang xem — để dành cho kỳ sau. */
   credit?: number;

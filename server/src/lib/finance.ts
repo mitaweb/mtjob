@@ -101,11 +101,15 @@ export interface DebtInput {
 }
 
 export interface DebtResult {
-  /** Phải thu của riêng kỳ đang xem. */
+  /** Phải thu của riêng kỳ đang xem (số gốc, chưa trừ gì). */
   thisMonth: number;
-  /** Còn nợ của các kỳ TRƯỚC kỳ đang xem. */
+  /** Kỳ đang xem còn thiếu bao nhiêu sau khi tiền đã vào trừ xong nợ cũ. */
+  thisMonthRemaining: number;
+  /** Còn nợ của các kỳ TRƯỚC — ĐÃ trừ cả tiền thu trong kỳ đang xem. */
   carryOver: number;
-  /** Tổng phải đòi = nợ cũ + kỳ này − đã thu kỳ này − tiền trả trước còn lại. */
+  /** Phần tiền thu trong kỳ đang xem đã đem trừ nợ cũ — để màn hình nói "đã trừ nợ T8". */
+  paidToOld: number;
+  /** Tổng phải đòi = nợ cũ còn lại + kỳ này còn thiếu. */
   total: number;
   /** Tiền khách đã trả trước, còn dư sau khi trừ hết nợ và kỳ đang xem. */
   credit: number;
@@ -123,9 +127,14 @@ export interface DebtResult {
  * trước đây mỗi kỳ bị kẹp riêng bằng `max(0, per - paid[m])`, nên khách đóng 3 tháng một
  * lần thì phần dư bốc hơi và tháng sau app vẫn đòi tiền người đã trả rồi.
  *
- * Tiền vào trả cho KỲ CỦA CHÍNH NÓ trước, dư mới quay lại bù kỳ cũ nhất, còn dư nữa thì
- * để dành cho kỳ sau. Thứ tự này quan trọng: bù nợ cũ trước sẽ làm kỳ thiếu bị gán nhầm
- * sang tháng gần nhất, trong khi tháng thiếu thật là tháng cũ.
+ * Tiền vào luôn trả KỲ CŨ NHẤT trước, rồi mới tới kỳ của chính nó, dư thì để dành kỳ sau
+ * (FIFO — đúng cách kế toán gán tiền vào hoá đơn cũ nhất còn mở).
+ *
+ * Anh Tâm 16/9/2026: "khi anh thu ở tháng sau thì tự trừ, không phải quay lại tháng cũ để
+ * bấm thu nữa". Bản trước cho tiền tháng 9 trả kỳ tháng 9 trước, nên khách trả tiền tháng
+ * 8 vào tháng 9 thì tháng 8 vẫn hiện "chưa thu", anh quay về tháng 8 bấm thu lần nữa — và
+ * doanh thu bị ghi hai lần. Với FIFO, kỳ thiếu (nếu có) dồn về kỳ MỚI NHẤT — đó chính là
+ * cách bảng công nợ đọc: cũ đã trả, mới còn treo.
  */
 export function computeDebt(input: DebtInput): DebtResult {
   const per = Math.max(0, Math.round(input.receivable) || 0);
@@ -135,35 +144,45 @@ export function computeDebt(input: DebtInput): DebtResult {
   const con: Array<{ month: string; amount: number }> = [];
   /** Tiền khách đã trả nhưng chưa dùng tới. */
   let du = 0;
+  let paidToOld = 0;
+  let thisMonth = 0;
+  let thisMonthRemaining = 0;
 
-  const traNoCu = (): void => {
+  for (const m of months) {
+    const laKyDangXem = m === input.month;
+    if (laKyDangXem) {
+      thisMonth = per;
+      thisMonthRemaining = per;
+    } else {
+      con.push({ month: m, amount: per });
+    }
+    du += input.paid[m] || 0;
+
+    // Trả kỳ cũ nhất trước.
     while (du > 0 && con.length > 0) {
       const dau = con[0]!;
       const tra = Math.min(du, dau.amount);
       dau.amount -= tra;
       du -= tra;
+      if (laKyDangXem) paidToOld += tra;
       if (dau.amount === 0) con.shift();
     }
-  };
-
-  for (const m of months) {
-    if (m >= input.month) continue; // kỳ đang xem tính riêng bên dưới
-    du += input.paid[m] || 0;
-    const tra = Math.min(du, per);
-    du -= tra;
-    if (per - tra > 0) con.push({ month: m, amount: per - tra });
-    traNoCu();
+    // Rồi mới tới kỳ đang xem.
+    if (laKyDangXem && du > 0 && thisMonthRemaining > 0) {
+      const tra = Math.min(du, thisMonthRemaining);
+      thisMonthRemaining -= tra;
+      du -= tra;
+    }
   }
 
   const carryOver = con.reduce((s, x) => s + x.amount, 0);
-  // Kỳ đang xem chỉ tính khi đã tới mốc theo dõi.
-  const thisMonth = months.includes(input.month) ? per : 0;
-  const paidThis = (input.paid[input.month] || 0) + du;
   return {
     thisMonth,
+    thisMonthRemaining,
     carryOver,
-    total: Math.max(0, carryOver + thisMonth - paidThis),
-    credit: Math.max(0, paidThis - thisMonth - carryOver),
+    paidToOld,
+    total: carryOver + thisMonthRemaining,
+    credit: du,
     unpaidMonths: con.map((x) => x.month),
   };
 }

@@ -56,6 +56,8 @@ financeRouter.get(
           ...p,
           nextDue: nextDueDateIso(p.dueDay, today),
           carryOver: debt.carryOver,
+          thisMonthRemaining: debt.thisMonthRemaining,
+          paidToOld: debt.paidToOld,
           totalDue: debt.total,
           credit: debt.credit,
           unpaidMonths: debt.unpaidMonths,

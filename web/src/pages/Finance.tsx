@@ -135,10 +135,13 @@ export default function Finance() {
 
   function openCollect(p: Party) {
     setCollectFor(p);
-    // Gợi ý sẵn phần CÒN LẠI, không phải tổng — người nhập chỉ gõ số của lần này.
-    // Thu đủ rồi thì để TRỐNG: điền sẵn số nữa là chỉ cần bấm nhầm một cái đã ghi trùng.
-    const con = Math.max(0, p.receivable - collectedAmount(p.id));
-    setCollectInput(con > 0 ? String(con) : '');
+    // Gợi ý sẵn khoản CŨ NHẤT còn thiếu: khách hay trả tiền tháng trước vào tháng này, nên
+    // có nợ cũ thì gợi ý nợ cũ; không thì gợi ý phần kỳ này còn thiếu. Người nhập chỉ gõ
+    // số của lần này. Sạch nợ rồi thì để TRỐNG — điền sẵn số là bấm nhầm một cái đã ghi trùng.
+    const noCu = p.carryOver || 0;
+    const kyNay = p.thisMonthRemaining ?? Math.max(0, p.receivable - collectedAmount(p.id));
+    const goiY = noCu > 0 ? noCu : kyNay;
+    setCollectInput(goiY > 0 ? String(goiY) : '');
   }
 
   /** Ghi nhận MỘT lần khách trả. Gọi nhiều lần = nhiều dòng, không đè lên nhau. */
@@ -148,10 +151,13 @@ export default function Finance() {
     if (amount <= 0) return toast.error('Nhập số tiền lớn hơn 0.');
     try {
       await api(`/finance/parties/${p.id}/collect`, { body: { month: ym, amount } });
-      const tong = collectedAmount(p.id) + amount;
-      const con = p.receivable - tong;
+      // Tiền vào trừ nợ cũ trước (máy chủ tính FIFO) — nói rõ để anh khỏi quay về tháng cũ bấm lại.
+      const truNoCu = Math.min(amount, p.carryOver || 0);
+      const conNo = Math.max(0, (p.totalDue || 0) - amount);
       toast.success(
-        con > 0 ? `Đã ghi nhận ${vnd(amount)} — còn thiếu ${vnd(con)}` : `Đã ghi nhận ${vnd(amount)} — đủ kỳ này`,
+        `Đã ghi nhận ${vnd(amount)}` +
+          (truNoCu > 0 ? ` — trừ nợ cũ ${vnd(truNoCu)}` : '') +
+          (conNo > 0 ? `, còn nợ ${vnd(conNo)}` : ' — sạch nợ'),
       );
       await loadAll();
       setCollectInput('');
@@ -261,17 +267,20 @@ export default function Finance() {
                     <td className="text-right whitespace-nowrap">
                       <button
                         className={`mr-2 rounded-lg border px-2 py-0.5 text-xs font-medium ${
-                          collectedAmount(p.id) >= p.receivable && isCollected(p.id)
+                          // Xanh khi KHÔNG CÒN NỢ (máy chủ tính, đã trừ nợ cũ) — không phải khi
+                          // "thu tháng này ≥ mức": thu 21tr ở tháng 9 mà tháng 8 còn treo thì chưa xong.
+                          isCollected(p.id) && !p.totalDue
                             ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
                             : isCollected(p.id)
                               ? 'border-amber-500 bg-amber-50 text-amber-700'
                               : 'border-brand-200 text-ink-soft hover:bg-brand-50'
                         }`}
                         onClick={() => openCollect(p)}
+                        title={p.paidToOld ? `Trong đó ${vnd(p.paidToOld)} đã trừ nợ tháng trước` : undefined}
                       >
                         {!isCollected(p.id)
                           ? 'Đã thu'
-                          : collectedAmount(p.id) >= p.receivable
+                          : !p.totalDue
                             ? '✓ Đã thu đủ'
                             : `Thu ${vnd(collectedAmount(p.id))}`}
                       </button>
@@ -567,19 +576,29 @@ export default function Finance() {
             </div>
 
             <div className="rounded-xl bg-brand-50 p-3 text-sm">
+              {/* Tiền vào trừ nợ cũ trước — bày rõ để người nhập không quay về tháng cũ bấm lại. */}
+              {!!collectFor.carryOver && (
+                <div className="flex justify-between py-0.5" title={(collectFor.unpaidMonths || []).join(', ')}>
+                  <span className="text-ink-muted">Nợ các tháng trước còn lại</span>
+                  <span className="font-medium text-rose-600">{vnd(collectFor.carryOver)}</span>
+                </div>
+              )}
               <div className="flex justify-between py-0.5">
                 <span className="text-ink-muted">Phải thu tháng {ym}</span>
                 <span className="font-medium">{vnd(collectFor.receivable)}</span>
               </div>
               <div className="flex justify-between py-0.5">
-                <span className="text-ink-muted">Đã ghi nhận</span>
+                <span className="text-ink-muted">
+                  Đã ghi nhận tháng này
+                  {!!collectFor.paidToOld && (
+                    <span className="text-xs"> (trong đó {vnd(collectFor.paidToOld)} trừ nợ cũ)</span>
+                  )}
+                </span>
                 <span className="font-medium text-emerald-700">{vnd(collectedAmount(collectFor.id))}</span>
               </div>
               <div className="mt-1 flex justify-between border-t border-brand-100 pt-1.5">
-                <span className="text-ink-muted">Còn lại</span>
-                <span className="font-medium text-rose-600">
-                  {vnd(Math.max(0, collectFor.receivable - collectedAmount(collectFor.id)))}
-                </span>
+                <span className="text-ink-muted">Còn phải thu (cả nợ cũ)</span>
+                <span className="font-medium text-rose-600">{vnd(collectFor.totalDue || 0)}</span>
               </div>
               {!!collectFor.credit && (
                 <div className="mt-1 flex justify-between border-t border-brand-100 pt-1.5">
