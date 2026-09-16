@@ -62,15 +62,21 @@ Tạo bảng + seed config/danh mục task/ngày lễ/**13 thành viên** + admi
 
 ### 6. Lịch chạy cho NHẮC HẸN (bắt buộc, không có thì nhắc hẹn trễ)
 
-Hai cron trong `vercel.json` chỉ lo báo cáo ngày/tháng. **Nhắc hẹn cần quét vài phút một
-lần** mà gói Hobby không cho — nên phải gắn một dịch vụ cron ngoài:
+Hai cron trong `vercel.json` chỉ lo báo cáo ngày/tháng. **Nhắc hẹn cần quét đều đặn** mà
+gói Hobby không cho — nên phải gắn một dịch vụ cron ngoài:
 
 1. Mở [cron-job.org](https://cron-job.org) (miễn phí) → **Create cronjob**.
-2. URL: `https://<domain>/api/jobs/reminders` · Method **GET** · Every **5 minutes**.
+2. URL: `https://<domain>/api/jobs/reminders` · Method **GET** · Schedule *Custom*:
+   `0,30 * * * *` (phút 0 và 30), giới hạn giờ **06:00–23:00**.
 3. Tab **Advanced → Headers**, thêm một dòng:
    `Authorization: Bearer <CRON_SECRET>` — đúng chuỗi đã đặt trong Vercel env.
 4. Bấm chạy thử, phải nhận `{"ok":true,"job":"reminders","sent":0}`.
    Trả `401` là sai `CRON_SECRET`.
+
+> ⚠️ **KHÔNG đặt dày hơn 30 phút.** Neon Free chỉ cho **100 giờ-compute/tháng** và tự cho
+> DB ngủ sau 5 phút không ai đụng. Ping 5 phút/lần là DB thức 24/24 → 16 ngày đã hết
+> 91% hạn mức (đã dính tháng 9/2026). Lịch `0,30` cho DB ngủ 5/6 thời gian ngoài giờ
+> làm, và nhắc hẹn đặt giờ :00/:30 vẫn báo đúng phút; giờ lẻ trễ tối đa 30 phút.
 
 Chưa gắn thì nhắc hẹn **chỉ bắn khi có người mở app** (middleware tự quét, 5 phút/lần) —
 hẹn 08:00 mà 08:49 mới có người vào thì 08:49 mới báo. Quá 3 tiếng không ai mở app thì
@@ -83,3 +89,7 @@ mất luôn lần nhắc đó (`graceMinutes` trong `lib/reminder.ts`).
   `{ "path": "/api/jobs/reminders", "schedule": "*/5 * * * *" }` và bỏ cron ngoài đi.
 - Function timeout 60s (`vercel.json`); nếu thiếu thì bật Fluid Compute / tăng `maxDuration`.
 - Neon free tier có thể "ngủ" khi lâu không dùng → request đầu tiên hơi chậm (~1s đánh thức).
+- **Neon Free: 100 giờ-compute/tháng.** Máy 0,25 CU thức 24/24 = 180 giờ-compute → vượt.
+  App dùng cả ngày làm việc đã tốn ~75–90/tháng, sát trần. Hết hạn mức là DB bị tắt tới
+  đầu tháng sau. Đặt **Max compute = 0.25 CU** (Branches → main → Compute) để không bị
+  tự phóng to; dùng thật cho công ty thì nên lên gói Launch (300 giờ-compute).
