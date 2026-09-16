@@ -36,6 +36,10 @@ export interface Party {
   /** Nguồn khách của bên này — mọi khoản thu sinh ra từ đây đều mang nguồn này. */
   source: string;
   nextDue?: string;
+  /** Mức phải thu của RIÊNG tháng đang xem (bên đổi mức giữa chừng thì khác `receivable`). */
+  receivableThisMonth?: number;
+  /** Lịch sử đổi mức: từ tháng nào, thu bao nhiêu. '0000-00' = từ đầu. */
+  rates?: Array<{ fromMonth: string; receivable: number }>;
   /** Tiền các kỳ TRƯỚC còn thiếu — đã trừ cả tiền thu trong tháng đang xem (FIFO). */
   carryOver?: number;
   /** Kỳ đang xem còn thiếu bao nhiêu. */

@@ -5,12 +5,12 @@ import { ranking, scoresFor, withRanks } from '../modules/scores.service.js';
 import { taskTitle } from '../lib/tasks.js';
 import type { TaskRow } from '../types.js';
 import { notify } from '../modules/notifications.service.js';
-import { getParties } from '../modules/finance.repo.js';
+import { getParties, getPartyRates } from '../modules/finance.repo.js';
 import { getUpcoming, getCustomers } from '../modules/crm.repo.js';
 import { birthdaysInMonth } from '../lib/people.js';
 import { formatVnd } from '../lib/money.js';
 import { formatMinutes } from '../lib/worktime.js';
-import { nextDueDateIso, daysUntil } from '../lib/finance.js';
+import { nextDueDateIso, daysUntil, mucTheoThang } from '../lib/finance.js';
 import { nowTz, todayIso, fmtDate, fmtHm } from '../lib/datetime.js';
 import { backfillPage, rebuildDirtyProfiles } from '../modules/brain.service.js';
 
@@ -104,12 +104,16 @@ function memberWorkLines(
 /** Nhắc thu tiền: 5 ngày trước hạn thu của từng bên → gửi cho người được chọn (mặc định giám đốc). */
 export async function runFinanceReminders(): Promise<void> {
   const today = todayIso();
-  const parties = (await getParties()).filter((p) => p.active && p.receivable > 0);
+  const parties = (await getParties()).filter((p) => p.active);
   if (parties.length === 0) return;
+  const rates = await getPartyRates();
   let directorIds: string[] | null = null;
   for (const p of parties) {
     const due = nextDueDateIso(p.dueDay, today);
     if (daysUntil(due, today) !== DUE_REMINDER_DAYS) continue;
+    // Mức của đúng tháng tới hạn — đổi mức từ tháng sau thì kỳ này vẫn nhắc mức cũ.
+    const muc = mucTheoThang(rates.get(p.id) || [], p.receivable, due.slice(0, 7));
+    if (muc <= 0) continue;
     let recipients = p.notifyMemberIds;
     if (recipients.length === 0) {
       if (!directorIds) directorIds = (await getDirectors()).map((d) => d.id);
@@ -119,7 +123,7 @@ export async function runFinanceReminders(): Promise<void> {
       await notify(id, {
         type: 'finance_due',
         title: 'Sắp tới hạn thu tiền 💰',
-        body: `${p.name}: ${formatVnd(p.receivable)} — hạn ${fmtDate(due)} (còn ${DUE_REMINDER_DAYS} ngày).`,
+        body: `${p.name}: ${formatVnd(muc)} — hạn ${fmtDate(due)} (còn ${DUE_REMINDER_DAYS} ngày).`,
         url: '/finance',
       });
     }

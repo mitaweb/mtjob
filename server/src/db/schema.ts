@@ -185,6 +185,17 @@ CREATE TABLE IF NOT EXISTS parties (
   created_at        text DEFAULT ''
 );
 
+-- Lịch sử MỨC phải thu của một bên theo tháng bắt đầu áp dụng.
+-- Anh Tâm 16/9/2026: khách tăng từ 3tr lên 6tr "kể từ tháng này" — sửa parties.receivable
+-- là các tháng trước cũng thành 6tr, nợ cũ nhảy theo. Mỗi lần đổi mức ghi một dòng ở đây;
+-- dòng from_month = '0000-00' là mức cũ áp cho mọi tháng trước lần đổi đầu tiên.
+-- parties.receivable vẫn là mức HIỆN TẠI (để form hiển thị và cho bên chưa từng đổi).
+CREATE TABLE IF NOT EXISTS party_rates (
+  party_id   text NOT NULL,
+  from_month text NOT NULL,           -- YYYY-MM, hoặc '0000-00' = từ đầu
+  receivable integer NOT NULL DEFAULT 0,
+  PRIMARY KEY (party_id, from_month)
+);
 CREATE TABLE IF NOT EXISTS finance_entries (
   entry_id   text PRIMARY KEY,
   month      text NOT NULL,             -- YYYY-MM (kỳ kết số)

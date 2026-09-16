@@ -1,4 +1,5 @@
 import { q } from '../db/client.js';
+import type { PartyRate } from '../lib/finance.js';
 
 export interface Party {
   id: string;
@@ -79,7 +80,37 @@ export async function upsertParty(p: Party): Promise<void> {
 }
 
 export async function deleteParty(id: string): Promise<void> {
+  // Không có khoá ngoại — dọn lịch sử mức bằng tay, không thì bên mới trùng mã thừa kế mức cũ.
+  await q('DELETE FROM party_rates WHERE party_id = $1', [id]);
   await q('DELETE FROM parties WHERE party_id = $1', [id]);
+}
+
+// ---- Lịch sử mức phải thu (party_rates) ----
+
+export const SQL_DOC_MUC = 'SELECT party_id, from_month, receivable FROM party_rates ORDER BY party_id, from_month';
+export const SQL_GHI_MUC = `INSERT INTO party_rates (party_id, from_month, receivable) VALUES ($1,$2,$3)
+  ON CONFLICT (party_id, from_month) DO UPDATE SET receivable = EXCLUDED.receivable`;
+export const SQL_XOA_MUC = 'DELETE FROM party_rates WHERE party_id = $1';
+
+/** Lịch sử mức của MỌI bên, mỗi bên một mảng xếp theo tháng tăng dần. */
+export async function getPartyRates(): Promise<Map<string, PartyRate[]>> {
+  const out = new Map<string, PartyRate[]>();
+  for (const r of await q(SQL_DOC_MUC)) {
+    const id = String(r.party_id || '');
+    const arr = out.get(id) || [];
+    arr.push({ fromMonth: String(r.from_month || ''), receivable: Number(r.receivable) || 0 });
+    out.set(id, arr);
+  }
+  return out;
+}
+
+export async function upsertPartyRate(partyId: string, fromMonth: string, receivable: number): Promise<void> {
+  await q(SQL_GHI_MUC, [partyId, fromMonth, Math.max(0, Math.round(receivable) || 0)]);
+}
+
+/** Xoá hết lịch sử — dùng khi người sửa chọn "sửa cả các tháng trước". */
+export async function deletePartyRates(partyId: string): Promise<void> {
+  await q(SQL_XOA_MUC, [partyId]);
 }
 
 export async function getEntries(month: string): Promise<FinanceEntry[]> {

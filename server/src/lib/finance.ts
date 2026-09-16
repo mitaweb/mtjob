@@ -112,9 +112,37 @@ export function doanhThuTheoNguon(
     .sort((a, b) => b.tien - a.tien || a.nguon.localeCompare(b.nguon));
 }
 
-export interface DebtInput {
-  /** Phải thu mỗi kỳ. */
+/** Một lần đổi mức phải thu: từ tháng `fromMonth` trở đi thu `receivable`. */
+export interface PartyRate {
+  /** YYYY-MM, hoặc '0000-00' = áp cho mọi tháng trước lần đổi đầu tiên. */
+  fromMonth: string;
   receivable: number;
+}
+
+/**
+ * Mức phải thu của tháng `month`: dòng lịch sử có `fromMonth` lớn nhất mà ≤ month; không
+ * có dòng nào thì dùng `fallback` (mức hiện tại trên bên).
+ *
+ * Anh Tâm 16/9/2026: "đang 3 triệu, kể từ tháng này tăng thành 6 triệu... chỉ 6 từ tháng
+ * cập nhật thôi". Mức là hàm theo tháng, không phải một con số.
+ */
+export function mucTheoThang(rates: PartyRate[], fallback: number, month: string): number {
+  let muc: number | null = null;
+  let mocMax = '';
+  for (const r of rates) {
+    if (r.fromMonth <= month && r.fromMonth >= mocMax) {
+      mocMax = r.fromMonth;
+      muc = r.receivable;
+    }
+  }
+  return Math.max(0, Math.round(muc ?? fallback) || 0);
+}
+
+export interface DebtInput {
+  /** Phải thu mỗi kỳ — mức HIỆN TẠI; tháng nào có lịch sử riêng thì `rates` thắng. */
+  receivable: number;
+  /** Lịch sử đổi mức, có thể rỗng. */
+  rates?: PartyRate[];
   /** Tháng bắt đầu tính của riêng bên này (thường lấy từ start_date), '' = theo mốc chung. */
   startMonth: string;
   /** Tháng đang xem, YYYY-MM. */
@@ -160,7 +188,7 @@ export interface DebtResult {
  * cách bảng công nợ đọc: cũ đã trả, mới còn treo.
  */
 export function computeDebt(input: DebtInput): DebtResult {
-  const per = Math.max(0, Math.round(input.receivable) || 0);
+  const rates = input.rates || [];
   const months = debtMonths(input.startMonth, input.month);
 
   /** Kỳ cũ còn thiếu, cũ nhất đứng đầu. */
@@ -172,11 +200,13 @@ export function computeDebt(input: DebtInput): DebtResult {
   let thisMonthRemaining = 0;
 
   for (const m of months) {
+    // Mức của RIÊNG tháng đó — đổi mức từ tháng 9 thì tháng 8 vẫn tính theo mức cũ.
+    const per = mucTheoThang(rates, input.receivable, m);
     const laKyDangXem = m === input.month;
     if (laKyDangXem) {
       thisMonth = per;
       thisMonthRemaining = per;
-    } else {
+    } else if (per > 0) {
       con.push({ month: m, amount: per });
     }
     du += input.paid[m] || 0;

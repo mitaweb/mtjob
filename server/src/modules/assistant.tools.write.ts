@@ -19,6 +19,8 @@ import {
   type FinanceEntry,
 } from './finance.repo.js';
 import { addPayment } from './finance.service.js';
+import { getPartyRates } from './finance.repo.js';
+import { mucTheoThang } from '../lib/finance.js';
 import {
   getCustomers,
   upsertCustomer,
@@ -183,12 +185,14 @@ const COLLECT: ToolDef = {
     if (raw !== undefined && (!Number.isFinite(raw) || raw < 0)) {
       return `Không hiểu số tiền "${a.amount}". Hỏi lại số thực thu.`;
     }
-    const r = await addPayment({ partyId: party.id, month, amount: raw ?? party.receivable });
+    // Mức của đúng tháng đang ghi — bên đổi mức giữa chừng thì tháng cũ vẫn theo mức cũ.
+    const muc = mucTheoThang((await getPartyRates()).get(party.id) || [], party.receivable, month);
+    const r = await addPayment({ partyId: party.id, month, amount: raw ?? muc });
     if (!r.ok) return r.message || 'Chưa ghi nhận được.';
     // Còn nợ tính trên TỔNG đã thu của kỳ, không phải riêng lần này — khách trả nhiều lần
     // mà chỉ trừ lần cuối thì câu trả lời sai số.
     const daThu = ((await paidByPartyMonth(month))[party.id] || {})[month] || 0;
-    const remain = party.receivable - daThu;
+    const remain = muc - daThu;
     return (
       `Đã ghi nhận thu ${formatVnd(r.amount)} của ${party.name} (tháng ${month}). ` +
       `Tổng đã thu kỳ này: ${formatVnd(daThu)}.` +

@@ -10,13 +10,23 @@ import {
   addEntry,
   deleteEntry,
   paidByPartyMonth,
+  getPartyRates,
+  upsertPartyRate,
+  deletePartyRates,
   type Party,
 } from './finance.repo.js';
 import { addPayment } from './finance.service.js';
 import { payrollForMonth } from './payroll.service.js';
 import { getActiveMembers } from './members.repo.js';
 import { findCustomer, getCustomers } from './crm.repo.js';
-import { nextDueDateIso, computeDebt, doanhThuTheoNguon, boSungNguon, DEBT_TRACK_FROM } from '../lib/finance.js';
+import {
+  nextDueDateIso,
+  computeDebt,
+  doanhThuTheoNguon,
+  boSungNguon,
+  mucTheoThang,
+  DEBT_TRACK_FROM,
+} from '../lib/finance.js';
 import { todayIso, nowTz } from '../lib/datetime.js';
 import { newId } from '../util/id.js';
 
@@ -39,13 +49,19 @@ financeRouter.get(
   asyncHandler(async (req, res) => {
     const today = todayIso();
     const month = ym(req);
-    const [parties, paid] = await Promise.all([getParties(), paidByPartyMonth(DEBT_TRACK_FROM)]);
+    const [parties, paid, rates] = await Promise.all([
+      getParties(),
+      paidByPartyMonth(DEBT_TRACK_FROM),
+      getPartyRates(),
+    ]);
 
     res.json({
       debtFrom: DEBT_TRACK_FROM,
       parties: parties.map((p) => {
+        const lichSu = rates.get(p.id) || [];
         const debt = computeDebt({
           receivable: p.receivable,
+          rates: lichSu,
           // Bên vào sau mốc chung thì tính từ tháng của bên đó, khỏi đội nợ những kỳ
           // chưa hợp tác.
           startMonth: (p.startDate || '').slice(0, 7),
@@ -54,6 +70,9 @@ financeRouter.get(
         });
         return {
           ...p,
+          /** Mức của riêng tháng đang xem — bảng và hộp thu dùng số này, không dùng `receivable`. */
+          receivableThisMonth: mucTheoThang(lichSu, p.receivable, month),
+          rates: lichSu,
           nextDue: nextDueDateIso(p.dueDay, today),
           carryOver: debt.carryOver,
           thisMonthRemaining: debt.thisMonthRemaining,
@@ -78,6 +97,11 @@ const partySchema = z.object({
   active: z.boolean().optional().default(true),
   /** Nguồn khách — mọi khoản thu của bên này thừa hưởng, khỏi chọn lại mỗi tháng. */
   source: z.string().max(60).optional().default(''),
+  /**
+   * Mức phải thu mới áp dụng từ tháng nào (YYYY-MM). Bỏ trống = tháng hiện tại.
+   * Chuỗi rỗng '' = "sửa cả các tháng trước": xoá lịch sử, mức mới áp cho mọi tháng.
+   */
+  applyFrom: z.string().regex(/^(\d{4}-\d{2})?$/).optional(),
 });
 
 financeRouter.post(
@@ -85,6 +109,24 @@ financeRouter.post(
   canEdit,
   asyncHandler(async (req, res) => {
     const b = partySchema.parse(req.body);
+
+    // Đổi MỨC của bên đang có → ghi lịch sử, không để các tháng trước nhảy theo.
+    // Anh Tâm 16/9/2026: "đang 3 triệu, kể từ tháng này tăng 6 triệu... chỉ 6 từ tháng cập nhật".
+    if (b.id) {
+      const cu = (await getParties()).find((p) => p.id === b.id);
+      if (cu && cu.receivable !== b.receivable) {
+        if (b.applyFrom === '') {
+          await deletePartyRates(cu.id); // người sửa nói rõ: áp cho cả quá khứ
+        } else {
+          const tu = b.applyFrom || nowTz().format('YYYY-MM');
+          const daCo = (await getPartyRates()).get(cu.id) || [];
+          // Lần đổi đầu tiên: chốt mức cũ cho mọi tháng trước đó, kẻo mất số.
+          if (daCo.length === 0) await upsertPartyRate(cu.id, '0000-00', cu.receivable);
+          await upsertPartyRate(cu.id, tu, b.receivable);
+        }
+      }
+    }
+
     const party: Party = {
       id: b.id || newId('B-'),
       name: b.name,
@@ -135,7 +177,12 @@ financeRouter.get(
   canView,
   asyncHandler(async (req, res) => {
     const month = ym(req);
-    const [entriesGoc, allParties, customers] = await Promise.all([getEntries(month), getParties(), getCustomers()]);
+    const [entriesGoc, allParties, customers, rates] = await Promise.all([
+      getEntries(month),
+      getParties(),
+      getCustomers(),
+      getPartyRates(),
+    ]);
     // Khoản thu tạo trước khi bên được chọn nguồn thì đọc theo nguồn hiện tại của bên.
     const entries = boSungNguon(
       entriesGoc,
@@ -145,7 +192,11 @@ financeRouter.get(
     const income = entries.filter((e) => e.kind === 'thu').reduce((s, e) => s + e.amount, 0);
     const expense = entries.filter((e) => e.kind === 'chi').reduce((s, e) => s + e.amount, 0);
     const parties = allParties.filter((p) => p.active);
-    const receivableTotal = parties.reduce((s, p) => s + p.receivable, 0);
+    // Mức của riêng tháng đang xem — bên đổi mức giữa chừng thì tháng cũ vẫn theo mức cũ.
+    const receivableTotal = parties.reduce(
+      (s, p) => s + mucTheoThang(rates.get(p.id) || [], p.receivable, month),
+      0,
+    );
 
     // Nợ tồn từ các kỳ trước — tách khỏi `receivableTotal` (vốn là tiền của riêng kỳ này)
     // để màn hình nói rõ đâu là tiền tháng này, đâu là tiền còn treo lại.
@@ -155,6 +206,7 @@ financeRouter.get(
         s +
         computeDebt({
           receivable: p.receivable,
+          rates: rates.get(p.id) || [],
           startMonth: (p.startDate || '').slice(0, 7),
           month,
           paid: paid[p.id] || {},

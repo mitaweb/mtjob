@@ -6,7 +6,8 @@ import { getActiveMembers, findById } from './members.repo.js';
 import { getForDate, getForMemberRange } from './attendance.repo.js';
 import { ranking, memberScore } from './scores.service.js';
 import { getAllRequests } from './requests.repo.js';
-import { getParties, getEntries } from './finance.repo.js';
+import { getParties, getEntries, getPartyRates } from './finance.repo.js';
+import { mucTheoThang } from '../lib/finance.js';
 import { getDoneTasksForMemberRange } from './tasks.repo.js';
 import { getActiveCatalog } from './catalog.repo.js';
 import { getProvider, aiAvailable } from '../ai/index.js';
@@ -306,8 +307,15 @@ async function pendingRequestsText(): Promise<string> {
 }
 
 async function financeText(monthYm: string): Promise<string> {
-  const [parties, entries] = await Promise.all([getParties().catch(() => []), getEntries(monthYm).catch(() => [])]);
-  const receivable = parties.filter((p) => p.active).reduce((s, p) => s + (Number(p.receivable) || 0), 0);
+  const [parties, entries, rates] = await Promise.all([
+    getParties().catch(() => []),
+    getEntries(monthYm).catch(() => []),
+    getPartyRates().catch(() => new Map()),
+  ]);
+  // Mức của đúng tháng đang hỏi — bên đổi mức giữa chừng thì tháng cũ vẫn theo mức cũ.
+  const receivable = parties
+    .filter((p) => p.active)
+    .reduce((s, p) => s + mucTheoThang(rates.get(p.id) || [], p.receivable, monthYm), 0);
   const income = entries.filter((e) => e.kind === 'thu').reduce((s, e) => s + e.amount, 0);
   const expense = entries.filter((e) => e.kind === 'chi').reduce((s, e) => s + e.amount, 0);
   const entryLines = entries

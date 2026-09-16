@@ -5,6 +5,7 @@ import {
   debtMonths,
   computeDebt,
   boSungNguon,
+  mucTheoThang,
   doanhThuTheoNguon,
   CHUA_RO_NGUON,
 } from './finance.js';
@@ -241,6 +242,55 @@ describe('computeDebt', () => {
       const r = computeDebt({ ...base, paid: { '2026-08': 10_000_000, '2026-09': 21_000_000 } });
       expect(r.carryOver).toBe(11_000_000);
       expect(r.unpaidMonths).toEqual(['2026-09']);
+    });
+  });
+
+  // Anh Tâm 16/9/2026: tăng từ 3tr lên 6tr "kể từ tháng này", tháng trước vẫn 3tr.
+  describe('đổi mức phải thu từ một tháng', () => {
+    const rates = [
+      { fromMonth: '0000-00', receivable: 3_000_000 },
+      { fromMonth: '2026-09', receivable: 6_000_000 },
+    ];
+
+    it('mucTheoThang: trước tháng đổi là mức cũ, từ tháng đổi là mức mới', () => {
+      expect(mucTheoThang(rates, 6_000_000, '2026-08')).toBe(3_000_000);
+      expect(mucTheoThang(rates, 6_000_000, '2026-09')).toBe(6_000_000);
+      expect(mucTheoThang(rates, 6_000_000, '2026-12')).toBe(6_000_000);
+    });
+
+    it('mucTheoThang: không có lịch sử thì dùng mức hiện tại cho mọi tháng', () => {
+      expect(mucTheoThang([], 3_000_000, '2026-01')).toBe(3_000_000);
+    });
+
+    it('tháng 8 chưa thu vẫn chỉ nợ 3tr dù mức hiện tại là 6tr', () => {
+      const r = computeDebt({ receivable: 6_000_000, rates, startMonth: '', month: '2026-09', paid: {} });
+      expect(r.carryOver).toBe(3_000_000);
+      expect(r.thisMonth).toBe(6_000_000);
+      expect(r.total).toBe(9_000_000);
+    });
+
+    it('đã thu 3tr tháng 8 thì tháng 8 sạch — không bị đòi thêm 3tr vì mức mới', () => {
+      const r = computeDebt({
+        receivable: 6_000_000,
+        rates,
+        startMonth: '',
+        month: '2026-09',
+        paid: { '2026-08': 3_000_000 },
+      });
+      expect(r.carryOver).toBe(0);
+      expect(r.unpaidMonths).toEqual([]);
+      expect(r.total).toBe(6_000_000);
+    });
+
+    it('đổi mức nhiều lần: mỗi tháng theo đúng mức của nó', () => {
+      const nhieu = [
+        { fromMonth: '0000-00', receivable: 3_000_000 },
+        { fromMonth: '2026-09', receivable: 6_000_000 },
+        { fromMonth: '2026-10', receivable: 4_000_000 },
+      ];
+      const r = computeDebt({ receivable: 4_000_000, rates: nhieu, startMonth: '', month: '2026-10', paid: {} });
+      expect(r.carryOver).toBe(9_000_000); // 3 + 6
+      expect(r.thisMonth).toBe(4_000_000);
     });
   });
 
