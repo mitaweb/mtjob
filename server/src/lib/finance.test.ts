@@ -4,6 +4,7 @@ import {
   daysUntil,
   debtMonths,
   computeDebt,
+  boSungNguon,
   doanhThuTheoNguon,
   CHUA_RO_NGUON,
 } from './finance.js';
@@ -51,6 +52,38 @@ describe('debtMonths', () => {
 
   it('vắt qua năm vẫn đúng', () => {
     expect(debtMonths('2026-11', '2027-01')).toEqual(['2026-11', '2026-12', '2027-01']);
+  });
+});
+
+// Anh Tâm 16/9/2026: chọn nguồn cho bên xong mà bảng doanh thu vẫn "chưa rõ nguồn".
+describe('boSungNguon', () => {
+  const ben = new Map([['B1', 'BNI']]);
+  const khach = new Map([['K1', 'Giới thiệu']]);
+
+  it('khoản thu công nợ chưa có nguồn lấy nguồn hiện tại của bên', () => {
+    const r = boSungNguon([{ source: '', partyId: 'B1', customerId: '' }], ben, khach);
+    expect(r[0].source).toBe('BNI');
+  });
+
+  it('không có bên thì lấy theo khách CRM', () => {
+    const r = boSungNguon([{ source: '', partyId: '', customerId: 'K1' }], ben, khach);
+    expect(r[0].source).toBe('Giới thiệu');
+  });
+
+  it('khoản đã có nguồn riêng thì GIỮ NGUYÊN, không bị bên đè', () => {
+    const r = boSungNguon([{ source: 'Facebook', partyId: 'B1', customerId: '' }], ben, khach);
+    expect(r[0].source).toBe('Facebook');
+  });
+
+  it('bên chưa chọn nguồn thì khoản vẫn rỗng — hiện "chưa rõ nguồn" để nhắc', () => {
+    const r = boSungNguon([{ source: '', partyId: 'B-khac', customerId: '' }], ben, khach);
+    expect(r[0].source).toBe('');
+  });
+
+  it('không sửa mảng gốc', () => {
+    const goc = [{ source: '', partyId: 'B1', customerId: '' }];
+    boSungNguon(goc, ben, khach);
+    expect(goc[0].source).toBe('');
   });
 });
 

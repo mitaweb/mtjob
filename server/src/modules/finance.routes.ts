@@ -16,7 +16,7 @@ import { addPayment } from './finance.service.js';
 import { payrollForMonth } from './payroll.service.js';
 import { getActiveMembers } from './members.repo.js';
 import { findCustomer, getCustomers } from './crm.repo.js';
-import { nextDueDateIso, computeDebt, doanhThuTheoNguon, DEBT_TRACK_FROM } from '../lib/finance.js';
+import { nextDueDateIso, computeDebt, doanhThuTheoNguon, boSungNguon, DEBT_TRACK_FROM } from '../lib/finance.js';
 import { todayIso, nowTz } from '../lib/datetime.js';
 import { newId } from '../util/id.js';
 
@@ -135,10 +135,16 @@ financeRouter.get(
   canView,
   asyncHandler(async (req, res) => {
     const month = ym(req);
-    const entries = await getEntries(month);
+    const [entriesGoc, allParties, customers] = await Promise.all([getEntries(month), getParties(), getCustomers()]);
+    // Khoản thu tạo trước khi bên được chọn nguồn thì đọc theo nguồn hiện tại của bên.
+    const entries = boSungNguon(
+      entriesGoc,
+      new Map(allParties.map((p) => [p.id, p.source || ''])),
+      new Map(customers.map((c) => [c.id, c.source || ''])),
+    );
     const income = entries.filter((e) => e.kind === 'thu').reduce((s, e) => s + e.amount, 0);
     const expense = entries.filter((e) => e.kind === 'chi').reduce((s, e) => s + e.amount, 0);
-    const parties = (await getParties()).filter((p) => p.active);
+    const parties = allParties.filter((p) => p.active);
     const receivableTotal = parties.reduce((s, p) => s + p.receivable, 0);
 
     // Nợ tồn từ các kỳ trước — tách khỏi `receivableTotal` (vốn là tiền của riêng kỳ này)

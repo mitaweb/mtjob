@@ -49,6 +49,29 @@ export function debtMonths(fromMonth: string, toMonth: string): string[] {
 /** Nhóm cho khoản thu chưa gắn nguồn — luôn hiện, để không ai tưởng đã phân loại xong. */
 export const CHUA_RO_NGUON = 'Chưa rõ nguồn';
 
+/**
+ * Điền nguồn cho khoản thu chưa có nguồn riêng: lấy theo nguồn HIỆN TẠI của bên công nợ,
+ * không có thì của khách CRM gắn với khoản đó.
+ *
+ * Anh Tâm 16/9/2026: chọn nguồn cho các bên xong mà bảng doanh thu theo nguồn vẫn 90%
+ * "chưa rõ nguồn" — vì nguồn được CHÉP vào từng khoản lúc tạo, khoản tạo trước khi chọn
+ * nguồn mang chuỗi rỗng mãi. Đọc theo bên là cách duy nhất không bắt ai sửa lại dữ liệu cũ.
+ * Khoản có nguồn riêng thì giữ nguyên: đó là người nhập cố ý chọn khác.
+ */
+export function boSungNguon<T extends { source?: string; partyId?: string; customerId?: string }>(
+  entries: T[],
+  nguonBen: Map<string, string>,
+  nguonKhach: Map<string, string>,
+): T[] {
+  return entries.map((e) => {
+    if ((e.source || '').trim()) return e;
+    const tuBen = e.partyId ? nguonBen.get(e.partyId) || '' : '';
+    const tuKhach = e.customerId ? nguonKhach.get(e.customerId) || '' : '';
+    const source = tuBen || tuKhach;
+    return source ? { ...e, source } : e;
+  });
+}
+
 export interface DoanhThuNguon {
   nguon: string;
   tien: number;
