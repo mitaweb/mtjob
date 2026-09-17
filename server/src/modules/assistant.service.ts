@@ -422,13 +422,71 @@ function resolveTool(name: string, byName: Map<string, ToolDef>): ToolDef | null
   return hit ? byName.get(hit) || null : null;
 }
 
-export async function runToolLoop(opts: {
+export interface ToolLoopOpts {
   system: string;
   question: string;
   history: ChatTurn[];
   tools: ToolDef[];
   onEvent?: OnAssistantEvent;
-}): Promise<string> {
+  /** Tên các hàm ĐÃ CHẠY trong lượt — vòng lặp đẩy vào để chốt chặn bên ngoài kiểm. */
+  goiHam?: string[];
+}
+
+/** Hàm GHI = hàm làm đổi dữ liệu. Nói "đã ghi" mà không có hàm nào nhóm này chạy là bịa. */
+export function laHamGhi(name: string): boolean {
+  return /^(add|create|collect|adjust|delete|cancel|save|import|dedupe|restore)_/.test(name);
+}
+
+/**
+ * Câu trả lời có NHẬN là đã làm gì đó vào hệ thống không.
+ *
+ * Dùng lookbehind \p{L} chứ không dùng \b: "đ" không phải ký tự ASCII nên \b đứng trước "đã"
+ * không khớp — regex trông đúng mà không bắt được gì.
+ */
+export function nhanLaDaGhi(text: string): boolean {
+  const s = String(text || '');
+  return (
+    /(?<!\p{L})(đã|vừa)\s*(đặt|ghi|thêm|tắt|xo[áa]|hu[ỷy]|cập nhật|lưu|tạo|chốt|gỡ|đổi)(?!\p{L})/iu.test(s) ||
+    /(?<!\p{L})(em|mình|tôi)\s+(đặt|ghi|tạo|tắt|xo[áa])\s+(ngay|luôn)(?!\p{L})/iu.test(s)
+  );
+}
+
+const CANH_BAO_CHUA_GHI =
+  '⚠️ Em CHƯA ghi được gì vào hệ thống — trợ lý trả lời mà không gọi hàm nào. ' +
+  'Anh nhắn lại một việc một lần, ví dụ: "nhắc gặp anh Bằng 18/09 lúc 14:00".';
+
+/**
+ * Vòng lặp gọi hàm + CHỐT CHẶN "nói đã làm mà không làm".
+ *
+ * Anh Tâm 17/9/2026: trợ lý báo "đã đặt" lịch chị Hàn Duyên, chị Hồng Thanh, "đã tắt" hai
+ * lịch khác, đọc cả bảng 60 task Quốc Phong — rồi lượt sau tự thú là chưa gọi hàm nào, toàn
+ * bộ là bịa. Lời dặn đã cấm từ lâu mà mô hình vẫn làm, nên phải kiểm ở đây, không tin chữ:
+ *
+ *   Trả lời có "đã đặt / đã ghi / đã tắt…" mà KHÔNG có hàm ghi nào chạy trong lượt
+ *   → bảo làm lại (kèm lý do), xoá phần chữ đã stream ra màn hình.
+ *   → vẫn vậy lần hai → thay bằng câu nói thật, không để câu bịa tới người dùng.
+ */
+export async function runToolLoopChan(opts: ToolLoopOpts): Promise<string> {
+  const goiHam: string[] = [];
+  let answer = await runToolLoop({ ...opts, goiHam });
+  if (!nhanLaDaGhi(answer) || goiHam.some(laHamGhi)) return answer;
+
+  console.warn('[assistant] nhận "đã ghi" mà không gọi hàm ghi nào — bắt làm lại');
+  opts.onEvent?.({ type: 'reset' });
+  const nhac =
+    '\n\n[HỆ THỐNG] Câu trả lời trước của bạn nói "đã đặt/đã ghi" nhưng bạn KHÔNG gọi hàm nào, ' +
+    'nên chưa có gì được ghi. Làm lại: nếu người dùng yêu cầu đặt/ghi/tắt gì, hãy GỌI HÀM tương ' +
+    'ứng ngay; thiếu thông tin thì hỏi đúng thứ còn thiếu. Nếu bạn chỉ thuật lại dữ liệu có sẵn, ' +
+    'trả lời lại mà không dùng chữ "đã ghi/đã đặt".';
+  answer = await runToolLoop({ ...opts, question: opts.question + nhac, goiHam });
+  if (!nhanLaDaGhi(answer) || goiHam.some(laHamGhi)) return answer;
+
+  console.warn('[assistant] lần hai vẫn bịa — trả câu cảnh báo');
+  opts.onEvent?.({ type: 'reset' });
+  return CANH_BAO_CHUA_GHI;
+}
+
+export async function runToolLoop(opts: ToolLoopOpts): Promise<string> {
   const byName = new Map(opts.tools.map((t) => [t.declaration.name, t]));
 
   // Giới hạn history: 10 lượt gần nhất + tổng ký tự.
@@ -475,6 +533,7 @@ export async function runToolLoop(opts: {
         const tool = resolveTool(fc.name, byName);
         // Báo tiến trình bằng tên đã nhận diện được, để nhãn chờ hiện đúng việc.
         opts.onEvent?.({ type: 'tool', name: tool?.declaration.name || fc.name });
+        if (tool) opts.goiHam?.push(tool.declaration.name);
         let result: unknown;
         try {
           result = tool
@@ -649,7 +708,7 @@ export async function answerDataQuestion(
   const system = directorPrompt({ today, names });
 
   try {
-    const answer = await runToolLoop({ system, question, history, tools, onEvent });
+    const answer = await runToolLoopChan({ system, question, history, tools, onEvent });
     return answer || 'Mình chưa tạo được câu trả lời, thử hỏi lại cụ thể hơn nhé.';
   } catch (e) {
     console.error('[assistant] director Q&A:', e);
@@ -735,7 +794,7 @@ export async function answerMemberQuestion(
   const system = memberPrompt({ today, fullName: me.fullName, teamId: me.teamId || '', isSale: me.role === 'sale' });
 
   try {
-    const answer = await runToolLoop({ system, question, history, tools, onEvent });
+    const answer = await runToolLoopChan({ system, question, history, tools, onEvent });
     return answer || 'Mình chưa tạo được câu trả lời, thử hỏi lại cụ thể hơn nhé.';
   } catch (e) {
     console.error('[assistant] member Q&A:', e);

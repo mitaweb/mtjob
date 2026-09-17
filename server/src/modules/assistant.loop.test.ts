@@ -129,3 +129,86 @@ describe('runToolLoop', () => {
     expect(evs.filter((e) => e === 'reset')).toHaveLength(2);
   });
 });
+
+// Anh Tâm 17/9/2026: trợ lý báo "đã đặt" mà không gọi hàm nào — chốt chặn ở máy chủ.
+const { runToolLoopChan, nhanLaDaGhi, laHamGhi } = await import('./assistant.service.js');
+
+const GHI = {
+  declaration: { name: 'create_reminder', description: 'đặt nhắc' },
+  run: async () => 'Đã đặt nhắc hẹn "Gặp anh Bằng" — một lần ngày 2026-09-18 lúc 14:00.',
+};
+
+describe('nhanLaDaGhi', () => {
+  it('bắt được các câu nhận đã làm, kể cả chữ có dấu đứng đầu', () => {
+    expect(nhanLaDaGhi('✅ Đã đặt: "Gọi chị Hồng Thanh" — 18/09 09:00.')).toBe(true);
+    expect(nhanLaDaGhi('Em đã tắt hai lịch anh Tú, chị Thảo.')).toBe(true);
+    expect(nhanLaDaGhi('Em đặt ngay.')).toBe(true);
+  });
+  it('không bắt nhầm câu nói thật hoặc câu thuật dữ liệu', () => {
+    expect(nhanLaDaGhi('Em chưa đặt được vì hàm chỉ nhận một mốc giờ.')).toBe(false);
+    expect(nhanLaDaGhi('Khách đã thanh toán 20.000.000đ ngày 12/9.')).toBe(false);
+    expect(nhanLaDaGhi('Tháng 8 anh có 21 ngày công.')).toBe(false);
+  });
+});
+
+describe('laHamGhi', () => {
+  it('phân biệt hàm ghi và hàm đọc', () => {
+    expect(laHamGhi('create_reminder')).toBe(true);
+    expect(laHamGhi('collect_receivable')).toBe(true);
+    expect(laHamGhi('cancel_reminder')).toBe(true);
+    expect(laHamGhi('list_reminders')).toBe(false);
+    expect(laHamGhi('get_member_tasks')).toBe(false);
+  });
+});
+
+describe('runToolLoopChan', () => {
+  it('nói "đã đặt" mà không gọi hàm → bắt làm lại, lần hai gọi hàm thật thì nhận', async () => {
+    generateContentStream
+      .mockImplementationOnce(luot('✅ Đã đặt nhắc "Gặp anh Bằng" 18/09 14:00.')) // bịa
+      .mockImplementationOnce(luot('', 'create_reminder')) // làm lại: gọi hàm thật
+      .mockImplementationOnce(luot('✅ Đã đặt nhắc "Gặp anh Bằng" — 18/09 lúc 14:00.'));
+
+    const evs: string[] = [];
+    const answer = await runToolLoopChan({
+      system: 's',
+      question: 'Ngày mai 14h gặp anh Bằng',
+      history: [],
+      tools: [GHI],
+      onEvent: (e) => evs.push(e.type),
+    });
+
+    expect(answer).toContain('Đã đặt nhắc');
+    expect(evs).toContain('reset'); // chữ bịa đã stream ra phải bị xoá
+    expect(generateContentStream).toHaveBeenCalledTimes(3);
+    // Lời nhắc làm lại phải nằm trong câu hỏi gửi đi lần hai.
+    const req2 = generateContentStream.mock.calls[1][0];
+    expect(JSON.stringify(req2.contents)).toContain('KHÔNG gọi hàm nào');
+  });
+
+  it('bịa hai lần liền → thay bằng câu cảnh báo, không để câu bịa tới người dùng', async () => {
+    generateContentStream
+      .mockImplementationOnce(luot('Đã đặt rồi anh.'))
+      .mockImplementationOnce(luot('Em đã đặt lại rồi ạ.'));
+
+    const answer = await runToolLoopChan({ system: 's', question: 'q', history: [], tools: [GHI], onEvent: () => undefined });
+    expect(answer).toContain('CHƯA ghi được gì');
+    expect(answer).not.toContain('Đã đặt rồi');
+  });
+
+  it('gọi hàm ghi thật ngay lần đầu thì không làm lại', async () => {
+    generateContentStream
+      .mockImplementationOnce(luot('', 'create_reminder'))
+      .mockImplementationOnce(luot('Đã đặt nhắc xong.'));
+
+    const answer = await runToolLoopChan({ system: 's', question: 'q', history: [], tools: [GHI], onEvent: () => undefined });
+    expect(answer).toBe('Đã đặt nhắc xong.');
+    expect(generateContentStream).toHaveBeenCalledTimes(2);
+  });
+
+  it('câu trả lời thường (không nhận đã làm) đi thẳng, không tốn lượt gọi thêm', async () => {
+    generateContentStream.mockImplementationOnce(luot('Tháng 8 anh có 21 ngày công.'));
+    const answer = await runToolLoopChan({ system: 's', question: 'q', history: [], tools: [GHI], onEvent: () => undefined });
+    expect(answer).toBe('Tháng 8 anh có 21 ngày công.');
+    expect(generateContentStream).toHaveBeenCalledTimes(1);
+  });
+});
