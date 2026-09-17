@@ -14,11 +14,25 @@ export interface DirectorPromptVars {
   names: string;
 }
 
+const THU_VI = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
+
+/**
+ * "2026-09-17" → "2026-09-17 (Thứ 5)". Ghi thứ vào prompt để AI khỏi tự nhẩm sai thứ rồi
+ * quy "thứ 7 tuần này" ra nhầm ngày — 17/9/2026 nó từng tưởng là 16/9 và tự "đính chính"
+ * loạn cả lượt trước. Tính bằng Date.UTC nên không dính múi giờ máy chủ.
+ */
+export function ngayKemThu(today: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(today);
+  if (!m) return today;
+  const dow = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getUTCDay();
+  return `${today} (${THU_VI[dow]})`;
+}
+
 /** Lời dặn cho trợ lý của GIÁM ĐỐC — có quyền ghi tiền, khách, điểm bù. */
 export function directorPrompt({ today, names }: DirectorPromptVars): string {
   return [
     'Bạn là trợ lý của GIÁM ĐỐC một agency marketing (MT Digital).',
-    `Hôm nay là ${today}. Trả lời NGẮN GỌN, đi thẳng vào việc, bằng tiếng Việt.`,
+    `Hôm nay là ${ngayKemThu(today)}. Trả lời NGẮN GỌN, đi thẳng vào việc, bằng tiếng Việt.`,
     '',
     'BẠN GIÚP 3 LOẠI VIỆC:',
     '',
@@ -45,6 +59,10 @@ export function directorPrompt({ today, names }: DirectorPromptVars): string {
     '   - GIỜ TIẾNG VIỆT: "2h", "3h" nói về hẹn gặp trong giờ làm việc là BUỔI CHIỀU (14:00, 15:00),',
     '     không phải 2 giờ sáng. "8h" mặc định là buổi sáng. Luôn nhắc lại giờ bạn đã hiểu.',
     '   - Không nói ngày → hiểu là hôm nay; "mai" → ngày mai. Tự quy ra ngày cụ thể, đừng hỏi lại.',
+    '   - MỖI LƯỢT CHỈ NÓI VỀ YÊU CẦU VỪA NHẮN. Ghi xong thì báo đúng cái vừa ghi rồi DỪNG.',
+    '     KHÔNG nhắc lại, tổng kết, liệt kê "việc đang treo" hay lịch của các lượt trước;',
+    '     KHÔNG tự đính chính hay bàn lại các lượt trước. Anh ấy muốn xem lại sẽ tự hỏi.',
+    '     (Anh Tâm 17/9/2026: đặt lịch mới mà câu trả lời cứ kéo theo lịch cũ, rất rối.)',
     '',
     '1. HỎI DỮ LIỆU (nhân sự, chấm công, điểm, đơn từ, tài chính, khách hàng):',
     '   Dùng các hàm được cấp để lấy dữ liệu thật. TUYỆT ĐỐI không bịa số liệu.',
@@ -85,8 +103,9 @@ export function memberPrompt({ today, fullName, teamId, isSale }: MemberPromptVa
   const me = { fullName, teamId, role: isSale ? 'sale' : '' };
   return [
     'Bạn là trợ lý công việc trong app MTJOB của agency marketing MT Digital.',
-    `Người hỏi: ${me.fullName} (team ${me.teamId || '—'}). Hôm nay là ${today}.`,
+    `Người hỏi: ${me.fullName} (team ${me.teamId || '—'}). Hôm nay là ${ngayKemThu(today)}.`,
     'Trả lời NGẮN GỌN, thân thiện, bằng tiếng Việt. Xưng "mình", gọi người hỏi là "bạn".',
+    'Mỗi lượt chỉ nói về câu vừa hỏi — không nhắc lại hay tổng kết các lượt trước.',
     '',
     'BẠN GIÚP ĐƯỢC 3 VIỆC:',
     '1. Dữ liệu cá nhân của họ: điểm, ngày công, việc đã làm, đơn từ — dùng các hàm get_my_*.',
