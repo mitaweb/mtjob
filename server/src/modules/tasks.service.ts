@@ -9,7 +9,7 @@ import {
 } from './tasks.repo.js';
 import { findById } from './members.repo.js';
 import { lyDoKhoaDiem } from './bonusLock.js';
-import { findCatalogItem } from './catalog.repo.js';
+import { findCatalogItem, chanMaKhacTeam } from './catalog.repo.js';
 import { teamLeaderId } from './teams.repo.js';
 import { notify } from './notifications.service.js';
 import { ApiError } from '../util/errors.js';
@@ -96,7 +96,6 @@ export async function logTask(input: LogTaskInput): Promise<{ task: TaskRow; poi
   if (!item || !item.active) {
     throw new ApiError(400, `Loại task "${input.taskCode}" không có trong danh mục`);
   }
-
   // Chốt chặn cuối: câu báo BẮT ĐẦU không bao giờ được đi vào đường ghi việc xong.
   // Mọi đường vào (chat, API, import) đều qua đây, nên chặn ở đây là chặn được hết —
   // đúng lỗi đã làm bảng điểm tháng 7 phồng gấp đôi.
@@ -128,6 +127,12 @@ export async function logTask(input: LogTaskInput): Promise<{ task: TaskRow; poi
       return { task: finished, points: finished.points };
     }
   }
+
+  // Lọc theo team — chặn THẬT ở máy chủ, không chỉ ẩn trên màn hình. Đặt SAU bước đóng việc
+  // dở ở trên: ai đang mở dở một việc mã team khác (mở trước ngày 18/9/2026) vẫn phải báo
+  // xong được qua chat; chỉ việc TẠO MỚI bằng mã team khác mới bị từ chối.
+  const khacTeam = chanMaKhacTeam(item.code, item.name, member.teamId || '');
+  if (khacTeam) throw new ApiError(403, khacTeam);
 
   // Không có việc dở nào khớp → ghi thẳng một việc đã xong. Dòng này KHÔNG có giờ bắt đầu
   // nên màn hình chi tiết sẽ đánh dấu "không có giờ làm" cho giám đốc soi.
@@ -170,6 +175,9 @@ export async function startTask(input: LogTaskInput): Promise<{ task: TaskRow }>
   if (!item || !item.active) {
     throw new ApiError(400, `Loại task "${input.taskCode}" không có trong danh mục`);
   }
+  // Lọc theo team chặn THẬT ở đây, không chỉ ẩn trên màn hình: gửi thẳng mã team khác cũng bị từ chối.
+  const khacTeam = chanMaKhacTeam(item.code, item.name, member.teamId || '');
+  if (khacTeam) throw new ApiError(403, khacTeam);
 
   const note = cleanNote(input.note || '', item.name);
   requireCustomer(note);
@@ -271,6 +279,9 @@ export async function startAssignedTask(
   if (!item || !item.active) {
     throw new ApiError(400, `Loại task "${taskCode}" không có trong danh mục`);
   }
+  const nguoiNhan = await findById(memberId);
+  const khacTeam = chanMaKhacTeam(item.code, item.name, nguoiNhan?.teamId || '');
+  if (khacTeam) throw new ApiError(403, khacTeam);
   const now = nowTz().toISOString();
   const task = await startTodoTask(taskId, memberId, now, item.code, item.points);
   if (!task) throw new ApiError(404, 'Không tìm thấy việc cần làm (có thể đã bắt đầu rồi)');

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../util/errors.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
-import { getActiveCatalog, sortCatalogForTeam } from './catalog.repo.js';
+import { getActiveCatalog, locCatalogTheoTeam } from './catalog.repo.js';
 import { findById, getActiveMembers, membersInTeam } from './members.repo.js';
 import { getDoneTasksForMemberRange, getDoingTasks, getTodoTasks } from './tasks.repo.js';
 import { getCustomers } from './crm.repo.js';
@@ -27,7 +27,8 @@ tasksRouter.get(
   asyncHandler(async (req, res) => {
     const cfg = await getConfig();
     const me = await findById(req.user!.sub);
-    const catalog = sortCatalogForTeam(await getActiveCatalog(), me?.teamId || '');
+    // Chỉ việc của team mình (+ mã dùng chung). Máy chủ cũng từ chối mã team khác ở tasks.service.
+    const catalog = locCatalogTheoTeam(await getActiveCatalog(), me?.teamId || '');
     res.json({ catalog, sheetUrl: cfg.taskSheetUrl });
   }),
 );

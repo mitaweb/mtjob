@@ -9,7 +9,7 @@ import { getAllRequests } from './requests.repo.js';
 import { getParties, getEntries, getPartyRates } from './finance.repo.js';
 import { mucTheoThang } from '../lib/finance.js';
 import { getDoneTasksForMemberRange } from './tasks.repo.js';
-import { getActiveCatalog } from './catalog.repo.js';
+import { getActiveCatalog, locCatalogTheoTeam } from './catalog.repo.js';
 import { getProvider, aiAvailable } from '../ai/index.js';
 import { searchKnowledgeText, customerProfileText, importGoogleSheet, ingest } from './brain.service.js';
 import { getCustomers } from './crm.repo.js';
@@ -375,8 +375,9 @@ async function myRequestsText(memberId: string): Promise<string> {
   return `Đơn từ của bạn (mới nhất trước):\n${lines}`;
 }
 
-async function catalogText(): Promise<string> {
-  const catalog = await getActiveCatalog();
+/** `teamId` rỗng (giám đốc) = thấy hết; nhân viên chỉ thấy việc team mình — gợi ý việc nào thì ghi được việc đó. */
+async function catalogText(teamId = ''): Promise<string> {
+  const catalog = locCatalogTheoTeam(await getActiveCatalog(), teamId);
   return `Danh mục loại việc (điểm):\n${catalog.map((c) => `${c.code}: ${c.name} (${c.points}đ)`).join('\n')}`;
 }
 
@@ -777,7 +778,7 @@ export async function answerMemberQuestion(
     },
     {
       declaration: { name: 'get_task_catalog', description: 'Danh mục loại việc và điểm tương ứng.' },
-      run: () => catalogText(),
+      run: () => catalogText(me.teamId || ''),
     },
     PROFILE_TOOL,
     // Quyền xem chặn cứng ở tầng SQL: chỉ thấy đoạn 'all' + đoạn riêng của chính mình.

@@ -27,18 +27,40 @@ export async function findCatalogItem(code: string): Promise<TaskCatalogItem | u
   return rows.length ? rowToItem(rows[0]) : undefined;
 }
 
-// Mã task có prefix theo team (ADS01, CON03, SEO12...) — dùng để ưu tiên task của team mình.
+// Mã task có prefix theo team (ADS01, CON03, SEO12...) — dùng để LỌC: mỗi người chỉ thấy và ghi được việc team mình.
 const TEAM_PREFIX: Record<string, string> = { Ads: 'ADS', Content: 'CON', SEO: 'SEO' };
 
 export function teamPrefix(teamId: string): string {
   return TEAM_PREFIX[teamId] || '';
 }
 
-/** Sắp task của team thành viên lên đầu (ổn định trong từng nhóm). */
-export function sortCatalogForTeam<T extends { code: string }>(items: T[], teamId: string): T[] {
-  const p = teamPrefix(teamId);
-  if (!p) return items;
-  return [...items].sort((a, b) => Number(b.code.startsWith(p)) - Number(a.code.startsWith(p)));
+/**
+ * Mã này người thuộc `teamId` có được dùng không.
+ *
+ * Anh Tâm 18/9/2026: "em setup để lọc theo team". Trước đây app chỉ XẾP việc của team mình
+ * lên đầu, không lọc — nên team Content ghi 56 việc "Edit video" 135đ bằng mã ADS17 của tab
+ * Ads (tháng 8–9/2026), trong khi team mình có sẵn "Video đăng facebook" 60đ.
+ *
+ * Chỉ chặn khi mã mang tiền tố của TEAM KHÁC. Mã không thuộc team nào (BOSUNG…) ai cũng
+ * dùng được; người không có team (giám đốc, sale, kế toán) thì không có gì để lọc theo.
+ */
+export function maThuocTeam(code: string, teamId: string): boolean {
+  const cuaToi = teamPrefix(teamId);
+  if (!cuaToi) return true;
+  const ma = String(code || '').trim().toUpperCase();
+  if (ma.startsWith(cuaToi)) return true;
+  return !Object.values(TEAM_PREFIX).some((p) => ma.startsWith(p));
+}
+
+/** Danh mục chỉ còn việc của team mình (+ mã dùng chung). Giữ nguyên thứ tự. */
+export function locCatalogTheoTeam<T extends { code: string }>(items: T[], teamId: string): T[] {
+  return items.filter((i) => maThuocTeam(i.code, teamId));
+}
+
+/** Câu từ chối khi ghi việc bằng mã của team khác; '' nếu được. Dùng ở mọi chốt tạo việc. */
+export function chanMaKhacTeam(code: string, tenViec: string, teamId: string): string {
+  if (maThuocTeam(code, teamId)) return '';
+  return `"${tenViec}" là đầu việc của team khác nên team ${teamId} không ghi được. Chọn việc trong danh sách của team mình nhé.`;
 }
 
 /**

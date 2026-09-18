@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { asyncHandler } from '../util/errors.js';
 import { requireAuth } from '../auth/middleware.js';
 import { interpret } from '../gemini/chatNlu.js';
-import { getActiveCatalog, findCatalogItem, sortCatalogForTeam } from './catalog.repo.js';
+import { getActiveCatalog, findCatalogItem, locCatalogTheoTeam } from './catalog.repo.js';
 import { findById, findByLogin } from './members.repo.js';
 import { startTask, assignTask, canAssign } from './tasks.service.js';
 import {
@@ -180,7 +180,9 @@ async function runChat(
     // Ưu tiên task thuộc team của nhân sự (Ads/Content/SEO) khi gợi ý.
     const me = await findById(memberId);
     const fullCatalog = await getActiveCatalog();
-    const catalog = sortCatalogForTeam(fullCatalog, me?.teamId || '');
+    // Bộ nhận diện chỉ được thấy việc của team người nhắn: gõ "edit video" thì không còn
+    // khớp sang đầu việc của tab team khác nữa.
+    const catalog = locCatalogTheoTeam(fullCatalog, me?.teamId || '');
 
     // 1d) GIAO VIỆC qua @tag: leader/giám đốc gõ "@username + mô tả việc".
     // Việc giao là mô tả tự do; người nhận sẽ tự chọn loại task (Ads/Content/SEO) khi Bắt đầu.
