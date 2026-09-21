@@ -480,9 +480,15 @@ export default function AdminPayroll() {
 interface DuAnThuong {
   projectId: string;
   projectName: string;
+  teamId?: string;
   vaiTro: 'leader' | 'member';
+  /** % số chỉ số của phòng đạt 100%. */
   tyLe: number | null;
+  soDat: number;
+  soChiSo: number;
+  mucThuong: number;
   amount: number;
+  truot?: string[];
 }
 
 interface ThuongNguoi {
@@ -492,6 +498,7 @@ interface ThuongNguoi {
   points: number;
   thuongDiemGoc: number;
   heSo: number;
+  lyDoHeSo?: string;
   thuongDiem: number;
   thuongKpi: number;
   duAn: DuAnThuong[];
@@ -507,8 +514,137 @@ interface BangThuong {
   chuaPhanCong: Array<{ id: string; fullName: string; teamId: string }>;
 }
 
+/** Một dòng thưởng leader: "12/14 chỉ số đạt (86%) → 3.000.000đ", kèm vài chỉ số còn trượt. */
+function DongLeader({ l }: { l: DuAnThuong }) {
+  const truot = l.truot ?? [];
+  return (
+    <div className="text-xs text-ink-muted">
+      <span className="text-brand-700">Leader {l.teamId ?? ''}</span>
+      {' · '}
+      {l.tyLe === null ? 'chưa đo được chỉ số nào' : `${l.soDat}/${l.soChiSo} chỉ số đạt (${Math.round(l.tyLe)}%)`}
+      {' → '}
+      {vnd(l.amount)}
+      {l.amount === 0 && l.mucThuong > 0 && <> (mức {vnd(l.mucThuong)})</>}
+      {truot.length > 0 && (
+        <div className="text-ink-faint">
+          Chưa đạt: {truot.slice(0, 3).join(' · ')}
+          {truot.length > 3 ? ` · +${truot.length - 3} chỉ số nữa` : ''}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface CaiDat {
+  kpiPassRate: number;
+  teams: Array<{ id: string; name: string; leaderKpiBonus: number; leaders: string[] }>;
+}
+
 /**
- * Thưởng tháng: thưởng điểm + thưởng KPI dự án, CHỐT RIÊNG với lương.
+ * Cài đặt thưởng KPI: mức thưởng leader RIÊNG từng team + ngưỡng % phải đạt.
+ *
+ * Anh Tâm 21/9/2026: "mỗi team leader sẽ có mức thưởng riêng. Hiện tại Ads 3 triệu, seo,
+ * content 2 triệu nếu đạt" và "Leader căn cứ theo chức vụ trong công ty" — nên hiện luôn tên
+ * người đang giữ chức vụ leader của từng team, để thấy ngay ai sẽ nhận.
+ */
+function CaiDatThuong({ onSaved }: { onSaved: () => void }) {
+  const [cd, setCd] = useState<CaiDat | null>(null);
+  const [mo, setMo] = useState(false);
+  const [nhap, setNhap] = useState<Record<string, string>>({});
+  const [nguong, setNguong] = useState('');
+  const [loi, setLoi] = useState('');
+
+  async function tai() {
+    const d = await api<CaiDat>('/admin/bonus/settings');
+    setCd(d);
+    setNhap(Object.fromEntries(d.teams.map((t) => [t.id, String(t.leaderKpiBonus)])));
+    setNguong(String(d.kpiPassRate));
+  }
+
+  useEffect(() => {
+    tai().catch((e) => setLoi((e as Error).message));
+  }, []);
+
+  async function luu(body: Record<string, unknown>) {
+    setLoi('');
+    try {
+      await api('/admin/bonus/settings', { body });
+      await tai();
+      onSaved();
+    } catch (e) {
+      setLoi((e as Error).message);
+    }
+  }
+
+  if (!cd) return loi ? <div className="mb-3 text-xs text-red-600">{loi}</div> : null;
+
+  return (
+    <div className="mb-3 rounded-xl border border-line bg-white/60 p-3">
+      <button type="button" className="flex w-full items-center justify-between gap-2 text-left" onClick={() => setMo(!mo)}>
+        <span className="text-sm font-medium">
+          ⚙️ Mức thưởng leader:{' '}
+          <span className="font-normal text-ink-muted">
+            {cd.teams.map((t) => `${t.id} ${vnd(t.leaderKpiBonus)}`).join(' · ')} · đạt từ {cd.kpiPassRate}%
+          </span>
+        </span>
+        <span className="shrink-0 whitespace-nowrap text-xs text-brand-600 underline">{mo ? 'Thu gọn' : 'Sửa'}</span>
+      </button>
+
+      {mo && (
+        <div className="mt-3 space-y-2">
+          {cd.teams.map((t) => {
+            const so = Number(nhap[t.id]);
+            const doi = Number.isFinite(so) && so !== t.leaderKpiBonus;
+            return (
+              <div key={t.id} className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="w-20 font-medium">{t.id}</span>
+                <input
+                  className="input w-36"
+                  inputMode="numeric"
+                  value={nhap[t.id] ?? ''}
+                  onChange={(e) => setNhap({ ...nhap, [t.id]: e.target.value.replace(/\D/g, '') })}
+                  aria-label={`Mức thưởng leader team ${t.id}`}
+                />
+                <span className="text-xs text-ink-muted">đ/tháng</span>
+                {doi && (
+                  <button className="btn-primary px-3 py-1 text-xs" onClick={() => luu({ teamId: t.id, amount: so })}>
+                    Lưu
+                  </button>
+                )}
+                <span className="text-xs text-ink-muted">
+                  {t.leaders.length ? `Leader: ${t.leaders.join(', ')}` : '⚠️ Chưa ai giữ chức vụ leader'}
+                </span>
+              </div>
+            );
+          })}
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="w-20 font-medium">Ngưỡng</span>
+            <input
+              className="input w-20"
+              inputMode="numeric"
+              value={nguong}
+              onChange={(e) => setNguong(e.target.value.replace(/\D/g, ''))}
+              aria-label="Ngưỡng phần trăm phải đạt"
+            />
+            <span className="text-xs text-ink-muted">% chỉ số (leader) / dự án (thành viên) phải đạt</span>
+            {Number(nguong) >= 1 && Number(nguong) <= 100 && Number(nguong) !== cd.kpiPassRate && (
+              <button className="btn-primary px-3 py-1 text-xs" onClick={() => luu({ kpiPassRate: Number(nguong) })}>
+                Lưu
+              </button>
+            )}
+          </div>
+          {loi && <div className="text-xs text-red-600">{loi}</div>}
+          <p className="text-xs text-ink-muted">
+            Đổi ở đây chỉ ảnh hưởng tháng chưa chốt thưởng. Leader lấy theo chức vụ trong Quản trị → Nhân sự.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Thưởng tháng: thưởng điểm + thưởng leader theo KPI, CHỐT RIÊNG với lương.
  *
  * Anh Tâm 13/9/2026: "Phần thưởng cũng có nút chốt riêng, chốt xong sẽ qua phần chi phí
  * luôn" và "thưởng và lương chốt khác nhau". Không cộng vào lương thực lãnh — chốt thì máy
@@ -536,7 +672,7 @@ function ThuongThang({ ym }: { ym: string }) {
   async function chot() {
     if (!bang) return;
     const nhac = bang.chuaPhanCong.length
-      ? `\n\n⚠️ Còn ${bang.chuaPhanCong.length} người chưa được phân công dự án nào — chốt rồi họ không có thưởng KPI tháng này.`
+      ? `\n\n⚠️ Còn ${bang.chuaPhanCong.length} người chưa được phân công dự án nào — thưởng điểm của họ sẽ không được soi theo kết quả dự án.`
       : '';
     if (
       !confirm(
@@ -591,7 +727,7 @@ function ThuongThang({ ym }: { ym: string }) {
           <p className="text-xs text-ink-muted">
             {bang?.locked
               ? `Đã chốt${bang.lockedBy ? ` bởi ${bang.lockedBy}` : ''} — số đóng băng, đã ghi vào chi phí tháng ${thangSau}.`
-              : `Thưởng điểm + thưởng KPI dự án. Chốt riêng với lương; chốt xong tự ghi vào chi phí tháng ${thangSau}.`}
+              : `Thưởng điểm + thưởng leader theo KPI. Chốt riêng với lương; chốt xong tự ghi vào chi phí tháng ${thangSau}.`}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -611,14 +747,16 @@ function ThuongThang({ ym }: { ym: string }) {
 
       {msg && <div className="mb-2 rounded-lg bg-brand-50 px-3 py-2 text-sm text-ink-soft">{msg}</div>}
 
-      {/* Ai chưa được phân công — bảng này PHẢI rỗng, vì không phân công là không có thưởng KPI. */}
+      {bang && !bang.locked && <CaiDatThuong onSaved={() => tai().catch(() => {})} />}
+
+      {/* Ai chưa được phân công — bảng này PHẢI rỗng: không phân công là đứng ngoài luật KPI. */}
       {bang && !bang.locked && bang.chuaPhanCong.length > 0 && (
         <div className="mb-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
           <div className="text-sm font-semibold text-amber-900">
             ⚠️ {bang.chuaPhanCong.length} người chưa được phân công dự án nào
           </div>
           <p className="mt-1 text-xs text-amber-800">
-            Không thuộc dự án nào thì không có thưởng KPI. Nhắc leader phân công trước khi chốt thưởng.
+            Không thuộc dự án nào thì thưởng điểm không gắn được với kết quả dự án. Nhắc leader phân công trước khi chốt thưởng.
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {bang.chuaPhanCong.map((p) => (
@@ -645,17 +783,17 @@ function ThuongThang({ ym }: { ym: string }) {
                 </div>
                 <div className="mt-0.5 text-xs text-ink-muted">
                   {r.teamId || '—'} · Thưởng điểm {vnd(r.thuongDiem)} ({r.points}đ
-                  {r.heSo < 1 && <> · ×{String(r.heSo).replace('.', ',')}, gốc {vnd(r.thuongDiemGoc)}</>})
+                  {r.heSo < 1 && (
+                    <>
+                      {' '}
+                      · ×{String(r.heSo).replace('.', ',')}
+                      {r.lyDoHeSo ? ` vì ${r.lyDoHeSo}` : ''}, gốc {vnd(r.thuongDiemGoc)}
+                    </>
+                  )}
+                  )
                 </div>
                 {r.duAn.map((l) => (
-                  <div key={`${l.projectId}-${l.vaiTro}`} className="text-xs text-ink-muted">
-                    {l.projectName}
-                    {l.vaiTro === 'leader' && <span className="text-brand-700"> (leader)</span>}
-                    {' · '}
-                    {l.tyLe === null ? 'chưa đo được' : `${l.tyLe}%`}
-                    {' → '}
-                    {vnd(l.amount)}
-                  </div>
+                  <DongLeader key={`${l.projectId}-${l.vaiTro}`} l={l} />
                 ))}
               </li>
             ))}
@@ -668,7 +806,7 @@ function ThuongThang({ ym }: { ym: string }) {
                 <th className="py-1">Nhân sự</th>
                 <th>Phòng</th>
                 <th className="text-right">Thưởng điểm</th>
-                <th className="pl-4">Thưởng KPI dự án</th>
+                <th className="pl-4">Thưởng leader (KPI)</th>
                 <th className="text-right">Tổng</th>
               </tr>
             </thead>
@@ -684,7 +822,8 @@ function ThuongThang({ ym }: { ym: string }) {
                       {r.heSo < 1 && (
                         <>
                           {' '}
-                          · ×{String(r.heSo).replace('.', ',')} (gốc {vnd(r.thuongDiemGoc)})
+                          · ×{String(r.heSo).replace('.', ',')}
+                          {r.lyDoHeSo ? ` — ${r.lyDoHeSo}` : ''} (gốc {vnd(r.thuongDiemGoc)})
                         </>
                       )}
                     </div>
@@ -696,14 +835,7 @@ function ThuongThang({ ym }: { ym: string }) {
                       <>
                         <div>{vnd(r.thuongKpi)}</div>
                         {r.duAn.map((l) => (
-                          <div key={`${l.projectId}-${l.vaiTro}`} className="text-xs text-ink-muted">
-                            {l.projectName}
-                            {l.vaiTro === 'leader' && <span className="text-brand-700"> (leader)</span>}
-                            {' · '}
-                            {l.tyLe === null ? 'chưa đo được' : `${l.tyLe}%`}
-                            {' → '}
-                            {vnd(l.amount)}
-                          </div>
+                          <DongLeader key={`${l.projectId}-${l.vaiTro}`} l={l} />
                         ))}
                       </>
                     )}
@@ -718,7 +850,8 @@ function ThuongThang({ ym }: { ym: string }) {
       )}
 
       <p className="mt-2 text-xs text-ink-muted">
-        Thưởng điểm bị ×0,5 khi người đó có dự án đạt dưới 50% KPI. Không cộng vào lương thực lãnh.
+        Leader nhận trọn mức thưởng của team khi đủ tỉ lệ chỉ số của phòng đạt 100%. Thành viên: thưởng điểm ×0,5 khi chưa
+        đủ tỉ lệ dự án mình tham gia đạt KPI. Không cộng vào lương thực lãnh.
       </p>
     </div>
   );

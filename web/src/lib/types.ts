@@ -85,8 +85,10 @@ export interface MemberScore {
   bonus: number;
   /** Thưởng điểm trước khi soi kết quả dự án. */
   bonusGoc?: number;
-  /** 1 hoặc 0,5. Bằng 0,5 khi có dự án đạt dưới 50%. */
+  /** 1 hoặc 0,5. Bằng 0,5 khi dưới 80% số dự án mình tham gia đạt KPI. */
   heSoKpi?: number;
+  /** "2/4 dự án đạt". */
+  lyDoHeSo?: string;
   workMinutesToday: number;
   rank?: number;
 }

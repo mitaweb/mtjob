@@ -17,8 +17,10 @@ const kpi = (memberId: string, fullName: string, projectId: string, amount: numb
   teamId: 'Ads',
   projectId,
   projectName: projectId,
-  vaiTro: 'member',
+  vaiTro: 'leader',
   tyLe,
+  soDat: 9,
+  soChiSo: 10,
   mucThuong: 1_000_000,
   amount,
 });
@@ -45,6 +47,11 @@ describe('gopThuong', () => {
     const r = gopThuong([diem('B', 'Bình', 0)], [kpi('B', 'Bình', 'Savax', 0, 40)]);
     expect(r).toHaveLength(1);
     expect(r[0].tong).toBe(0);
+  });
+
+  it('mang theo lý do của hệ số thưởng điểm', () => {
+    const r = gopThuong([{ ...diem('B', 'Bình', 200_000, 0.5), lyDo: '2/4 dự án đạt' }], []);
+    expect(r[0]).toMatchObject({ heSo: 0.5, lyDoHeSo: '2/4 dự án đạt' });
   });
 
   it('GIỮ người bị cắt nửa thưởng điểm dù còn 0đ', () => {

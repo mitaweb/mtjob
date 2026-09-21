@@ -1,4 +1,4 @@
-// Gộp thưởng điểm và thưởng KPI dự án thành MỘT bảng theo người.
+// Gộp thưởng điểm và thưởng KPI (thưởng leader, luật 21/9/2026) thành MỘT bảng theo người.
 //
 // Dùng cho bảng thưởng trên trang lương VÀ cho khoản chi tự ghi lúc chốt thưởng — cùng một
 // hàm, nên số anh nhìn thấy trên bảng và số vào chi phí không thể lệch nhau. Thuần, có test.
@@ -12,6 +12,8 @@ export interface DongThuongDiem {
   bonusGoc: number;
   /** 1 hoặc 0,5. */
   heSo: number;
+  /** "2/4 dự án đạt" — vì sao ra hệ số đó. */
+  lyDo?: string;
   /** Thực nhận = bonusGoc × heSo. */
   amount: number;
 }
@@ -23,9 +25,13 @@ export interface DongThuongKpi {
   projectId: string;
   projectName: string;
   vaiTro: 'leader' | 'member';
+  /** % số chỉ số của phòng đạt 100%. */
   tyLe: number | null;
+  soDat: number;
+  soChiSo: number;
   mucThuong: number;
   amount: number;
+  truot?: string[];
 }
 
 export interface ThuongNguoi {
@@ -35,6 +41,7 @@ export interface ThuongNguoi {
   points: number;
   thuongDiemGoc: number;
   heSo: number;
+  lyDoHeSo: string;
   thuongDiem: number;
   thuongKpi: number;
   duAn: DongThuongKpi[];
@@ -60,6 +67,7 @@ export function gopThuong(diem: DongThuongDiem[], kpi: DongThuongKpi[]): ThuongN
         points: 0,
         thuongDiemGoc: 0,
         heSo: 1,
+        lyDoHeSo: '',
         thuongDiem: 0,
         thuongKpi: 0,
         duAn: [],
@@ -78,6 +86,7 @@ export function gopThuong(diem: DongThuongDiem[], kpi: DongThuongKpi[]): ThuongN
     o.points = d.points;
     o.thuongDiemGoc = d.bonusGoc;
     o.heSo = d.heSo;
+    o.lyDoHeSo = d.lyDo || '';
     o.thuongDiem = d.amount;
   }
   for (const k of kpi) {

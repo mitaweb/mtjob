@@ -4,7 +4,7 @@ import { q } from './db/client.js';
 
 const NUM_KEYS = new Set([
   'companyLat', 'companyLng', 'checkinRadiusM', 'monthlyReportDay',
-  'bonusThreshold', 'bonusStep', 'bonusAmount',
+  'bonusThreshold', 'bonusStep', 'bonusAmount', 'kpiPassRate',
 ]);
 
 let cached: AppConfig | null = null;

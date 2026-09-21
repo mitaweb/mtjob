@@ -964,10 +964,10 @@ function BackfillRow({ kpiId, onSaved }: { kpiId: string; onSaved: () => Promise
   );
 }
 /**
- * Thưởng KPI và thành viên của một phòng trong một dự án.
+ * Thành viên của một phòng trong một dự án — leader tích người phòng mình.
  *
- * Giám đốc đặt mức thưởng; leader tích người phòng mình. Leader KHÔNG thấy con số tiền —
- * chặn thật ở tầng route (`GET /:id/bonus` chỉ mở cho giám đốc), đây chỉ là không vẽ ra.
+ * Luật 21/9/2026: không còn mức thưởng theo từng dự án (mức thưởng leader đặt theo TEAM ở
+ * trang lương). Danh sách này quyết định dự án nào được tính vào hệ số thưởng điểm của ai.
  */
 function ThuongVaThanhVien({
   projectId,
@@ -984,8 +984,6 @@ function ThuongVaThanhVien({
   canAssign: boolean;
 }) {
   const toast = useToast();
-  const [muc, setMuc] = useState('');
-  const [mucLuu, setMucLuu] = useState(0);
   const [assignees, setAssignees] = useState<Array<{ memberId: string; endDate: string }>>([]);
   const [nguoi, setNguoi] = useState<Array<{ id: string; fullName: string; teamId: string }>>([]);
   const [mo, setMo] = useState(false);
@@ -1001,14 +999,6 @@ function ThuongVaThanhVien({
     ]);
     setAssignees(as.assignees);
     setNguoi(ds.assignees.filter((m) => m.teamId === team));
-    if (isDirector) {
-      const b = await api<{ bonuses: Array<{ teamId: string; amount: number }> }>(
-        `/projects/${projectId}/bonus`,
-      ).catch(() => ({ bonuses: [] }));
-      const m = b.bonuses.find((x) => x.teamId === team)?.amount ?? 0;
-      setMucLuu(m);
-      setMuc(m ? String(m) : '');
-    }
   }
 
   useEffect(() => {
@@ -1017,19 +1007,6 @@ function ThuongVaThanhVien({
   }, [mo, projectId, team]);
 
   const dangThamGia = assignees.filter((a) => !a.endDate).map((a) => a.memberId);
-
-  async function luuMuc() {
-    try {
-      await api(`/projects/${projectId}/bonus/${team}`, {
-        method: 'PUT',
-        body: { amount: Number(muc) || 0 },
-      });
-      toast.success('Đã lưu mức thưởng');
-      await load();
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  }
 
   async function doiThamGia(memberId: string, them: boolean) {
     try {
@@ -1044,7 +1021,7 @@ function ThuongVaThanhVien({
   if (!mo) {
     return (
       <button className="mt-2 text-xs text-brand-600 underline" onClick={() => setMo(true)}>
-        ⚙️ Thưởng KPI &amp; thành viên phòng {team}
+        👥 Thành viên phòng {team} trong dự án
       </button>
     );
   }
@@ -1052,35 +1029,11 @@ function ThuongVaThanhVien({
   return (
     <div className="mt-2 rounded-xl border border-brand-100 bg-brand-50/40 p-3">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-medium text-ink-soft">Thưởng KPI &amp; thành viên</span>
+        <span className="text-xs font-medium text-ink-soft">Thành viên phụ trách</span>
         <button className="text-xs text-ink-muted underline" onClick={() => setMo(false)}>
           thu gọn
         </button>
       </div>
-
-      {isDirector && (
-        <div className="mb-3">
-          <label className="label text-xs">Mức thưởng nếu đạt 100% KPI (mỗi tháng)</label>
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              className="input max-w-[12rem] py-1"
-              type="number"
-              min={0}
-              placeholder="0"
-              value={muc}
-              onChange={(e) => setMuc(e.target.value)}
-            />
-            <AsyncButton className="btn-primary px-3 py-1 text-sm" onClick={luuMuc} busyLabel="Đang lưu…">
-              Lưu mức
-            </AsyncButton>
-            {mucLuu > 0 && <span className="text-xs text-ink-muted">đang là {vnd(mucLuu)}</span>}
-          </div>
-          <p className="mt-1 text-xs text-ink-muted">
-            Leader phòng {team} nhận số này khi đạt 100%; đạt 50% thì nhận một nửa. Thành viên đạt 80–99%
-            nhận nửa mức, từ 100% nhận trọn mức.
-          </p>
-        </div>
-      )}
 
       <div>
         <div className="mb-1 text-xs font-medium text-ink-soft">
@@ -1113,7 +1066,7 @@ function ThuongVaThanhVien({
         )}
         {suaDuoc && dangThamGia.length === 0 && (
           <p className="mt-1 text-xs text-amber-700">
-            Chưa phân công ai — phòng này sẽ không có ai được thưởng KPI dự án.
+            Chưa phân công ai — kết quả dự án này chưa gắn với thưởng điểm của ai trong phòng.
           </p>
         )}
       </div>

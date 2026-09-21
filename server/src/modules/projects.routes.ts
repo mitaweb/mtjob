@@ -14,15 +14,20 @@ import {
   getEntries,
   getEntriesForDates,
   saveEntry,
-  getTeamBonuses,
-  upsertTeamBonus,
   getAssignees,
   addAssignee,
   endAssignee,
   type Project,
   type ProjectKpi,
 } from './projects.repo.js';
-import { projectBonusForMonth, projectBonusForMember, chuaPhanCongDuAn } from './projectBonus.service.js';
+import {
+  projectBonusForMonth,
+  projectBonusForMember,
+  chuaPhanCongDuAn,
+  chiSoTheoThang,
+  heSoDiemChiTiet,
+} from './projectBonus.service.js';
+import { tyLeDat } from '../lib/money.js';
 import { isBonusLocked } from './bonusLock.js';
 import { phanCongBlock } from '../lib/assign.js';
 import { findById, getActiveMembers } from './members.repo.js';
@@ -406,43 +411,7 @@ function ymQuery(req: { query: Record<string, unknown> }): { year: number; month
   };
 }
 
-/** Mức thưởng của mọi phòng trong dự án — CHỈ giám đốc/admin. */
-projectsRouter.get(
-  '/:id/bonus',
-  canMoney,
-  asyncHandler(async (req, res) => {
-    res.json({ bonuses: await getTeamBonuses(String(req.params.id)) });
-  }),
-);
-
-const bonusSchema = z.object({
-  amount: z.number().int().min(0).max(2_000_000_000),
-  note: z.string().max(200).optional().default(''),
-});
-
-/**
- * Đặt mức thưởng cho một (dự án × phòng). Chỉ giám đốc/admin.
- * Chặn tháng đã chốt thưởng: đổi mức lúc này là làm lệch số đã trả.
- */
-projectsRouter.put(
-  '/:id/bonus/:teamId',
-  canMoney,
-  asyncHandler(async (req, res) => {
-    const b = bonusSchema.parse(req.body);
-    const now = nowTz();
-    if (await isBonusLocked(now.year(), now.month() + 1)) {
-      throw new ApiError(409, 'Tháng này đã chốt thưởng nên không đổi được mức thưởng.');
-    }
-    const project = await findProject(String(req.params.id));
-    if (!project) throw new ApiError(404, 'Không tìm thấy dự án');
-    const teamId = String(req.params.teamId);
-    const coKpi = (await getKpis(project.id)).some((k) => k.active && k.teamId === teamId);
-    if (!coKpi) throw new ApiError(400, `Dự án này chưa có chỉ số nào của phòng ${teamId}.`);
-
-    await upsertTeamBonus({ projectId: project.id, teamId, amount: b.amount, note: b.note }, req.user!.name);
-    res.json({ ok: true });
-  }),
-);
+// (Mức thưởng theo từng dự án × phòng đã bỏ 21/9/2026 — giờ đặt theo team ở trang lương.)
 
 /** Danh sách phân công của dự án. Ai xem được dự án thì xem được danh sách này. */
 projectsRouter.get(
@@ -513,12 +482,19 @@ projectsRouter.delete(
   }),
 );
 
-/** Thưởng KPI dự án của CHÍNH MÌNH. */
+/**
+ * Thưởng KPI của CHÍNH MÌNH: leader thấy dòng thưởng của mình; thành viên thấy hệ số thưởng
+ * điểm kèm từng dự án đạt/trượt — để biết vì sao mình còn 50%.
+ */
 projectsRouter.get(
   '/bonus/me',
   asyncHandler(async (req, res) => {
     const { year, month } = ymQuery(req);
-    res.json({ year, month, lines: await projectBonusForMember(req.user!.sub, year, month) });
+    const [lines, heSo] = await Promise.all([
+      projectBonusForMember(req.user!.sub, year, month),
+      heSoDiemChiTiet(year, month),
+    ]);
+    res.json({ year, month, lines, heSo: heSo.get(req.user!.sub) ?? null });
   }),
 );
 
@@ -532,19 +508,21 @@ projectsRouter.get(
   asyncHandler(async (req, res) => {
     const { year, month } = ymQuery(req);
     const phong = await myTeam(req.user!.sub);
-    const lines = (await projectBonusForMonth(year, month)).filter((l) => l.teamId === phong);
+    const [chiSo, heSo, members] = await Promise.all([
+      chiSoTheoThang(year, month),
+      heSoDiemChiTiet(year, month),
+      getActiveMembers(),
+    ]);
+    const cua = chiSo.filter((c) => c.teamId === phong);
     res.json({
       year,
       month,
       teamId: phong,
-      lines: lines.map((l) => ({
-        memberId: l.memberId,
-        fullName: l.fullName,
-        projectId: l.projectId,
-        projectName: l.projectName,
-        vaiTro: l.vaiTro,
-        tyLe: l.tyLe,
-      })),
+      ...tyLeDat(cua.map((c) => c.percent)),
+      chiSo: cua,
+      thanhVien: members
+        .filter((m) => m.teamId === phong && heSo.has(m.id))
+        .map((m) => ({ memberId: m.id, fullName: m.fullName, ...heSo.get(m.id)! })),
     });
   }),
 );

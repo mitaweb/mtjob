@@ -15,14 +15,23 @@ interface Detail {
   days: DayBlock[];
 }
 
-/** Một dòng thưởng KPI của một dự án. */
+/** Dòng thưởng leader của chính mình (luật 21/9/2026: mỗi leader một dòng mỗi tháng). */
 interface KpiBonusLine {
-  projectId: string;
-  projectName: string;
-  vaiTro: 'leader' | 'member';
-  /** null = tháng đó chưa đo được (dự án chưa chạy, chưa có kỳ nào chốt…). */
+  teamId: string;
+  /** % số chỉ số của phòng đạt 100%; null = chưa đo được chỉ số nào. */
   tyLe: number | null;
+  soDat: number;
+  soChiSo: number;
+  mucThuong: number;
   amount: number;
+  truot?: string[];
+}
+
+/** Hệ số thưởng điểm của thành viên + từng dự án đạt/trượt. */
+interface HeSoDiem {
+  heSo: number;
+  lyDo: string;
+  duAn: Array<{ projectId: string; projectName: string; dat: boolean | null; soDat: number; soChiSo: number }>;
 }
 
 const currentYm = () => {
@@ -39,6 +48,7 @@ export default function Scores() {
   const [loadingDays, setLoadingDays] = useState(true);
   const [msg, setMsg] = useState('');
   const [kpiBonus, setKpiBonus] = useState<KpiBonusLine[]>([]);
+  const [heSo, setHeSo] = useState<HeSoDiem | null>(null);
 
   useEffect(() => {
     api<MemberScore>('/scores/me')
@@ -59,9 +69,15 @@ export default function Scores() {
       .finally(() => setLoadingDays(false));
     // Thưởng KPI đi theo tháng đang xem. Lỗi thì để trống — không chặn cả trang Điểm
     // chỉ vì phần thưởng dự án chưa cấu hình xong.
-    api<{ lines: KpiBonusLine[] }>(`/projects/bonus/me?year=${y}&month=${Number(m)}`)
-      .then((r) => setKpiBonus(r.lines))
-      .catch(() => setKpiBonus([]));
+    api<{ lines: KpiBonusLine[]; heSo: HeSoDiem | null }>(`/projects/bonus/me?year=${y}&month=${Number(m)}`)
+      .then((r) => {
+        setKpiBonus(r.lines);
+        setHeSo(r.heSo);
+      })
+      .catch(() => {
+        setKpiBonus([]);
+        setHeSo(null);
+      });
   }, [ym]);
 
   const totalTasks = detail?.days.reduce((s, d) => s + d.tasks.length, 0) ?? 0;
@@ -92,7 +108,7 @@ export default function Scores() {
               {/* Cắt nửa mà không nói vì sao thì người ta tưởng hệ thống tính sai. */}
               {(score?.heSoKpi ?? 1) < 1 && (
                 <div className="mt-1 text-xs text-amber-700">
-                  Đã cắt một nửa (từ {vnd(score?.bonusGoc ?? 0)}) vì có dự án đạt dưới 50%
+                  Còn một nửa (từ {vnd(score?.bonusGoc ?? 0)}) vì {score?.lyDoHeSo || 'chưa đủ số dự án đạt KPI'}
                 </div>
               )}
             </div>
@@ -106,27 +122,52 @@ export default function Scores() {
 
       {msg && <div className="text-sm text-ink-soft">{msg}</div>}
 
-      {/* Thưởng KPI dự án — tách riêng khỏi thưởng điểm, tính theo kết quả dự án. */}
-      {kpiBonus.length > 0 && (
+      {/* Leader: thưởng KPI tháng — trọn mức hoặc 0, theo số chỉ số của phòng đạt 100%. */}
+      {kpiBonus.map((l) => (
+        <div key={l.teamId} className="card">
+          <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="font-semibold">🎯 Thưởng leader team {l.teamId}</h2>
+            <span className={`text-lg font-bold ${l.amount > 0 ? 'text-emerald-700' : 'text-ink-faint'}`}>
+              {vnd(l.amount)}
+            </span>
+          </div>
+          <p className="text-sm text-ink-soft">
+            {l.tyLe === null
+              ? 'Tháng này chưa đo được chỉ số nào.'
+              : `${l.soDat}/${l.soChiSo} chỉ số của phòng đạt 100% (${Math.round(l.tyLe)}%).`}
+            {l.amount === 0 && l.mucThuong > 0 && ` Đủ tỉ lệ sẽ nhận ${vnd(l.mucThuong)}.`}
+          </p>
+          {(l.truot?.length ?? 0) > 0 && (
+            <ul className="mt-2 space-y-0.5 text-xs text-ink-muted">
+              {l.truot!.map((t) => (
+                <li key={t}>• Chưa đạt: {t}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ))}
+
+      {/* Thành viên: dự án nào đạt, dự án nào trượt — thứ quyết định thưởng điểm ×1 hay ×0,5. */}
+      {heSo && heSo.duAn.length > 0 && (
         <div className="card">
           <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="font-semibold">🎯 Thưởng KPI dự án</h2>
-            <span className="text-lg font-bold text-emerald-700">
-              {vnd(kpiBonus.reduce((s, l) => s + l.amount, 0))}
+            <h2 className="font-semibold">🎯 Dự án của tôi</h2>
+            <span className={`text-sm font-semibold ${heSo.heSo < 1 ? 'text-amber-700' : 'text-emerald-700'}`}>
+              {heSo.lyDo || 'Chưa đo được'} → thưởng điểm ×{String(heSo.heSo).replace('.', ',')}
             </span>
           </div>
           <ul className="divide-y">
-            {kpiBonus.map((l) => (
-              <li key={`${l.projectId}-${l.vaiTro}`} className="flex items-center justify-between gap-2 py-2 text-sm">
-                <span className="min-w-0">
-                  <span className="font-medium">{l.projectName}</span>
-                  {l.vaiTro === 'leader' && <span className="ml-1 text-xs text-brand-600">(leader)</span>}
-                  <span className="block text-xs text-ink-muted">
-                    {l.tyLe === null ? 'Tháng này chưa đo được' : `Đạt ${l.tyLe}% KPI`}
-                  </span>
-                </span>
-                <span className={`shrink-0 font-medium ${l.amount > 0 ? 'text-emerald-700' : 'text-ink-faint'}`}>
-                  {vnd(l.amount)}
+            {heSo.duAn.map((d) => (
+              <li key={d.projectId} className="flex items-center justify-between gap-2 py-2 text-sm">
+                <span className="min-w-0 font-medium">{d.projectName}</span>
+                <span
+                  className={`shrink-0 text-xs font-medium ${
+                    d.dat === null ? 'text-ink-faint' : d.dat ? 'text-emerald-700' : 'text-amber-700'
+                  }`}
+                >
+                  {d.dat === null
+                    ? 'Chưa đo được'
+                    : `${d.dat ? '✓ Đạt' : '✗ Chưa đạt'} · ${d.soDat}/${d.soChiSo} chỉ số`}
                 </span>
               </li>
             ))}

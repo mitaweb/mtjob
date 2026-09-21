@@ -315,7 +315,7 @@ export async function runDailyReports(): Promise<void> {
       if (!s) continue;
       // Ghi rõ khi thưởng bị cắt nửa vì kết quả dự án — không nói thì người ta tưởng
       // hệ thống tính sai và đi hỏi vòng vo.
-      const catNua = s.heSoKpi < 1 ? ` (đã cắt một nửa vì có dự án đạt dưới 50%)` : '';
+      const catNua = s.heSoKpi < 1 ? ` (còn một nửa vì ${s.lyDoHeSo || "dưới 80% số dự án đạt KPI"})` : '';
       const bonusLine = s.bonus > 0 ? `\n💰 Thưởng điểm: ${formatVnd(s.bonus)}${catNua}.` : '';
       const tasksLine = doneTasksLine(tasksDoneToday(allTasks, m.id, today));
       await notify(m.id, {

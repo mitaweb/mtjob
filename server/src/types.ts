@@ -84,6 +84,8 @@ export interface AppConfig {
   bonusThreshold: number;
   bonusStep: number;
   bonusAmount: number;
+  /** Bao nhiêu % chỉ số (leader) / dự án (thành viên) phải đạt — luật thưởng KPI 21/9/2026. */
+  kpiPassRate: number;
   bhxhMode: 'direct' | 'percent';
   tz: string;
   taskSheetUrl: string;
@@ -109,6 +111,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   bonusThreshold: 6000,
   bonusStep: 1000,
   bonusAmount: 800000,
+  kpiPassRate: 80,
   bhxhMode: 'percent', // 10.5% x mức đóng BHXH (cột BHXH trong sheet nhân sự)
   tz: 'Asia/Ho_Chi_Minh',
   taskSheetUrl: '',

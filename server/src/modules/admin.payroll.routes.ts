@@ -13,6 +13,8 @@ import {
 import { kyLuatThang, kyLuatCuaThanhVien } from './kyluat.service.js';
 import { bangThuongThang, chotThuong, moThuong } from './bonusMonth.service.js';
 import { chuaPhanCongDuAn } from './projectBonus.service.js';
+import { getTeams, setLeaderKpiBonus } from './teams.repo.js';
+import { getConfig, setConfigValue } from '../config.js';
 import { dayFractionFromShifts } from '../lib/attendance.js';
 import { RONG } from '../lib/kyluat.js';
 import { nowTz, monthRange, fmtHm, dayjs, TZ } from '../lib/datetime.js';
@@ -188,5 +190,46 @@ adminPayrollRouter.post(
       note: 'Sửa bởi quản trị',
     });
     res.json({ ok: true, dayFraction: fraction });
+  }),
+);
+
+/**
+ * Cài đặt thưởng KPI (luật 21/9/2026): mức thưởng leader RIÊNG từng team + ngưỡng % phải đạt.
+ * Kèm tên người đang giữ chức vụ leader của từng team — thưởng đi theo chức vụ, nên giám đốc
+ * phải nhìn thấy ngay ai sẽ nhận.
+ */
+adminPayrollRouter.get(
+  '/bonus/settings',
+  asyncHandler(async (_req, res) => {
+    const [teams, members, cfg] = await Promise.all([getTeams(), getActiveMembers(), getConfig({ fresh: true })]);
+    res.json({
+      kpiPassRate: cfg.kpiPassRate,
+      teams: teams.map((t) => ({
+        id: t.id,
+        name: t.name,
+        leaderKpiBonus: t.leaderKpiBonus || 0,
+        leaders: members.filter((m) => m.role === 'leader' && m.teamId === t.id).map((m) => m.fullName),
+      })),
+    });
+  }),
+);
+
+const bonusSettingsSchema = z.object({
+  teamId: z.string().min(1).optional(),
+  amount: z.number().int().min(0).max(1_000_000_000).optional(),
+  kpiPassRate: z.number().int().min(1).max(100).optional(),
+});
+
+/** Đổi mức/ngưỡng chỉ ảnh hưởng tháng CHƯA chốt thưởng — tháng đã chốt đọc bản chụp. */
+adminPayrollRouter.post(
+  '/bonus/settings',
+  asyncHandler(async (req, res) => {
+    const b = bonusSettingsSchema.parse(req.body);
+    if (b.teamId !== undefined) {
+      if (b.amount === undefined) throw new ApiError(400, 'Thiếu mức thưởng.');
+      if (!(await setLeaderKpiBonus(b.teamId, b.amount))) throw new ApiError(404, 'Không tìm thấy team này.');
+    }
+    if (b.kpiPassRate !== undefined) await setConfigValue('kpiPassRate', String(b.kpiPassRate));
+    res.json({ ok: true });
   }),
 );

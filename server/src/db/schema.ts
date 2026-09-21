@@ -27,6 +27,13 @@ CREATE TABLE IF NOT EXISTS teams (
   leader_member_id text DEFAULT ''
 );
 
+-- Mức thưởng KPI tháng của leader, RIÊNG từng team (anh Tâm 21/9/2026: "Ads 3 triệu, seo,
+-- content 2 triệu nếu đạt"). NULL = chưa đặt. Chỉ nạp số khởi điểm khi còn NULL nên bấm
+-- "Cập nhật cấu trúc DB" lần nữa không đè lên số giám đốc đã sửa.
+ALTER TABLE teams ADD COLUMN IF NOT EXISTS leader_kpi_bonus integer;
+UPDATE teams SET leader_kpi_bonus = CASE WHEN team_id = 'Ads' THEN 3000000 ELSE 2000000 END
+ WHERE leader_kpi_bonus IS NULL AND team_id IN ('Ads', 'SEO', 'Content');
+
 CREATE TABLE IF NOT EXISTS task_catalog (
   task_code text PRIMARY KEY,
   task_name text NOT NULL,
@@ -378,8 +385,8 @@ CREATE INDEX IF NOT EXISTS kpi_entries_date_idx ON kpi_entries (date);
 
 -- ── Thưởng KPI dự án (anh Tâm 21/8/2026) ──
 
--- Mức thưởng cho một (dự án × phòng): số tiền leader nhận khi đạt 100% KPI tháng.
--- Là MỨC, không phải khoản đã trả — nên không có cột năm/tháng.
+-- BỎ DÙNG từ 21/9/2026: mức thưởng giờ đặt theo TEAM (teams.leader_kpi_bonus), không theo
+-- từng (dự án × phòng) nữa. Giữ bảng (đang rỗng) để không phải DROP gì trên production.
 CREATE TABLE IF NOT EXISTS project_team_bonus (
   project_id text NOT NULL,
   team_id    text NOT NULL,           -- Ads | Content | SEO
@@ -390,8 +397,8 @@ CREATE TABLE IF NOT EXISTS project_team_bonus (
   PRIMARY KEY (project_id, team_id)
 );
 
--- Leader phân công ai vào dự án. LEADER KHÔNG nằm ở đây — leader ăn thưởng theo
--- teams.leader_member_id của phòng có KPI trong dự án, bảng này chỉ là "thành viên".
+-- Leader phân công ai vào dự án. LEADER KHÔNG nằm ở đây — leader (theo CHỨC VỤ, members.role)
+-- ăn thưởng theo chỉ số của cả phòng; bảng này là "thành viên", dùng tính hệ số thưởng điểm.
 -- Gỡ người = ghi end_date, KHÔNG xoá dòng: thưởng chốt theo tháng nên phải biết được
 -- ai đang tham gia trong tháng 8 dù tháng 9 đã rời.
 CREATE TABLE IF NOT EXISTS project_assignees (
@@ -422,6 +429,9 @@ CREATE TABLE IF NOT EXISTS project_bonus_lines (
   amount     integer DEFAULT 0,       -- tiền thực nhận
   PRIMARY KEY (year, month, member_id, project_id)
 );
+-- Luật 21/9/2026: mỗi leader MỘT dòng/tháng (project_id = ''), ty_le = % số chỉ số đạt.
+ALTER TABLE project_bonus_lines ADD COLUMN IF NOT EXISTS so_dat integer DEFAULT 0;
+ALTER TABLE project_bonus_lines ADD COLUMN IF NOT EXISTS so_chi_so integer DEFAULT 0;
 
 -- Chốt THƯỞNG của một tháng — tách khỏi chốt lương (payroll_locks).
 -- Anh Tâm 13/9/2026: "thưởng và lương chốt khác nhau". Chốt thưởng đóng băng cả thưởng
@@ -448,6 +458,8 @@ CREATE TABLE IF NOT EXISTS point_bonus_lines (
   amount    integer DEFAULT 0,
   PRIMARY KEY (year, month, member_id)
 );
+-- Vì sao hệ số là 0,5 ("2/4 dự án đạt") — chụp lại để tháng đã chốt vẫn giải thích được.
+ALTER TABLE point_bonus_lines ADD COLUMN IF NOT EXISTS ly_do text DEFAULT '';
 `;
 
 /**
@@ -524,6 +536,7 @@ export const CONFIG_SEED: Array<[string, string]> = [
   ['bonusThreshold', '6000'],
   ['bonusStep', '1000'],
   ['bonusAmount', '800000'],
+  ['kpiPassRate', '80'],
   ['bhxhMode', 'percent'],
   ['tz', 'Asia/Ho_Chi_Minh'],
   ['taskSheetUrl', 'https://docs.google.com/spreadsheets/d/1C0-uJxZwzaBWWDqSbwPhJI0YJEPBxbOwTOBflATMcJc/edit?gid=0#gid=0'],

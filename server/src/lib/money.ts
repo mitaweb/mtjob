@@ -24,58 +24,69 @@ export function computeBonus(points: number, cfg: BonusConfig = DEFAULT_BONUS): 
   return Math.round((extra / cfg.step) * cfg.amount);
 }
 
-// ── Thưởng KPI dự án (anh Tâm 21/8/2026) ──
+// ── Thưởng KPI (anh Tâm 21/9/2026 — thay luật 21/8) ──
 //
-// Mỗi cặp (dự án × phòng) có một MỨC THƯỞNG: số tiền leader nhận khi đạt 100% KPI tháng.
+// Luật cũ đặt mức thưởng cho TỪNG cặp (dự án × phòng): quá nhiều ô phải nhập, không ai dùng.
+// Luật mới đếm số chỉ số ĐẠT:
+//   · Leader: ≥ 80% chỉ số của phòng mình (trên mọi dự án) đạt 100% → trọn mức thưởng của
+//     team tháng đó (Ads 3tr, SEO/Content 2tr — chỉnh trong Quản trị). Không đạt thì 0, không trừ.
+//   · Thành viên: không còn tiền KPI riêng. ≥ 80% số dự án mình tham gia "đạt" → đủ thưởng
+//     điểm; dưới đó → còn 50%.
 // Để cạnh computeBonus để mọi luật tiền nằm một chỗ, soi một lượt là thấy hết.
 
-/**
- * Trần 100%: vượt KPI không được thưởng thêm.
- * Anh Tâm: "khách hàng không trả thêm khi mình vượt KPI".
- */
-export const TRAN_KPI = 100;
-/** Dưới ngưỡng này thành viên không có thưởng thêm. */
-export const NGUONG_THANH_VIEN = 80;
-/** Có dự án dưới ngưỡng này thì thưởng điểm còn một nửa. */
-export const NGUONG_NUA_DIEM = 50;
+/** Một chỉ số "đạt" khi chạm 100% mục tiêu tháng. 99,9% là chưa đạt — không làm tròn giúp. */
+export const MOC_DAT = 100;
+/** Ngưỡng mặc định: bao nhiêu % chỉ số (hoặc dự án) phải đạt. Giám đốc chỉnh ở `kpiPassRate`. */
+export const NGUONG_DAT = 80;
 
-/** `r` là % đạt KPI; `null` = tháng đó không đo được → không thưởng, cũng không phạt. */
-export function thuongLeader(mucThuong: number, r: number | null): number {
-  const muc = Math.max(0, Math.round(mucThuong) || 0);
-  if (r === null || !Number.isFinite(r) || r <= 0) return 0;
-  return Math.round((muc * Math.min(r, TRAN_KPI)) / 100);
+export interface TyLeDat {
+  dat: number;
+  tong: number;
+  /** % số chỉ số đạt; null = không chỉ số nào đo được. */
+  tyLe: number | null;
 }
 
 /**
- * Thưởng thêm của MỘT thành viên cho MỘT dự án. Nhiều dự án thì gọi nhiều lần rồi cộng —
- * đúng luật "tính riêng từng dự án rồi cộng lại", và giữ hàm này đủ đơn giản để test.
- *
- *   r < 80%        → 0
- *   80% ≤ r < 100% → một nửa mức
- *   r ≥ 100%       → trọn mức (trần 100%, vượt không thêm)
+ * Đếm chỉ số đạt. `null` (tháng đó không đo được) bị loại khỏi CẢ tử lẫn mẫu — dự án tạm
+ * dừng hay chỉ số đang trong giai đoạn xây nền không được kéo tỉ lệ của ai xuống.
  */
-export function thuongThanhVien(mucThuong: number, r: number | null): number {
-  const muc = Math.max(0, Math.round(mucThuong) || 0);
-  if (r === null || !Number.isFinite(r) || r < NGUONG_THANH_VIEN) return 0;
-  if (r < TRAN_KPI) return Math.round(muc / 2);
-  return muc;
+export function tyLeDat(percents: Array<number | null>): TyLeDat {
+  const doDuoc = percents.filter((r): r is number => r !== null && Number.isFinite(r));
+  const dat = doDuoc.filter((r) => r >= MOC_DAT).length;
+  return { dat, tong: doDuoc.length, tyLe: doDuoc.length ? (dat / doDuoc.length) * 100 : null };
+}
+
+const chuanNguong = (n: number) => (Number.isFinite(n) && n > 0 ? n : NGUONG_DAT);
+
+/** Thưởng leader một tháng: trọn `muc` hoặc 0. Không đo được chỉ số nào thì 0. */
+export function thuongLeaderThang(percents: Array<number | null>, muc: number, nguong = NGUONG_DAT): number {
+  const tien = Math.max(0, Math.round(muc) || 0);
+  const { tyLe } = tyLeDat(percents);
+  if (tyLe === null) return 0;
+  return tyLe >= chuanNguong(nguong) ? tien : 0;
 }
 
 /**
- * Thưởng điểm sau khi soi kết quả dự án.
- *
- * BẤT KỲ dự án nào dưới 50% là còn một nửa — anh Tâm chốt "tất cả dự án đạt trên 50%"
- * mới giữ nguyên. Dự án không đo được (`null`) bị bỏ qua: người được phân vào một dự án
- * đang tạm dừng không đáng bị cắt thưởng vì chuyện đó.
- *
- * Không có dự án nào đo được thì giữ nguyên — hàm này không phải chỗ phạt người chưa
- * được phân công, việc đó nằm ở tầng service.
+ * MỘT dự án có "đạt" với thành viên không: ≥ ngưỡng số chỉ số của PHÒNG MÌNH trong dự án đó
+ * đạt 100% — cùng thước với leader. `null` = dự án không đo được trong tháng.
  */
-export function nhanThuongDiem(thuongDiem: number, rCacDuAn: Array<number | null>): number {
-  const tien = Math.max(0, Math.round(thuongDiem) || 0);
-  const doDuoc = rCacDuAn.filter((r): r is number => r !== null && Number.isFinite(r));
-  if (doDuoc.length === 0) return tien;
-  return doDuoc.some((r) => r < NGUONG_NUA_DIEM) ? Math.round(tien / 2) : tien;
+export function duAnDat(percentsCuaPhong: Array<number | null>, nguong = NGUONG_DAT): boolean | null {
+  const { tyLe } = tyLeDat(percentsCuaPhong);
+  if (tyLe === null) return null;
+  return tyLe >= chuanNguong(nguong);
+}
+
+/**
+ * Hệ số nhân vào thưởng ĐIỂM của thành viên: 1 hoặc 0,5.
+ *
+ * Anh Tâm: "số lượng >80% so với tổng số lượng dự án". Dự án không đo được bị bỏ qua; không
+ * có dự án nào tính được thì giữ 1 — hàm này không phải chỗ phạt người chưa được phân công.
+ */
+export function heSoDiemThanhVien(cacDuAn: Array<boolean | null>, nguong = NGUONG_DAT): 1 | 0.5 {
+  const tinhDuoc = cacDuAn.filter((d): d is boolean => d !== null);
+  if (tinhDuoc.length === 0) return 1;
+  const dat = tinhDuoc.filter(Boolean).length;
+  return (dat / tinhDuoc.length) * 100 >= chuanNguong(nguong) ? 1 : 0.5;
 }
 
 export type BhxhMode = 'direct' | 'percent';

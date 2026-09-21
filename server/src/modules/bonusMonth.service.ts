@@ -23,8 +23,8 @@ export const SQL_XOA_KHOA_THUONG = 'DELETE FROM bonus_locks WHERE year = $1 AND 
 export const SQL_DOC_THUONG_DIEM = 'SELECT * FROM point_bonus_lines WHERE year = $1 AND month = $2';
 export const SQL_XOA_THUONG_DIEM = 'DELETE FROM point_bonus_lines WHERE year = $1 AND month = $2';
 export const SQL_GHI_THUONG_DIEM = `INSERT INTO point_bonus_lines
-  (year, month, member_id, full_name, team_id, points, bonus_goc, he_so_pct, amount)
-  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`;
+  (year, month, member_id, full_name, team_id, points, bonus_goc, he_so_pct, amount, ly_do)
+  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`;
 
 const hai = (n: number) => String(n).padStart(2, '0');
 
@@ -47,6 +47,7 @@ async function thuongDiemLive(year: number, month: number): Promise<DongThuongDi
     points: s.monthPoints,
     bonusGoc: s.bonusGoc,
     heSo: s.heSoKpi,
+    lyDo: s.lyDoHeSo,
     amount: s.bonus,
   }));
 }
@@ -61,6 +62,7 @@ async function thuongDiemDaChot(year: number, month: number): Promise<DongThuong
     points: Number(r.points) || 0,
     bonusGoc: Number(r.bonus_goc) || 0,
     heSo: Number(r.he_so_pct ?? 100) / 100,
+    lyDo: String(r.ly_do || ''),
     amount: Number(r.amount) || 0,
   }));
 }
@@ -129,6 +131,7 @@ export async function chotThuong(year: number, month: number, byName: string, at
       r.thuongDiemGoc,
       Math.round(r.heSo * 100),
       r.thuongDiem,
+      r.lyDoHeSo,
     ]);
   }
   await saveBonusLines(
@@ -143,6 +146,8 @@ export async function chotThuong(year: number, month: number, byName: string, at
         tyLe: k.tyLe,
         mucThuong: k.mucThuong,
         amount: k.amount,
+        soDat: k.soDat,
+        soChiSo: k.soChiSo,
       })),
     ),
   );

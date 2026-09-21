@@ -4,9 +4,10 @@ import {
   computeNetSalary,
   formatVnd,
   parseVndAmount,
-  thuongLeader,
-  thuongThanhVien,
-  nhanThuongDiem,
+  tyLeDat,
+  thuongLeaderThang,
+  duAnDat,
+  heSoDiemThanhVien,
 } from './money.js';
 
 describe('computeBonus', () => {
@@ -135,80 +136,101 @@ describe('parseVndAmount', () => {
   });
 });
 
-// ── Thưởng KPI dự án (anh Tâm 21/8/2026) ──
+// ── Thưởng KPI (anh Tâm 21/9/2026) ──
 
-describe('thuongLeader', () => {
-  const MUC = 10_000_000;
+/** n chỉ số, `dat` cái đầu đạt 100%, còn lại 60%. */
+const chiSo = (dat: number, tong: number) => Array.from({ length: tong }, (_, i) => (i < dat ? 100 : 60));
 
-  it('tỉ lệ thuận với mức đạt', () => {
-    expect(thuongLeader(MUC, 100)).toBe(10_000_000);
-    expect(thuongLeader(MUC, 50)).toBe(5_000_000);
-    expect(thuongLeader(MUC, 80)).toBe(8_000_000);
+describe('tyLeDat', () => {
+  it('đếm chỉ số chạm 100%', () => {
+    expect(tyLeDat([100, 120, 60, 0])).toEqual({ dat: 2, tong: 4, tyLe: 50 });
   });
 
-  it('TRẦN 100% — vượt KPI không thưởng thêm', () => {
-    expect(thuongLeader(MUC, 120)).toBe(10_000_000);
-    expect(thuongLeader(MUC, 300)).toBe(10_000_000);
+  it('99,9% là CHƯA đạt — không làm tròn giúp', () => {
+    expect(tyLeDat([99.9]).dat).toBe(0);
+    expect(tyLeDat([100]).dat).toBe(1);
   });
 
-  it('không đạt thì không thưởng, cũng không âm', () => {
-    expect(thuongLeader(MUC, 0)).toBe(0);
-    expect(thuongLeader(MUC, -50)).toBe(0);
-  });
-
-  it('tháng không đo được thì không thưởng', () => {
-    expect(thuongLeader(MUC, null)).toBe(0);
-  });
-
-  it('chưa đặt mức thưởng thì không ai có gì', () => {
-    expect(thuongLeader(0, 100)).toBe(0);
+  it('chỉ số không đo được bị loại khỏi cả tử lẫn mẫu', () => {
+    expect(tyLeDat([100, null, null])).toEqual({ dat: 1, tong: 1, tyLe: 100 });
+    expect(tyLeDat([null, NaN])).toEqual({ dat: 0, tong: 0, tyLe: null });
+    expect(tyLeDat([])).toEqual({ dat: 0, tong: 0, tyLe: null });
   });
 });
 
-describe('thuongThanhVien', () => {
-  const MUC = 10_000_000;
+describe('thuongLeaderThang', () => {
+  const MUC = 3_000_000;
 
-  it('dưới 80% thì không có thưởng thêm', () => {
-    expect(thuongThanhVien(MUC, 0)).toBe(0);
-    expect(thuongThanhVien(MUC, 79)).toBe(0);
+  it('từ 80% chỉ số đạt thì trọn mức, dưới thì 0 — không có nấc giữa', () => {
+    expect(thuongLeaderThang(chiSo(8, 10), MUC)).toBe(3_000_000);
+    expect(thuongLeaderThang(chiSo(10, 10), MUC)).toBe(3_000_000);
+    expect(thuongLeaderThang(chiSo(7, 10), MUC)).toBe(0);
+    expect(thuongLeaderThang(chiSo(0, 10), MUC)).toBe(0);
   });
 
-  it('80–99% được một nửa mức', () => {
-    expect(thuongThanhVien(MUC, 80)).toBe(5_000_000);
-    expect(thuongThanhVien(MUC, 99)).toBe(5_000_000);
+  it('vượt KPI không thưởng thêm — 300% cũng chỉ là "đạt"', () => {
+    expect(thuongLeaderThang([300, 150, 100, 100, 50], MUC)).toBe(3_000_000);
   });
 
-  it('từ 100% được trọn mức, vượt cũng chỉ tới đó', () => {
-    expect(thuongThanhVien(MUC, 100)).toBe(10_000_000);
-    expect(thuongThanhVien(MUC, 130)).toBe(10_000_000);
+  it('không đo được chỉ số nào thì không thưởng', () => {
+    expect(thuongLeaderThang([], MUC)).toBe(0);
+    expect(thuongLeaderThang([null, null], MUC)).toBe(0);
   });
 
-  it('tháng không đo được thì không thưởng', () => {
-    expect(thuongThanhVien(MUC, null)).toBe(0);
+  it('chỉ số không đo được không kéo leader xuống', () => {
+    expect(thuongLeaderThang([100, 100, 100, 100, null, null, null], MUC)).toBe(3_000_000);
+  });
+
+  it('mức theo team: chưa đặt thì 0, số âm cũng 0', () => {
+    expect(thuongLeaderThang(chiSo(10, 10), 2_000_000)).toBe(2_000_000);
+    expect(thuongLeaderThang(chiSo(10, 10), 0)).toBe(0);
+    expect(thuongLeaderThang(chiSo(10, 10), -5)).toBe(0);
+  });
+
+  it('ngưỡng chỉnh được; ngưỡng hỏng thì về 80', () => {
+    expect(thuongLeaderThang(chiSo(7, 10), MUC, 70)).toBe(3_000_000);
+    expect(thuongLeaderThang(chiSo(9, 10), MUC, 100)).toBe(0);
+    expect(thuongLeaderThang(chiSo(7, 10), MUC, 0)).toBe(0);
+    expect(thuongLeaderThang(chiSo(8, 10), MUC, NaN)).toBe(3_000_000);
   });
 });
 
-describe('nhanThuongDiem', () => {
-  const THUONG = 800_000;
-
-  it('mọi dự án đạt trên 50% thì giữ nguyên', () => {
-    expect(nhanThuongDiem(THUONG, [60, 70, 100])).toBe(800_000);
-    expect(nhanThuongDiem(THUONG, [50])).toBe(800_000);
+describe('duAnDat', () => {
+  it('≥ 80% chỉ số của phòng mình đạt thì dự án đạt', () => {
+    expect(duAnDat(chiSo(4, 5))).toBe(true);
+    expect(duAnDat(chiSo(3, 5))).toBe(false);
+    expect(duAnDat([100])).toBe(true);
+    expect(duAnDat([99])).toBe(false);
   });
 
-  it('CHỈ CẦN MỘT dự án dưới 50% là còn một nửa', () => {
-    expect(nhanThuongDiem(THUONG, [40, 60])).toBe(400_000);
-    expect(nhanThuongDiem(THUONG, [49])).toBe(400_000);
-    expect(nhanThuongDiem(THUONG, [100, 100, 10])).toBe(400_000);
+  it('không đo được → null, khác với trượt', () => {
+    expect(duAnDat([])).toBeNull();
+    expect(duAnDat([null])).toBeNull();
+  });
+});
+
+describe('heSoDiemThanhVien', () => {
+  const duAn = (dat: number, tong: number) => Array.from({ length: tong }, (_, i) => i < dat);
+
+  it('≥ 80% số dự án đạt thì đủ thưởng điểm', () => {
+    expect(heSoDiemThanhVien(duAn(4, 5))).toBe(1);
+    expect(heSoDiemThanhVien(duAn(5, 5))).toBe(1);
+    expect(heSoDiemThanhVien([true])).toBe(1);
   });
 
-  it('dự án không đo được thì bỏ qua, không kéo ai xuống', () => {
-    expect(nhanThuongDiem(THUONG, [null, 60])).toBe(800_000);
-    expect(nhanThuongDiem(THUONG, [null, null])).toBe(800_000);
-    expect(nhanThuongDiem(THUONG, [])).toBe(800_000);
+  it('dưới 80% thì còn một nửa', () => {
+    expect(heSoDiemThanhVien(duAn(3, 5))).toBe(0.5);
+    expect(heSoDiemThanhVien([true, false])).toBe(0.5);
+    expect(heSoDiemThanhVien([false])).toBe(0.5);
   });
 
-  it('không có thưởng điểm thì không đẻ ra tiền', () => {
-    expect(nhanThuongDiem(0, [10])).toBe(0);
+  it('dự án không đo được bị bỏ qua; không còn dự án nào thì giữ nguyên', () => {
+    expect(heSoDiemThanhVien([true, null, null])).toBe(1);
+    expect(heSoDiemThanhVien([null, null])).toBe(1);
+    expect(heSoDiemThanhVien([])).toBe(1);
+  });
+
+  it('ngưỡng chỉnh được', () => {
+    expect(heSoDiemThanhVien(duAn(3, 5), 60)).toBe(1);
   });
 });

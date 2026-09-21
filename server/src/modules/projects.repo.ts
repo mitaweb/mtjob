@@ -196,14 +196,6 @@ export async function saveEntry(e: KpiEntry): Promise<void> {
 
 // ── Thưởng KPI dự án ──
 
-/** Mức thưởng của một (dự án × phòng). */
-export interface TeamBonus {
-  projectId: string;
-  teamId: string;
-  amount: number;
-  note: string;
-}
-
 /** Một người được phân công vào dự án. */
 export interface Assignee {
   projectId: string;
@@ -216,16 +208,6 @@ export interface Assignee {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rowToBonus(r: any): TeamBonus {
-  return {
-    projectId: r.project_id || '',
-    teamId: r.team_id || '',
-    amount: Number(r.amount || 0) || 0,
-    note: r.note || '',
-  };
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function rowToAssignee(r: any): Assignee {
   return {
     projectId: r.project_id || '',
@@ -235,25 +217,6 @@ function rowToAssignee(r: any): Assignee {
     endDate: r.end_date || '',
     assignedBy: r.assigned_by || '',
   };
-}
-
-/** Mức thưởng — của một dự án, hoặc của tất cả khi bỏ trống. */
-export async function getTeamBonuses(projectId?: string): Promise<TeamBonus[]> {
-  const rows = projectId
-    ? await q('SELECT * FROM project_team_bonus WHERE project_id = $1', [projectId])
-    : await q('SELECT * FROM project_team_bonus');
-  return rows.map(rowToBonus);
-}
-
-export async function upsertTeamBonus(b: TeamBonus, by: string): Promise<void> {
-  await q(
-    `INSERT INTO project_team_bonus (project_id, team_id, amount, note, updated_by, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6)
-     ON CONFLICT (project_id, team_id) DO UPDATE SET
-       amount = EXCLUDED.amount, note = EXCLUDED.note,
-       updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at`,
-    [b.projectId, b.teamId, Math.max(0, Math.round(b.amount) || 0), b.note || '', by, new Date().toISOString()],
-  );
 }
 
 /** Phân công — của một dự án, hoặc của tất cả khi bỏ trống. */
@@ -305,16 +268,20 @@ export interface BonusLine {
   tyLe: number | null;
   mucThuong: number;
   amount: number;
+  /** Số chỉ số đạt / số chỉ số đo được của cả phòng (luật 21/9/2026). */
+  soDat: number;
+  soChiSo: number;
 }
 
 export const SQL_DOC_THUONG_KPI = 'SELECT * FROM project_bonus_lines WHERE year = $1 AND month = $2';
 export const SQL_XOA_THUONG_KPI = 'DELETE FROM project_bonus_lines WHERE year = $1 AND month = $2';
 export const SQL_GHI_THUONG_KPI = `INSERT INTO project_bonus_lines
-  (year, month, member_id, project_id, team_id, vai_tro, ty_le, muc_thuong, amount)
-  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+  (year, month, member_id, project_id, team_id, vai_tro, ty_le, muc_thuong, amount, so_dat, so_chi_so)
+  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
   ON CONFLICT (year, month, member_id, project_id) DO UPDATE SET
     team_id = EXCLUDED.team_id, vai_tro = EXCLUDED.vai_tro, ty_le = EXCLUDED.ty_le,
-    muc_thuong = EXCLUDED.muc_thuong, amount = EXCLUDED.amount`;
+    muc_thuong = EXCLUDED.muc_thuong, amount = EXCLUDED.amount,
+    so_dat = EXCLUDED.so_dat, so_chi_so = EXCLUDED.so_chi_so`;
 
 export async function getBonusLines(year: number, month: number): Promise<BonusLine[]> {
   const rows = await q(SQL_DOC_THUONG_KPI, [year, month]);
@@ -326,6 +293,8 @@ export async function getBonusLines(year: number, month: number): Promise<BonusL
     tyLe: r.ty_le == null ? null : Number(r.ty_le),
     mucThuong: Number(r.muc_thuong || 0) || 0,
     amount: Number(r.amount || 0) || 0,
+    soDat: Number(r.so_dat || 0) || 0,
+    soChiSo: Number(r.so_chi_so || 0) || 0,
   }));
 }
 
@@ -349,6 +318,8 @@ export async function saveBonusLines(year: number, month: number, lines: BonusLi
       l.tyLe == null ? null : Math.round(l.tyLe),
       l.mucThuong,
       l.amount,
+      l.soDat,
+      l.soChiSo,
     ]);
   }
 }
