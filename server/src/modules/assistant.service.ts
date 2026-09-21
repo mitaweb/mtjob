@@ -84,7 +84,8 @@ function reminderTool(memberId: string, role: string): ToolDef {
     declaration: {
       name: 'create_reminder',
       description:
-        'Đặt nhắc hẹn cho CHÍNH người đang chat. Dùng khi họ nói "nhắc tôi…", "đặt lịch nhắc…". ' +
+        'Đặt nhắc hẹn / lịch gặp cho CHÍNH người đang chat. Dùng khi họ nói "nhắc tôi…", "đặt lịch…", ' +
+        '"gặp chị A sáng thứ 5 10h" — với BẤT KỲ ai, không cần người đó có trong CRM, không cần tra gì trước. ' +
         'Chỉ người đặt mới nhận được thông báo.',
       parameters: {
         type: 'OBJECT',

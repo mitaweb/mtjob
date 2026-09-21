@@ -335,6 +335,8 @@ export function crmWriteTools(memberId: string): ToolDef[] {
       declaration: {
         name: 'create_appointment',
         description:
+          'CHỈ dùng khi người dùng nói rõ muốn ghi vào mục lịch hẹn của khách trong CRM; hẹn gặp / đặt lịch ' +
+          'thông thường thì dùng create_reminder, không cần tra CRM. ' +
           'Đặt lịch hẹn với một khách hàng ĐÃ CÓ trong CRM (hiện ở mục Lịch hẹn sắp tới). ' +
           'Nếu người được hẹn không phải khách hàng trong hệ thống thì hàm sẽ báo lại — khi đó dùng create_reminder.',
         parameters: {
