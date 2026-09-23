@@ -14,7 +14,7 @@ vi.mock('../ai/index.js', () => ({
   aiAvailable: async () => true,
 }));
 
-const { runToolLoop } = await import('./assistant.service.js');
+const { runToolLoop, laViecCu } = await import('./assistant.service.js');
 
 /** Một lượt trả lời của AI: nói `text` rồi (tuỳ chọn) gọi hàm `goiHam`. */
 function luot(text: string, goiHam?: string) {
@@ -210,5 +210,94 @@ describe('runToolLoopChan', () => {
     const answer = await runToolLoopChan({ system: 's', question: 'q', history: [], tools: [GHI], onEvent: () => undefined });
     expect(answer).toBe('Tháng 8 anh có 21 ngày công.');
     expect(generateContentStream).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Anh Tâm 22/9/2026: đặt lịch mới mà trợ lý còn đặt LẠI lịch của lượt trước.
+describe('laViecCu', () => {
+  const cu = ['sáng mai 10h gọi chốt với chị Huyền Viettiles', 'Chị Hiền Viettiles e nhé, sửa k phải Huyền Viettiles'];
+  const hoi = 'T6 lúc 15:30 gặp anh Nguyên Gateway ở highland 15 song hành';
+
+  it('tham số trùng câu vừa nhắn → việc mới', () => {
+    expect(laViecCu({ title: 'Gặp anh Nguyên Gateway tại Highland 15 Song Hành', atTime: '15:30' }, hoi, cu)).toBe(false);
+  });
+
+  it('không trùng câu mới mà trùng câu nhắn cũ → việc cũ', () => {
+    expect(laViecCu({ title: 'Gọi chốt với chị Hiền Viettiles', atTime: '10:00', onDate: '2026-09-22' }, hoi, cu)).toBe(true);
+    expect(laViecCu({ title: 'Huyền Viettiles' }, hoi, cu)).toBe(true);
+  });
+
+  it('không trùng gì cả thì không kết luận; số/ngày giờ không tính là từ khoá', () => {
+    expect(laViecCu({ title: 'Nộp thuế', atTime: '10:00', onDate: '2026-09-22' }, hoi, cu)).toBe(false);
+    expect(laViecCu({}, hoi, cu)).toBe(false);
+    expect(laViecCu({ title: 'Gọi chốt' }, hoi, cu)).toBe(false); // toàn từ thường
+  });
+
+  it('câu xác nhận ngắn ("ừ") không có từ khoá → vẫn coi là việc cũ (chặn hay không do có lệnh ghi mới)', () => {
+    expect(laViecCu({ title: 'Gọi chốt với chị Hiền Viettiles' }, 'ừ đặt đi', cu)).toBe(true);
+  });
+});
+
+describe('runToolLoop — chặn làm lại việc của lượt trước', () => {
+  const ghi: string[] = [];
+  const TAO = {
+    declaration: { name: 'create_reminder', description: 'đặt nhắc' },
+    run: async (a: Record<string, unknown>) => {
+      ghi.push(String(a.title));
+      return `Đã đặt nhắc hẹn "${a.title}".`;
+    },
+  };
+  const history = [
+    { role: 'user' as const, text: 'sáng mai 10h gọi chốt với chị Hiền Viettiles' },
+    { role: 'model' as const, text: '✅ Gọi chốt với chị Hiền Viettiles — 22/09 10:00.' },
+  ];
+  const goiHai = (a: string, b: string) => async () => [
+    { functionCall: { name: 'create_reminder', args: { title: a, atTime: '15:30' } } },
+    { functionCall: { name: 'create_reminder', args: { title: b, atTime: '10:00' } } },
+  ];
+
+  beforeEach(() => {
+    ghi.length = 0;
+  });
+
+  it('đặt việc mới + đặt lại việc cũ trong cùng lượt → việc cũ KHÔNG chạy, hàm nhận câu từ chối', async () => {
+    let ketQua: unknown[] = [];
+    generateContent
+      .mockImplementationOnce(goiHai('Gặp anh Nguyên Gateway tại Highland', 'Gọi chốt với chị Hiền Viettiles'))
+      .mockImplementationOnce(async (req: { contents: Array<{ parts: Array<{ functionResponse?: { response: { result: unknown } } }> }> }) => {
+        ketQua = req.contents.at(-1)!.parts.map((p) => p.functionResponse!.response.result);
+        return [{ text: 'Đã đặt Gateway.' }];
+      });
+    await runToolLoop({ system: '', question: 'T6 15:30 gặp anh Nguyên Gateway ở highland', history, tools: [TAO] });
+    expect(ghi).toEqual(['Gặp anh Nguyên Gateway tại Highland']);
+    expect(String(ketQua[1])).toMatch(/^KHÔNG CHẠY/);
+  });
+
+  it('thứ tự ngược (việc cũ gọi trước trong cùng lượt) vẫn chặn', async () => {
+    generateContent
+      .mockImplementationOnce(goiHai('Gọi chốt với chị Hiền Viettiles', 'Gặp anh Nguyên Gateway'))
+      .mockImplementationOnce(async () => [{ text: 'ok' }]);
+    await runToolLoop({ system: '', question: 'T6 15:30 gặp anh Nguyên Gateway', history, tools: [TAO] });
+    expect(ghi).toEqual(['Gặp anh Nguyên Gateway']);
+  });
+
+  it('anh chỉ nhắn "ừ" để xác nhận việc cũ → không có lệnh ghi việc mới → vẫn chạy', async () => {
+    generateContent
+      .mockImplementationOnce(async () => [{ functionCall: { name: 'create_reminder', args: { title: 'Gọi chốt với chị Hiền Viettiles', boQuaTrung: true } } }])
+      .mockImplementationOnce(async () => [{ text: 'ok' }]);
+    await runToolLoop({ system: '', question: 'ừ, đặt chồng giờ đi', history, tools: [TAO] });
+    expect(ghi).toEqual(['Gọi chốt với chị Hiền Viettiles']);
+  });
+
+  it('câu nhắn cũ gửi lên được đánh dấu là đã xử lý xong', async () => {
+    let contents: Array<{ role: string; parts: Array<{ text?: string }> }> = [];
+    generateContent.mockImplementationOnce(async (req: { contents: typeof contents }) => {
+      contents = req.contents;
+      return [{ text: 'ok' }];
+    });
+    await runToolLoop({ system: '', question: 'câu mới', history, tools: [TAO] });
+    expect(String(contents[0].parts[0].text).startsWith('[Lượt trước — đã xử lý xong')).toBe(true);
+    expect(contents[1].parts[0].text).toBe(history[1].text); // câu của model giữ nguyên
+    expect(contents[2].parts[0].text).toBe('câu mới');
   });
 });

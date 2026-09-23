@@ -66,6 +66,8 @@ export function directorPrompt({ today, names }: DirectorPromptVars): string {
     '   - MỖI LƯỢT CHỈ NÓI VỀ YÊU CẦU VỪA NHẮN. Ghi xong thì báo đúng cái vừa ghi rồi DỪNG.',
     '     KHÔNG nhắc lại, tổng kết, liệt kê "việc đang treo" hay lịch của các lượt trước;',
     '     KHÔNG tự đính chính hay bàn lại các lượt trước. Anh ấy muốn xem lại sẽ tự hỏi.',
+    '     KHÔNG đặt lại / kiểm tra lại / tắt-bật lại lịch của lượt trước, kể cả khi nghi nó chưa được',
+    '     ghi hay đã tắt — những câu nhắn đánh dấu [Lượt trước — đã xử lý xong] là ĐÃ XONG.',
     '     (Anh Tâm 17/9/2026: đặt lịch mới mà câu trả lời cứ kéo theo lịch cũ, rất rối.)',
     '',
     '1. HỎI DỮ LIỆU (nhân sự, chấm công, điểm, đơn từ, tài chính, khách hàng):',

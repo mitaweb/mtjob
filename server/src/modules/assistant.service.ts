@@ -453,6 +453,53 @@ export function nhanLaDaGhi(text: string): boolean {
   );
 }
 
+// Từ hay gặp trong câu nhắn việc — không dùng để nhận diện "cùng một việc".
+const TU_THUONG = new Set([
+  'sang', 'chieu', 'toi', 'trua', 'chot', 'nhac', 'hen', 'gap', 'goi', 'lich', 'ngay', 'thang', 'tuan', 'luc',
+  'nay', 'mai', 'kia', 'voi', 'anh', 'chi', 'tai', 'dat', 'viec', 'cua', 'cho', 'nha', 'ong', 'thu', 'hom',
+  'gio', 'phut', 'lai', 'them', 'moi', 'once', 'daily', 'weekly', 'monthly', 'nhe', 'sua', 'khong', 'phai',
+]);
+
+/** Từ khoá nhận diện một việc: bỏ dấu, chỉ giữ chữ cái, bỏ từ thường. Số và ngày giờ không tính. */
+function tuKhoa(s: string): Set<string> {
+  const flat = String(s || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/đ/gi, 'd')
+    .toLowerCase();
+  return new Set((flat.match(/[a-z]+/g) || []).filter((w) => w.length >= 3 && !TU_THUONG.has(w)));
+}
+
+function coChung(a: Set<string>, b: Set<string>): boolean {
+  for (const w of a) if (b.has(w)) return true;
+  return false;
+}
+
+/**
+ * Lệnh ghi này là VIỆC CŨ (của lượt trước) chứ không phải việc vừa nhắn?
+ *
+ * Anh Tâm 22/9/2026: nhắn "T6 15:30 gặp anh Nguyên Gateway", trợ lý đặt Gateway xong còn đặt
+ * LẠI "Gọi chốt với chị Hiền Viettiles" của lượt trước. Lời dặn "mỗi lượt chỉ làm việc vừa
+ * nhắn" đã có mà mô hình vẫn lôi lịch sử ra làm lại, nên phải chặn ở đây.
+ *
+ * Việc = các chuỗi trong tham số hàm. Có từ khoá trùng với câu vừa nhắn → việc mới. Không trùng
+ * câu mới mà trùng một câu nhắn cũ → việc cũ. Không trùng gì cả thì không kết luận (không chặn).
+ */
+export function laViecCu(args: Record<string, unknown> | undefined, question: string, cauCu: string[]): boolean {
+  const tk = tuKhoa(
+    Object.values(args || {})
+      .filter((v): v is string => typeof v === 'string')
+      .join(' '),
+  );
+  if (tk.size === 0) return false;
+  if (coChung(tk, tuKhoa(question))) return false;
+  return cauCu.some((c) => coChung(tk, tuKhoa(c)));
+}
+
+const KHONG_CHAY_VIEC_CU =
+  'KHÔNG CHẠY: đây là việc của lượt TRƯỚC, đã xử lý xong rồi. Lượt này chỉ làm đúng việc vừa nhắn; ' +
+  'không đặt lại, kiểm tra lại hay tắt/bật lại lịch cũ. Trả lời về việc vừa nhắn thôi.';
+
 const CANH_BAO_CHUA_GHI =
   '⚠️ Em CHƯA ghi được gì vào hệ thống — trợ lý trả lời mà không gọi hàm nào. ' +
   'Anh nhắn lại một việc một lần, ví dụ: "nhắc gặp anh Bằng 18/09 lúc 14:00".';
@@ -500,8 +547,14 @@ export async function runToolLoop(opts: ToolLoopOpts): Promise<string> {
     trimmed.unshift(h);
   }
 
+  // Câu nhắn cũ đánh dấu rõ là ĐÃ XONG — mô hình hay đọc lịch sử rồi làm lại việc của lượt trước.
   const contents: GeminiContent[] = [
-    ...trimmed.map((h): GeminiContent => ({ role: h.role, parts: [{ text: h.text }] })),
+    ...trimmed.map(
+      (h): GeminiContent => ({
+        role: h.role,
+        parts: [{ text: h.role === 'user' ? `[Lượt trước — đã xử lý xong, không làm lại] ${h.text}` : h.text }],
+      }),
+    ),
     { role: 'user', parts: [{ text: opts.question }] },
   ];
   const tools = [{ functionDeclarations: opts.tools.map((t) => t.declaration) }];
@@ -509,6 +562,9 @@ export async function runToolLoop(opts: ToolLoopOpts): Promise<string> {
 
   const provider = await getProvider();
   if (!provider) throw new Error('Chưa cấu hình trợ lý AI.');
+
+  const cauCu = opts.history.filter((h) => h.role === 'user').map((h) => h.text);
+  let daGhiViecMoi = false;
 
   // Chỉ stream khi caller cần và nhà cung cấp hỗ trợ; không thì gọi thường như cũ.
   const wantStream = !!opts.onEvent && !!provider.generateContentStream;
@@ -529,10 +585,24 @@ export async function runToolLoop(opts: ToolLoopOpts): Promise<string> {
     // không nó dính vào đầu câu trả lời thật và lượt sau còn bị gửi lại làm lịch sử.
     if (parts.some((p) => p.text)) opts.onEvent?.({ type: 'reset' });
     contents.push({ role: 'model', parts });
+
+    // Chặn lệnh ghi lôi việc của lượt trước ra làm lại — CHỈ khi lượt này đã có lệnh ghi cho việc
+    // mới (xem laViecCu). Anh nhắn "ừ" để xác nhận việc cũ thì không có lệnh ghi việc mới, vẫn qua.
+    const xet = calls.map((p) => {
+      const tool = resolveTool(p.functionCall!.name, byName);
+      const ghi = !!tool && laHamGhi(tool.declaration.name);
+      return { tool, ghi, cu: ghi && laViecCu(p.functionCall!.args, opts.question, cauCu) };
+    });
+    if (xet.some((x) => x.ghi && !x.cu)) daGhiViecMoi = true;
+
     const responses: GeminiPart[] = await Promise.all(
-      calls.map(async (p) => {
+      calls.map(async (p, i) => {
         const fc = p.functionCall!;
-        const tool = resolveTool(fc.name, byName);
+        const { tool, cu } = xet[i];
+        if (cu && daGhiViecMoi) {
+          console.warn(`[assistant] chặn ${tool!.declaration.name} — việc của lượt trước`);
+          return { functionResponse: { name: fc.name, response: { result: KHONG_CHAY_VIEC_CU } } };
+        }
         // Báo tiến trình bằng tên đã nhận diện được, để nhãn chờ hiện đúng việc.
         opts.onEvent?.({ type: 'tool', name: tool?.declaration.name || fc.name });
         if (tool) opts.goiHam?.push(tool.declaration.name);
