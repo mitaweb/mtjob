@@ -20,7 +20,7 @@ import {
 } from './finance.repo.js';
 import { addPayment } from './finance.service.js';
 import { getPartyRates } from './finance.repo.js';
-import { mucTheoThang } from '../lib/finance.js';
+import { mucTheoThang, computeOnceDebt, DEBT_TRACK_FROM } from '../lib/finance.js';
 import {
   getCustomers,
   upsertCustomer,
@@ -184,6 +184,18 @@ const COLLECT: ToolDef = {
     const raw = a.amount === undefined || a.amount === null || a.amount === '' ? undefined : parseVndAmount(a.amount as string);
     if (raw !== undefined && (!Number.isFinite(raw) || raw < 0)) {
       return `Không hiểu số tiền "${a.amount}". Hỏi lại số thực thu.`;
+    }
+    // Khoản MỘT LẦN trả nhiều đợt: không có mức kỳ, còn nợ = tổng − mọi đợt đã trả.
+    if (party.kind === 'once') {
+      const truoc = computeOnceDebt({ total: party.receivable, startMonth: '', month, paid: (await paidByPartyMonth(DEBT_TRACK_FROM))[party.id] || {} });
+      const r = await addPayment({ partyId: party.id, month, amount: raw ?? truoc.remaining });
+      if (!r.ok) return r.message || 'Chưa ghi nhận được.';
+      const conNo = Math.max(0, truoc.remaining - r.amount);
+      return (
+        `Đã ghi nhận thu ${formatVnd(r.amount)} của ${party.name} (khoản một lần, tổng ${formatVnd(truoc.total)}). ` +
+        `Đã trả ${formatVnd(truoc.paidTotal + r.amount)}.` +
+        (conNo > 0 ? ` Còn nợ ${formatVnd(conNo)}.` : ' Đã thu đủ.')
+      );
     }
     // Mức của đúng tháng đang ghi — bên đổi mức giữa chừng thì tháng cũ vẫn theo mức cũ.
     const muc = mucTheoThang((await getPartyRates()).get(party.id) || [], party.receivable, month);

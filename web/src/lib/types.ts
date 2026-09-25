@@ -35,6 +35,10 @@ export interface Party {
   active: boolean;
   /** Nguồn khách của bên này — mọi khoản thu sinh ra từ đây đều mang nguồn này. */
   source: string;
+  /** 'monthly' = thu hàng tháng; 'once' = khoản một lần trả nhiều đợt, `receivable` là tổng hợp đồng. */
+  kind?: 'monthly' | 'once';
+  /** Khoản một lần: đã trả luỹ kế tới hết tháng đang xem. */
+  paidTotal?: number;
   nextDue?: string;
   /** Mức phải thu của RIÊNG tháng đang xem (bên đổi mức giữa chừng thì khác `receivable`). */
   receivableThisMonth?: number;

@@ -222,6 +222,9 @@ ALTER TABLE finance_entries ADD COLUMN IF NOT EXISTS customer_id text DEFAULT ''
 -- Bên công nợ giữ nguồn của riêng nó: thu định kỳ hằng tháng mà bắt chọn lại nguồn mỗi
 -- lần thì sớm muộn cũng có tháng quên, và bảng thống kê thủng một lỗ.
 ALTER TABLE parties ADD COLUMN IF NOT EXISTS source text DEFAULT '';
+-- Loại bên (anh Tâm 25/9/2026): 'monthly' = thu hàng tháng; 'once' = khoản một lần (làm phần
+-- mềm, thiết kế web…) khách trả nhiều đợt — receivable khi đó là TỔNG hợp đồng, không có kỳ.
+ALTER TABLE parties ADD COLUMN IF NOT EXISTS kind text DEFAULT 'monthly';
 
 -- CRM: khách hàng + lịch hẹn.
 CREATE TABLE IF NOT EXISTS customers (

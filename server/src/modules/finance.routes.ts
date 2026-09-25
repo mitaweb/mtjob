@@ -22,6 +22,7 @@ import { findCustomer, getCustomers } from './crm.repo.js';
 import {
   nextDueDateIso,
   computeDebt,
+  computeOnceDebt,
   doanhThuTheoNguon,
   boSungNguon,
   mucTheoThang,
@@ -58,6 +59,28 @@ financeRouter.get(
     res.json({
       debtFrom: DEBT_TRACK_FROM,
       parties: parties.map((p) => {
+        // Khoản MỘT LẦN: không có kỳ tháng, còn nợ = tổng − mọi đợt đã trả.
+        if (p.kind === 'once') {
+          const d = computeOnceDebt({
+            total: p.receivable,
+            startMonth: (p.startDate || '').slice(0, 7),
+            month,
+            paid: paid[p.id] || {},
+          });
+          return {
+            ...p,
+            receivableThisMonth: d.total,
+            rates: [],
+            nextDue: nextDueDateIso(p.dueDay, today),
+            carryOver: 0,
+            thisMonthRemaining: d.remaining,
+            paidToOld: 0,
+            paidTotal: d.paidTotal,
+            totalDue: d.remaining,
+            credit: d.credit,
+            unpaidMonths: [],
+          };
+        }
         const lichSu = rates.get(p.id) || [];
         const debt = computeDebt({
           receivable: p.receivable,
@@ -97,6 +120,8 @@ const partySchema = z.object({
   active: z.boolean().optional().default(true),
   /** Nguồn khách — mọi khoản thu của bên này thừa hưởng, khỏi chọn lại mỗi tháng. */
   source: z.string().max(60).optional().default(''),
+  /** 'once' = khoản một lần trả nhiều đợt (receivable là tổng hợp đồng). */
+  kind: z.enum(['monthly', 'once']).optional().default('monthly'),
   /**
    * Mức phải thu mới áp dụng từ tháng nào (YYYY-MM). Bỏ trống = tháng hiện tại.
    * Chuỗi rỗng '' = "sửa cả các tháng trước": xoá lịch sử, mức mới áp cho mọi tháng.
@@ -112,7 +137,9 @@ financeRouter.post(
 
     // Đổi MỨC của bên đang có → ghi lịch sử, không để các tháng trước nhảy theo.
     // Anh Tâm 16/9/2026: "đang 3 triệu, kể từ tháng này tăng 6 triệu... chỉ 6 từ tháng cập nhật".
-    if (b.id) {
+    // Khoản một lần không có lịch sử mức: đổi tổng là đổi tổng, còn nợ tính lại ngay.
+    if (b.id && b.kind === 'once') await deletePartyRates(b.id);
+    if (b.id && b.kind !== 'once') {
       const cu = (await getParties()).find((p) => p.id === b.id);
       if (cu && cu.receivable !== b.receivable) {
         if (b.applyFrom === '') {
@@ -137,6 +164,7 @@ financeRouter.post(
       note: b.note,
       active: b.active,
       source: b.source,
+      kind: b.kind,
     };
     await upsertParty(party);
     res.json({ ok: true, id: party.id });
@@ -192,16 +220,29 @@ financeRouter.get(
     const income = entries.filter((e) => e.kind === 'thu').reduce((s, e) => s + e.amount, 0);
     const expense = entries.filter((e) => e.kind === 'chi').reduce((s, e) => s + e.amount, 0);
     const parties = allParties.filter((p) => p.active);
+    const paid = await paidByPartyMonth(DEBT_TRACK_FROM);
+    const dinhKy = parties.filter((p) => p.kind !== 'once');
     // Mức của riêng tháng đang xem — bên đổi mức giữa chừng thì tháng cũ vẫn theo mức cũ.
-    const receivableTotal = parties.reduce(
-      (s, p) => s + mucTheoThang(rates.get(p.id) || [], p.receivable, month),
-      0,
-    );
+    // Khoản một lần góp phần CÒN PHẢI ĐÒI (tổng − đã trả), không phải cả hợp đồng mỗi tháng.
+    const receivableTotal =
+      dinhKy.reduce((s, p) => s + mucTheoThang(rates.get(p.id) || [], p.receivable, month), 0) +
+      parties
+        .filter((p) => p.kind === 'once')
+        .reduce(
+          (s, p) =>
+            s +
+            computeOnceDebt({
+              total: p.receivable,
+              startMonth: (p.startDate || '').slice(0, 7),
+              month,
+              paid: paid[p.id] || {},
+            }).remaining,
+          0,
+        );
 
     // Nợ tồn từ các kỳ trước — tách khỏi `receivableTotal` (vốn là tiền của riêng kỳ này)
     // để màn hình nói rõ đâu là tiền tháng này, đâu là tiền còn treo lại.
-    const paid = await paidByPartyMonth(DEBT_TRACK_FROM);
-    const carryOverTotal = parties.reduce(
+    const carryOverTotal = dinhKy.reduce(
       (s, p) =>
         s +
         computeDebt({

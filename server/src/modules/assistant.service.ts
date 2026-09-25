@@ -6,8 +6,8 @@ import { getActiveMembers, findById } from './members.repo.js';
 import { getForDate, getForMemberRange } from './attendance.repo.js';
 import { ranking, memberScore } from './scores.service.js';
 import { getAllRequests } from './requests.repo.js';
-import { getParties, getEntries, getPartyRates } from './finance.repo.js';
-import { mucTheoThang } from '../lib/finance.js';
+import { getParties, getEntries, getPartyRates, paidByPartyMonth } from './finance.repo.js';
+import { mucTheoThang, computeOnceDebt, DEBT_TRACK_FROM } from '../lib/finance.js';
 import { getDoneTasksForMemberRange } from './tasks.repo.js';
 import { getActiveCatalog, locCatalogTheoTeam } from './catalog.repo.js';
 import { getProvider, aiAvailable } from '../ai/index.js';
@@ -308,15 +308,22 @@ async function pendingRequestsText(): Promise<string> {
 }
 
 async function financeText(monthYm: string): Promise<string> {
-  const [parties, entries, rates] = await Promise.all([
+  const [parties, entries, rates, paid] = await Promise.all([
     getParties().catch(() => []),
     getEntries(monthYm).catch(() => []),
     getPartyRates().catch(() => new Map()),
+    paidByPartyMonth(DEBT_TRACK_FROM).catch((): Record<string, Record<string, number>> => ({})),
   ]);
   // Mức của đúng tháng đang hỏi — bên đổi mức giữa chừng thì tháng cũ vẫn theo mức cũ.
   const receivable = parties
-    .filter((p) => p.active)
+    .filter((p) => p.active && p.kind !== 'once')
     .reduce((s, p) => s + mucTheoThang(rates.get(p.id) || [], p.receivable, monthYm), 0);
+  // Khoản một lần trả nhiều đợt: liệt kê còn nợ bao nhiêu trên tổng.
+  const motLan = parties
+    .filter((p) => p.active && p.kind === 'once')
+    .map((p) => ({ p, d: computeOnceDebt({ total: p.receivable, startMonth: (p.startDate || '').slice(0, 7), month: monthYm, paid: paid[p.id] || {} }) }))
+    .filter(({ d }) => d.active)
+    .map(({ p, d }) => `${p.name}: còn nợ ${formatVnd(d.remaining)} / tổng ${formatVnd(d.total)} (đã trả ${formatVnd(d.paidTotal)})`);
   const income = entries.filter((e) => e.kind === 'thu').reduce((s, e) => s + e.amount, 0);
   const expense = entries.filter((e) => e.kind === 'chi').reduce((s, e) => s + e.amount, 0);
   const entryLines = entries
@@ -325,7 +332,8 @@ async function financeText(monthYm: string): Promise<string> {
     .join('\n');
   return [
     `Tài chính tháng ${monthYm}: Thu ${formatVnd(income)}, Chi ${formatVnd(expense)}, Lãi/Lỗ ${formatVnd(income - expense)}.`,
-    `Tổng công nợ phải thu mỗi kỳ: ${formatVnd(receivable)} (${parties.filter((p) => p.active).length} bên).`,
+    `Tổng công nợ phải thu mỗi kỳ: ${formatVnd(receivable)} (${parties.filter((p) => p.active && p.kind !== 'once').length} bên thu hàng tháng).`,
+    motLan.length ? `Khoản một lần trả nhiều đợt:\n${motLan.join('\n')}` : '',
     entries.length ? `Các khoản:\n${entryLines}` : 'Chưa có khoản thu/chi nào trong tháng.',
   ].join('\n');
 }

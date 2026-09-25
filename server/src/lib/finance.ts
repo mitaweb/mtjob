@@ -138,6 +138,57 @@ export function mucTheoThang(rates: PartyRate[], fallback: number, month: string
   return Math.max(0, Math.round(muc ?? fallback) || 0);
 }
 
+/** Loại bên: thu hàng tháng (mặc định) hay khoản một lần trả nhiều đợt. */
+export type PartyKind = 'monthly' | 'once';
+
+export interface OnceDebtInput {
+  /** Tổng giá trị hợp đồng / khoản phải thu một lần. */
+  total: number;
+  /** Tháng bắt đầu (YYYY-MM), '' = không giới hạn. Xem tháng trước đó thì chưa tính. */
+  startMonth: string;
+  /** Tháng đang xem. */
+  month: string;
+  /** Đã thu theo từng tháng — cộng dồn MỌI tháng ≤ tháng đang xem. */
+  paid: Record<string, number>;
+}
+
+export interface OnceDebtResult {
+  total: number;
+  /** Đã thu luỹ kế tới hết tháng đang xem. */
+  paidTotal: number;
+  /** Còn phải đòi. */
+  remaining: number;
+  /** Khách trả dư. */
+  credit: number;
+  /** Tháng đang xem có nằm trong thời gian hợp đồng không. */
+  active: boolean;
+}
+
+/**
+ * Công nợ của khoản thu MỘT LẦN trả nhiều đợt (anh Tâm 25/9/2026: "làm phần mềm, khách
+ * chuyển khoản từng lần chứ không chuyển hết, cần ghi nhận công nợ để đòi đủ").
+ *
+ * Không có kỳ tháng: còn nợ = tổng − mọi đợt đã trả (tính tới tháng đang xem, để xem lại
+ * tháng cũ không bị đợt trả sau làm sạch nợ sớm hơn thực tế).
+ */
+export function computeOnceDebt(input: OnceDebtInput): OnceDebtResult {
+  const total = Math.max(0, Math.round(input.total) || 0);
+  if (input.startMonth && input.month < input.startMonth) {
+    return { total, paidTotal: 0, remaining: 0, credit: 0, active: false };
+  }
+  let paidTotal = 0;
+  for (const [m, v] of Object.entries(input.paid)) {
+    if (m <= input.month) paidTotal += Number(v) || 0;
+  }
+  return {
+    total,
+    paidTotal,
+    remaining: Math.max(0, total - paidTotal),
+    credit: Math.max(0, paidTotal - total),
+    active: true,
+  };
+}
+
 export interface DebtInput {
   /** Phải thu mỗi kỳ — mức HIỆN TẠI; tháng nào có lịch sử riêng thì `rates` thắng. */
   receivable: number;

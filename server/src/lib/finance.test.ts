@@ -4,6 +4,7 @@ import {
   daysUntil,
   debtMonths,
   computeDebt,
+  computeOnceDebt,
   boSungNguon,
   mucTheoThang,
   doanhThuTheoNguon,
@@ -298,5 +299,33 @@ describe('computeDebt', () => {
     const r = computeDebt({ ...base, startMonth: '2026-10', paid: {} });
     expect(r.carryOver).toBe(0);
     expect(r.total).toBe(21_000_000);
+  });
+});
+
+// Anh Tâm 25/9/2026: khoản thu MỘT LẦN (làm phần mềm) khách trả nhiều đợt.
+describe('computeOnceDebt', () => {
+  const hd = { total: 50_000_000, startMonth: '2026-09', month: '2026-11' };
+
+  it('chưa trả đợt nào thì nợ cả hợp đồng', () => {
+    expect(computeOnceDebt({ ...hd, paid: {} })).toMatchObject({ paidTotal: 0, remaining: 50_000_000, credit: 0, active: true });
+  });
+
+  it('trả nhiều đợt ở nhiều tháng thì cộng dồn, còn nợ = tổng − đã trả', () => {
+    const r = computeOnceDebt({ ...hd, paid: { '2026-09': 20_000_000, '2026-10': 15_000_000 } });
+    expect(r).toMatchObject({ paidTotal: 35_000_000, remaining: 15_000_000 });
+  });
+
+  it('xem lại tháng cũ thì KHÔNG tính đợt trả sau tháng đó', () => {
+    const r = computeOnceDebt({ ...hd, month: '2026-09', paid: { '2026-09': 20_000_000, '2026-10': 30_000_000 } });
+    expect(r).toMatchObject({ paidTotal: 20_000_000, remaining: 30_000_000 });
+  });
+
+  it('trả đủ thì sạch nợ; trả dư thì ghi nhận dư, không âm', () => {
+    expect(computeOnceDebt({ ...hd, paid: { '2026-10': 50_000_000 } })).toMatchObject({ remaining: 0, credit: 0 });
+    expect(computeOnceDebt({ ...hd, paid: { '2026-10': 55_000_000 } })).toMatchObject({ remaining: 0, credit: 5_000_000 });
+  });
+
+  it('xem tháng trước khi ký hợp đồng thì chưa tính gì', () => {
+    expect(computeOnceDebt({ ...hd, month: '2026-08', paid: {} })).toMatchObject({ remaining: 0, active: false });
   });
 });

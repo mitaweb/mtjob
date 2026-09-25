@@ -34,8 +34,11 @@ interface Mem {
 }
 
 const emptyParty = (): Partial<Party> => ({
-  name: '', dueDay: 30, receivable: 0, startDate: '', notifyMemberIds: [], active: true, source: '',
+  name: '', dueDay: 30, receivable: 0, startDate: '', notifyMemberIds: [], active: true, source: '', kind: 'monthly',
 });
+
+/** Khoản một lần trả nhiều đợt (làm phần mềm, web…) — không có kỳ tháng, đòi tới khi đủ tổng. */
+const laMotLan = (p: Partial<Party> | null | undefined) => p?.kind === 'once';
 
 export default function Finance() {
   const { user } = useAuth();
@@ -114,6 +117,7 @@ export default function Finance() {
           notifyMemberIds: pForm.notifyMemberIds || [],
           active: pForm.active ?? true,
           source: pForm.source || '',
+          kind: pForm.kind || 'monthly',
           // '' = sửa cả quá khứ; YYYY-MM = từ tháng đó; bên mới thì không gửi.
           applyFrom: pForm.id ? (suaCaQuaKhu ? '' : applyFrom) : undefined,
         },
@@ -149,6 +153,9 @@ export default function Finance() {
     // Gợi ý sẵn khoản CŨ NHẤT còn thiếu: khách hay trả tiền tháng trước vào tháng này, nên
     // có nợ cũ thì gợi ý nợ cũ; không thì gợi ý phần kỳ này còn thiếu. Người nhập chỉ gõ
     // số của lần này. Sạch nợ rồi thì để TRỐNG — điền sẵn số là bấm nhầm một cái đã ghi trùng.
+    // Khoản một lần: khách trả bao nhiêu tuỳ họ, không gợi ý số — điền sẵn cả phần còn lại
+    // là bấm nhầm một cái đã ghi trùng cả chục triệu.
+    if (laMotLan(p)) return setCollectInput('');
     const noCu = p.carryOver || 0;
     const kyNay = p.thisMonthRemaining ?? Math.max(0, (p.receivableThisMonth ?? p.receivable) - collectedAmount(p.id));
     const goiY = noCu > 0 ? noCu : kyNay;
@@ -268,10 +275,19 @@ export default function Finance() {
                     </div>
                   </td>
                   {/* Mức của RIÊNG tháng đang xem — đổi mức từ tháng 9 thì xem tháng 8 vẫn thấy mức cũ. */}
-                  <td className="text-right">{vnd(p.receivableThisMonth ?? p.receivable)}</td>
+                  <td className="text-right">
+                    {vnd(p.receivableThisMonth ?? p.receivable)}
+                    {laMotLan(p) && (
+                      <div className="text-[10px] leading-4 text-ink-muted">
+                        một lần · đã trả {vnd(p.paidTotal || 0)}
+                      </div>
+                    )}
+                  </td>
                   {/* Nợ cũ = tiền các kỳ TRƯỚC còn thiếu. Rê chuột để xem thiếu tháng nào. */}
                   <td className="text-right" title={(p.unpaidMonths || []).join(', ')}>
-                    {p.carryOver ? (
+                    {laMotLan(p) ? (
+                      <span className="text-ink-faint">—</span>
+                    ) : p.carryOver ? (
                       <span className="font-medium text-rose-600">{vnd(p.carryOver)}</span>
                     ) : (
                       <span className="text-ink-faint">—</span>
@@ -281,7 +297,7 @@ export default function Finance() {
                     {p.totalDue ? vnd(p.totalDue) : <span className="text-emerald-700">đã thu đủ</span>}
                   </td>
                   <td className="text-center">{p.dueDay}</td>
-                  <td>{p.nextDue}</td>
+                  <td>{laMotLan(p) && !p.totalDue ? <span className="text-ink-faint">—</span> : p.nextDue}</td>
                   <td className="text-xs">
                     {(p.notifyMemberIds || []).map((id) => members.find((m) => m.id === id)?.fullName).filter(Boolean).join(', ') || '— (giám đốc)'}
                   </td>
@@ -300,11 +316,17 @@ export default function Finance() {
                         onClick={() => openCollect(p)}
                         title={p.paidToOld ? `Trong đó ${vnd(p.paidToOld)} đã trừ nợ tháng trước` : undefined}
                       >
-                        {!isCollected(p.id)
-                          ? 'Đã thu'
-                          : !p.totalDue
+                        {laMotLan(p)
+                          ? !p.totalDue
                             ? '✓ Đã thu đủ'
-                            : `Thu ${vnd(collectedAmount(p.id))}`}
+                            : p.paidTotal
+                              ? `Đã trả ${vnd(p.paidTotal)}`
+                              : 'Ghi đợt trả'
+                          : !isCollected(p.id)
+                            ? 'Đã thu'
+                            : !p.totalDue
+                              ? '✓ Đã thu đủ'
+                              : `Thu ${vnd(collectedAmount(p.id))}`}
                       </button>
                       <button
                         className="text-brand-600 underline text-xs mr-2"
@@ -365,11 +387,43 @@ export default function Finance() {
                 ✕ Đóng
               </button>
             </div>
+            {/* Loại khoản — anh Tâm 25/9/2026: "khoản thu 1 lần, ví dụ làm phần mềm, khách chuyển
+                khoản từng lần chứ không chuyển hết, cần ghi nhận công nợ để đòi đủ". */}
+            <div className="flex flex-wrap gap-2 text-sm">
+              {(
+                [
+                  ['monthly', 'Thu hàng tháng'],
+                  ['once', 'Một lần, trả nhiều đợt'],
+                ] as const
+              ).map(([k, nhan]) => (
+                <label
+                  key={k}
+                  className={`cursor-pointer rounded-lg border px-3 py-1 ${
+                    (pForm.kind || 'monthly') === k ? 'border-brand-600 bg-brand-600 text-white' : 'border-brand-200 bg-white'
+                  }`}
+                >
+                  <input type="radio" className="hidden" checked={(pForm.kind || 'monthly') === k} onChange={() => setPForm({ ...pForm, kind: k })} />
+                  {nhan}
+                </label>
+              ))}
+            </div>
             <div className="grid sm:grid-cols-2 gap-2">
               <input className="input py-1" placeholder="Tên bên / khách hàng" value={pForm.name || ''} onChange={(e) => setPForm({ ...pForm, name: e.target.value })} />
-              <input className="input py-1" type="number" placeholder="Số tiền phải thu" value={pForm.receivable || ''} onChange={(e) => setPForm({ ...pForm, receivable: Number(e.target.value) })} />
+              <input
+                className="input py-1"
+                type="number"
+                placeholder={laMotLan(pForm) ? 'Tổng giá trị hợp đồng' : 'Số tiền phải thu mỗi tháng'}
+                value={pForm.receivable || ''}
+                onChange={(e) => setPForm({ ...pForm, receivable: Number(e.target.value) })}
+              />
+              {laMotLan(pForm) && (
+                <p className="sm:col-span-2 text-xs text-ink-muted">
+                  Khách trả từng đợt, mỗi đợt bấm "Ghi đợt trả". Còn nợ = tổng hợp đồng − các đợt đã trả, đòi tới khi đủ.
+                  Sửa tổng thì còn nợ tính lại ngay.
+                </p>
+              )}
               {/* Đổi mức bên đang có: hỏi áp từ tháng nào, mặc định tháng đang xem. Tháng trước giữ mức cũ. */}
-              {pForm.id && Number(pForm.receivable || 0) !== mucGoc && (
+              {pForm.id && !laMotLan(pForm) && Number(pForm.receivable || 0) !== mucGoc && (
                 <div className="sm:col-span-2 rounded-lg border border-accent-300 bg-accent-50 p-2 text-xs text-ink">
                   <div className="flex flex-wrap items-center gap-2">
                     <span>
@@ -394,7 +448,7 @@ export default function Finance() {
                   </p>
                 </div>
               )}
-              {pForm.id && (pForm.rates || []).length > 0 && (
+              {pForm.id && !laMotLan(pForm) && (pForm.rates || []).length > 0 && (
                 <p className="sm:col-span-2 text-xs text-ink-muted">
                   Lịch sử mức:{' '}
                   {(pForm.rates || [])
@@ -403,11 +457,11 @@ export default function Finance() {
                 </p>
               )}
               <label className="text-xs text-ink-muted">
-                Ngày thu hàng tháng
+                {laMotLan(pForm) ? 'Ngày nhắc đòi hàng tháng (khi còn nợ)' : 'Ngày thu hàng tháng'}
                 <input className="input py-1" type="number" min={1} max={31} value={pForm.dueDay || 30} onChange={(e) => setPForm({ ...pForm, dueDay: Number(e.target.value) })} />
               </label>
               <label className="text-xs text-ink-muted">
-                Ngày bắt đầu
+                {laMotLan(pForm) ? 'Ngày ký / bắt đầu' : 'Ngày bắt đầu'}
                 <input className="input py-1" type="date" value={pForm.startDate || ''} onChange={(e) => setPForm({ ...pForm, startDate: e.target.value })} />
               </label>
               {/* Chọn MỘT LẦN ở đây, mọi khoản thu của bên này tự mang nguồn đó. */}
@@ -664,12 +718,36 @@ export default function Finance() {
         >
           <div className="card hien-len my-8 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="font-semibold">Thu công nợ — {collectFor.name}</h2>
+              <h2 className="font-semibold">
+                {laMotLan(collectFor) ? 'Ghi đợt trả' : 'Thu công nợ'} — {collectFor.name}
+              </h2>
               <button className="btn-ghost px-2 py-1 text-sm" onClick={() => setCollectFor(null)}>
                 ✕ Đóng
               </button>
             </div>
 
+            {laMotLan(collectFor) ? (
+              <div className="rounded-xl bg-brand-50 p-3 text-sm">
+                <div className="flex justify-between py-0.5">
+                  <span className="text-ink-muted">Tổng hợp đồng</span>
+                  <span className="font-medium">{vnd(collectFor.receivable)}</span>
+                </div>
+                <div className="flex justify-between py-0.5">
+                  <span className="text-ink-muted">Đã trả (tất cả các đợt)</span>
+                  <span className="font-medium text-emerald-700">{vnd(collectFor.paidTotal || 0)}</span>
+                </div>
+                <div className="mt-1 flex justify-between border-t border-brand-100 pt-1.5">
+                  <span className="text-ink-muted">Còn nợ</span>
+                  <span className="font-medium text-rose-600">{vnd(collectFor.totalDue || 0)}</span>
+                </div>
+                {!!collectFor.credit && (
+                  <div className="mt-1 flex justify-between border-t border-brand-100 pt-1.5">
+                    <span className="text-ink-muted">Khách trả dư</span>
+                    <span className="font-medium text-emerald-700">{vnd(collectFor.credit)}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
             <div className="rounded-xl bg-brand-50 p-3 text-sm">
               {/* Tiền vào trừ nợ cũ trước — bày rõ để người nhập không quay về tháng cũ bấm lại. */}
               {!!collectFor.carryOver && (
@@ -702,6 +780,7 @@ export default function Finance() {
                 </div>
               )}
             </div>
+            )}
 
             {/* Từng lần trả — công nợ cần biết trả mấy lần, ngày nào, chứ không chỉ tổng. */}
             {payments(collectFor.id).length > 0 && (
@@ -740,7 +819,8 @@ export default function Finance() {
               />
               <p className="mt-1 text-xs text-ink-muted">
                 Nhập số của <b>riêng lần này</b>, không phải tổng. Khách trả 2–3 lần thì ghi nhận 2–3 lần,
-                mỗi lần một dòng. Trả dư sẽ tự để dành trừ cho các kỳ sau.
+                mỗi lần một dòng.{' '}
+                {laMotLan(collectFor) ? 'Đợt trả ghi vào tháng đang xem.' : 'Trả dư sẽ tự để dành trừ cho các kỳ sau.'}
               </p>
             </div>
 

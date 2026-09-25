@@ -1,5 +1,5 @@
 import { q } from '../db/client.js';
-import type { PartyRate } from '../lib/finance.js';
+import type { PartyRate, PartyKind } from '../lib/finance.js';
 
 export interface Party {
   id: string;
@@ -12,6 +12,8 @@ export interface Party {
   active: boolean;
   /** Nguồn khách của bên này — mọi khoản thu sinh ra từ đây đều mang nguồn này. */
   source: string;
+  /** 'monthly' = thu hàng tháng; 'once' = khoản một lần, `receivable` là tổng hợp đồng. */
+  kind: PartyKind;
 }
 
 export interface FinanceEntry {
@@ -41,6 +43,7 @@ function rowToParty(r: any): Party {
     note: r.note || '',
     active: !!r.active,
     source: r.source || '',
+    kind: r.kind === 'once' ? 'once' : 'monthly',
   };
 }
 
@@ -66,15 +69,15 @@ export async function getParties(): Promise<Party[]> {
 
 export async function upsertParty(p: Party): Promise<void> {
   await q(
-    `INSERT INTO parties (party_id, name, start_date, due_day, receivable, notify_member_ids, note, active, source, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    `INSERT INTO parties (party_id, name, start_date, due_day, receivable, notify_member_ids, note, active, source, kind, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
      ON CONFLICT (party_id) DO UPDATE SET
        name = EXCLUDED.name, start_date = EXCLUDED.start_date, due_day = EXCLUDED.due_day,
        receivable = EXCLUDED.receivable, notify_member_ids = EXCLUDED.notify_member_ids,
-       note = EXCLUDED.note, active = EXCLUDED.active, source = EXCLUDED.source`,
+       note = EXCLUDED.note, active = EXCLUDED.active, source = EXCLUDED.source, kind = EXCLUDED.kind`,
     [
       p.id, p.name, p.startDate || '', p.dueDay, p.receivable,
-      p.notifyMemberIds.join(','), p.note || '', p.active, p.source || '', new Date().toISOString(),
+      p.notifyMemberIds.join(','), p.note || '', p.active, p.source || '', p.kind || 'monthly', new Date().toISOString(),
     ],
   );
 }

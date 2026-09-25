@@ -5,12 +5,12 @@ import { ranking, scoresFor, withRanks } from '../modules/scores.service.js';
 import { taskTitle } from '../lib/tasks.js';
 import type { TaskRow } from '../types.js';
 import { notify } from '../modules/notifications.service.js';
-import { getParties, getPartyRates } from '../modules/finance.repo.js';
+import { getParties, getPartyRates, paidByPartyMonth } from '../modules/finance.repo.js';
 import { getUpcoming, getCustomers } from '../modules/crm.repo.js';
 import { birthdaysInMonth } from '../lib/people.js';
 import { formatVnd } from '../lib/money.js';
 import { formatMinutes } from '../lib/worktime.js';
-import { nextDueDateIso, daysUntil, mucTheoThang } from '../lib/finance.js';
+import { nextDueDateIso, daysUntil, mucTheoThang, computeOnceDebt, DEBT_TRACK_FROM } from '../lib/finance.js';
 import { nowTz, todayIso, fmtDate, fmtHm } from '../lib/datetime.js';
 import { backfillPage, rebuildDirtyProfiles } from '../modules/brain.service.js';
 
@@ -106,13 +106,17 @@ export async function runFinanceReminders(): Promise<void> {
   const today = todayIso();
   const parties = (await getParties()).filter((p) => p.active);
   if (parties.length === 0) return;
-  const rates = await getPartyRates();
+  const [rates, paid] = await Promise.all([getPartyRates(), paidByPartyMonth(DEBT_TRACK_FROM)]);
   let directorIds: string[] | null = null;
   for (const p of parties) {
     const due = nextDueDateIso(p.dueDay, today);
     if (daysUntil(due, today) !== DUE_REMINDER_DAYS) continue;
     // Mức của đúng tháng tới hạn — đổi mức từ tháng sau thì kỳ này vẫn nhắc mức cũ.
-    const muc = mucTheoThang(rates.get(p.id) || [], p.receivable, due.slice(0, 7));
+    // Khoản một lần: nhắc số CÒN NỢ; trả đủ rồi thì thôi.
+    const muc =
+      p.kind === 'once'
+        ? computeOnceDebt({ total: p.receivable, startMonth: (p.startDate || '').slice(0, 7), month: due.slice(0, 7), paid: paid[p.id] || {} }).remaining
+        : mucTheoThang(rates.get(p.id) || [], p.receivable, due.slice(0, 7));
     if (muc <= 0) continue;
     let recipients = p.notifyMemberIds;
     if (recipients.length === 0) {
