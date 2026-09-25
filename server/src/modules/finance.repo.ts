@@ -116,6 +116,18 @@ export async function deletePartyRates(partyId: string): Promise<void> {
   await q(SQL_XOA_MUC, [partyId]);
 }
 
+export const SQL_TONG_THEO_THANG = `SELECT month, kind, SUM(amount)::int AS total
+  FROM finance_entries WHERE month <= $1 GROUP BY month, kind ORDER BY month`;
+
+/** Tổng thu/chi của TỪNG tháng tới hết `toMonth` — cho bảng luỹ kế, một truy vấn cho cả sổ. */
+export async function tongTheoThang(toMonth: string): Promise<Array<{ month: string; kind: string; total: number }>> {
+  return (await q(SQL_TONG_THEO_THANG, [toMonth])).map((r) => ({
+    month: String(r.month || ''),
+    kind: String(r.kind || ''),
+    total: Number(r.total || 0) || 0,
+  }));
+}
+
 export async function getEntries(month: string): Promise<FinanceEntry[]> {
   return (await q('SELECT * FROM finance_entries WHERE month = $1 ORDER BY date, created_at', [month])).map(rowToEntry);
 }

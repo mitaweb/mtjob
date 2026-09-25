@@ -46,6 +46,55 @@ export function debtMonths(fromMonth: string, toMonth: string): string[] {
   return out;
 }
 
+export interface ThangLuyKe {
+  month: string;
+  income: number;
+  expense: number;
+  profit: number;
+  /** Lãi/lỗ cộng dồn từ tháng đầu tới hết tháng này. */
+  congDon: number;
+}
+
+/**
+ * Lãi/lỗ LUỸ KẾ theo tháng (anh Tâm 25/9/2026: "lũy kế, cộng dồn lãi lỗ các tháng").
+ *
+ * Vào: tổng thu/chi của từng tháng (chỉ tháng có khoản). Ra: mọi tháng liên tục từ tháng
+ * đầu tiên có số tới `toMonth` — tháng trống vẫn hiện 0 để cột cộng dồn không nhảy cóc.
+ */
+export function luyKeLaiLo(
+  rows: Array<{ month: string; kind: string; total: number }>,
+  toMonth: string,
+): ThangLuyKe[] {
+  const theoThang = new Map<string, { income: number; expense: number }>();
+  for (const r of rows) {
+    if (!/^\d{4}-\d{2}$/.test(r.month) || r.month > toMonth) continue;
+    const o = theoThang.get(r.month) || { income: 0, expense: 0 };
+    if (r.kind === 'thu') o.income += Number(r.total) || 0;
+    else if (r.kind === 'chi') o.expense += Number(r.total) || 0;
+    theoThang.set(r.month, o);
+  }
+  const thangDau = [...theoThang.keys()].sort()[0];
+  if (!thangDau) return [];
+
+  const ra: ThangLuyKe[] = [];
+  let congDon = 0;
+  let [y, m] = thangDau.split('-').map(Number);
+  for (;;) {
+    const month = `${y}-${String(m).padStart(2, '0')}`;
+    if (month > toMonth) break;
+    const o = theoThang.get(month) || { income: 0, expense: 0 };
+    const profit = o.income - o.expense;
+    congDon += profit;
+    ra.push({ month, income: o.income, expense: o.expense, profit, congDon });
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+  return ra;
+}
+
 /** Nhóm cho khoản thu chưa gắn nguồn — luôn hiện, để không ai tưởng đã phân loại xong. */
 export const CHUA_RO_NGUON = 'Chưa rõ nguồn';
 

@@ -17,6 +17,8 @@ interface Summary {
   carryOverTotal?: number;
   /** Doanh thu tháng gom theo nguồn khách. */
   theoNguon?: Array<{ nguon: string; tien: number; soKhoan: number; tyLe: number }>;
+  /** Lãi/lỗ từng tháng và cộng dồn, tháng đầu có số → tháng đang xem. */
+  luyKe?: Array<{ month: string; income: number; expense: number; profit: number; congDon: number }>;
   entries: FinanceEntry[];
 }
 interface PayRow {
@@ -51,6 +53,8 @@ export default function Finance() {
   const [pay, setPay] = useState<PayRow[]>([]);
   const [loading, setLoading] = useState(true);
   const toast = useToast();
+  const [moLuyKe, setMoLuyKe] = useState(false);
+  const luyKeCuoi = sum?.luyKe?.length ? sum.luyKe[sum.luyKe.length - 1] : null;
 
   const [pForm, setPForm] = useState<Partial<Party>>(emptyParty());
   // Form bên hiện trong popup — anh Tâm 16/9/2026: bấm "sửa" ở đâu cũng phải thấy ngay,
@@ -226,16 +230,72 @@ export default function Finance() {
       </div>
 
       {/* Tổng hợp */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <Stat label="Thu" value={vnd(sum?.income ?? 0)} cls="text-emerald-700" />
         <Stat label="Chi" value={vnd(sum?.expense ?? 0)} cls="text-rose-600" />
         <Stat label="Lãi / Lỗ" value={vnd(sum?.profit ?? 0)} cls={(sum?.profit ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-600'} />
+        {/* Luỹ kế — anh Tâm 25/9/2026: "cộng dồn lãi lỗ các tháng". Bấm vào để xem từng tháng. */}
+        <button type="button" className="w-full text-left" onClick={() => setMoLuyKe(!moLuyKe)} title="Xem từng tháng">
+          <Stat
+            label={`Lũy kế lãi/lỗ${sum?.luyKe?.length ? ` từ ${sum.luyKe[0].month}` : ''} ▾`}
+            value={vnd(luyKeCuoi?.congDon ?? 0)}
+            cls={(luyKeCuoi?.congDon ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-600'}
+          />
+        </button>
         <Stat
           label={sum?.carryOverTotal ? 'Phải thu tháng này + nợ cũ' : 'Tổng phải thu/tháng'}
           value={vnd((sum?.receivableTotal ?? 0) + (sum?.carryOverTotal ?? 0))}
           cls="text-brand-600"
         />
       </div>
+      {moLuyKe && (
+        <div className="card">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="font-semibold">Lũy kế lãi/lỗ theo tháng</h2>
+            <button className="btn-ghost px-2 py-1 text-sm" onClick={() => setMoLuyKe(false)}>
+              ✕ Đóng
+            </button>
+          </div>
+          {!sum?.luyKe?.length ? (
+            <p className="text-sm text-ink-muted">Chưa có khoản thu/chi nào.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-left text-ink-muted">
+                  <tr>
+                    <th className="py-1">Tháng</th>
+                    <th className="text-right">Thu</th>
+                    <th className="text-right">Chi</th>
+                    <th className="text-right">Lãi / Lỗ</th>
+                    <th className="text-right">Cộng dồn</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sum.luyKe.map((t) => (
+                    <tr key={t.month} className={`border-t ${t.month === ym ? 'bg-brand-50 font-medium' : ''}`}>
+                      <td className="py-1">
+                        <button className="underline" onClick={() => setYm(t.month)}>
+                          {t.month}
+                        </button>
+                      </td>
+                      <td className="text-right text-emerald-700">{vnd(t.income)}</td>
+                      <td className="text-right text-rose-600">{vnd(t.expense)}</td>
+                      <td className={`text-right ${t.profit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{vnd(t.profit)}</td>
+                      <td className={`text-right font-semibold ${t.congDon >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                        {vnd(t.congDon)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="mt-2 text-xs text-ink-muted">
+                Cộng dồn từ tháng đầu tiên có khoản thu/chi trong app tới tháng đang xem. Bấm vào tháng để xem chi tiết.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Nợ tồn nói riêng — con số này mới là tiền đang bị giữ ngoài công ty. */}
       {!!sum?.carryOverTotal && (
         <p className="-mt-1 text-xs text-ink-muted">

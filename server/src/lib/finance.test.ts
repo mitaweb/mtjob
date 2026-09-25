@@ -5,6 +5,7 @@ import {
   debtMonths,
   computeDebt,
   computeOnceDebt,
+  luyKeLaiLo,
   boSungNguon,
   mucTheoThang,
   doanhThuTheoNguon,
@@ -327,5 +328,35 @@ describe('computeOnceDebt', () => {
 
   it('xem tháng trước khi ký hợp đồng thì chưa tính gì', () => {
     expect(computeOnceDebt({ ...hd, month: '2026-08', paid: {} })).toMatchObject({ remaining: 0, active: false });
+  });
+});
+
+// Anh Tâm 25/9/2026: "lũy kế, cộng dồn lãi lỗ các tháng".
+describe('luyKeLaiLo', () => {
+  const rows = [
+    { month: '2026-08', kind: 'thu', total: 100 },
+    { month: '2026-08', kind: 'chi', total: 130 },
+    { month: '2026-10', kind: 'thu', total: 50 },
+    { month: '2026-11', kind: 'chi', total: 10 }, // sau tháng đang xem → bỏ
+  ];
+
+  it('cộng dồn lãi/lỗ, tháng trống vẫn hiện 0 để không nhảy cóc', () => {
+    expect(luyKeLaiLo(rows, '2026-10')).toEqual([
+      { month: '2026-08', income: 100, expense: 130, profit: -30, congDon: -30 },
+      { month: '2026-09', income: 0, expense: 0, profit: 0, congDon: -30 },
+      { month: '2026-10', income: 50, expense: 0, profit: 50, congDon: 20 },
+    ]);
+  });
+
+  it('không tính tháng sau tháng đang xem; xem trước tháng đầu thì rỗng', () => {
+    expect(luyKeLaiLo(rows, '2026-08')).toHaveLength(1);
+    expect(luyKeLaiLo(rows, '2026-07')).toEqual([]);
+    expect(luyKeLaiLo([], '2026-10')).toEqual([]);
+  });
+
+  it('vắt qua năm', () => {
+    const r = luyKeLaiLo([{ month: '2026-12', kind: 'thu', total: 1 }], '2027-01');
+    expect(r.map((t) => t.month)).toEqual(['2026-12', '2027-01']);
+    expect(r[1].congDon).toBe(1);
   });
 });

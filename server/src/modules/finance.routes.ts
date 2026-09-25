@@ -10,6 +10,7 @@ import {
   addEntry,
   deleteEntry,
   paidByPartyMonth,
+  tongTheoThang,
   getPartyRates,
   upsertPartyRate,
   deletePartyRates,
@@ -23,6 +24,7 @@ import {
   nextDueDateIso,
   computeDebt,
   computeOnceDebt,
+  luyKeLaiLo,
   doanhThuTheoNguon,
   boSungNguon,
   mucTheoThang,
@@ -205,11 +207,12 @@ financeRouter.get(
   canView,
   asyncHandler(async (req, res) => {
     const month = ym(req);
-    const [entriesGoc, allParties, customers, rates] = await Promise.all([
+    const [entriesGoc, allParties, customers, rates, theoThang] = await Promise.all([
       getEntries(month),
       getParties(),
       getCustomers(),
       getPartyRates(),
+      tongTheoThang(month),
     ]);
     // Khoản thu tạo trước khi bên được chọn nguồn thì đọc theo nguồn hiện tại của bên.
     const entries = boSungNguon(
@@ -263,6 +266,8 @@ financeRouter.get(
       receivableTotal,
       carryOverTotal,
       theoNguon: doanhThuTheoNguon(entries),
+      /** Lãi/lỗ từng tháng + cộng dồn, từ tháng đầu tiên có số tới tháng đang xem. */
+      luyKe: luyKeLaiLo(theoThang, month),
       entries,
     });
   }),
