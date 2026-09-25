@@ -177,7 +177,9 @@ export default function Finance() {
           (conNo > 0 ? `, còn nợ ${vnd(conNo)}` : ' — sạch nợ'),
       );
       await loadAll();
+      // Anh Tâm 25/9/2026: "ghi nhận lần này xong thì đóng hộp thoại" — khách trả thêm đợt nữa thì mở lại.
       setCollectInput('');
+      setCollectFor(null);
     } catch (e) {
       toast.error((e as Error).message);
     }
