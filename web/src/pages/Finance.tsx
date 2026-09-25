@@ -150,15 +150,14 @@ export default function Finance() {
 
   function openCollect(p: Party) {
     setCollectFor(p);
-    // Gợi ý sẵn khoản CŨ NHẤT còn thiếu: khách hay trả tiền tháng trước vào tháng này, nên
-    // có nợ cũ thì gợi ý nợ cũ; không thì gợi ý phần kỳ này còn thiếu. Người nhập chỉ gõ
-    // số của lần này. Sạch nợ rồi thì để TRỐNG — điền sẵn số là bấm nhầm một cái đã ghi trùng.
-    // Khoản một lần: khách trả bao nhiêu tuỳ họ, không gợi ý số — điền sẵn cả phần còn lại
-    // là bấm nhầm một cái đã ghi trùng cả chục triệu.
-    if (laMotLan(p)) return setCollectInput('');
-    const noCu = p.carryOver || 0;
-    const kyNay = p.thisMonthRemaining ?? Math.max(0, (p.receivableThisMonth ?? p.receivable) - collectedAmount(p.id));
-    const goiY = noCu > 0 ? noCu : kyNay;
+    // Anh Tâm 25/9/2026: "số tiền mặc định khi đã thu là full số tiền, nếu anh thay đổi thì
+    // thay đổi sau". Điền sẵn TOÀN BỘ còn phải đòi (nợ cũ + kỳ này); chưa ghi gì trong tháng
+    // mà còn phải đòi = 0 (khách đã trả trước) thì vẫn điền mức của tháng — anh muốn bấm là
+    // xong, không phải gõ. Chỉ để TRỐNG khi tháng này đã ghi rồi mà không còn nợ, kẻo bấm
+    // nhầm một cái là ghi trùng.
+    const conDoi = p.totalDue || 0;
+    const mucThang = p.receivableThisMonth ?? p.receivable;
+    const goiY = conDoi > 0 ? conDoi : collectedAmount(p.id) === 0 && !laMotLan(p) ? mucThang : 0;
     setCollectInput(goiY > 0 ? String(goiY) : '');
   }
 
@@ -773,6 +772,12 @@ export default function Finance() {
                 <span className="text-ink-muted">Còn phải thu (cả nợ cũ)</span>
                 <span className="font-medium text-rose-600">{vnd(collectFor.totalDue || 0)}</span>
               </div>
+              {/* Kỳ này 0đ mà chưa ghi gì trong tháng = tiền khách trả trước đã bù — nói rõ, kẻo tưởng lỗi. */}
+              {!collectFor.totalDue && collectedAmount(collectFor.id) === 0 && (collectFor.receivableThisMonth ?? 0) > 0 && (
+                <p className="mt-1 text-xs text-ink-muted">
+                  Kỳ này đã được bù bằng tiền khách trả dư ở các tháng trước. Ghi thêm là tiền để dành cho kỳ sau.
+                </p>
+              )}
               {!!collectFor.credit && (
                 <div className="mt-1 flex justify-between border-t border-brand-100 pt-1.5">
                   <span className="text-ink-muted">Khách trả trước, để dành kỳ sau</span>
