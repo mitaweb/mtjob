@@ -339,3 +339,106 @@ export function computeDebt(input: DebtInput): DebtResult {
     unpaidMonths: con.map((x) => x.month),
   };
 }
+
+export interface BenDeTinh {
+  kind: PartyKind;
+  receivable: number;
+  startDate: string;
+  /** Tháng CUỐI còn dịch vụ (YYYY-MM); '' = đang chạy. */
+  endMonth: string;
+}
+
+export interface CongNoBen {
+  /** Có hiện bên này ở tháng đang xem không. */
+  hien: boolean;
+  /** Đã qua tháng cuối — chỉ còn hiện vì chưa thu đủ. */
+  daNgung: boolean;
+  /** Phải thu của riêng tháng đang xem (khoản một lần: tổng hợp đồng). */
+  mucThang: number;
+  carryOver: number;
+  thisMonthRemaining: number;
+  paidToOld: number;
+  /** Chỉ khoản một lần: đã trả luỹ kế. */
+  paidTotal: number;
+  totalDue: number;
+  credit: number;
+  unpaidMonths: string[];
+}
+
+/**
+ * Công nợ của một bên ở tháng đang xem — một chỗ duy nhất cho bảng các bên, thẻ tổng và nhắc thu.
+ *
+ * Anh Tâm 30/9/2026: "nhận tiền xong xoá đơn vị đó khỏi hàng tháng có nghĩa là anh đã ngưng
+ * dịch vụ, đó là tháng cuối… tháng sau đơn vị đó sẽ không hiện nữa". Xoá = ghi `endMonth`:
+ *   · tháng ≤ endMonth: tính và hiện như thường (các khoản đã thu giữ nguyên);
+ *   · tháng > endMonth: KHÔNG phát sinh kỳ mới. Thu đủ rồi thì ẩn hẳn; còn thiếu thì vẫn
+ *     hiện số còn nợ (tiền trả sau tháng cuối được trừ vào nợ) — ẩn đi là mất dấu khoản phải đòi.
+ */
+export function congNoBen(
+  p: BenDeTinh,
+  rates: PartyRate[],
+  paid: Record<string, number>,
+  month: string,
+): CongNoBen {
+  const startMonth = (p.startDate || '').slice(0, 7);
+  const quaThangCuoi = !!p.endMonth && month > p.endMonth;
+
+  if (p.kind === 'once') {
+    const d = computeOnceDebt({ total: p.receivable, startMonth, month, paid });
+    return {
+      hien: !(quaThangCuoi && d.remaining === 0),
+      daNgung: quaThangCuoi,
+      mucThang: d.total,
+      carryOver: 0,
+      thisMonthRemaining: d.remaining,
+      paidToOld: 0,
+      paidTotal: d.paidTotal,
+      totalDue: d.remaining,
+      credit: d.credit,
+      unpaidMonths: [],
+    };
+  }
+
+  if (!quaThangCuoi) {
+    const d = computeDebt({ receivable: p.receivable, rates, startMonth, month, paid });
+    return {
+      hien: true,
+      daNgung: false,
+      mucThang: mucTheoThang(rates, p.receivable, month),
+      carryOver: d.carryOver,
+      thisMonthRemaining: d.thisMonthRemaining,
+      paidToOld: d.paidToOld,
+      paidTotal: 0,
+      totalDue: d.total,
+      credit: d.credit,
+      unpaidMonths: d.unpaidMonths,
+    };
+  }
+
+  // Đã qua tháng cuối: chốt nợ tại tháng cuối, tiền trả SAU đó (tới tháng đang xem) dồn vào trừ nợ.
+  const gop: Record<string, number> = {};
+  let traSau = 0;
+  let traThangNay = 0;
+  for (const [m, v] of Object.entries(paid)) {
+    const tien = Number(v) || 0;
+    if (m <= p.endMonth) gop[m] = (gop[m] || 0) + tien;
+    else if (m <= month) {
+      traSau += tien;
+      if (m === month) traThangNay += tien;
+    }
+  }
+  gop[p.endMonth] = (gop[p.endMonth] || 0) + traSau;
+  const d = computeDebt({ receivable: p.receivable, rates, startMonth, month: p.endMonth, paid: gop });
+  return {
+    hien: d.total > 0,
+    daNgung: true,
+    mucThang: 0,
+    carryOver: d.total,
+    thisMonthRemaining: 0,
+    paidToOld: traThangNay,
+    paidTotal: 0,
+    totalDue: d.total,
+    credit: 0,
+    unpaidMonths: d.thisMonthRemaining > 0 ? [...d.unpaidMonths, p.endMonth] : d.unpaidMonths,
+  };
+}

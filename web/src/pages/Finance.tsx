@@ -134,9 +134,37 @@ export default function Finance() {
       toast.error((e as Error).message);
     }
   }
-  async function delParty(id: string) {
-    await api(`/finance/parties/${id}`, { method: 'DELETE' }).catch(() => {});
-    await loadAll();
+  /**
+   * "Xoá" = NGƯNG dịch vụ: tháng đang xem là tháng cuối, tháng sau không hiện nữa, khoản đã
+   * thu giữ nguyên (anh Tâm 30/9/2026). Bên chưa có khoản thu nào thì máy chủ xoá hẳn.
+   */
+  async function delParty(p: Party) {
+    const conNo = p.totalDue || 0;
+    if (
+      !window.confirm(
+        `Ngưng "${p.name}" sau tháng ${ym}?\n\n` +
+          `Tháng ${ym} là tháng cuối, từ tháng sau không hiện và không tính phải thu nữa. ` +
+          `Các khoản đã thu vẫn giữ nguyên trong sổ.` +
+          (conNo > 0 ? `\n\n⚠️ Còn nợ ${vnd(conNo)} — bên này vẫn hiện ở các tháng sau cho tới khi thu đủ.` : ''),
+      )
+    )
+      return;
+    try {
+      const r = await api<{ removed: boolean }>(`/finance/parties/${p.id}?month=${ym}`, { method: 'DELETE' });
+      toast.success(r.removed ? 'Đã xoá bên (chưa có khoản thu nào)' : `Đã ngưng — tháng ${ym} là tháng cuối`);
+      await loadAll();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+  async function khoiPhuc(p: Party) {
+    try {
+      await api(`/finance/parties/${p.id}/restore`, { body: {} });
+      toast.success(`Đã khôi phục "${p.name}"`);
+      await loadAll();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
   }
   /**
    * Các lần khách trả trong tháng đang xem. Mỗi lần trả là MỘT khoản Thu riêng gắn
@@ -333,6 +361,11 @@ export default function Finance() {
                         </span>
                       )}
                       <span>{p.name}</span>
+                      {p.endMonth && (
+                        <span className="text-[10px] leading-4 text-amber-700">
+                          {p.daNgung ? `đã ngưng từ sau ${p.endMonth} — còn nợ` : `tháng cuối — ngưng từ tháng sau`}
+                        </span>
+                      )}
                     </div>
                   </td>
                   {/* Mức của RIÊNG tháng đang xem — đổi mức từ tháng 9 thì xem tháng 8 vẫn thấy mức cũ. */}
@@ -401,9 +434,19 @@ export default function Finance() {
                       >
                         sửa
                       </button>
-                      <button className="text-rose-600 underline text-xs" onClick={() => delParty(p.id)}>
-                        xóa
-                      </button>
+                      {p.endMonth ? (
+                        <button className="text-emerald-700 underline text-xs" onClick={() => khoiPhuc(p)}>
+                          khôi phục
+                        </button>
+                      ) : (
+                        <button
+                          className="text-rose-600 underline text-xs"
+                          onClick={() => delParty(p)}
+                          title="Ngưng dịch vụ: tháng này là tháng cuối, khoản đã thu vẫn giữ"
+                        >
+                          xóa
+                        </button>
+                      )}
                     </td>
                   )}
                 </tr>

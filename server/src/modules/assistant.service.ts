@@ -316,7 +316,7 @@ async function financeText(monthYm: string): Promise<string> {
   ]);
   // Mức của đúng tháng đang hỏi — bên đổi mức giữa chừng thì tháng cũ vẫn theo mức cũ.
   const receivable = parties
-    .filter((p) => p.active && p.kind !== 'once')
+    .filter((p) => p.active && p.kind !== 'once' && !(p.endMonth && monthYm > p.endMonth))
     .reduce((s, p) => s + mucTheoThang(rates.get(p.id) || [], p.receivable, monthYm), 0);
   // Khoản một lần trả nhiều đợt: liệt kê còn nợ bao nhiêu trên tổng.
   const motLan = parties

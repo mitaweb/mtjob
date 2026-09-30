@@ -14,6 +14,8 @@ export interface Party {
   source: string;
   /** 'monthly' = thu hàng tháng; 'once' = khoản một lần, `receivable` là tổng hợp đồng. */
   kind: PartyKind;
+  /** Tháng cuối còn dịch vụ (YYYY-MM); '' = đang chạy. Chỉ đổi qua `setPartyEndMonth`. */
+  endMonth: string;
 }
 
 export interface FinanceEntry {
@@ -44,6 +46,7 @@ function rowToParty(r: any): Party {
     active: !!r.active,
     source: r.source || '',
     kind: r.kind === 'once' ? 'once' : 'monthly',
+    endMonth: r.end_month || '',
   };
 }
 
@@ -82,6 +85,20 @@ export async function upsertParty(p: Party): Promise<void> {
   );
 }
 
+export const SQL_DAT_THANG_CUOI = 'UPDATE parties SET end_month = $2 WHERE party_id = $1 RETURNING party_id';
+export const SQL_BEN_CO_KHOAN = 'SELECT 1 AS co FROM finance_entries WHERE party_id = $1 LIMIT 1';
+
+/** Ngưng bên từ sau tháng `month` ('' = khôi phục). `upsertParty` KHÔNG đụng cột này. */
+export async function setPartyEndMonth(id: string, month: string): Promise<boolean> {
+  return (await q(SQL_DAT_THANG_CUOI, [id, month])).length > 0;
+}
+
+/** Bên này đã có khoản thu nào gắn vào chưa. */
+export async function partyHasEntries(id: string): Promise<boolean> {
+  return (await q(SQL_BEN_CO_KHOAN, [id])).length > 0;
+}
+
+/** Xoá HẲN — chỉ dùng cho bên chưa có khoản thu nào (tạo nhầm). Bên đã có tiền thì `setPartyEndMonth`. */
 export async function deleteParty(id: string): Promise<void> {
   // Không có khoá ngoại — dọn lịch sử mức bằng tay, không thì bên mới trùng mã thừa kế mức cũ.
   await q('DELETE FROM party_rates WHERE party_id = $1', [id]);

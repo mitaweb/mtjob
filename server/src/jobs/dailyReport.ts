@@ -111,6 +111,8 @@ export async function runFinanceReminders(): Promise<void> {
   for (const p of parties) {
     const due = nextDueDateIso(p.dueDay, today);
     if (daysUntil(due, today) !== DUE_REMINDER_DAYS) continue;
+    // Đã ngưng dịch vụ: kỳ tới hạn nằm sau tháng cuối thì không nhắc nữa.
+    if (p.endMonth && due.slice(0, 7) > p.endMonth) continue;
     // Mức của đúng tháng tới hạn — đổi mức từ tháng sau thì kỳ này vẫn nhắc mức cũ.
     // Khoản một lần: nhắc số CÒN NỢ; trả đủ rồi thì thôi.
     const muc =

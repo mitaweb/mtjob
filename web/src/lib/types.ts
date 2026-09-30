@@ -39,6 +39,10 @@ export interface Party {
   kind?: 'monthly' | 'once';
   /** Khoản một lần: đã trả luỹ kế tới hết tháng đang xem. */
   paidTotal?: number;
+  /** Tháng cuối còn dịch vụ (YYYY-MM); '' = đang chạy. */
+  endMonth?: string;
+  /** Đã qua tháng cuối, còn hiện chỉ vì chưa thu đủ. */
+  daNgung?: boolean;
   nextDue?: string;
   /** Mức phải thu của RIÊNG tháng đang xem (bên đổi mức giữa chừng thì khác `receivable`). */
   receivableThisMonth?: number;

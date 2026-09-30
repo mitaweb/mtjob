@@ -225,6 +225,10 @@ ALTER TABLE parties ADD COLUMN IF NOT EXISTS source text DEFAULT '';
 -- Loại bên (anh Tâm 25/9/2026): 'monthly' = thu hàng tháng; 'once' = khoản một lần (làm phần
 -- mềm, thiết kế web…) khách trả nhiều đợt — receivable khi đó là TỔNG hợp đồng, không có kỳ.
 ALTER TABLE parties ADD COLUMN IF NOT EXISTS kind text DEFAULT 'monthly';
+-- Tháng CUỐI còn dịch vụ (YYYY-MM), '' = đang chạy. Anh Tâm 30/9/2026: "xoá đơn vị khỏi hàng
+-- tháng = ngưng dịch vụ, đó là tháng cuối, tháng sau không hiện nữa" — xoá là ghi cột này chứ
+-- không xoá dòng, để các tháng trước vẫn xem lại được và khoản đã thu vẫn biết của ai.
+ALTER TABLE parties ADD COLUMN IF NOT EXISTS end_month text DEFAULT '';
 
 -- CRM: khách hàng + lịch hẹn.
 CREATE TABLE IF NOT EXISTS customers (

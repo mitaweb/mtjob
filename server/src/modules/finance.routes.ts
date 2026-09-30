@@ -6,6 +6,8 @@ import {
   getParties,
   upsertParty,
   deleteParty,
+  setPartyEndMonth,
+  partyHasEntries,
   getEntries,
   addEntry,
   deleteEntry,
@@ -22,12 +24,10 @@ import { getActiveMembers } from './members.repo.js';
 import { findCustomer, getCustomers } from './crm.repo.js';
 import {
   nextDueDateIso,
-  computeDebt,
-  computeOnceDebt,
+  congNoBen,
   luyKeLaiLo,
   doanhThuTheoNguon,
   boSungNguon,
-  mucTheoThang,
   DEBT_TRACK_FROM,
 } from '../lib/finance.js';
 import { todayIso, nowTz } from '../lib/datetime.js';
@@ -60,52 +60,29 @@ financeRouter.get(
 
     res.json({
       debtFrom: DEBT_TRACK_FROM,
-      parties: parties.map((p) => {
-        // Khoản MỘT LẦN: không có kỳ tháng, còn nợ = tổng − mọi đợt đã trả.
-        if (p.kind === 'once') {
-          const d = computeOnceDebt({
-            total: p.receivable,
-            startMonth: (p.startDate || '').slice(0, 7),
-            month,
-            paid: paid[p.id] || {},
-          });
-          return {
+      parties: parties.flatMap((p) => {
+        const lichSu = p.kind === 'once' ? [] : rates.get(p.id) || [];
+        const c = congNoBen(p, lichSu, paid[p.id] || {}, month);
+        // Đã ngưng và đã thu đủ → tháng sau không hiện nữa (anh Tâm 30/9/2026).
+        if (!c.hien) return [];
+        return [
+          {
             ...p,
-            receivableThisMonth: d.total,
-            rates: [],
+            /** Mức của riêng tháng đang xem — bảng và hộp thu dùng số này, không dùng `receivable`. */
+            receivableThisMonth: c.mucThang,
+            rates: lichSu,
             nextDue: nextDueDateIso(p.dueDay, today),
-            carryOver: 0,
-            thisMonthRemaining: d.remaining,
-            paidToOld: 0,
-            paidTotal: d.paidTotal,
-            totalDue: d.remaining,
-            credit: d.credit,
-            unpaidMonths: [],
-          };
-        }
-        const lichSu = rates.get(p.id) || [];
-        const debt = computeDebt({
-          receivable: p.receivable,
-          rates: lichSu,
-          // Bên vào sau mốc chung thì tính từ tháng của bên đó, khỏi đội nợ những kỳ
-          // chưa hợp tác.
-          startMonth: (p.startDate || '').slice(0, 7),
-          month,
-          paid: paid[p.id] || {},
-        });
-        return {
-          ...p,
-          /** Mức của riêng tháng đang xem — bảng và hộp thu dùng số này, không dùng `receivable`. */
-          receivableThisMonth: mucTheoThang(lichSu, p.receivable, month),
-          rates: lichSu,
-          nextDue: nextDueDateIso(p.dueDay, today),
-          carryOver: debt.carryOver,
-          thisMonthRemaining: debt.thisMonthRemaining,
-          paidToOld: debt.paidToOld,
-          totalDue: debt.total,
-          credit: debt.credit,
-          unpaidMonths: debt.unpaidMonths,
-        };
+            carryOver: c.carryOver,
+            thisMonthRemaining: c.thisMonthRemaining,
+            paidToOld: c.paidToOld,
+            paidTotal: c.paidTotal,
+            totalDue: c.totalDue,
+            credit: c.credit,
+            unpaidMonths: c.unpaidMonths,
+            /** Đã qua tháng cuối, còn hiện chỉ vì chưa thu đủ. */
+            daNgung: c.daNgung,
+          },
+        ];
       }),
     });
   }),
@@ -167,17 +144,44 @@ financeRouter.post(
       active: b.active,
       source: b.source,
       kind: b.kind,
+      endMonth: '', // upsertParty không ghi cột này — ngưng/khôi phục đi đường riêng
     };
     await upsertParty(party);
     res.json({ ok: true, id: party.id });
   }),
 );
 
+/**
+ * "Xoá" một bên = NGƯNG dịch vụ: tháng đang xem là tháng cuối, tháng sau không hiện nữa.
+ *
+ * Anh Tâm 30/9/2026: "nhận tiền xong xoá đơn vị đó khỏi hàng tháng có nghĩa là anh đã ngưng
+ * dịch vụ, đó là tháng cuối, [khoản đã thu] em vẫn ghi nhận". Không xoá dòng: các tháng trước
+ * vẫn xem lại được, khoản thu vẫn biết của ai và thuộc nguồn nào.
+ *
+ * Bên CHƯA có khoản thu nào (tạo nhầm) thì xoá hẳn — không có gì để giữ.
+ */
 financeRouter.delete(
   '/parties/:id',
   canEdit,
   asyncHandler(async (req, res) => {
-    await deleteParty(String(req.params.id));
+    const id = String(req.params.id);
+    const month = ym(req);
+    if (!(await partyHasEntries(id))) {
+      await deleteParty(id);
+      res.json({ ok: true, removed: true });
+      return;
+    }
+    if (!(await setPartyEndMonth(id, month))) throw new ApiError(404, 'Không tìm thấy bên');
+    res.json({ ok: true, removed: false, endMonth: month });
+  }),
+);
+
+/** Khôi phục bên đã ngưng — khách quay lại dùng dịch vụ. */
+financeRouter.post(
+  '/parties/:id/restore',
+  canEdit,
+  asyncHandler(async (req, res) => {
+    if (!(await setPartyEndMonth(String(req.params.id), ''))) throw new ApiError(404, 'Không tìm thấy bên');
     res.json({ ok: true });
   }),
 );
@@ -224,39 +228,17 @@ financeRouter.get(
     const expense = entries.filter((e) => e.kind === 'chi').reduce((s, e) => s + e.amount, 0);
     const parties = allParties.filter((p) => p.active);
     const paid = await paidByPartyMonth(DEBT_TRACK_FROM);
-    const dinhKy = parties.filter((p) => p.kind !== 'once');
-    // Mức của riêng tháng đang xem — bên đổi mức giữa chừng thì tháng cũ vẫn theo mức cũ.
-    // Khoản một lần góp phần CÒN PHẢI ĐÒI (tổng − đã trả), không phải cả hợp đồng mỗi tháng.
-    const receivableTotal =
-      dinhKy.reduce((s, p) => s + mucTheoThang(rates.get(p.id) || [], p.receivable, month), 0) +
-      parties
-        .filter((p) => p.kind === 'once')
-        .reduce(
-          (s, p) =>
-            s +
-            computeOnceDebt({
-              total: p.receivable,
-              startMonth: (p.startDate || '').slice(0, 7),
-              month,
-              paid: paid[p.id] || {},
-            }).remaining,
-          0,
-        );
-
-    // Nợ tồn từ các kỳ trước — tách khỏi `receivableTotal` (vốn là tiền của riêng kỳ này)
-    // để màn hình nói rõ đâu là tiền tháng này, đâu là tiền còn treo lại.
-    const carryOverTotal = dinhKy.reduce(
-      (s, p) =>
-        s +
-        computeDebt({
-          receivable: p.receivable,
-          rates: rates.get(p.id) || [],
-          startMonth: (p.startDate || '').slice(0, 7),
-          month,
-          paid: paid[p.id] || {},
-        }).carryOver,
-      0,
-    );
+    // Cùng một hàm với bảng các bên — thẻ tổng và bảng không thể lệch nhau. Bên đã ngưng không
+    // phát sinh kỳ mới; còn nợ thì vẫn nằm trong nợ cũ.
+    let receivableTotal = 0;
+    let carryOverTotal = 0;
+    for (const p of parties) {
+      const c = congNoBen(p, p.kind === 'once' ? [] : rates.get(p.id) || [], paid[p.id] || {}, month);
+      if (!c.hien) continue;
+      // Khoản một lần góp phần CÒN PHẢI ĐÒI, không phải cả hợp đồng mỗi tháng.
+      receivableTotal += p.kind === 'once' ? c.totalDue : c.mucThang;
+      carryOverTotal += c.carryOver;
+    }
 
     res.json({
       month,
