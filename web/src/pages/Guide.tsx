@@ -227,6 +227,36 @@ const PHANS: Phan[] = [
     ],
   },
   {
+    icon: '🧠',
+    ten: 'Kho tri thức',
+    tom: 'Bộ não thứ hai của công ty: hỏi trợ lý về quy trình, tiêu chuẩn, khách hàng — trợ lý trả lời từ kho thay vì phải hỏi giám đốc.',
+    mucs: [
+      {
+        hoi: 'Hỏi thế nào?',
+        dap: [
+          'Nhắn thẳng cho Trợ lý, vd "màu thương hiệu dùng mã gì", "khách Savax cần lưu ý gì", "khách đòi giảm giá thì làm sao".',
+          'Trợ lý ghi rõ câu trả lời lấy từ mục nào, cập nhật ngày nào.',
+          'Kho chưa có thì trợ lý nói thật và chuyển câu hỏi cho giám đốc. Giám đốc trả lời xong, bạn nhận thông báo.',
+        ],
+      },
+      {
+        hoi: 'Cái gì nên đưa vào kho?',
+        dap: [
+          'Nên: lưu ý về khách, quy trình làm việc, tiêu chuẩn thiết kế & nội dung (màu, font, giọng văn), dịch vụ & bảng giá, chính sách nhân sự, cách xử lý tình huống, mẫu tin nhắn/báo giá, hướng dẫn công cụ, quyết định đã chốt.',
+          'Không: số liệu thay đổi hằng ngày (điểm, chấm công, công nợ), lương thưởng của ai đó, mật khẩu/API key/số tài khoản (bị chặn hẳn), SĐT khách (tự ẩn), chuyện phiếm.',
+        ],
+      },
+      {
+        hoi: 'Đóng góp vào kho',
+        dap: [
+          'Vào Kho tri thức → tab ✍️ Đóng góp, viết tiêu đề và nội dung, bấm Gửi. Hoặc bấm 📌 Lưu vào kho tri thức dưới một câu trả lời của trợ lý.',
+          'AI tự xếp nhóm, gắn đúng khách và quyết định ai xem được. Điều chưa chắc thì chờ giám đốc duyệt — xem trạng thái ở "Đóng góp của tôi".',
+          'Lưu ý khách hàng giờ nằm ở tab 👤 Khách hàng của Kho tri thức (mục Lưu ý KH cũ đã gộp vào đây).',
+        ],
+      },
+    ],
+  },
+  {
     icon: '🔔',
     ten: 'Thông báo',
     tom: 'Bật một lần để nhận nhắc hẹn, đơn cần duyệt, báo cáo ngày ngay trên điện thoại.',

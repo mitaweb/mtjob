@@ -157,7 +157,7 @@ crmRouter.post(
         sourceId: id,
         title: `Lịch hẹn: ${customer.name}`,
         text: `Hẹn ${customer.name} lúc ${toIsoVn(b.at).slice(0, 16).replace('T', ' ')}: ${b.note}`,
-        visibility: 'all',
+        visibility: 'director', // lịch trình chỉ giám đốc (anh Tâm 4/10/2026)
         customer: customer.name,
       });
     }

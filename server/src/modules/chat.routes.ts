@@ -97,9 +97,17 @@ function saveChatTurn(memberId: string, userText: string, payload: ChatReply): v
       .then(() => {
         // Chỉ xét hỏi-đáp thật; các lượt bấm nút xác nhận không phải tri thức.
         if (payload.action !== 'data_answer') return;
-        return autoCaptureKnowledge(question, payload.reply || '').then((saved) => {
-          if (saved) console.log('[brain] tự lưu tri thức từ hội thoại');
-        });
+        // Biết ai đang chat để bộ phân loại xếp đúng (chuyện riêng của giám đốc giữ riêng giám đốc).
+        return findById(memberId).then((m) =>
+          autoCaptureKnowledge(question, payload.reply || '', {
+            id: memberId,
+            name: m?.fullName || '',
+            role: m?.role || '',
+            teamId: m?.teamId || '',
+          }).then((saved) => {
+            if (saved) console.log('[brain] tự gửi tri thức từ hội thoại vào bộ phân loại');
+          }),
+        );
       })
       .catch((e) => console.warn('[chat] lưu lịch sử:', e)),
   );

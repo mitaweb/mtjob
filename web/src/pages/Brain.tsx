@@ -1,9 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { upload } from '@vercel/blob/client';
 import { api, getToken } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
 import { useToast } from '../components/Toaster';
 import { Badge, EmptyState, PageHeader, SkeletonRows, type BadgeVariant } from '../components/ui';
+import { useAuth } from '../lib/auth';
+import {
+  QuyTacKho,
+  TabKho,
+  TabKhach,
+  TabGopY,
+  TabDanhSach,
+  TabCauHoi,
+  DonKhoCu,
+  type Nhom,
+} from '../components/BrainKho';
 
 interface Chunk {
   id: string;
@@ -44,6 +56,7 @@ interface Stats {
 }
 
 const SOURCE_VI: Record<string, string> = {
+  item: 'Mục tri thức (đã phân loại)',
   note: 'Bạn chốt từ hội thoại',
   auto: 'AI tự ghi nhận',
   sheet: 'Bảng từ Google Sheets',
@@ -57,6 +70,7 @@ const SOURCE_VI: Record<string, string> = {
 };
 
 const SOURCE_VARIANT: Record<string, BadgeVariant> = {
+  item: 'success',
   note: 'info',
   auto: 'neutral',
   sheet: 'warn',
@@ -93,7 +107,8 @@ function oneLine(c: Chunk): string {
   return body(c.content).replace(/\s+/g, ' ').trim();
 }
 
-export default function Brain() {
+/** Tab "Tài liệu & dữ liệu": tài liệu tải lên, hồ sơ 360° khách, và mọi đoạn đang ghi nhớ (dạng thô). */
+function DuLieuKho() {
   const toast = useToast();
   const [stats, setStats] = useState<Stats | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -241,17 +256,13 @@ export default function Brain() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="🧠 Kho tri thức"
-        desc="Những gì trợ lý AI đang ghi nhớ — tự thu thập từ lưu ý khách hàng, CRM, lịch hẹn, và tài liệu bạn tải lên."
-        action={
-          stats?.enabled && stats.remaining > 0 ? (
-            <AsyncButton className="btn-ghost" onClick={sweepNow} busyLabel="Đang nạp…">
-              Nạp ngay
-            </AsyncButton>
-          ) : null
-        }
-      />
+      {stats?.enabled && stats.remaining > 0 && (
+        <div className="flex justify-end">
+          <AsyncButton className="btn-ghost" onClick={sweepNow} busyLabel="Đang nạp…">
+            Nạp ngay
+          </AsyncButton>
+        </div>
+      )}
 
       {stats && !stats.enabled && (
         <div className="card border-amber-200 bg-amber-50 text-sm text-amber-800">
@@ -270,7 +281,7 @@ export default function Brain() {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <span className="text-2xl font-bold text-brand-600">{stats.total}</span>{' '}
-              <span className="text-sm text-ink-muted">mục đang được ghi nhớ</span>
+              <span className="text-sm text-ink-muted">đoạn đang được ghi nhớ (mục tri thức + hồ sơ + tài liệu)</span>
             </div>
             {stats.remaining > 0 ? (
               <span className="text-sm text-amber-700">Còn {stats.remaining} mục đang chờ nạp (tự nạp dần)</span>
@@ -485,6 +496,98 @@ export default function Brain() {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ── Trang Kho tri thức: "bộ não thứ hai" của công ty (anh Tâm 4/10/2026) ──
+
+type TabKey = 'kho' | 'khach' | 'gop' | 'duyet' | 'hoi' | 'rieng' | 'tailieu';
+
+export default function Brain() {
+  const { user } = useAuth();
+  const isDirector = user?.role === 'director' || user?.role === 'admin';
+  const [params, setParams] = useSearchParams();
+  const tab = (params.get('tab') as TabKey) || 'kho';
+  const [nhomList, setNhomList] = useState<Nhom[]>([]);
+  const [dem, setDem] = useState({ pending: 0, openQuestions: 0 });
+  const [needsMigrate, setNeedsMigrate] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  async function taiNhom() {
+    const r = await api<{ categories: Nhom[]; pending: number; openQuestions: number; needsMigrate?: boolean }>('/brain/categories');
+    setNhomList(r.categories);
+    setDem({ pending: r.pending, openQuestions: r.openQuestions });
+    setNeedsMigrate(!!r.needsMigrate);
+  }
+  useEffect(() => {
+    taiNhom().catch(() => undefined);
+  }, [reloadKey]);
+  const doi = () => setReloadKey((k) => k + 1);
+
+  const tabs: Array<{ key: TabKey; label: string; chiGd?: boolean }> = [
+    { key: 'kho', label: '📘 Kho' },
+    { key: 'khach', label: '👤 Khách hàng' },
+    { key: 'gop', label: '✍️ Đóng góp' },
+    { key: 'duyet', label: `⏳ Chờ duyệt${dem.pending ? ` (${dem.pending})` : ''}`, chiGd: true },
+    { key: 'hoi', label: `❓ Câu hỏi${dem.openQuestions ? ` (${dem.openQuestions})` : ''}`, chiGd: true },
+    { key: 'rieng', label: '🔒 Riêng anh', chiGd: true },
+    { key: 'tailieu', label: '📎 Tài liệu & dữ liệu' },
+  ];
+  const hien = tabs.filter((t) => !t.chiGd || isDirector);
+  const dangXem = hien.some((t) => t.key === tab) ? tab : 'kho';
+
+  return (
+    <div className="space-y-4">
+      <PageHeader
+        title="🧠 Kho tri thức"
+        desc="Bộ não thứ hai của công ty — trợ lý AI trả lời nhân viên từ đây. Mỗi mục được AI đọc, xếp nhóm, gắn đúng khách và quyết định ai xem được."
+      />
+
+      {needsMigrate && (
+        <div className="card border-amber-200 bg-amber-50 text-sm text-amber-800">
+          Kho tri thức cần cập nhật cấu trúc. Vào <b>Quản trị → 🛠 Cập nhật cấu trúc DB</b>.
+        </div>
+      )}
+
+      {/* Thanh tab cuộn ngang riêng — không làm cả trang tràn ngang trên điện thoại. */}
+      <div className="-mx-1 overflow-x-auto">
+        <div className="flex gap-1.5 px-1 pb-1">
+          {hien.map((t) => (
+            <button
+              key={t.key}
+              className={`whitespace-nowrap rounded-xl border px-3 py-1.5 text-sm ${
+                dangXem === t.key ? 'border-brand-600 bg-brand-600 text-white' : 'border-brand-200 bg-white text-ink-soft'
+              }`}
+              onClick={() => setParams(t.key === 'kho' ? {} : { tab: t.key })}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isDirector && <DonKhoCu onChanged={doi} />}
+
+      {dangXem === 'kho' && (
+        <>
+          <QuyTacKho />
+          <TabKho nhomList={nhomList} isDirector={isDirector} reloadKey={reloadKey} onChanged={doi} />
+        </>
+      )}
+      {dangXem === 'khach' && <TabKhach nhomList={nhomList} isDirector={isDirector} onChanged={doi} />}
+      {dangXem === 'gop' && (
+        <>
+          <QuyTacKho />
+          <TabGopY nhomList={nhomList} onChanged={doi} />
+        </>
+      )}
+      {dangXem === 'duyet' && <TabDanhSach status="pending" nhomList={nhomList} rong="Không có mục nào chờ duyệt." onChanged={doi} />}
+      {dangXem === 'hoi' && <TabCauHoi onChanged={doi} />}
+      {dangXem === 'rieng' && (
+        <TabDanhSach status="published" category="rieng" nhomList={nhomList} rong="Chưa có mục riêng nào." onChanged={doi} />
+      )}
+      {dangXem === 'tailieu' && <DuLieuKho />}
     </div>
   );
 }

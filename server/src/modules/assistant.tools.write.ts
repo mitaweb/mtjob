@@ -424,7 +424,7 @@ export function crmWriteTools(memberId: string): ToolDef[] {
             sourceId: id,
             title: `Lịch hẹn: ${customer.name}`,
             text: `Hẹn ${customer.name} lúc ${at.replace('T', ' ')}: ${note}`,
-            visibility: 'all',
+            visibility: 'director', // lịch trình chỉ giám đốc (anh Tâm 4/10/2026)
             customer: customer.name,
           });
         }

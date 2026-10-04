@@ -45,9 +45,9 @@ const GROUPS: GroupDef[] = [
   {
     key: 'work',
     label: '✅ Công việc',
-    types: ['task_done', 'task_assigned', 'attendance', 'kyluat'],
+    types: ['task_done', 'task_assigned', 'attendance', 'kyluat', 'brain_question', 'brain_answer', 'brain_pending'],
     to: '/chat',
-    hint: 'Việc được giao, việc hoàn thành, chấm công.',
+    hint: 'Việc được giao, việc hoàn thành, chấm công, kho tri thức.',
   },
 ];
 

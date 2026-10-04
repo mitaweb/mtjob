@@ -527,6 +527,62 @@ CREATE INDEX IF NOT EXISTS brain_documents_created_idx ON brain_documents (creat
 -- Dọn các mục không còn coi là tri thức: ghi chú công việc (dữ liệu vận hành, trợ lý tra
 -- thẳng bảng tasks) và hội thoại tự động vơ vét (giờ do người dùng chủ động bấm lưu).
 DELETE FROM brain_chunks WHERE source_type IN ('task', 'chat');
+
+-- ── "Bộ não thứ hai" (anh Tâm 4/10/2026) ──
+-- Mỗi MỤC tri thức là một đơn vị đọc được, có nhãn: nhóm, khách (đúng customer_id trong CRM),
+-- phòng, phạm vi xem, trạng thái. Chỉ mục 'published' mới được cắt đoạn vào brain_chunks
+-- (source_type 'item') — mục chờ duyệt / không lưu / lưu trữ thì trợ lý không bao giờ đọc thấy.
+CREATE TABLE IF NOT EXISTS brain_items (
+  item_id        text PRIMARY KEY,
+  title          text NOT NULL,
+  body           text NOT NULL,
+  summary        text DEFAULT '',          -- 1 câu AI tóm tắt
+  category       text DEFAULT '',          -- khoá nhóm (lib/brainGate.ts NHOM)
+  customer_id    text DEFAULT '',
+  customer       text DEFAULT '',
+  team_id        text DEFAULT '',
+  tags           text DEFAULT '',          -- từ khoá, phân cách dấu phẩy
+  search_text    text DEFAULT '',          -- tiêu đề + tóm tắt + thẻ + khách, BỎ DẤU — để tìm bằng chữ
+  scope          text DEFAULT 'all',       -- 'all' | 'team:Ads' | 'director'
+  status         text DEFAULT 'published', -- published | pending | rejected | archived
+  source         text DEFAULT 'manual',    -- manual | chat | auto | sheet | answer | customer_note | reclassify
+  submitted_by   text DEFAULT '',
+  submitted_name text DEFAULT '',
+  approved_by    text DEFAULT '',
+  ai_reason      text DEFAULT '',
+  created_at     text DEFAULT '',
+  updated_at     text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS brain_items_status_idx ON brain_items (status, category);
+CREATE INDEX IF NOT EXISTS brain_items_customer_idx ON brain_items (customer_id);
+CREATE INDEX IF NOT EXISTS brain_items_submitter_idx ON brain_items (submitted_by);
+
+-- Câu hỏi nhân viên hỏi mà kho chưa có lời giải → giám đốc trả lời một lần là thành mục.
+CREATE TABLE IF NOT EXISTS brain_questions (
+  question_id    text PRIMARY KEY,
+  question       text NOT NULL,
+  asked_by       text DEFAULT '',
+  asked_name     text DEFAULT '',
+  team_id        text DEFAULT '',
+  askers         text DEFAULT '',          -- csv member_id những người đã hỏi (để báo lại)
+  times          integer DEFAULT 1,
+  status         text DEFAULT 'open',      -- open | answered | dismissed
+  answer_item_id text DEFAULT '',
+  created_at     text DEFAULT '',
+  answered_at    text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS brain_questions_status_idx ON brain_questions (status, created_at DESC);
+
+-- Nhãn đi theo từng đoạn để tra theo nhóm / đúng khách ngay trong SQL.
+ALTER TABLE brain_chunks ADD COLUMN IF NOT EXISTS category text DEFAULT '';
+ALTER TABLE brain_chunks ADD COLUMN IF NOT EXISTS customer_id text DEFAULT '';
+CREATE INDEX IF NOT EXISTS brain_chunks_customer_idx ON brain_chunks (customer_id);
+
+-- Anh Tâm 4/10/2026: "lịch trình cá nhân, phân tích task chỉ anh được hỏi". Các đoạn AI tự vơ
+-- từ chat, đoạn lưu tay kiểu cũ và lịch hẹn đang mở cho cả công ty → ẩn về riêng giám đốc.
+-- Nút "Phân loại lại kho" sẽ đưa phần công việc ra lại cho nhân viên sau khi AI xếp nhãn.
+UPDATE brain_chunks SET visibility = 'director'
+ WHERE source_type IN ('auto', 'note', 'appointment') AND visibility = 'all';
 `;
 
 /** Seed rows for the config table (key/value). */

@@ -13,7 +13,6 @@ import {
   MessageCircle,
   Settings,
   Star,
-  StickyNote,
   Brain,
   UserPlus,
   Users,
@@ -42,7 +41,7 @@ const NAV: NavItem[] = [
   { to: '/finance', label: 'Tài chính', icon: Landmark, roles: ['director', 'admin', 'accountant'] },
   { to: '/crm', label: 'Khách hàng', icon: Users, roles: ['sale', 'director', 'admin'] },
   { to: '/projects', label: 'Dự án', icon: FolderKanban, roles: ['member', 'leader', 'director', 'admin', 'sale'] },
-  { to: '/customer-notes', label: 'Lưu ý KH', icon: StickyNote },
+  // Lưu ý KH đã gộp vào Kho tri thức (tab Khách hàng) — anh Tâm 4/10/2026.
   { to: '/brain', label: 'Kho tri thức', icon: Brain },
   // Giám đốc không nộp đơn cho ai duyệt → ẩn Đơn từ, chỉ giữ Duyệt đơn.
   { to: '/requests', label: 'Đơn từ', icon: FileText, roles: ['member', 'leader', 'sale', 'accountant', 'admin'] },

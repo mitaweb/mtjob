@@ -15,7 +15,6 @@ const Payroll = lazy(() => import('./pages/Payroll'));
 const AdminPayroll = lazy(() => import('./pages/AdminPayroll'));
 const Finance = lazy(() => import('./pages/Finance'));
 const CRM = lazy(() => import('./pages/CRM'));
-const CustomerNotes = lazy(() => import('./pages/CustomerNotes'));
 const Projects = lazy(() => import('./pages/Projects'));
 const Brain = lazy(() => import('./pages/Brain'));
 const Requests = lazy(() => import('./pages/Requests'));
@@ -107,7 +106,8 @@ export default function App() {
             </Protected>
           }
         />
-        <Route path="/customer-notes" element={<CustomerNotes />} />
+        {/* Lưu ý KH đã gộp vào Kho tri thức — link cũ mở thẳng tab Khách hàng. */}
+        <Route path="/customer-notes" element={<Navigate to="/brain?tab=khach" replace />} />
         <Route path="/brain" element={<Brain />} />
         <Route path="/requests" element={<Requests />} />
         <Route path="/inbox" element={<Inbox />} />

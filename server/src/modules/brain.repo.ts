@@ -8,7 +8,7 @@ export function isMissingTable(e: unknown): boolean {
   const err = e as { code?: string; message?: string };
   return (
     err?.code === '42P01' ||
-    /relation .*(brain_chunks|brain_profiles|brain_documents|chat_messages).* does not exist/i.test(err?.message || '')
+    /relation .*(brain_chunks|brain_profiles|brain_documents|brain_items|brain_questions|chat_messages).* does not exist/i.test(err?.message || '')
   );
 }
 
@@ -38,9 +38,13 @@ export interface BrainChunk {
   sourceId: string;
   title: string;
   content: string;
-  visibility: string; // 'all' | 'director' | <member_id>
+  visibility: string; // 'all' | 'director' | 'team:Ads' | <member_id>
   customer: string;
   createdAt: string;
+  /** Nhóm tri thức (lib/brainGate.ts NHOM); '' với nguồn cũ chưa gắn nhãn. */
+  category?: string;
+  /** Khách trong CRM; '' nếu không gắn khách hoặc nguồn cũ. */
+  customerId?: string;
 }
 
 export interface BrainHit extends BrainChunk {
@@ -58,6 +62,8 @@ function rowToChunk(r: any): BrainChunk {
     visibility: r.visibility || 'all',
     customer: r.customer || '',
     createdAt: r.created_at || '',
+    category: r.category || '',
+    customerId: r.customer_id || '',
   };
 }
 
@@ -75,12 +81,13 @@ export async function insertChunks(rows: NewChunk[]): Promise<void> {
     params.push(
       r.id, r.sourceType, r.sourceId, r.title, r.content,
       JSON.stringify(r.embedding), r.visibility, r.customer, r.createdAt,
+      r.category || '', r.customerId || '',
     );
-    return `($${i + 1},$${i + 2},$${i + 3},$${i + 4},$${i + 5},$${i + 6}::vector,$${i + 7},$${i + 8},$${i + 9})`;
+    return `($${i + 1},$${i + 2},$${i + 3},$${i + 4},$${i + 5},$${i + 6}::vector,$${i + 7},$${i + 8},$${i + 9},$${i + 10},$${i + 11})`;
   });
   await q(
     `INSERT INTO brain_chunks
-       (chunk_id, source_type, source_id, title, content, embedding, visibility, customer, created_at)
+       (chunk_id, source_type, source_id, title, content, embedding, visibility, customer, created_at, category, customer_id)
      VALUES ${values.join(',')}`,
     params,
   );
@@ -98,27 +105,60 @@ export async function deleteChunk(chunkId: string): Promise<void> {
 export interface SearchOpts {
   /** true = giám đốc/admin: không lọc quyền xem. */
   directorScope: boolean;
-  /** Bắt buộc khi không phải giám đốc: chỉ thấy 'all' + đoạn riêng của mình. */
+  /** Bắt buộc khi không phải giám đốc: chỉ thấy 'all' + đoạn của phòng mình + đoạn riêng của mình. */
   memberId?: string;
+  teamId?: string;
+  /**
+   * Lọc theo khách. Có `customerId` (đã khớp CRM) → CHỈ đoạn của đúng khách đó (theo id, hoặc
+   * nguồn cũ chưa có id mà trùng hẳn tên). Không khớp được CRM thì mới dùng `customer` gần đúng.
+   */
+  customerId?: string;
+  customerName?: string;
   customer?: string;
+  /** Lọc theo nhóm tri thức. */
+  category?: string;
+  /** Chỉ một loại nguồn (vd 'item' để kiểm trùng mục). */
+  sourceType?: string;
   limit?: number;
+}
+
+/** Điều kiện quyền xem dùng chung cho tìm ngữ nghĩa và duyệt — chặn ở SQL, không nhờ lời dặn. */
+export function dieuKienQuyenXem(opts: { directorScope: boolean; memberId?: string; teamId?: string }, params: unknown[]): string {
+  if (opts.directorScope) return '';
+  params.push(opts.memberId || '');
+  const mem = params.length;
+  params.push(opts.teamId ? `team:${opts.teamId}` : '');
+  return ` AND visibility IN ('all', $${mem}, $${params.length})`;
 }
 
 /** Tìm theo ngữ nghĩa (cosine). Quyền xem lọc ngay trong SQL, không phụ thuộc prompt. */
 export async function searchChunks(embedding: number[], opts: SearchOpts): Promise<BrainHit[]> {
   const vec = JSON.stringify(embedding);
-  const customer = (opts.customer || '').trim();
   const limit = opts.limit ?? 8;
-  const params: unknown[] = [vec, customer];
-  let where = "($2 = '' OR customer ILIKE '%' || $2 || '%')";
-  if (!opts.directorScope) {
-    params.push(opts.memberId || '');
-    where += ` AND visibility IN ('all', $${params.length})`;
+  const params: unknown[] = [vec];
+  let where = 'TRUE';
+  if (opts.customerId) {
+    params.push(opts.customerId);
+    const id = params.length;
+    params.push((opts.customerName || '').trim().toLowerCase());
+    where += ` AND (customer_id = $${id} OR (customer_id = '' AND lower(customer) = $${params.length}))`;
+  } else if ((opts.customer || '').trim()) {
+    params.push(opts.customer!.trim());
+    where += ` AND customer ILIKE '%' || $${params.length} || '%'`;
   }
+  if (opts.category) {
+    params.push(opts.category);
+    where += ` AND category = $${params.length}`;
+  }
+  if (opts.sourceType) {
+    params.push(opts.sourceType);
+    where += ` AND source_type = $${params.length}`;
+  }
+  where += dieuKienQuyenXem(opts, params);
   params.push(limit);
   const rows = await q(
     `SELECT chunk_id, source_type, source_id, title, content, visibility, customer, created_at,
-            1 - (embedding <=> $1::vector) AS score
+            category, customer_id, 1 - (embedding <=> $1::vector) AS score
      FROM brain_chunks
      WHERE ${where}
      ORDER BY embedding <=> $1::vector
@@ -134,6 +174,7 @@ export async function browseChunks(opts: {
   sourceType?: string;
   directorScope: boolean;
   memberId?: string;
+  teamId?: string;
   limit?: number;
 }): Promise<BrainChunk[]> {
   const kw = (opts.keyword || '').trim();
@@ -143,13 +184,10 @@ export async function browseChunks(opts: {
     params.push(opts.sourceType);
     where += ` AND source_type = $${params.length}`;
   }
-  if (!opts.directorScope) {
-    params.push(opts.memberId || '');
-    where += ` AND visibility IN ('all', $${params.length})`;
-  }
+  where += dieuKienQuyenXem(opts, params);
   params.push(opts.limit ?? 50);
   const rows = await q(
-    `SELECT chunk_id, source_type, source_id, title, content, visibility, customer, created_at
+    `SELECT chunk_id, source_type, source_id, title, content, visibility, customer, created_at, category, customer_id
      FROM brain_chunks WHERE ${where}
      ORDER BY created_at DESC LIMIT $${params.length}`,
     params,

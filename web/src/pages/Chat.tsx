@@ -40,6 +40,8 @@ interface Msg {
   res?: ChatResponse;
   question?: string; // câu hỏi dẫn tới câu trả lời này — dùng khi lưu vào kho
   saved?: boolean; // đã chốt vào kho tri thức chưa
+  /** Câu bộ phân loại kho trả về khi bấm lưu (vào kho / chờ duyệt / chỉ giám đốc). */
+  savedNote?: string;
   streaming?: boolean; // đang viết dở, sẽ thay bằng bản hoàn chỉnh khi xong
 }
 
@@ -428,7 +430,7 @@ export default function Chat() {
     const m = msgs[idx];
     if (!m) return;
     try {
-      await api('/brain/notes', {
+      const r = await api<{ ok: boolean; message?: string }>('/brain/notes', {
         body: {
           title: title.trim() || (m.question || 'Ghi chú từ hội thoại').slice(0, 120),
           // Lưu cả câu hỏi để sau này tra ra vẫn hiểu ngữ cảnh.
@@ -436,9 +438,13 @@ export default function Chat() {
           customer: customer.trim(),
         },
       });
-      setMsgs((list) => list.map((x, i) => (i === idx ? { ...x, saved: true } : x)));
+      // Không lưu (có bí mật, số liệu sống…) thì để nút lại cho người ta sửa và lưu lại.
+      if (r.ok) setMsgs((list) => list.map((x, i) => (i === idx ? { ...x, saved: true, savedNote: r.message } : x)));
       setSavingIdx(null);
-      toast.success('Đã lưu vào kho tri thức');
+      // Nói đúng quyết định của bộ phân loại: vào kho / chỉ giám đốc / chờ duyệt / không lưu.
+      const msg = r.message || 'Đã gửi vào kho tri thức';
+      if (r.ok) toast.success(msg);
+      else toast.error(msg);
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -570,7 +576,7 @@ export default function Chat() {
               {/* Chốt câu trả lời vào kho tri thức — lần sau khỏi hỏi lại */}
               {m.role === 'bot' && m.res?.action === 'data_answer' && (
                 m.saved ? (
-                  <div className="mt-2 text-xs text-emerald-700">✓ Đã lưu vào kho tri thức</div>
+                  <div className="mt-2 text-xs text-emerald-700">✓ {m.savedNote || 'Đã gửi vào kho tri thức'}</div>
                 ) : savingIdx === i ? (
                   <div className="mt-2 space-y-2 rounded-xl bg-brand-50 p-2">
                     <input

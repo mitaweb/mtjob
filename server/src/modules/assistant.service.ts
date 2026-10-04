@@ -11,7 +11,18 @@ import { mucTheoThang, computeOnceDebt, DEBT_TRACK_FROM } from '../lib/finance.j
 import { getDoneTasksForMemberRange } from './tasks.repo.js';
 import { getActiveCatalog, locCatalogTheoTeam } from './catalog.repo.js';
 import { getProvider, aiAvailable } from '../ai/index.js';
-import { searchKnowledgeText, customerProfileText, importGoogleSheet, ingest } from './brain.service.js';
+import { customerProfileText, importGoogleSheet } from './brain.service.js';
+import {
+  xetDuaVaoKho,
+  timTriThuc,
+  chuyenCauHoi,
+  traLoiCauHoi,
+  timCauHoiDangMo,
+  CHUA_CO,
+  type NguoiGui,
+} from './brainItems.service.js';
+import { listQuestions } from './brainItems.repo.js';
+import { NHOM, NHOM_KEYS } from '../lib/brainGate.js';
 import { getCustomers } from './crm.repo.js';
 import { addReminder } from './reminders.repo.js';
 import { previewDirectorReport } from '../jobs/dailyReport.js';
@@ -154,94 +165,186 @@ function reminderTool(memberId: string, role: string): ToolDef {
   };
 }
 
+/** Người đang chat, theo dạng bộ phân loại kho cần. */
+function nguoiCua(m: { id: string; fullName: string; role: string; teamId?: string } | undefined, memberId: string): NguoiGui {
+  return { id: m?.id || memberId, name: m?.fullName || '', role: m?.role || '', teamId: m?.teamId || '' };
+}
+
 /**
  * Nạp bảng từ Google Sheets vào kho. Sheet được đọc MỘT LẦN rồi lưu thành chữ + vector;
- * các lần hỏi sau chỉ tra kho, không mở lại sheet.
+ * các lần hỏi sau chỉ tra kho, không mở lại sheet. Đi qua bộ phân loại như mọi đường khác.
  */
-const SHEET_TOOL: ToolDef = {
-  declaration: {
-    name: 'import_google_sheet',
-    description:
-      'Nạp nội dung một Google Sheets (kế hoạch content, bảng giá, danh sách…) vào kho tri thức. ' +
-      'Dùng khi người dùng dán link docs.google.com/spreadsheets và bảo cập nhật/lưu vào kho. ' +
-      'Sheet phải được share ở chế độ ai có link cũng xem được.',
-    parameters: {
-      type: 'OBJECT',
-      properties: {
-        url: { type: 'STRING', description: 'Link Google Sheets người dùng đưa.' },
-        title: { type: 'STRING', description: 'Tên gợi nhớ, vd "Kế hoạch content Quốc Phong tháng 7".' },
-        customer: { type: 'STRING', description: 'Tên khách hàng liên quan (nếu có).' },
+function sheetTool(nguoi: NguoiGui): ToolDef {
+  return {
+    declaration: {
+      name: 'import_google_sheet',
+      description:
+        'Nạp nội dung một Google Sheets (kế hoạch content, bảng giá, danh sách…) vào kho tri thức. ' +
+        'Dùng khi người dùng dán link docs.google.com/spreadsheets và bảo cập nhật/lưu vào kho. ' +
+        'Sheet phải được share ở chế độ ai có link cũng xem được. Hệ thống tự phân loại; đọc lại nguyên văn câu hàm trả về.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          url: { type: 'STRING', description: 'Link Google Sheets người dùng đưa.' },
+          title: { type: 'STRING', description: 'Tên gợi nhớ, vd "Kế hoạch content Quốc Phong tháng 7".' },
+          customer: { type: 'STRING', description: 'Tên khách hàng liên quan (nếu có).' },
+        },
+        required: ['url'],
       },
-      required: ['url'],
     },
-  },
-  run: async (a) => {
-    const r = await importGoogleSheet({
-      url: String(a.url || ''),
-      title: String(a.title || ''),
-      customer: String(a.customer || ''),
-    });
-    return r.ok ? `${r.message} (${r.rows ?? 0} hàng dữ liệu)` : r.message;
-  },
-};
+    run: async (a) => {
+      const r = await importGoogleSheet(
+        { url: String(a.url || ''), title: String(a.title || ''), customer: String(a.customer || '') },
+        nguoi,
+      );
+      return r.ok ? `${r.message} (${r.rows ?? 0} hàng dữ liệu)` : r.message;
+    },
+  };
+}
 
-/** Cho AI tự lưu kết luận vào kho khi người dùng bảo "ghi lại", "cập nhật vào kho". */
-const SAVE_TOOL: ToolDef = {
-  declaration: {
-    name: 'save_to_knowledge',
-    description:
-      'Lưu một nội dung vào kho tri thức để lần sau tra lại được. ' +
-      'Dùng khi người dùng bảo "ghi lại cái này", "lưu vào kho", hoặc vừa chốt một quy trình/quyết định.',
-    parameters: {
-      type: 'OBJECT',
-      properties: {
-        title: { type: 'STRING', description: 'Tiêu đề ngắn gọn.' },
-        content: { type: 'STRING', description: 'Nội dung đầy đủ cần nhớ, viết rõ ràng và tự chứa.' },
-        customer: { type: 'STRING', description: 'Tên khách hàng liên quan (nếu có).' },
+/**
+ * Lưu một nội dung vào kho khi người dùng bảo "ghi lại", "lưu vào kho".
+ *
+ * Anh Tâm 4/10/2026: "tất cả đều đưa nhưng em phải lựa". Hàm này KHÔNG ghi thẳng nữa — mọi thứ
+ * qua xetDuaVaoKho: chặn bí mật, ẩn SĐT khách, AI gắn nhóm/khách/phạm vi, chuyện riêng của giám
+ * đốc giữ riêng, nhân viên gửi điều chưa chắc thì vào hàng chờ duyệt.
+ */
+function saveTool(nguoi: NguoiGui): ToolDef {
+  return {
+    declaration: {
+      name: 'save_to_knowledge',
+      description:
+        'Gửi một nội dung vào kho tri thức để lần sau tra lại được. ' +
+        'Dùng khi người dùng bảo "ghi lại cái này", "lưu vào kho", hoặc vừa chốt một quy trình/quyết định. ' +
+        'Hệ thống tự phân loại (vào kho / chỉ giám đốc xem / chờ duyệt / không lưu) — đọc lại NGUYÊN VĂN câu hàm trả về, đừng tự nói khác.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          title: { type: 'STRING', description: 'Tiêu đề ngắn gọn.' },
+          content: { type: 'STRING', description: 'Nội dung đầy đủ cần nhớ, viết rõ ràng và tự chứa.' },
+          customer: { type: 'STRING', description: 'Tên khách hàng liên quan (nếu có).' },
+        },
+        required: ['title', 'content'],
       },
-      required: ['title', 'content'],
     },
-  },
-  run: async (a) => {
-    const title = String(a.title || '').trim();
-    const content = String(a.content || '').trim();
-    if (!title || content.length < 10) return 'Cần tiêu đề và nội dung đủ dài để lưu.';
-    const n = await ingest({
-      sourceType: 'note',
-      sourceId: newId('N-'),
-      title,
-      text: content,
-      visibility: 'all',
-      customer: String(a.customer || '').trim(),
-    });
-    return n > 0 ? `Đã lưu "${title}" vào kho tri thức.` : 'Chưa lưu được (kho tri thức cần API key Gemini).';
-  },
-};
+    run: async (a) => {
+      const title = String(a.title || '').trim();
+      const content = String(a.content || '').trim();
+      if (!title || content.length < 10) return 'CHƯA LƯU: cần tiêu đề và nội dung đủ dài.';
+      const r = await xetDuaVaoKho({ title, body: content, customer: String(a.customer || '').trim(), source: 'chat' }, nguoi);
+      return r.message || 'CHƯA LƯU được.';
+    },
+  };
+}
 
-/** Tool tra kho tri thức — dùng chung cho cả hai vai, khác nhau ở phạm vi quyền xem. */
-function knowledgeTool(scope: { directorScope: boolean; memberId?: string }): ToolDef {
+/**
+ * Tra kho tri thức THEO NHÃN — dùng chung cho cả hai vai, khác nhau ở phạm vi quyền xem.
+ * Hỏi về một khách thì truyền `customer` để chỉ lấy đúng khách đó; hỏi quy định thì truyền `category`.
+ */
+function knowledgeTool(scope: { directorScope: boolean; memberId?: string; teamId?: string }): ToolDef {
+  const nhom = NHOM_KEYS.filter((k) => scope.directorScope || k !== 'rieng')
+    .map((k) => `${k} = ${NHOM[k]}`)
+    .join('; ');
   return {
     declaration: {
       name: 'search_knowledge',
       description:
-        'Tìm trong kho tri thức nội bộ: lưu ý khách hàng, hồ sơ CRM, lịch hẹn, ghi chú công việc, tài liệu, hội thoại cũ. ' +
-        'Dùng khi câu hỏi liên quan tới khách hàng, dự án, hoặc thông tin không có trong các hàm khác.',
+        'Tra KHO TRI THỨC của công ty: tri thức về khách hàng, quy trình, tiêu chuẩn thiết kế & nội dung, ' +
+        'dịch vụ & bảng giá, chính sách nhân sự, cách xử lý tình huống, mẫu dùng sẵn, công cụ, quyết định đã chốt, ' +
+        'cùng hồ sơ khách và tài liệu đã tải lên. Dùng TRƯỚC KHI trả lời mọi câu hỏi về cách làm / quy định / khách hàng của công ty. ' +
+        'Kết quả trả theo từng mục kèm nhóm và ngày cập nhật — trích nguồn khi trả lời.',
       parameters: {
         type: 'OBJECT',
         properties: {
           query: { type: 'STRING', description: 'Câu tìm kiếm bằng tiếng Việt tự nhiên.' },
-          customer: { type: 'STRING', description: 'Lọc theo tên khách hàng (tuỳ chọn).' },
+          customer: { type: 'STRING', description: 'Tên khách hàng nếu câu hỏi nói về một khách cụ thể — chỉ lấy tri thức của đúng khách đó.' },
+          category: { type: 'STRING', enum: ['', ...NHOM_KEYS.filter((k) => scope.directorScope || k !== 'rieng')], description: `Nhóm nếu biết chắc (bỏ trống nếu không chắc): ${nhom}.` },
         },
         required: ['query'],
       },
     },
-    run: (a) =>
-      searchKnowledgeText(String(a.query || ''), {
+    run: async (a) => {
+      const kq = await timTriThuc(String(a.query || ''), {
         directorScope: scope.directorScope,
         memberId: scope.memberId,
+        teamId: scope.teamId,
         customer: String(a.customer || ''),
-      }),
+        category: String(a.category || ''),
+      });
+      // Nhân viên hỏi điều kho chưa có → chỉ đường cho trợ lý, không để nó tự bịa quy định.
+      if (!scope.directorScope && kq.startsWith(CHUA_CO)) {
+        return (
+          `${kq}\nNếu đây là câu hỏi về quy định / cách làm / khách hàng của công ty: KHÔNG tự đặt ra câu trả lời. ` +
+          'Nói với người hỏi là kho chưa có, rồi gọi chuyen_cau_hoi_cho_giam_doc với đúng câu hỏi của họ. ' +
+          'Nếu chỉ là kiến thức marketing chung thì cứ trả lời, nhưng ghi rõ "kinh nghiệm chung, chưa phải quy định công ty".'
+        );
+      }
+      return kq;
+    },
   };
+}
+
+/** Nhân viên: chuyển câu hỏi kho chưa có lời giải cho giám đốc (anh Tâm 4/10/2026). */
+function askDirectorTool(nguoi: NguoiGui): ToolDef {
+  return {
+    declaration: {
+      name: 'chuyen_cau_hoi_cho_giam_doc',
+      description:
+        'Chuyển câu hỏi cho giám đốc khi search_knowledge báo CHƯA CÓ TRONG KHO và câu hỏi là về quy định / cách làm / ' +
+        'khách hàng của công ty. Giám đốc trả lời một lần thì câu trả lời vào kho, người hỏi được báo lại.',
+      parameters: {
+        type: 'OBJECT',
+        properties: { question: { type: 'STRING', description: 'Câu hỏi của nhân viên, viết lại cho rõ, tự hiểu được.' } },
+        required: ['question'],
+      },
+    },
+    run: (a) => chuyenCauHoi(String(a.question || ''), nguoi),
+  };
+}
+
+/** Giám đốc: xem và trả lời câu hỏi nhân viên đang chờ ngay trong chat. */
+function questionTools(nguoi: NguoiGui): ToolDef[] {
+  return [
+    {
+      declaration: {
+        name: 'list_open_questions',
+        description: 'Các câu hỏi nhân viên đã hỏi mà kho tri thức chưa có lời giải, đang chờ giám đốc trả lời.',
+      },
+      run: async () => {
+        const ds = await listQuestions('open', 30);
+        if (ds.length === 0) return 'Không có câu hỏi nào đang chờ.';
+        return ds
+          .map((x, i) => `${i + 1}. ${x.question} — ${x.askedName || '?'}${x.times > 1 ? ` (${x.times} lần hỏi)` : ''}, ${x.createdAt.slice(0, 10)}`)
+          .join('\n');
+      },
+    },
+    {
+      declaration: {
+        name: 'answer_open_question',
+        description:
+          'Giám đốc trả lời một câu hỏi đang chờ (vd "trả lời câu hỏi về màu thương hiệu: dùng xanh #0B5FD9"). ' +
+          'Câu trả lời thành mục trong kho và người hỏi được báo lại.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            question: { type: 'STRING', description: 'Câu hỏi đang chờ, hoặc vài từ để nhận ra nó.' },
+            answer: { type: 'STRING', description: 'Câu trả lời đầy đủ của giám đốc, viết tự hiểu được.' },
+          },
+          required: ['question', 'answer'],
+        },
+      },
+      run: async (a) => {
+        const x = await timCauHoiDangMo(String(a.question || ''));
+        if (!x) return 'CHƯA TRẢ LỜI ĐƯỢC: không thấy câu hỏi đang chờ nào khớp. Gọi list_open_questions để xem danh sách.';
+        try {
+          const r = await traLoiCauHoi(x.id, String(a.answer || ''), nguoi);
+          return `Đã trả lời câu hỏi "${x.question}". ${r.ketQua.message}`;
+        } catch (e) {
+          return `CHƯA TRẢ LỜI ĐƯỢC: ${(e as Error).message}`;
+        }
+      },
+    },
+  ];
 }
 
 const MONTH_PARAMS = {
@@ -444,7 +547,7 @@ export interface ToolLoopOpts {
 
 /** Hàm GHI = hàm làm đổi dữ liệu. Nói "đã ghi" mà không có hàm nào nhóm này chạy là bịa. */
 export function laHamGhi(name: string): boolean {
-  return /^(add|create|collect|adjust|delete|cancel|save|import|dedupe|restore)_/.test(name);
+  return /^(add|create|collect|adjust|delete|cancel|save|import|dedupe|restore|answer|chuyen)_/.test(name);
 }
 
 /**
@@ -775,8 +878,9 @@ export async function answerDataQuestion(
     PROFILE_TOOL,
     knowledgeTool({ directorScope: true }),
     reminderTool(memberId, members.find((m) => m.id === memberId)?.role || 'director'),
-    SHEET_TOOL,
-    SAVE_TOOL,
+    sheetTool(nguoiCua(members.find((m) => m.id === memberId), memberId)),
+    saveTool(nguoiCua(members.find((m) => m.id === memberId), memberId)),
+    ...questionTools(nguoiCua(members.find((m) => m.id === memberId), memberId)),
     // Nhóm GHI: giám đốc nhắn một câu là dữ liệu vào thẳng sổ sách.
     ...moneyWriteTools(),
     ...crmWriteTools(memberId),
@@ -860,12 +964,14 @@ export async function answerMemberQuestion(
       run: () => catalogText(me.teamId || ''),
     },
     PROFILE_TOOL,
-    // Quyền xem chặn cứng ở tầng SQL: chỉ thấy đoạn 'all' + đoạn riêng của chính mình.
-    knowledgeTool({ directorScope: false, memberId }),
+    // Quyền xem chặn cứng ở tầng SQL: chỉ thấy mục 'all' + mục của phòng mình + đoạn riêng của mình.
+    knowledgeTool({ directorScope: false, memberId, teamId: me.teamId || '' }),
     reminderTool(memberId, me.role),
     ...reminderManageTools(memberId),
-    SHEET_TOOL,
-    SAVE_TOOL,
+    // Lưu / nạp sheet vẫn được, nhưng đi qua bộ phân loại — không còn ghi thẳng vào kho chung.
+    sheetTool(nguoiCua(me, memberId)),
+    saveTool(nguoiCua(me, memberId)),
+    askDirectorTool(nguoiCua(me, memberId)),
     // Chỉ sale mới ghi được khách/lịch hẹn. Nhân viên khác KHÔNG có công cụ ghi nào —
     // chặn ở đây chứ không nhờ prompt, để không "dụ" được.
     ...(me.role === 'sale' ? crmWriteTools(memberId) : []),

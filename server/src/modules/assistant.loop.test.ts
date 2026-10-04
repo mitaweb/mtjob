@@ -156,6 +156,8 @@ describe('laHamGhi', () => {
     expect(laHamGhi('create_reminder')).toBe(true);
     expect(laHamGhi('collect_receivable')).toBe(true);
     expect(laHamGhi('cancel_reminder')).toBe(true);
+    expect(laHamGhi('answer_open_question')).toBe(true);
+    expect(laHamGhi('chuyen_cau_hoi_cho_giam_doc')).toBe(true);
     expect(laHamGhi('list_reminders')).toBe(false);
     expect(laHamGhi('get_member_tasks')).toBe(false);
   });

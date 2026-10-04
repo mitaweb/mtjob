@@ -6,6 +6,7 @@ import { asyncHandler, ApiError } from '../util/errors.js';
 import { requireAuth } from '../auth/middleware.js';
 import { verifyToken } from '../auth/jwt.js';
 import {
+  isMissingTable,
   browseChunks,
   statsBySource,
   deleteChunk,
@@ -23,8 +24,29 @@ import {
   brainAvailable,
   processDocumentInBackground,
   removeSource,
-  ingest,
 } from './brain.service.js';
+import {
+  xetDuaVaoKho,
+  suaMuc,
+  traLoiCauHoi,
+  boQuaCauHoi,
+  phanLoaiLaiKho,
+  demChuaPhanLoai,
+  chuyenLuuYKhach,
+  demLuuYChuaChuyen,
+  type NguoiGui,
+} from './brainItems.service.js';
+import {
+  listItems,
+  findItem,
+  countByCategory,
+  countByStatus,
+  listQuestions,
+  countOpenQuestions,
+} from './brainItems.repo.js';
+import { NHOM, chuanTen } from '../lib/brainGate.js';
+import { findById } from './members.repo.js';
+import { getCustomers } from './crm.repo.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
 
@@ -75,6 +97,16 @@ brainRouter.post(
 brainRouter.use(requireAuth);
 
 const DIRECTOR_ROLES = new Set(['director', 'admin']);
+
+/** Người đang đăng nhập theo dạng bộ phân loại cần — req.user không mang phòng ban nên tra lại. */
+async function nguoiDangNhap(req: { user?: { sub: string; name: string; role: string } }): Promise<NguoiGui> {
+  const m = await findById(req.user!.sub).catch(() => undefined);
+  return { id: req.user!.sub, name: m?.fullName || req.user!.name, role: req.user!.role, teamId: m?.teamId || '' };
+}
+
+function chiGiamDoc(req: { user?: { role: string } }): void {
+  if (!DIRECTOR_ROLES.has(req.user!.role)) throw new ApiError(403, 'Chỉ giám đốc/admin làm được việc này');
+}
 
 /** Tổng quan kho tri thức: số mục theo nguồn + số còn chờ nạp + trạng thái sẵn sàng. */
 brainRouter.get(
@@ -140,6 +172,7 @@ brainRouter.get(
       sourceType: String(req.query.source || '') || undefined,
       directorScope,
       memberId: req.user!.sub,
+      teamId: directorScope ? undefined : (await nguoiDangNhap(req)).teamId,
       limit: 60,
     });
     res.json({ chunks, canDelete: directorScope });
@@ -160,9 +193,9 @@ brainRouter.delete(
 );
 
 /**
- * Chốt một kết luận từ hội thoại vào kho tri thức.
- * Đây là cách DUY NHẤT hội thoại vào kho — người dùng chủ động bấm lưu khi thấy đáng nhớ,
- * thay vì hệ thống tự vơ vét mọi cặp hỏi-đáp (nhiễu và không đúng thứ cần).
+ * Chốt một kết luận từ hội thoại vào kho tri thức (nút "📌 Lưu vào kho tri thức" trong chat).
+ * Người dùng chủ động bấm, nhưng vẫn qua bộ phân loại: anh Tâm 4/10/2026 "tất cả đều đưa nhưng
+ * em phải lựa" — chặn bí mật, ẩn SĐT khách, gắn nhãn, chuyện riêng của giám đốc giữ riêng.
  */
 const noteSchema = z.object({
   title: z.string().min(1).max(200),
@@ -175,17 +208,237 @@ brainRouter.post(
   asyncHandler(async (req, res) => {
     if (!(await brainTableReady())) throw new ApiError(400, 'Kho tri thức chưa khởi tạo (Quản trị → Cập nhật cấu trúc DB)');
     const b = noteSchema.parse(req.body);
-    const id = newId('N-');
-    const n = await ingest({
-      sourceType: 'note',
-      sourceId: id,
-      title: b.title.trim(),
-      text: b.content.trim(),
-      visibility: 'all',
-      customer: b.customer.trim(),
+    const r = await xetDuaVaoKho(
+      { title: b.title.trim(), body: b.content.trim(), customer: b.customer.trim(), source: 'chat' },
+      await nguoiDangNhap(req),
+    );
+    res.json({ ok: !!r.item && r.item.status !== 'rejected', id: r.item?.id || '', status: r.item?.status || 'rejected', message: r.message });
+  }),
+);
+
+// ── Mục tri thức ("bộ não thứ hai", anh Tâm 4/10/2026) ──
+
+/** Nhóm + số mục đã ban hành mỗi nhóm (trong phạm vi người xem); giám đốc kèm số chờ duyệt/câu hỏi. */
+brainRouter.get(
+  '/categories',
+  asyncHandler(async (req, res) => {
+    const gd = DIRECTOR_ROLES.has(req.user!.role);
+    const nguoi = await nguoiDangNhap(req);
+    try {
+      const [dem, trangThai, cauHoi] = await Promise.all([
+        countByCategory({ directorScope: gd, teamId: nguoi.teamId }),
+        gd ? countByStatus() : Promise.resolve({} as Record<string, number>),
+        gd ? countOpenQuestions() : Promise.resolve(0),
+      ]);
+      res.json({
+        categories: Object.entries(NHOM)
+          .filter(([k]) => gd || k !== 'rieng')
+          .map(([key, label]) => ({ key, label, count: dem[key] || 0 })),
+        pending: trangThai.pending || 0,
+        openQuestions: cauHoi,
+        isDirector: gd,
+      });
+    } catch (e) {
+      if (isMissingTable(e)) {
+        res.json({ categories: [], pending: 0, openQuestions: 0, isDirector: gd, needsMigrate: true });
+        return;
+      }
+      throw e;
+    }
+  }),
+);
+
+/**
+ * Danh sách mục. Người thường chỉ thấy mục đã ban hành trong phạm vi của mình, hoặc "của tôi"
+ * (mọi trạng thái, để biết đóng góp của mình đang ở đâu). Giám đốc xem được mọi trạng thái.
+ */
+brainRouter.get(
+  '/items',
+  asyncHandler(async (req, res) => {
+    const gd = DIRECTOR_ROLES.has(req.user!.role);
+    const nguoi = await nguoiDangNhap(req);
+    const mine = String(req.query.mine || '') === '1';
+    const status = gd ? String(req.query.status || 'published') : 'published';
+    const kw = chuanTen(String(req.query.q || ''));
+    try {
+      const items = await listItems({
+        directorScope: gd,
+        teamId: nguoi.teamId,
+        status,
+        category: String(req.query.category || '') || undefined,
+        customerId: String(req.query.customerId || '') || undefined,
+        keyword: kw || undefined,
+        submittedBy: mine ? nguoi.id : undefined,
+        limit: 200,
+      });
+      res.json({ items });
+    } catch (e) {
+      if (isMissingTable(e)) {
+        res.json({ items: [], needsMigrate: true });
+        return;
+      }
+      throw e;
+    }
+  }),
+);
+
+const itemSchema = z.object({
+  title: z.string().min(1).max(200),
+  body: z.string().min(10).max(30000),
+  customer: z.string().max(200).optional().default(''),
+});
+
+/** Đóng góp một mục — ai cũng gửi được, bộ phân loại quyết định đi đâu. */
+brainRouter.post(
+  '/items',
+  asyncHandler(async (req, res) => {
+    const b = itemSchema.parse(req.body);
+    const r = await xetDuaVaoKho(
+      { title: b.title.trim(), body: b.body.trim(), customer: b.customer.trim(), source: 'manual' },
+      await nguoiDangNhap(req),
+    );
+    res.json({ ok: !!r.item, item: r.item, message: r.message });
+  }),
+);
+
+const patchSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  body: z.string().min(10).max(30000).optional(),
+  category: z.string().max(40).optional(),
+  scope: z.string().max(40).optional(),
+  status: z.enum(['published', 'pending', 'rejected', 'archived']).optional(),
+  customer: z.string().max(200).optional(),
+});
+
+/** Giám đốc: ban hành / sửa nhãn / lưu trữ. Người gửi: sửa mục đang chờ duyệt của chính mình. */
+brainRouter.patch(
+  '/items/:id',
+  asyncHandler(async (req, res) => {
+    const patch = patchSchema.parse(req.body);
+    try {
+      const item = await suaMuc(String(req.params.id), patch, await nguoiDangNhap(req));
+      res.json({ ok: true, item });
+    } catch (e) {
+      throw new ApiError(400, (e as Error).message);
+    }
+  }),
+);
+
+/** Đọc một mục — kiểm phạm vi phía máy chủ. */
+brainRouter.get(
+  '/items/:id',
+  asyncHandler(async (req, res) => {
+    const item = await findItem(String(req.params.id));
+    const gd = DIRECTOR_ROLES.has(req.user!.role);
+    const nguoi = await nguoiDangNhap(req);
+    const xemDuoc =
+      !!item &&
+      (gd ||
+        item.submittedBy === nguoi.id ||
+        (item.status === 'published' && (item.scope === 'all' || item.scope === `team:${nguoi.teamId}`)));
+    if (!xemDuoc) throw new ApiError(404, 'Không tìm thấy mục');
+    res.json({ item });
+  }),
+);
+
+/** Khách hàng để chọn ở tab Khách hàng — CHỈ tên + mã (không SĐT), kèm số mục tri thức của mỗi khách. */
+brainRouter.get(
+  '/customers',
+  asyncHandler(async (req, res) => {
+    const gd = DIRECTOR_ROLES.has(req.user!.role);
+    const nguoi = await nguoiDangNhap(req);
+    const [khach, muc] = await Promise.all([
+      getCustomers(),
+      listItems({ directorScope: gd, teamId: nguoi.teamId, category: 'khach_hang', limit: 300 }).catch(() => []),
+    ]);
+    const dem = new Map<string, number>();
+    for (const i of muc) if (i.customerId) dem.set(i.customerId, (dem.get(i.customerId) || 0) + 1);
+    res.json({
+      customers: khach
+        .map((c) => ({ id: c.id, name: c.name, count: dem.get(c.id) || 0 }))
+        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'vi')),
     });
-    if (n === 0) throw new ApiError(400, 'Chưa lưu được — kho tri thức cần API key Gemini.');
-    res.json({ ok: true, id });
+  }),
+);
+
+// ── Câu hỏi chưa có lời giải (giám đốc) ──
+
+brainRouter.get(
+  '/questions',
+  asyncHandler(async (req, res) => {
+    chiGiamDoc(req);
+    const st = ['open', 'answered', 'dismissed'].includes(String(req.query.status)) ? String(req.query.status) : 'open';
+    try {
+      res.json({ questions: await listQuestions(st, 100) });
+    } catch (e) {
+      if (isMissingTable(e)) {
+        res.json({ questions: [], needsMigrate: true });
+        return;
+      }
+      throw e;
+    }
+  }),
+);
+
+const answerSchema = z.object({ answer: z.string().min(5).max(20000), title: z.string().max(200).optional() });
+
+brainRouter.post(
+  '/questions/:id/answer',
+  asyncHandler(async (req, res) => {
+    chiGiamDoc(req);
+    const b = answerSchema.parse(req.body);
+    try {
+      const r = await traLoiCauHoi(String(req.params.id), b.answer, await nguoiDangNhap(req), b.title);
+      res.json({ ok: true, message: r.ketQua.message, item: r.ketQua.item });
+    } catch (e) {
+      throw new ApiError(400, (e as Error).message);
+    }
+  }),
+);
+
+brainRouter.post(
+  '/questions/:id/dismiss',
+  asyncHandler(async (req, res) => {
+    chiGiamDoc(req);
+    await boQuaCauHoi(String(req.params.id)).catch((e) => {
+      throw new ApiError(400, (e as Error).message);
+    });
+    res.json({ ok: true });
+  }),
+);
+
+// ── Dọn kho cũ (giám đốc, chạy theo lô — trang gọi lặp tới khi còn 0) ──
+
+brainRouter.get(
+  '/cleanup',
+  asyncHandler(async (req, res) => {
+    chiGiamDoc(req);
+    try {
+      const [chuaPhanLoai, luuYChuaChuyen] = await Promise.all([demChuaPhanLoai(), demLuuYChuaChuyen()]);
+      res.json({ chuaPhanLoai, luuYChuaChuyen });
+    } catch (e) {
+      if (isMissingTable(e)) {
+        res.json({ chuaPhanLoai: 0, luuYChuaChuyen: 0, needsMigrate: true });
+        return;
+      }
+      throw e;
+    }
+  }),
+);
+
+brainRouter.post(
+  '/reclassify',
+  asyncHandler(async (req, res) => {
+    chiGiamDoc(req);
+    res.json(await phanLoaiLaiKho(6));
+  }),
+);
+
+brainRouter.post(
+  '/migrate-customer-notes',
+  asyncHandler(async (req, res) => {
+    chiGiamDoc(req);
+    res.json(await chuyenLuuYKhach(6));
   }),
 );
 

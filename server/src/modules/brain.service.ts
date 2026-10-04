@@ -87,8 +87,11 @@ export interface IngestInput {
   sourceId: string;
   title: string;
   text: string;
-  visibility: string; // 'all' | 'director' | <member_id>
+  visibility: string; // 'all' | 'director' | 'team:Ads' | <member_id>
   customer?: string;
+  /** Nhãn của mục tri thức (brainItems.service) — đi theo từng đoạn để tra theo nhóm/khách. */
+  category?: string;
+  customerId?: string;
 }
 
 /**
@@ -117,6 +120,8 @@ export async function ingest(input: IngestInput): Promise<number> {
     visibility: input.visibility,
     customer: input.customer || '',
     createdAt: now,
+    category: input.category || '',
+    customerId: input.customerId || '',
   }));
   await insertChunks(rows);
   // Có dữ liệu mới về khách → hẹn dựng lại hồ sơ 360°. Bỏ qua chính chunk hồ sơ để khỏi lặp vô hạn.
@@ -135,48 +140,6 @@ export function ingestInBackground(input: IngestInput): void {
   );
 }
 
-/** Tìm trong kho, trả về đoạn văn bản gọn cho AI đọc. */
-export async function searchKnowledgeText(
-  query: string,
-  opts: { directorScope: boolean; memberId?: string; customer?: string },
-): Promise<string> {
-  if (!(await embeddingsAvailable())) return 'Kho tri thức chưa được bật.';
-  const text = String(query || '').trim();
-  if (!text) return 'Chưa có từ khoá tìm kiếm.';
-
-  let hits: BrainHit[];
-  try {
-    const [vec] = await embedTexts([text], 'RETRIEVAL_QUERY');
-    if (!vec) return 'Không tìm được trong kho tri thức lúc này.';
-    hits = await searchChunks(vec, { ...opts, limit: 8 });
-  } catch (e) {
-    if (isMissingTable(e)) return 'Kho tri thức chưa được khởi tạo (Quản trị → Cập nhật cấu trúc DB).';
-    console.warn('[brain] tìm kiếm lỗi:', e);
-    return 'Không tìm được trong kho tri thức lúc này.';
-  }
-  if (hits.length === 0) return 'Không tìm thấy gì liên quan trong kho tri thức.';
-
-  const SOURCE_VI: Record<string, string> = {
-    customer_note: 'Lưu ý KH',
-    customer: 'Hồ sơ KH',
-    appointment: 'Lịch hẹn',
-    task: 'Ghi chú việc',
-    chat: 'Hội thoại cũ',
-    document: 'Tài liệu',
-  };
-  // Giới hạn tổng độ dài: đây là chỗ tốn token nhất trong mỗi lượt hỏi.
-  const MAX_CHARS = 4000;
-  const parts: string[] = [];
-  let total = 0;
-  for (const h of hits) {
-    const block = `— ${SOURCE_VI[h.sourceType] || h.sourceType}${h.customer ? ` · ${h.customer}` : ''} · ${h.createdAt.slice(0, 10)} (độ khớp ${h.score.toFixed(2)}):\n${h.content}`;
-    if (total + block.length > MAX_CHARS) break;
-    parts.push(block);
-    total += block.length;
-  }
-  return parts.join('\n\n');
-}
-
 // ── Nạp dữ liệu cũ, tự động, không cần bấm nút ──
 
 interface SourceSpec {
@@ -188,26 +151,8 @@ interface SourceSpec {
 }
 
 const SOURCES: SourceSpec[] = [
-  {
-    sourceType: 'customer_note',
-    table: 'customer_notes',
-    idCol: 'note_id',
-    where: "COALESCE(t.content, '') <> ''",
-    load: async (ids) => {
-      const rows = await q(
-        'SELECT note_id, customer, content FROM customer_notes WHERE note_id = ANY($1)',
-        [ids],
-      );
-      return rows.map((r) => ({
-        sourceType: 'customer_note',
-        sourceId: r.note_id,
-        title: `Lưu ý khách hàng${r.customer ? `: ${r.customer}` : ''}`,
-        text: htmlToText(r.content || ''),
-        visibility: 'all',
-        customer: r.customer || '',
-      }));
-    },
-  },
+  // Lưu ý KH KHÔNG còn nạp ở đây: anh Tâm 4/10/2026 gộp hẳn vào kho thành mục nhóm Khách hàng
+  // (brainItems.service.chuyenLuuYKhach) — nạp thêm ở đây là trợ lý đọc một ghi chú hai lần.
   {
     sourceType: 'customer',
     table: 'customers',
@@ -249,7 +194,8 @@ const SOURCES: SourceSpec[] = [
         sourceId: r.appt_id,
         title: `Lịch hẹn: ${r.customer_name || ''}`,
         text: `Hẹn ${r.customer_name || ''} lúc ${String(r.at || '').slice(0, 16).replace('T', ' ')}: ${r.note || ''}`,
-        visibility: 'all',
+        // Lịch trình là chuyện riêng của giám đốc (anh Tâm 4/10/2026) — nhân viên không tra được.
+        visibility: 'director',
         customer: r.customer_name || '',
       }));
     },
@@ -323,7 +269,16 @@ export function markCustomerDirty(customer: string): void {
 async function gatherCustomerData(customer: string): Promise<string> {
   const like = `%${customer.trim()}%`;
   const [notes, crm, appts] = await Promise.all([
-    q('SELECT content, updated_at, created_at FROM customer_notes WHERE customer ILIKE $1 ORDER BY updated_at DESC LIMIT 20', [like]),
+    // Tri thức về khách nay là mục nhóm Khách hàng; Lưu ý KH cũ chưa chuyển thì vẫn đọc.
+    q(
+      `SELECT body AS content, updated_at, created_at FROM brain_items
+        WHERE status = 'published' AND category = 'khach_hang' AND customer ILIKE $1
+       UNION ALL
+       SELECT content, updated_at, created_at FROM customer_notes c
+        WHERE customer ILIKE $1 AND NOT EXISTS (SELECT 1 FROM brain_items b WHERE b.item_id = 'CN-' || c.note_id)
+       ORDER BY updated_at DESC LIMIT 20`,
+      [like],
+    ).catch(() => q('SELECT content, updated_at, created_at FROM customer_notes WHERE customer ILIKE $1 ORDER BY updated_at DESC LIMIT 20', [like])),
     q('SELECT name, status, info, note, assigned_to FROM customers WHERE name ILIKE $1 LIMIT 5', [like]),
     q('SELECT at, note, done FROM appointments WHERE customer_name ILIKE $1 ORDER BY at DESC LIMIT 20', [like]),
   ]);
@@ -468,7 +423,11 @@ const CAPTURE_SCHEMA = {
  * Xét xem một lượt hỏi-đáp có chứa tri thức đáng nhớ lâu dài không; có thì tự lưu vào kho.
  * Chạy NỀN sau khi đã trả lời người dùng nên không ảnh hưởng tốc độ chat.
  */
-export async function autoCaptureKnowledge(question: string, answer: string): Promise<boolean> {
+export async function autoCaptureKnowledge(
+  question: string,
+  answer: string,
+  nguoi: { id: string; name: string; role: string; teamId: string } = { id: '', name: '', role: '', teamId: '' },
+): Promise<boolean> {
   const q = (question || '').trim();
   const a = (answer || '').trim();
   // Tầng 1 — luật rẻ tiền, loại phần lớn trước khi tốn một lượt gọi AI.
@@ -503,15 +462,14 @@ export async function autoCaptureKnowledge(question: string, answer: string): Pr
     const r = await generateJson(prompt, CAPTURE_SCHEMA, 'gemini-2.5-flash');
     if (!r?.worth) return false;
     const title = String(r.title || '').trim() || q.slice(0, 120);
-    await ingest({
-      sourceType: 'auto', // tách khỏi 'note' để anh Tâm soát được AI đang tự lưu những gì
-      sourceId: newId('A-'),
-      title,
-      text: `Hỏi: ${q}\n\n${a}`,
-      visibility: 'all',
-      customer: String(r.customer || '').trim(),
-    });
-    return true;
+    // Qua bộ phân loại như mọi đường khác. Nguồn 'auto' KHÔNG BAO GIỜ tự mở cho cả công ty
+    // (lib/brainGate.xepTrangThai): việc công việc vào hàng chờ, chuyện riêng giữ riêng giám đốc.
+    const { xetDuaVaoKho } = await import('./brainItems.service.js');
+    const kq = await xetDuaVaoKho(
+      { title, body: `Hỏi: ${q}\n\n${a}`, customer: String(r.customer || '').trim(), source: 'auto' },
+      nguoi,
+    );
+    return !!kq.item;
   } catch (e) {
     console.warn('[brain] tự ghi tri thức:', e);
     return false;
@@ -525,11 +483,14 @@ export async function autoCaptureKnowledge(question: string, answer: string): Pr
  * (xem lib/table.ts) nên cắt đoạn kiểu gì cũng không đứt quan hệ hàng–cột.
  * Sheet phải share "Anyone with the link – Viewer" — đây cũng là cách app đọc sheet nhân sự.
  */
-export async function importGoogleSheet(input: {
-  url: string;
-  title?: string;
-  customer?: string;
-}): Promise<{ ok: boolean; message: string; rows?: number }> {
+export async function importGoogleSheet(
+  input: {
+    url: string;
+    title?: string;
+    customer?: string;
+  },
+  nguoi: { id: string; name: string; role: string; teamId: string } = { id: '', name: '', role: '', teamId: '' },
+): Promise<{ ok: boolean; message: string; rows?: number }> {
   const parsed = parseSheetUrl(input.url);
   if (!parsed) return { ok: false, message: 'Link không phải Google Sheets.' };
   if (!(await embeddingsAvailable())) return { ok: false, message: 'Kho tri thức cần API key Gemini.' };
@@ -551,16 +512,14 @@ export async function importGoogleSheet(input: {
   if (!body.trim()) return { ok: false, message: 'Sheet không có dữ liệu.' };
 
   const title = (input.title || '').trim() || 'Bảng từ Google Sheets';
-  // sourceId theo id+gid → nhập lại cùng sheet là CẬP NHẬT, không nhân bản.
-  await ingest({
-    sourceType: 'sheet',
-    sourceId: `${parsed.id}-${parsed.gid}`,
-    title,
-    text: body,
-    visibility: 'all',
-    customer: (input.customer || '').trim(),
-  });
-  return { ok: true, message: `Đã nạp "${title}" vào kho tri thức.`, rows: Math.max(0, rows.length - 1) };
+  // Mã mục theo id+gid → nhập lại cùng sheet là CẬP NHẬT, không nhân bản. Qua bộ phân loại để
+  // gắn nhãn và chặn bảng không nên vào kho (bảng lương, số liệu sống…).
+  const { xetDuaVaoKho } = await import('./brainItems.service.js');
+  const kq = await xetDuaVaoKho(
+    { title, body, customer: (input.customer || '').trim(), source: 'sheet', itemId: `SH-${parsed.id}-${parsed.gid}` },
+    nguoi,
+  );
+  return { ok: !!kq.item && kq.item.status !== 'rejected', message: kq.message, rows: Math.max(0, rows.length - 1) };
 }
 
 // ── Tài liệu tải lên: AI đọc rồi nạp nội dung vào kho ──
@@ -595,14 +554,7 @@ export async function processDocument(docId: string): Promise<void> {
     if (doc.mime === 'text/csv' || /\.csv$/i.test(doc.name)) {
       const body = rowsToLabeledText(parseCsv(buf.toString('utf8')));
       if (!body.trim()) throw new Error('Tệp CSV không có dữ liệu.');
-      await ingest({
-        sourceType: 'document',
-        sourceId: doc.id,
-        title: `Tài liệu: ${doc.name}`,
-        text: body,
-        visibility: 'all',
-        customer: doc.customer,
-      });
+      await ingest({ ...(await nhanTaiLieu(doc, body)), text: body });
       await finishDocument(doc.id, body, nowTz().toISOString());
       return;
     }
@@ -620,18 +572,55 @@ export async function processDocument(docId: string): Promise<void> {
     const transcript = out.map((p) => p.text || '').join('').trim();
     if (!transcript) throw new Error('AI không đọc được nội dung tệp.');
 
-    await ingest({
-      sourceType: 'document',
-      sourceId: doc.id,
-      title: `Tài liệu: ${doc.name}`,
-      text: transcript,
-      visibility: 'all',
-      customer: doc.customer,
-    });
+    await ingest({ ...(await nhanTaiLieu(doc, transcript)), text: transcript });
     await finishDocument(doc.id, transcript, nowTz().toISOString());
   } catch (e) {
     console.error('[brain] xử lý tài liệu', docId, e);
     await failDocument(docId, (e as Error).message).catch(() => undefined);
+  }
+}
+
+/**
+ * Gắn nhãn cho tài liệu như mọi thứ khác vào kho: có mật khẩu/khoá/số tài khoản thì không nạp;
+ * AI xếp nhóm và phạm vi (bảng lương, tài chính → chỉ giám đốc). AI lỗi thì giữ riêng giám đốc.
+ */
+async function nhanTaiLieu(
+  doc: { id: string; name: string; customer: string; uploadedBy: string; uploadedName: string },
+  text: string,
+): Promise<IngestInput> {
+  const { timBiMat, xepTrangThai, khopKhach } = await import('../lib/brainGate.js');
+  const biMat = timBiMat(text);
+  if (biMat) throw new Error(`Tài liệu có ${biMat} — kho tri thức không giữ thông tin này.`);
+  const base: IngestInput = {
+    sourceType: 'document',
+    sourceId: doc.id,
+    title: `Tài liệu: ${doc.name}`,
+    text,
+    visibility: 'director',
+    customer: doc.customer,
+  };
+  try {
+    const { phanLoaiNoiDung } = await import('./brainItems.service.js');
+    const { getCustomers } = await import('./crm.repo.js');
+    const khach = await getCustomers();
+    const pl = await phanLoaiNoiDung(
+      { title: doc.name, body: text, customerHint: doc.customer },
+      { id: doc.uploadedBy, name: doc.uploadedName, role: '', teamId: '' },
+      khach.map((k) => k.name),
+    );
+    // Tài liệu là người ta CHỦ ĐỘNG tải lên: "không lưu"/"chưa chắc" vẫn nạp, nhưng chỉ giám đốc xem.
+    const xep = xepTrangThai({ quyetDinh: pl.quyetDinh, category: pl.category, teamId: pl.teamId }, { laGiamDoc: false, nguon: 'document' });
+    const kh = khopKhach(pl.customerName || doc.customer, khach);
+    return {
+      ...base,
+      visibility: xep.status === 'published' ? xep.scope : 'director',
+      category: xep.category,
+      customer: kh?.name || doc.customer,
+      customerId: kh?.id || '',
+    };
+  } catch (e) {
+    console.warn('[brain] gắn nhãn tài liệu:', (e as Error).message);
+    return base;
   }
 }
 
