@@ -6,7 +6,9 @@ import { syncCatalogFromSource } from './admin.sync.js';
 import { adminMembersRouter } from './admin.members.routes.js';
 import { adminPayrollRouter } from './admin.payroll.routes.js';
 import { upsertCatalogItem } from './catalog.repo.js';
-import { upsertHoliday } from './holidays.repo.js';
+import { upsertHoliday, getHolidaysOfYear, deleteHoliday, getHolidaySet } from './holidays.repo.js';
+import { leLonVietNam } from '../lib/amLich.js';
+import { standardWorkingDays } from '../lib/workdays.js';
 import { upsertTeam } from './teams.repo.js';
 import { storageInfo } from './storage.service.js';
 import { setConfigValue, getConfig } from '../config.js';
@@ -292,11 +294,61 @@ adminRouter.post(
   }),
 );
 
+// ── Ngày lễ (anh Tâm 5/10/2026: "chỗ để cập nhật ngày lễ nghỉ để giảm công, mỗi năm mỗi khác") ──
+// Ngày lễ trừ thẳng vào công chuẩn của tháng (lib/workdays.standardWorkingDays) — nên mọi thay
+// đổi ở đây đổi luôn lương của tháng CHƯA CHỐT. Tháng đã chốt lương đọc bản chụp, không đổi.
+
+const ISO_NGAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Ngày lễ của một năm + gợi ý lễ lớn VN (đánh dấu cái đã có) + công chuẩn từng tháng. */
+adminRouter.get(
+  '/holidays',
+  asyncHandler(async (req, res) => {
+    const year = Number(req.query.year) || nowTz().year();
+    const [ds, tapLe] = await Promise.all([getHolidaysOfYear(year), getHolidaySet()]);
+    const da = new Set(ds.map((h) => h.date));
+    res.json({
+      year,
+      holidays: ds,
+      goiY: leLonVietNam(year).map((x) => ({ ...x, daCo: da.has(x.date) })),
+      congChuan: Array.from({ length: 12 }, (_, i) => ({
+        month: i + 1,
+        days: standardWorkingDays(year, i + 1, tapLe),
+      })),
+    });
+  }),
+);
+
+const holidaySchema = z.object({
+  date: z.string().regex(ISO_NGAY, 'Ngày phải dạng YYYY-MM-DD'),
+  name: z.string().trim().min(1).max(100),
+});
+
 adminRouter.post(
   '/holidays',
   asyncHandler(async (req, res) => {
-    const b = z.object({ date: z.string().min(1), name: z.string().min(1) }).parse(req.body);
+    const b = holidaySchema.parse(req.body);
     await upsertHoliday(b.date, b.name);
+    res.json({ ok: true });
+  }),
+);
+
+/** Thêm nhiều ngày một lượt (nút "Thêm các lễ lớn năm …"). */
+adminRouter.post(
+  '/holidays/bulk',
+  asyncHandler(async (req, res) => {
+    const b = z.object({ items: z.array(holidaySchema).min(1).max(40) }).parse(req.body);
+    for (const h of b.items) await upsertHoliday(h.date, h.name);
+    res.json({ ok: true, added: b.items.length });
+  }),
+);
+
+adminRouter.delete(
+  '/holidays/:date',
+  asyncHandler(async (req, res) => {
+    const date = String(req.params.date);
+    if (!ISO_NGAY.test(date)) throw new ApiError(400, 'Ngày không hợp lệ');
+    await deleteHoliday(date);
     res.json({ ok: true });
   }),
 );

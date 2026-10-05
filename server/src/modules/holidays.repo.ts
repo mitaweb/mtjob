@@ -28,3 +28,12 @@ export async function upsertHoliday(date: string, name: string): Promise<void> {
     [date, name, Number(date.slice(0, 4)) || null],
   );
 }
+
+/** Ngày lễ của một năm, theo thứ tự — cho trang Quản trị. */
+export async function getHolidaysOfYear(year: number): Promise<Holiday[]> {
+  return getHolidaysBetween(`${year}-01-01`, `${year}-12-31`);
+}
+
+export async function deleteHoliday(date: string): Promise<void> {
+  await q('DELETE FROM holidays WHERE date = $1', [date]);
+}

@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
 import MemberTable from '../components/MemberTable';
 import StorageCard from '../components/StorageCard';
+import AdminHolidays from '../components/AdminHolidays';
 import { useToast } from '../components/Toaster';
 import { locModel } from '../lib/model';
 
@@ -788,6 +789,8 @@ export default function Admin() {
           </div>
         )}
       </div>
+
+      <AdminHolidays />
 
       <StorageCard />
 
