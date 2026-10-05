@@ -299,7 +299,8 @@ export interface BrainDocument {
   customer: string;
   uploadedBy: string;
   uploadedName: string;
-  status: 'pending' | 'processing' | 'done' | 'error';
+  /** 'chat' = tệp đính kèm trong khung chat: AI đã đọc để trả lời, CHƯA đưa vào kho. */
+  status: 'pending' | 'processing' | 'done' | 'error' | 'chat';
   error: string;
   transcript: string;
   createdAt: string;
@@ -334,9 +335,27 @@ export async function addDocument(d: BrainDocument): Promise<void> {
   );
 }
 
+/** Tài liệu của kho — KHÔNG gồm tệp đính kèm trong chat chưa được đưa vào kho. */
 export async function listDocuments(limit = 100): Promise<BrainDocument[]> {
-  const rows = await q('SELECT * FROM brain_documents ORDER BY created_at DESC LIMIT $1', [limit]);
+  const rows = await q("SELECT * FROM brain_documents WHERE status <> 'chat' ORDER BY created_at DESC LIMIT $1", [limit]);
   return rows.map(rowToDoc);
+}
+
+export const SQL_LUU_TEP_CHAT =
+  "UPDATE brain_documents SET status = 'chat', transcript = $2, processed_at = $3, error = '' WHERE doc_id = $1";
+
+/** Tệp đính kèm trong chat: lưu nội dung AI đã đọc, chưa đưa vào kho. */
+export async function saveChatTranscript(id: string, transcript: string, at: string): Promise<void> {
+  await q(SQL_LUU_TEP_CHAT, [id, transcript, at]);
+}
+
+export const SQL_TEP_CUA_NGUOI =
+  "SELECT * FROM brain_documents WHERE doc_id = ANY($1) AND uploaded_by = $2 AND transcript <> ''";
+
+/** Tệp của CHÍNH người này (đã đọc xong) — không ai mượn được tệp người khác để hỏi. */
+export async function docsCuaNguoi(ids: string[], memberId: string): Promise<BrainDocument[]> {
+  if (ids.length === 0) return [];
+  return (await q(SQL_TEP_CUA_NGUOI, [ids, memberId])).map(rowToDoc);
 }
 
 export async function findDocument(id: string): Promise<BrainDocument | undefined> {

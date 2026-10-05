@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { api, apiStream, cachedGet } from '../lib/api';
+import { upload } from '@vercel/blob/client';
+import { api, apiStream, cachedGet, getToken } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
 import Reminders from '../components/Reminders';
 import MyCalendar from '../components/MyCalendar';
@@ -43,7 +44,23 @@ interface Msg {
   /** Câu bộ phân loại kho trả về khi bấm lưu (vào kho / chờ duyệt / chỉ giám đốc). */
   savedNote?: string;
   streaming?: boolean; // đang viết dở, sẽ thay bằng bản hoàn chỉnh khi xong
+  /** Tệp gửi kèm tin này (đã đọc). `kho` = câu báo sau khi đưa vào kho tri thức. */
+  tep?: Array<{ id: string; name: string; kho?: string }>;
 }
+
+/** Tệp đang chờ gửi trong khung nhập. */
+interface TepCho {
+  key: string;
+  name: string;
+  status: 'uploading' | 'reading' | 'ok' | 'error';
+  id?: string;
+  error?: string;
+}
+
+// Đọc được: PDF, ảnh, text, CSV — đúng danh sách máy chủ nhận ở /api/brain/upload.
+const TEP_NHAN = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'text/plain', 'text/markdown', 'text/csv'];
+const TEP_ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,.txt,.md,.csv';
+const TEP_MAX = 10 * 1024 * 1024;
 
 /** Tên hàm trợ lý đang chạy → câu tiếng Việt hiện lúc chờ. */
 const TOOL_VI: Record<string, string> = {
@@ -215,6 +232,10 @@ export default function Chat() {
   const [saveTitle, setSaveTitle] = useState('');
   const [saveCustomer, setSaveCustomer] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
+  // Tệp đính kèm (anh Tâm 5/10/2026: "khung chat cho phép dán file, đính kèm file vào để hỏi").
+  const [tepCho, setTepCho] = useState<TepCho[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [keoTha, setKeoTha] = useState(false);
 
   // Lịch sử tải dần: mở trang chỉ lấy vài tin cuối, cuộn lên mới lấy thêm.
   const [oldestAt, setOldestAt] = useState('');
@@ -417,12 +438,80 @@ export default function Chat() {
     }
   }
 
+  /**
+   * Thêm tệp: tải lên kho tệp → máy chủ cho AI đọc ngay (để lúc hỏi khỏi chờ). Đọc xong mới gửi được.
+   * Dùng chung cho nút 📎, dán (Ctrl+V ảnh chụp màn hình) và kéo-thả.
+   */
+  async function themTep(files: File[]) {
+    const chon = files.slice(0, Math.max(0, 3 - tepCho.length));
+    if (files.length > chon.length) toast.error('Mỗi lần gửi tối đa 3 tệp.');
+    for (const f0 of chon) {
+      // Ảnh dán từ clipboard thường tên "image.png" — đặt tên có giờ cho dễ nhận ra.
+      const f = f0.name === 'image.png' || !f0.name ? new File([f0], `anh-dan-${Date.now()}.png`, { type: f0.type || 'image/png' }) : f0;
+      const mime = f.type || (/\.md$/i.test(f.name) ? 'text/markdown' : /\.csv$/i.test(f.name) ? 'text/csv' : '');
+      if (!TEP_NHAN.includes(mime)) {
+        toast.error(`"${f.name}": chỉ đọc được PDF, ảnh, TXT, MD, CSV. Word/Excel thì lưu ra PDF hoặc CSV.`);
+        continue;
+      }
+      if (f.size > TEP_MAX) {
+        toast.error(`"${f.name}" lớn hơn 10MB.`);
+        continue;
+      }
+      const key = `${Date.now()}-${Math.random()}`;
+      setTepCho((l) => [...l, { key, name: f.name, status: 'uploading' }]);
+      const sua = (patch: Partial<TepCho>) => setTepCho((l) => l.map((t) => (t.key === key ? { ...t, ...patch } : t)));
+      try {
+        // Ghi rõ loại tệp: trình duyệt hay để trống loại của .md/.csv, kho tệp sẽ từ chối.
+        const blob = await upload(f.name, f, {
+          access: 'public',
+          handleUploadUrl: '/api/brain/upload',
+          clientPayload: getToken() || '',
+          contentType: mime,
+        });
+        sua({ status: 'reading' });
+        const r = await api<{ id: string; ok: boolean; error: string }>('/brain/attachments', {
+          body: { url: blob.url, name: f.name, mime },
+        });
+        sua(r.ok ? { status: 'ok', id: r.id } : { status: 'error', error: r.error || 'Không đọc được tệp' });
+      } catch (e) {
+        sua({ status: 'error', error: (e as Error).message });
+      }
+    }
+  }
+
+  /** Đưa một tệp đã gửi vào kho tri thức — máy chủ cho qua bộ phân loại. */
+  async function tepVaoKho(idxMsg: number, tepId: string) {
+    try {
+      const r = await api<{ message: string }>(`/brain/documents/${tepId}/ingest`, { body: {} });
+      setMsgs((list) =>
+        list.map((x, i) => (i === idxMsg ? { ...x, tep: x.tep?.map((t) => (t.id === tepId ? { ...t, kho: r.message } : t)) } : x)),
+      );
+      toast.success(r.message);
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
   async function onSubmit() {
     const text = input.trim();
-    if (!text || busy) return;
-    setMsgs((m) => [...m, { role: 'user', text }]);
+    const sanSang = tepCho.filter((t) => t.status === 'ok' && t.id);
+    if ((!text && sanSang.length === 0) || busy) return;
+    if (tepCho.some((t) => t.status === 'uploading' || t.status === 'reading')) {
+      toast.error('Đợi đọc xong tệp rồi gửi nhé.');
+      return;
+    }
+    const tep = sanSang.map((t) => ({ id: t.id!, name: t.name }));
+    // Tệp của 2 tin gần nhất có tệp — để hỏi nối tiếp ("còn trang 3 thì sao?") vẫn đọc được.
+    const contextIds = msgs
+      .filter((m) => m.role === 'user' && m.tep?.length)
+      .slice(-2)
+      .flatMap((m) => m.tep!.map((t) => t.id))
+      .slice(-3);
+    const hien = [text, ...tep.map((t) => `📎 ${t.name}`)].filter(Boolean).join('\n');
+    setMsgs((m) => [...m, { role: 'user', text: hien, tep: tep.length ? tep : undefined }]);
     setInput('');
-    await send(text);
+    setTepCho([]);
+    await send(text, tep.length || contextIds.length ? { attachmentIds: tep.map((t) => t.id), contextIds } : {});
   }
 
   /** Chốt câu trả lời này vào kho tri thức để lần sau khỏi hỏi lại. */
@@ -559,6 +648,26 @@ export default function Chat() {
             >
               {/* Người dùng: giữ nguyên chữ thô. Bot: AI trả lời kiểu markdown nên phải dựng lại. */}
               {m.role === 'user' ? m.text : <RichText text={m.text} />}
+              {m.role === 'user' && m.tep?.length ? (
+                <div className="mt-1.5 space-y-1">
+                  {m.tep.map((t) =>
+                    t.kho ? (
+                      <div key={t.id} className="text-xs text-white/90">
+                        ✓ {t.kho}
+                      </div>
+                    ) : (
+                      <button
+                        key={t.id}
+                        className="block rounded-lg bg-white/15 px-2 py-0.5 text-left text-xs text-white hover:bg-white/25"
+                        onClick={() => tepVaoKho(i, t.id)}
+                        title="AI sẽ xếp nhóm và quyết định ai xem được"
+                      >
+                        📌 Đưa "{t.name}" vào kho tri thức
+                      </button>
+                    ),
+                  )}
+                </div>
+              ) : null}
               {m.res?.action === 'confirm_assign' && m.res.suggestion && m.res.assignee && (
                 <button
                   className="btn-primary mt-2 w-full"
@@ -665,21 +774,77 @@ export default function Chat() {
               ))}
             </div>
           )}
+          <input ref={fileRef} type="file" multiple accept={TEP_ACCEPT} className="hidden" onChange={(e) => { void themTep(Array.from(e.target.files || [])); e.target.value = ''; }} />
+          <button
+            type="button"
+            className="btn-ghost shrink-0 px-3"
+            title="Đính kèm tệp (PDF, ảnh, TXT, CSV) — hoặc dán ảnh bằng Ctrl+V, kéo thả tệp vào đây"
+            aria-label="Đính kèm tệp"
+            onClick={() => fileRef.current?.click()}
+            disabled={busy || tepCho.length >= 3}
+          >
+            📎
+          </button>
           <input
-            className="input"
+            className={`input ${keoTha ? 'ring-2 ring-brand-400' : ''}`}
             placeholder={
-              canAssign
-                ? 'Giao việc: "@nam lên ads cho SP A" · hoặc "lên ads X Salon", "điểm của tôi"'
-                : 'Vd: "lên ads X Salon" · "tối ưu quảng cáo Lux" · "điểm của tôi"'
+              tepCho.length
+                ? 'Hỏi gì về tệp này? (bỏ trống = tóm tắt)'
+                : canAssign
+                  ? 'Giao việc: "@nam lên ads cho SP A" · hoặc "lên ads X Salon", "điểm của tôi"'
+                  : 'Vd: "lên ads X Salon" · "tối ưu quảng cáo Lux" · "điểm của tôi"'
             }
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && onSubmit()}
+            onPaste={(e) => {
+              // Dán ảnh chụp màn hình (vd đoạn chat Zalo) / tệp đã copy → đính kèm. Dán chữ thì như cũ.
+              const files = Array.from(e.clipboardData.files || []);
+              if (files.length) {
+                e.preventDefault();
+                void themTep(files);
+              }
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setKeoTha(true);
+            }}
+            onDragLeave={() => setKeoTha(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setKeoTha(false);
+              void themTep(Array.from(e.dataTransfer.files || []));
+            }}
           />
           <button className="btn-primary" onClick={onSubmit} disabled={busy}>
             Gửi
           </button>
         </div>
+        {tepCho.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {tepCho.map((t) => (
+              <span
+                key={t.key}
+                className={`inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2 py-1 text-xs ${
+                  t.status === 'error' ? 'border-rose-300 bg-rose-50 text-rose-700' : t.status === 'ok' ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-brand-200 bg-white text-ink-soft'
+                }`}
+                title={t.error || ''}
+              >
+                <span className="truncate">📎 {t.name}</span>
+                <span className="shrink-0">
+                  {t.status === 'uploading' ? 'đang tải…' : t.status === 'reading' ? 'AI đang đọc…' : t.status === 'ok' ? '✓' : `lỗi: ${t.error || ''}`.slice(0, 60)}
+                </span>
+                <button
+                  className="shrink-0 text-ink-muted hover:text-rose-600"
+                  aria-label={`Bỏ ${t.name}`}
+                  onClick={() => setTepCho((l) => l.filter((x) => x.key !== t.key))}
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         {/* Ba nút không vừa một hàng trên máy hẹp — cho xuống dòng, nhưng cấm ngắt chữ
             giữa nhãn: "Nhắc / hẹn" hai dòng đọc như hai nút khác nhau. */}
         <div className="flex flex-wrap gap-2">

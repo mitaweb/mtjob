@@ -19,7 +19,8 @@ import { formatVnd } from '../lib/money.js';
 import { formatMinutes } from '../lib/worktime.js';
 import { fmtHm, nowTz } from '../lib/datetime.js';
 import { addChatMessages, getChatMessages, type ChatMessageRow } from './chat.repo.js';
-import { autoBackfill, autoCaptureKnowledge } from './brain.service.js';
+import { autoBackfill, autoCaptureKnowledge, khoiTepChoHoi } from './brain.service.js';
+import { docsCuaNguoi } from './brain.repo.js';
 import { newId } from '../util/id.js';
 import { runInBackground } from '../util/background.js';
 
@@ -34,6 +35,10 @@ const bodySchema = z.object({
   confirmAssign: z.boolean().optional(),
   assigneeId: z.string().optional(),
   assignTaskName: z.string().optional(),
+  /** Tệp đính kèm của lượt này (đã tải lên + AI đã đọc qua POST /brain/attachments). */
+  attachmentIds: z.array(z.string().max(40)).max(3).optional().default([]),
+  /** Tệp gửi ở các lượt trước trong cùng cuộc chat — để hỏi nối tiếp về tệp đó. */
+  contextIds: z.array(z.string().max(40)).max(3).optional().default([]),
   // Lịch sử hội thoại gần nhất (frontend gửi kèm) — để AI hiểu câu hỏi nối tiếp.
   history: z
     .array(z.object({ role: z.enum(['user', 'model']), text: z.string().max(2000) }))
@@ -155,12 +160,44 @@ async function runChat(
   onEvent?: OnAssistantEvent,
 ): Promise<void> {
   {
+    // Tệp đính kèm (anh Tâm 5/10/2026): nội dung AI đã đọc được ghép vào câu hỏi. Chỉ lấy tệp
+    // của CHÍNH người đang chat — không mượn id tệp người khác để đọc được.
+    const [tepMoi, tepCu] = await Promise.all([
+      docsCuaNguoi(b.attachmentIds, memberId).catch(() => []),
+      docsCuaNguoi(b.contextIds.filter((id) => !b.attachmentIds.includes(id)), memberId).catch(() => []),
+    ]);
+    const coTep = tepMoi.length > 0 || tepCu.length > 0;
+    const cauHoi = coTep
+      ? [
+          b.message.trim() || 'Đọc tệp đính kèm, tóm tắt ý chính và nêu điều cần lưu ý.',
+          khoiTepChoHoi(tepMoi, 'TỆP ĐÍNH KÈM'),
+          khoiTepChoHoi(tepCu, 'TỆP ĐÃ GỬI Ở LƯỢT TRƯỚC'),
+        ]
+          .filter(Boolean)
+          .join('\n\n')
+      : b.message;
+    // Lịch sử chat chỉ giữ tên tệp, không chép cả nội dung.
+    const tinLuu = tepMoi.length
+      ? [b.message.trim(), ...tepMoi.map((d) => `📎 ${d.name}`)].filter(Boolean).join('\n')
+      : b.message;
+
     // Mọi lối ra đi qua đây: trả kết quả rồi lưu lịch sử chat chạy nền.
     const send = (payload: ChatReply): void => {
       emit(payload);
-      saveChatTurn(memberId, b.message, payload);
+      saveChatTurn(memberId, tinLuu, payload);
       autoBackfill(); // kho tự đầy dần khi mọi người dùng app — không ai phải bấm nút
     };
+
+    // Có tệp → đây là câu hỏi về tệp: thẳng tới trợ lý, không qua bộ nhận diện ghi việc / giao việc.
+    if (coTep) {
+      const me0 = await findById(memberId);
+      const answer =
+        me0 && (me0.role === 'director' || me0.role === 'admin')
+          ? await answerDataQuestion(memberId, cauHoi, b.history as ChatTurn[], onEvent)
+          : await answerMemberQuestion(memberId, cauHoi, b.history as ChatTurn[], onEvent);
+      send({ reply: answer || 'Trợ lý AI chưa được bật nên chưa đọc được tệp.', action: 'data_answer' });
+      return;
+    }
 
     // 1a) Bắt đầu một việc — đường DUY NHẤT để ghi việc từ chat.
     // Anh Tâm chốt 26/7/2026: chat tên việc là bắt đầu luôn, xong mới bấm hoàn thành.

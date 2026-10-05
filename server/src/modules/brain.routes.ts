@@ -24,6 +24,8 @@ import {
   brainAvailable,
   processDocumentInBackground,
   removeSource,
+  docTepChat,
+  duaTepVaoKho,
 } from './brain.service.js';
 import {
   xetDuaVaoKho,
@@ -486,6 +488,56 @@ brainRouter.post(
     await addDocument(doc);
     res.json({ ok: true, id: doc.id });
     processDocumentInBackground(doc.id);
+  }),
+);
+
+/**
+ * Tệp đính kèm trong khung chat (anh Tâm 5/10/2026): tải lên xong gọi đây để AI ĐỌC ngay — tách
+ * khỏi lượt hỏi để đọc PDF dài không ăn vào 60 giây của lượt trả lời. Chưa đưa vào kho.
+ */
+brainRouter.post(
+  '/attachments',
+  asyncHandler(async (req, res) => {
+    const b = docSchema.parse(req.body);
+    if (!ALLOWED_CONTENT_TYPES.includes(b.mime)) {
+      throw new ApiError(400, 'Chỉ đọc được PDF, ảnh (JPG/PNG/WEBP), TXT, MD, CSV. Excel/Word thì xuất ra PDF hoặc CSV.');
+    }
+    if (!(await brainAvailable())) throw new ApiError(400, 'Đọc tệp cần API key Gemini (Quản trị → Trợ lý AI).');
+    const doc: BrainDocument = {
+      id: newId('D-'),
+      kind: b.mime === 'application/pdf' ? 'pdf' : b.mime.startsWith('image/') ? 'image' : 'text',
+      url: b.url,
+      name: b.name,
+      mime: b.mime,
+      customer: b.customer.trim(),
+      uploadedBy: req.user!.sub,
+      uploadedName: req.user!.name,
+      status: 'pending',
+      error: '',
+      transcript: '',
+      createdAt: nowTz().toISOString(),
+      processedAt: '',
+    };
+    await addDocument(doc);
+    const r = await docTepChat(doc.id);
+    res.json({ id: doc.id, name: doc.name, ok: r.ok, chars: r.chars, error: r.error || '' });
+  }),
+);
+
+/** Đưa một tệp (đính kèm trong chat) vào kho — qua bộ phân loại. Chỉ người gửi tệp hoặc giám đốc. */
+brainRouter.post(
+  '/documents/:id/ingest',
+  asyncHandler(async (req, res) => {
+    const doc = await findDocument(String(req.params.id));
+    if (!doc) throw new ApiError(404, 'Không tìm thấy tệp');
+    if (doc.uploadedBy !== req.user!.sub && !DIRECTOR_ROLES.has(req.user!.role)) {
+      throw new ApiError(403, 'Chỉ người gửi tệp được đưa tệp này vào kho');
+    }
+    try {
+      res.json({ ok: true, message: await duaTepVaoKho(doc.id) });
+    } catch (e) {
+      throw new ApiError(400, (e as Error).message);
+    }
   }),
 );
 

@@ -25,6 +25,9 @@ import {
   claimDocument,
   finishDocument,
   failDocument,
+  saveChatTranscript,
+  findDocument,
+  type BrainDocument,
   type NewChunk,
   type BrainHit,
 } from './brain.repo.js';
@@ -527,6 +530,102 @@ export async function importGoogleSheet(
 const DOC_TIMEOUT_MS = 50_000; // response đã trả rồi, waitUntil giữ hàm sống tới 60s
 const MAX_DOC_BYTES = 10 * 1024 * 1024; // base64 nở 4/3, giữ dưới hạn 20MB của Gemini
 
+/**
+ * ĐỌC nội dung một tệp (PDF/ảnh/text/CSV) thành chữ. Dùng chung cho tài liệu tải lên kho và
+ * tệp đính kèm trong khung chat. Ném lỗi có câu tiếng Việt để hiện thẳng cho người dùng.
+ */
+export async function docNoiDung(doc: Pick<BrainDocument, 'url' | 'name' | 'mime' | 'customer'>): Promise<string> {
+  const res = await fetch(doc.url);
+  if (!res.ok) throw new Error(`Không tải được tệp (${res.status}).`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.byteLength > MAX_DOC_BYTES) {
+    throw new Error(`Tệp ${Math.round(buf.byteLength / 1024 / 1024)}MB, vượt giới hạn 10MB.`);
+  }
+
+  // CSV (Excel xuất ra) xử lý riêng: mỗi hàng thành một dòng tự chứa kèm tên cột.
+  // Nhờ vậy cắt đoạn không làm đứt quan hệ hàng–cột, và KHÔNG tốn lượt gọi AI.
+  if (doc.mime === 'text/csv' || /\.csv$/i.test(doc.name)) {
+    const body = rowsToLabeledText(parseCsv(buf.toString('utf8')));
+    if (!body.trim()) throw new Error('Tệp CSV không có dữ liệu.');
+    return body;
+  }
+
+  const prompt = [
+    `Đây là tệp "${doc.name}"${doc.customer ? ` của khách hàng ${doc.customer}` : ''}.`,
+    'Trích xuất TOÀN BỘ nội dung chữ có ý nghĩa (bảng thì ghi thành dòng, giữ nguyên số liệu).',
+    'Nếu là ẢNH: ghi lại mọi chữ trong ảnh; ảnh chụp đoạn chat thì ghi theo dạng "Người gửi: nội dung"',
+    'theo đúng thứ tự; ảnh thiết kế/hình thì mô tả ngắn bố cục, màu sắc, nội dung chính.',
+    'Sau đó xuống dòng và viết "TÓM TẮT:" kèm 3-5 ý chính.',
+    'Trả lời bằng tiếng Việt. KHÔNG bịa thêm thông tin không có trong tệp.',
+  ].join('\n');
+
+  // text/* thì đọc thẳng, khỏi tốn token cho ảnh hoá.
+  const parts: GeminiPart[] = doc.mime.startsWith('text/')
+    ? [{ text: `${prompt}\n\nNỘI DUNG:\n${buf.toString('utf8').slice(0, 30000)}` }]
+    : [{ inlineData: { mimeType: doc.mime, data: buf.toString('base64') } }, { text: prompt }];
+
+  const out = await generateContent({
+    contents: [{ role: 'user', parts }],
+    model: 'gemini-2.5-flash', // đọc/trích xuất — không cần model cao cấp
+    timeoutMs: DOC_TIMEOUT_MS,
+  });
+  const transcript = out.map((p) => p.text || '').join('').trim();
+  if (!transcript) throw new Error('AI không đọc được nội dung tệp.');
+  return transcript;
+}
+
+/**
+ * Tệp đính kèm trong khung chat (anh Tâm 5/10/2026: "khung chat cho phép dán file, đính kèm
+ * file vào để hỏi"): đọc ngay để trợ lý trả lời được, lưu nội dung lại cho câu hỏi nối tiếp.
+ * CHƯA đưa vào kho — người dùng bấm "Đưa vào kho" thì mới qua bộ phân loại (duaTepVaoKho).
+ */
+export async function docTepChat(docId: string): Promise<{ ok: boolean; chars: number; error?: string }> {
+  const doc = await findDocument(docId);
+  if (!doc) return { ok: false, chars: 0, error: 'Không tìm thấy tệp.' };
+  try {
+    const transcript = await docNoiDung(doc);
+    await saveChatTranscript(doc.id, transcript, nowTz().toISOString());
+    return { ok: true, chars: transcript.length };
+  } catch (e) {
+    const msg = (e as Error).message;
+    await failDocument(doc.id, msg).catch(() => undefined);
+    return { ok: false, chars: 0, error: msg };
+  }
+}
+
+/** Nội dung các tệp, gói lại để ghép vào câu hỏi gửi trợ lý (giới hạn độ dài — chỗ tốn token nhất). */
+export function khoiTepChoHoi(docs: Array<Pick<BrainDocument, 'name' | 'transcript'>>, nhan = 'TỆP ĐÍNH KÈM'): string {
+  const MAX_MOI_TEP = 12000;
+  const MAX_TONG = 24000;
+  let tong = 0;
+  const parts: string[] = [];
+  for (const d of docs) {
+    const nd = d.transcript.slice(0, Math.max(0, Math.min(MAX_MOI_TEP, MAX_TONG - tong)));
+    if (!nd) break;
+    tong += nd.length;
+    const cat = d.transcript.length > nd.length ? '\n…(tệp dài, phần sau đã lược bớt)' : '';
+    parts.push(`[${nhan}: ${d.name}]\n${nd}${cat}\n[HẾT TỆP: ${d.name}]`);
+  }
+  return parts.join('\n\n');
+}
+
+/**
+ * Đưa một tệp đã đọc vào kho — qua bộ phân loại như mọi thứ khác: có bí mật thì không nạp,
+ * AI xếp nhóm và phạm vi (bảng lương, tài chính → chỉ giám đốc).
+ */
+export async function duaTepVaoKho(docId: string): Promise<string> {
+  const doc = await findDocument(docId);
+  if (!doc) throw new Error('Không tìm thấy tệp.');
+  if (!doc.transcript) throw new Error('Tệp chưa đọc xong.');
+  const input = await nhanTaiLieu(doc, doc.transcript);
+  await ingest({ ...input, text: doc.transcript });
+  await finishDocument(doc.id, doc.transcript, nowTz().toISOString());
+  const { NHOM } = await import('../lib/brainGate.js');
+  const nhom = input.category && input.category in NHOM ? NHOM[input.category as keyof typeof NHOM] : '';
+  if (input.visibility === 'director') return `Đã đưa "${doc.name}" vào kho — chỉ giám đốc xem được.`;
+  return `Đã đưa "${doc.name}" vào kho${nhom ? ` — nhóm ${nhom}` : ''}${input.customer ? ` · ${input.customer}` : ''}.`;
+}
+
 /** Đọc tài liệu bằng Gemini (PDF/ảnh/text) → trích xuất nội dung + tóm tắt → nạp vào kho. */
 export async function processDocument(docId: string): Promise<void> {
   const doc = await claimDocument(docId);
@@ -534,44 +633,7 @@ export async function processDocument(docId: string): Promise<void> {
 
   try {
     if (!(await embeddingsAvailable())) throw new Error('Chưa cấu hình API key Gemini.');
-
-    const res = await fetch(doc.url);
-    if (!res.ok) throw new Error(`Không tải được tệp (${res.status}).`);
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.byteLength > MAX_DOC_BYTES) {
-      throw new Error(`Tệp ${Math.round(buf.byteLength / 1024 / 1024)}MB, vượt giới hạn 10MB.`);
-    }
-
-    const prompt = [
-      `Đây là tài liệu "${doc.name}"${doc.customer ? ` của khách hàng ${doc.customer}` : ''}.`,
-      'Trích xuất TOÀN BỘ nội dung chữ có ý nghĩa (bảng thì ghi thành dòng, giữ nguyên số liệu),',
-      'sau đó xuống dòng và viết "TÓM TẮT:" kèm 3-5 ý chính.',
-      'Trả lời bằng tiếng Việt. KHÔNG bịa thêm thông tin không có trong tài liệu.',
-    ].join('\n');
-
-    // CSV (Excel xuất ra) xử lý riêng: mỗi hàng thành một dòng tự chứa kèm tên cột.
-    // Nhờ vậy cắt đoạn không làm đứt quan hệ hàng–cột, và KHÔNG tốn lượt gọi AI.
-    if (doc.mime === 'text/csv' || /\.csv$/i.test(doc.name)) {
-      const body = rowsToLabeledText(parseCsv(buf.toString('utf8')));
-      if (!body.trim()) throw new Error('Tệp CSV không có dữ liệu.');
-      await ingest({ ...(await nhanTaiLieu(doc, body)), text: body });
-      await finishDocument(doc.id, body, nowTz().toISOString());
-      return;
-    }
-
-    // text/* thì đọc thẳng, khỏi tốn token cho ảnh hoá.
-    const parts: GeminiPart[] = doc.mime.startsWith('text/')
-      ? [{ text: `${prompt}\n\nNỘI DUNG:\n${buf.toString('utf8').slice(0, 30000)}` }]
-      : [{ inlineData: { mimeType: doc.mime, data: buf.toString('base64') } }, { text: prompt }];
-
-    const out = await generateContent({
-      contents: [{ role: 'user', parts }],
-      model: 'gemini-2.5-flash', // đọc/trích xuất — không cần model cao cấp
-      timeoutMs: DOC_TIMEOUT_MS,
-    });
-    const transcript = out.map((p) => p.text || '').join('').trim();
-    if (!transcript) throw new Error('AI không đọc được nội dung tệp.');
-
+    const transcript = await docNoiDung(doc);
     await ingest({ ...(await nhanTaiLieu(doc, transcript)), text: transcript });
     await finishDocument(doc.id, transcript, nowTz().toISOString());
   } catch (e) {
@@ -584,7 +646,7 @@ export async function processDocument(docId: string): Promise<void> {
  * Gắn nhãn cho tài liệu như mọi thứ khác vào kho: có mật khẩu/khoá/số tài khoản thì không nạp;
  * AI xếp nhóm và phạm vi (bảng lương, tài chính → chỉ giám đốc). AI lỗi thì giữ riêng giám đốc.
  */
-async function nhanTaiLieu(
+export async function nhanTaiLieu(
   doc: { id: string; name: string; customer: string; uploadedBy: string; uploadedName: string },
   text: string,
 ): Promise<IngestInput> {
