@@ -84,6 +84,17 @@ export function createApp() {
       res.status(400).json({ error: 'Dữ liệu không hợp lệ', details: err.issues });
       return;
     }
+    // Bản mới thêm cột/bảng mà chưa bấm "Cập nhật cấu trúc DB" → Postgres báo 42703 (thiếu cột)
+    // hoặc 42P01 (thiếu bảng) bằng tiếng Anh. Nói thẳng việc cần làm (anh Tâm 5/10/2026: bấm xoá
+    // một bên thì hiện 'column "end_month" of relation "parties" does not exist').
+    const pgCode = (err as { code?: string })?.code;
+    if (pgCode === '42703' || pgCode === '42P01') {
+      console.error('[API error] thiếu cấu trúc DB:', (err as Error)?.message);
+      res.status(503).json({
+        error: 'Phần mềm vừa cập nhật nhưng cơ sở dữ liệu chưa. Vào Quản trị → 🛠 Cập nhật cấu trúc DB rồi thử lại.',
+      });
+      return;
+    }
     const status = err instanceof ApiError ? err.status : 500;
     if (status >= 500) console.error('[API error]', err);
     res.status(status).json({ error: (err as Error)?.message || 'Lỗi máy chủ' });
