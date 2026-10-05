@@ -72,6 +72,9 @@ describe('xepTrangThai — quyết định AI → trạng thái lưu', () => {
   it('AI tự vơ từ chat KHÔNG BAO GIỜ tự mở cho cả công ty, kể cả của giám đốc', () => {
     expect(xepTrangThai({ quyetDinh: 'cong_viec', category: 'quy_trinh' }, { laGiamDoc: true, nguon: 'auto' }).status).toBe('pending');
     expect(xepTrangThai({ quyetDinh: 'can_duyet', category: 'quy_trinh' }, { laGiamDoc: true, nguon: 'auto' }).status).toBe('pending');
+    // Tin nhắn Zalo cũng vậy (anh Tâm 5/10/2026: đưa vào kho có chọn lọc).
+    expect(xepTrangThai({ quyetDinh: 'cong_viec', category: 'khach_hang' }, { laGiamDoc: true, nguon: 'zalo' }).status).toBe('pending');
+    expect(xepTrangThai({ quyetDinh: 'rieng_giam_doc', category: 'khach_hang' }, { laGiamDoc: true, nguon: 'zalo' })).toMatchObject({ status: 'published', scope: 'director' });
   });
 
   it('không lưu → rejected; nhóm lạ → quy trình', () => {
