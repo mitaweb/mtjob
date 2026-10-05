@@ -28,6 +28,15 @@ export function daysUntil(targetIso: string, fromIso: string): number {
  */
 export const DEBT_TRACK_FROM = '2026-08';
 
+/**
+ * Tháng trước của một tháng. Công nợ hàng tháng thu SAU (anh Tâm 5/10/2026): tiền thu trong tháng
+ * M mặc định là của kỳ tháng M-1.
+ */
+export function thangTruoc(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  return m! > 1 ? `${y}-${String(m! - 1).padStart(2, '0')}` : `${y! - 1}-12`;
+}
+
 /** Danh sách kỳ (YYYY-MM) đã tới hạn, từ mốc theo dõi tới tháng đang xem — cũ trước. */
 export function debtMonths(fromMonth: string, toMonth: string): string[] {
   const start = fromMonth > DEBT_TRACK_FROM ? fromMonth : DEBT_TRACK_FROM;

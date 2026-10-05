@@ -42,6 +42,14 @@ const emptyParty = (): Partial<Party> => ({
 /** Khoản một lần trả nhiều đợt (làm phần mềm, web…) — không có kỳ tháng, đòi tới khi đủ tổng. */
 const laMotLan = (p: Partial<Party> | null | undefined) => p?.kind === 'once';
 
+/** '2026-10' → '2026-09'; '2026-01' → '2025-12'. */
+const thangTruoc = (ym: string) => {
+  const [y, m] = ym.split('-').map(Number);
+  return m > 1 ? `${y}-${String(m - 1).padStart(2, '0')}` : `${y - 1}-12`;
+};
+/** '2026-09' → '9/2026'. */
+const thangVi = (ym: string) => `${Number(ym.slice(5, 7))}/${ym.slice(0, 4)}`;
+
 export default function Finance() {
   const { user } = useAuth();
   const canEdit = user?.role === 'director' || user?.role === 'admin';
@@ -68,6 +76,8 @@ export default function Finance() {
   // Hộp thoại ghi nhận thu công nợ của 1 bên.
   const [collectFor, setCollectFor] = useState<Party | null>(null);
   const [collectInput, setCollectInput] = useState('');
+  /** Tháng (kỳ dịch vụ) khoản thu được ghi vào — mặc định tháng TRƯỚC tháng đang xem. */
+  const [collectMonth, setCollectMonth] = useState('');
   const [eForm, setEForm] = useState({
     kind: 'thu',
     name: '',
@@ -182,6 +192,9 @@ export default function Finance() {
 
   function openCollect(p: Party) {
     setCollectFor(p);
+    // Anh Tâm 5/10/2026: "khi ở Tháng 10 bấm thu 3tr thì mặc định 3tr đó vô tháng 9" — khách dịch
+    // vụ hàng tháng trả SAU, tiền thu tháng này là của kỳ tháng trước. Khoản một lần thì ghi đúng tháng.
+    setCollectMonth(laMotLan(p) ? ym : thangTruoc(ym));
     // Anh Tâm 25/9/2026: "số tiền mặc định khi đã thu là full số tiền, nếu anh thay đổi thì
     // thay đổi sau". Điền sẵn TOÀN BỘ còn phải đòi (nợ cũ + kỳ này); chưa ghi gì trong tháng
     // mà còn phải đòi = 0 (khách đã trả trước) thì vẫn điền mức của tháng — anh muốn bấm là
@@ -189,7 +202,17 @@ export default function Finance() {
     // nhầm một cái là ghi trùng.
     const conDoi = p.totalDue || 0;
     const mucThang = p.receivableThisMonth ?? p.receivable;
-    const goiY = conDoi > 0 ? conDoi : collectedAmount(p.id) === 0 && !laMotLan(p) ? mucThang : 0;
+    // Thu cho kỳ tháng trước → điền đúng phần còn nợ tới hết tháng trước (nợ cũ), không cộng cả
+    // tháng đang xem: tháng 10 thu tiền tháng 9 thì là 3tr, không phải 6tr.
+    const noTruoc = p.carryOver || 0;
+    const goiY =
+      !laMotLan(p) && noTruoc > 0
+        ? noTruoc
+        : conDoi > 0
+          ? conDoi
+          : collectedAmount(p.id) === 0 && !laMotLan(p)
+            ? mucThang
+            : 0;
     setCollectInput(goiY > 0 ? String(goiY) : '');
   }
 
@@ -198,14 +221,15 @@ export default function Finance() {
     if (!collectFor) return;
     const p = collectFor;
     if (amount <= 0) return toast.error('Nhập số tiền lớn hơn 0.');
+    const thang = /^\d{4}-\d{2}$/.test(collectMonth) ? collectMonth : ym;
     try {
-      await api(`/finance/parties/${p.id}/collect`, { body: { month: ym, amount } });
+      await api(`/finance/parties/${p.id}/collect`, { body: { month: thang, amount } });
       // Tiền vào trừ nợ cũ trước (máy chủ tính FIFO) — nói rõ để anh khỏi quay về tháng cũ bấm lại.
       const truNoCu = Math.min(amount, p.carryOver || 0);
       const conNo = Math.max(0, (p.totalDue || 0) - amount);
       toast.success(
-        `Đã ghi nhận ${vnd(amount)}` +
-          (truNoCu > 0 ? ` — trừ nợ cũ ${vnd(truNoCu)}` : '') +
+        `Đã ghi nhận ${vnd(amount)} vào tháng ${thangVi(thang)}` +
+          (truNoCu > 0 && thang === ym ? ` — trừ nợ cũ ${vnd(truNoCu)}` : '') +
           (conNo > 0 ? `, còn nợ ${vnd(conNo)}` : ' — sạch nợ'),
       );
       await loadAll();
@@ -401,7 +425,9 @@ export default function Finance() {
                         className={`mr-2 rounded-lg border px-2 py-0.5 text-xs font-medium ${
                           // Xanh khi KHÔNG CÒN NỢ (máy chủ tính, đã trừ nợ cũ) — không phải khi
                           // "thu tháng này ≥ mức": thu 21tr ở tháng 9 mà tháng 8 còn treo thì chưa xong.
-                          isCollected(p.id) && !p.totalDue
+                          // Tiền thu nay ghi vào kỳ tháng trước (anh Tâm 5/10/2026), nên hết nợ là xanh dù
+                          // tháng đang xem không có khoản thu nào.
+                          !p.totalDue
                             ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
                             : isCollected(p.id)
                               ? 'border-amber-500 bg-amber-50 text-amber-700'
@@ -416,11 +442,11 @@ export default function Finance() {
                             : p.paidTotal
                               ? `Đã trả ${vnd(p.paidTotal)}`
                               : 'Ghi đợt trả'
-                          : !isCollected(p.id)
-                            ? 'Đã thu'
-                            : !p.totalDue
-                              ? '✓ Đã thu đủ'
-                              : `Thu ${vnd(collectedAmount(p.id))}`}
+                          : !p.totalDue
+                            ? '✓ Đã thu đủ'
+                            : isCollected(p.id)
+                              ? `Thu ${vnd(collectedAmount(p.id))}`
+                              : 'Đã thu'}
                       </button>
                       <button
                         className="text-brand-600 underline text-xs mr-2"
@@ -913,6 +939,23 @@ export default function Finance() {
                 </ul>
               </div>
             )}
+
+            {/* Kỳ dịch vụ của khoản thu — mặc định tháng trước (khách trả sau). Đổi được. */}
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+              <label className="text-ink-muted" htmlFor="collect-month">
+                Ghi vào tháng
+              </label>
+              <input
+                id="collect-month"
+                type="month"
+                className="input max-w-[10rem] py-1"
+                value={collectMonth}
+                onChange={(e) => setCollectMonth(e.target.value)}
+              />
+              {!laMotLan(collectFor) && collectMonth === thangTruoc(ym) && (
+                <span className="text-xs text-ink-muted">tiền thu tháng {thangVi(ym)} là của kỳ tháng {thangVi(collectMonth)}</span>
+              )}
+            </div>
 
             <div className="mt-3">
               <label className="label" htmlFor="collect-amount">

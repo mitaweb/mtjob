@@ -5,6 +5,7 @@ import {
   debtMonths,
   computeDebt,
   computeOnceDebt,
+  thangTruoc,
   luyKeLaiLo,
   congNoBen,
   boSungNguon,
@@ -403,5 +404,13 @@ describe('congNoBen', () => {
     const once = { kind: 'once' as const, receivable: 50_000_000, startDate: '2026-09-01', endMonth: '2026-09' };
     expect(congNoBen(once, [], { '2026-09': 50_000_000 }, '2026-10').hien).toBe(false);
     expect(congNoBen(once, [], { '2026-09': 20_000_000 }, '2026-10')).toMatchObject({ hien: true, totalDue: 30_000_000 });
+  });
+});
+
+// Anh Tâm 5/10/2026: "ở tháng 10 bấm thu 3tr thì mặc định 3tr đó vô tháng 9".
+describe('thangTruoc', () => {
+  it('lùi một tháng, qua năm', () => {
+    expect(thangTruoc('2026-10')).toBe('2026-09');
+    expect(thangTruoc('2026-01')).toBe('2025-12');
   });
 });

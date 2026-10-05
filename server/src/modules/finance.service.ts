@@ -3,6 +3,7 @@
 // khác nhau thì số tiền ghi ở đường này không khớp với đường kia.
 import { getParties, addEntry } from './finance.repo.js';
 import { todayIso } from '../lib/datetime.js';
+import { thangTruoc } from '../lib/finance.js';
 import { newId } from '../util/id.js';
 
 export interface CollectResult {
@@ -50,9 +51,10 @@ export async function addPayment(input: {
     kind: 'thu',
     name: `${party.name} (thu công nợ)${note ? ` — ${note}` : ''}`,
     amount,
-    // Đang xem kỳ cũ thì gán mùng 1 của kỳ đó — lấy hôm nay sẽ ra ngày nằm ngoài tháng
-    // của chính khoản thu.
-    date: input.month === todayIso().slice(0, 7) ? todayIso() : `${input.month}-01`,
+    // Ngày = NGÀY THU THẬT khi ghi cho kỳ tháng này hoặc tháng trước — anh Tâm 5/10/2026 thu tiền
+    // tháng 9 vào tháng 10 (khách trả sau), ngày trên sổ phải là ngày nhận tiền. Ghi bù cho kỳ cũ
+    // hơn (nhập lại sổ) thì gán mùng 1 của kỳ đó.
+    date: input.month >= thangTruoc(todayIso().slice(0, 7)) ? todayIso() : `${input.month}-01`,
     recurring: false,
     partyId: input.partyId,
     // Thừa hưởng nguồn của bên: thu định kỳ mà bắt chọn nguồn lại mỗi tháng thì sớm muộn

@@ -20,7 +20,7 @@ import {
 } from './finance.repo.js';
 import { addPayment } from './finance.service.js';
 import { getPartyRates } from './finance.repo.js';
-import { mucTheoThang, computeOnceDebt, DEBT_TRACK_FROM } from '../lib/finance.js';
+import { mucTheoThang, computeOnceDebt, DEBT_TRACK_FROM, thangTruoc } from '../lib/finance.js';
 import {
   getCustomers,
   upsertCustomer,
@@ -160,7 +160,11 @@ const COLLECT: ToolDef = {
           description:
             'Số tiền của RIÊNG lần trả này (không phải tổng đã trả). Bỏ trống = trả đủ số phải thu của kỳ.',
         },
-        month: { type: 'STRING', description: 'Tháng ghi nhận YYYY-MM. Bỏ trống = tháng này.' },
+        month: {
+          type: 'STRING',
+          description:
+            'Kỳ (tháng dịch vụ) của khoản thu, YYYY-MM. Bỏ trống = THÁNG TRƯỚC: khách trả sau, tiền thu tháng này là của kỳ tháng trước.',
+        },
       },
       required: ['partyName'],
     },
@@ -180,7 +184,9 @@ const COLLECT: ToolDef = {
       return `Có ${hits.length} bên khớp: ${hits.map((p) => p.name).join(', ')}. Hỏi lại là bên nào.`;
     }
     const party = hits[0];
-    const month = argYm(a.month);
+    // Anh Tâm 5/10/2026: "ở tháng 10 bấm thu 3tr thì mặc định 3tr đó vô tháng 9" — khách dịch vụ
+    // hàng tháng trả SAU. Khoản một lần thì ghi đúng tháng thu.
+    const month = /^\d{4}-\d{2}$/.test(String(a.month || '')) ? String(a.month) : party.kind === 'once' ? currentMonth() : thangTruoc(currentMonth());
     const raw = a.amount === undefined || a.amount === null || a.amount === '' ? undefined : parseVndAmount(a.amount as string);
     if (raw !== undefined && (!Number.isFinite(raw) || raw < 0)) {
       return `Không hiểu số tiền "${a.amount}". Hỏi lại số thực thu.`;
