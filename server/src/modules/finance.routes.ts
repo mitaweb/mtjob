@@ -201,7 +201,7 @@ financeRouter.post(
     const b = collectSchema.parse(req.body);
     const r = await addPayment({ partyId: String(req.params.id), ...b });
     if (!r.ok) throw new ApiError(400, r.message || 'Không ghi nhận được');
-    res.json({ ok: true, collected: r.collected, amount: r.amount });
+    res.json({ ok: true, collected: r.collected, amount: r.amount, phanBo: r.phanBo });
   }),
 );
 

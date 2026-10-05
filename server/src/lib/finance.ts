@@ -28,15 +28,6 @@ export function daysUntil(targetIso: string, fromIso: string): number {
  */
 export const DEBT_TRACK_FROM = '2026-08';
 
-/**
- * Tháng trước của một tháng. Công nợ hàng tháng thu SAU (anh Tâm 5/10/2026): tiền thu trong tháng
- * M mặc định là của kỳ tháng M-1.
- */
-export function thangTruoc(ym: string): string {
-  const [y, m] = ym.split('-').map(Number);
-  return m! > 1 ? `${y}-${String(m! - 1).padStart(2, '0')}` : `${y! - 1}-12`;
-}
-
 /** Danh sách kỳ (YYYY-MM) đã tới hạn, từ mốc theo dõi tới tháng đang xem — cũ trước. */
 export function debtMonths(fromMonth: string, toMonth: string): string[] {
   const start = fromMonth > DEBT_TRACK_FROM ? fromMonth : DEBT_TRACK_FROM;
@@ -450,4 +441,58 @@ export function congNoBen(
     credit: 0,
     unpaidMonths: d.thisMonthRemaining > 0 ? [...d.unpaidMonths, p.endMonth] : d.unpaidMonths,
   };
+}
+
+export interface PhanBo {
+  month: string;
+  amount: number;
+}
+
+/**
+ * Chia MỘT khoản tiền khách vừa trả vào các tháng còn nợ — tháng CŨ NHẤT trước, dư thì vào
+ * tháng đang ghi (`input.month`).
+ *
+ * Anh Tâm 5/10/2026: "tiền anh thu tháng 10 mà tháng 9 còn nợ thì vào tháng 9, có nghĩa công nợ
+ * trừ dần dần các tháng". Trước đây khoản thu nằm trọn ở tháng bấm thu — công nợ vẫn trừ đúng
+ * (computeDebt FIFO), nhưng doanh thu tháng 9 thiếu, tháng 10 thừa. Giờ mỗi phần tiền nằm đúng
+ * tháng nó trả.
+ *
+ * "Còn nợ" tính bằng CHÍNH phép FIFO của computeDebt trên mọi khoản đã thu (kể cả khoản cũ ghi
+ * trọn ở tháng thu), nên dữ liệu cũ không bị hiểu sai thành nợ.
+ */
+export function phanBoKhoanThu(
+  input: { receivable: number; rates?: PartyRate[]; startMonth: string; month: string; paid: Record<string, number> },
+  amount: number,
+): PhanBo[] {
+  const tien = Math.max(0, Math.round(amount) || 0);
+  if (tien === 0) return [];
+  const rates = input.rates || [];
+
+  // FIFO trên các khoản đã thu → các tháng còn nợ (cũ nhất trước), gồm cả tháng đang ghi.
+  const con: Array<{ month: string; amount: number }> = [];
+  let du = 0;
+  for (const m of debtMonths(input.startMonth, input.month)) {
+    const per = mucTheoThang(rates, input.receivable, m);
+    if (per > 0) con.push({ month: m, amount: per });
+    du += input.paid[m] || 0;
+    while (du > 0 && con.length > 0) {
+      const dau = con[0]!;
+      const tra = Math.min(du, dau.amount);
+      dau.amount -= tra;
+      du -= tra;
+      if (dau.amount === 0) con.shift();
+    }
+  }
+
+  const ra = new Map<string, number>();
+  let conLai = tien;
+  for (const c of con) {
+    if (conLai === 0) break;
+    const tra = Math.min(conLai, c.amount);
+    ra.set(c.month, (ra.get(c.month) || 0) + tra);
+    conLai -= tra;
+  }
+  // Trả dư (trả trước kỳ sau) → nằm ở tháng đang ghi, kỳ sau computeDebt tự trừ.
+  if (conLai > 0) ra.set(input.month, (ra.get(input.month) || 0) + conLai);
+  return [...ra.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([month, amount]) => ({ month, amount }));
 }

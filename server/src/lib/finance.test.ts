@@ -5,7 +5,7 @@ import {
   debtMonths,
   computeDebt,
   computeOnceDebt,
-  thangTruoc,
+  phanBoKhoanThu,
   luyKeLaiLo,
   congNoBen,
   boSungNguon,
@@ -407,10 +407,49 @@ describe('congNoBen', () => {
   });
 });
 
-// Anh Tâm 5/10/2026: "ở tháng 10 bấm thu 3tr thì mặc định 3tr đó vô tháng 9".
-describe('thangTruoc', () => {
-  it('lùi một tháng, qua năm', () => {
-    expect(thangTruoc('2026-10')).toBe('2026-09');
-    expect(thangTruoc('2026-01')).toBe('2025-12');
+
+// Anh Tâm 5/10/2026: "tiền thu tháng 10 mà tháng 9 còn nợ thì vào tháng 9 — công nợ trừ dần các tháng".
+describe('phanBoKhoanThu', () => {
+  const ben = { receivable: 3_000_000, startMonth: '2026-08', month: '2026-10' };
+
+  it('tháng 9 còn nợ → tiền thu ở tháng 10 vào tháng 9 trước', () => {
+    expect(phanBoKhoanThu({ ...ben, paid: { '2026-08': 3_000_000 } }, 3_000_000)).toEqual([{ month: '2026-09', amount: 3_000_000 }]);
+  });
+
+  it('trả đủ hai tháng → chia 9 và 10; trả dư → phần dư ở tháng đang ghi', () => {
+    const paid = { '2026-08': 3_000_000 };
+    expect(phanBoKhoanThu({ ...ben, paid }, 6_000_000)).toEqual([
+      { month: '2026-09', amount: 3_000_000 },
+      { month: '2026-10', amount: 3_000_000 },
+    ]);
+    expect(phanBoKhoanThu({ ...ben, paid }, 10_000_000)).toEqual([
+      { month: '2026-09', amount: 3_000_000 },
+      { month: '2026-10', amount: 7_000_000 },
+    ]);
+  });
+
+  it('trả một phần → lấp tháng cũ nhất trước', () => {
+    expect(phanBoKhoanThu({ ...ben, paid: {} }, 4_000_000)).toEqual([
+      { month: '2026-08', amount: 3_000_000 },
+      { month: '2026-09', amount: 1_000_000 },
+    ]);
+  });
+
+  it('khoản cũ ghi trọn ở tháng thu (FIFO đã trừ nợ tháng 9) → không bị hiểu nhầm là tháng 9 còn nợ', () => {
+    // Trước đây đã bấm thu 6tr ở tháng 10, ghi trọn vào tháng 10 — FIFO hiểu là đã trả tháng 9 và 10.
+    const paid = { '2026-08': 3_000_000, '2026-10': 6_000_000 };
+    expect(phanBoKhoanThu({ ...ben, paid }, 3_000_000)).toEqual([{ month: '2026-10', amount: 3_000_000 }]);
+  });
+
+  it('đổi mức giữa chừng: mỗi tháng nợ đúng mức của tháng đó', () => {
+    const rates = [{ fromMonth: '0000-00', receivable: 3_000_000 }, { fromMonth: '2026-10', receivable: 6_000_000 }];
+    expect(phanBoKhoanThu({ ...ben, rates, paid: { '2026-08': 3_000_000 } }, 9_000_000)).toEqual([
+      { month: '2026-09', amount: 3_000_000 },
+      { month: '2026-10', amount: 6_000_000 },
+    ]);
+  });
+
+  it('số 0 hoặc âm → không chia gì', () => {
+    expect(phanBoKhoanThu({ ...ben, paid: {} }, 0)).toEqual([]);
   });
 });

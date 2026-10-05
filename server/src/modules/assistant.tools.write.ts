@@ -18,9 +18,9 @@ import {
   paidByPartyMonth,
   type FinanceEntry,
 } from './finance.repo.js';
-import { addPayment } from './finance.service.js';
+import { addPayment, moTaPhanBo } from './finance.service.js';
 import { getPartyRates } from './finance.repo.js';
-import { mucTheoThang, computeOnceDebt, DEBT_TRACK_FROM, thangTruoc } from '../lib/finance.js';
+import { mucTheoThang, computeOnceDebt, computeDebt, DEBT_TRACK_FROM } from '../lib/finance.js';
 import {
   getCustomers,
   upsertCustomer,
@@ -163,7 +163,7 @@ const COLLECT: ToolDef = {
         month: {
           type: 'STRING',
           description:
-            'Kỳ (tháng dịch vụ) của khoản thu, YYYY-MM. Bỏ trống = THÁNG TRƯỚC: khách trả sau, tiền thu tháng này là của kỳ tháng trước.',
+            'Tháng ghi nhận YYYY-MM. Bỏ trống = tháng này. Tiền tự trừ vào tháng CÒN NỢ CŨ NHẤT trước, dư mới sang tháng sau.',
         },
       },
       required: ['partyName'],
@@ -184,9 +184,7 @@ const COLLECT: ToolDef = {
       return `Có ${hits.length} bên khớp: ${hits.map((p) => p.name).join(', ')}. Hỏi lại là bên nào.`;
     }
     const party = hits[0];
-    // Anh Tâm 5/10/2026: "ở tháng 10 bấm thu 3tr thì mặc định 3tr đó vô tháng 9" — khách dịch vụ
-    // hàng tháng trả SAU. Khoản một lần thì ghi đúng tháng thu.
-    const month = /^\d{4}-\d{2}$/.test(String(a.month || '')) ? String(a.month) : party.kind === 'once' ? currentMonth() : thangTruoc(currentMonth());
+    const month = argYm(a.month);
     const raw = a.amount === undefined || a.amount === null || a.amount === '' ? undefined : parseVndAmount(a.amount as string);
     if (raw !== undefined && (!Number.isFinite(raw) || raw < 0)) {
       return `Không hiểu số tiền "${a.amount}". Hỏi lại số thực thu.`;
@@ -203,18 +201,23 @@ const COLLECT: ToolDef = {
         (conNo > 0 ? ` Còn nợ ${formatVnd(conNo)}.` : ' Đã thu đủ.')
       );
     }
-    // Mức của đúng tháng đang ghi — bên đổi mức giữa chừng thì tháng cũ vẫn theo mức cũ.
-    const muc = mucTheoThang((await getPartyRates()).get(party.id) || [], party.receivable, month);
-    const r = await addPayment({ partyId: party.id, month, amount: raw ?? muc });
+    // Không nói số → trả đủ mọi tháng còn nợ (cả nợ cũ). Hết nợ rồi thì là mức của tháng.
+    const lichSu = (await getPartyRates()).get(party.id) || [];
+    const no = computeDebt({
+      receivable: party.receivable,
+      rates: lichSu,
+      startMonth: (party.startDate || '').slice(0, 7),
+      month,
+      paid: (await paidByPartyMonth(DEBT_TRACK_FROM))[party.id] || {},
+    });
+    const muc = mucTheoThang(lichSu, party.receivable, month);
+    // Anh Tâm 5/10/2026: tiền tự trừ vào tháng còn nợ cũ nhất trước (finance.service.addPayment).
+    const r = await addPayment({ partyId: party.id, month, amount: raw ?? (no.total > 0 ? no.total : muc) });
     if (!r.ok) return r.message || 'Chưa ghi nhận được.';
-    // Còn nợ tính trên TỔNG đã thu của kỳ, không phải riêng lần này — khách trả nhiều lần
-    // mà chỉ trừ lần cuối thì câu trả lời sai số.
-    const daThu = ((await paidByPartyMonth(month))[party.id] || {})[month] || 0;
-    const remain = muc - daThu;
+    const conNo = Math.max(0, no.total - r.amount);
     return (
-      `Đã ghi nhận thu ${formatVnd(r.amount)} của ${party.name} (tháng ${month}). ` +
-      `Tổng đã thu kỳ này: ${formatVnd(daThu)}.` +
-      (remain > 0 ? ` Còn nợ ${formatVnd(remain)}.` : '')
+      `Đã ghi nhận thu ${formatVnd(r.amount)} của ${party.name}: ${moTaPhanBo(r.phanBo, formatVnd)}.` +
+      (conNo > 0 ? ` Còn nợ ${formatVnd(conNo)}.` : ' Đã sạch nợ.')
     );
   },
 };
