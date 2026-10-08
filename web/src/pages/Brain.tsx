@@ -16,6 +16,7 @@ import {
   DonKhoCu,
   type Nhom,
 } from '../components/BrainKho';
+import BrainZalo from '../components/BrainZalo';
 
 interface Chunk {
   id: string;
@@ -502,7 +503,7 @@ function DuLieuKho() {
 
 // ── Trang Kho tri thức: "bộ não thứ hai" của công ty (anh Tâm 4/10/2026) ──
 
-type TabKey = 'kho' | 'khach' | 'gop' | 'duyet' | 'hoi' | 'rieng' | 'tailieu';
+type TabKey = 'kho' | 'khach' | 'gop' | 'duyet' | 'hoi' | 'rieng' | 'zalo' | 'tailieu';
 
 export default function Brain() {
   const { user } = useAuth();
@@ -525,16 +526,20 @@ export default function Brain() {
   }, [reloadKey]);
   const doi = () => setReloadKey((k) => k + 1);
 
-  const tabs: Array<{ key: TabKey; label: string; chiGd?: boolean }> = [
+  // Tab Zalo: CHỈ giám đốc (anh Tâm 8/10/2026: "chỉ giám đốc thấy được tab zalo này thôi") — kể cả
+  // admin cũng không. Máy chủ chặn tương tự ở /api/zalo.
+  const laGiamDoc = user?.role === 'director';
+  const tabs: Array<{ key: TabKey; label: string; chiGd?: boolean; chiGiamDoc?: boolean }> = [
     { key: 'kho', label: '📘 Kho' },
     { key: 'khach', label: '👤 Khách hàng' },
     { key: 'gop', label: '✍️ Đóng góp' },
     { key: 'duyet', label: `⏳ Chờ duyệt${dem.pending ? ` (${dem.pending})` : ''}`, chiGd: true },
     { key: 'hoi', label: `❓ Câu hỏi${dem.openQuestions ? ` (${dem.openQuestions})` : ''}`, chiGd: true },
     { key: 'rieng', label: '🔒 Riêng anh', chiGd: true },
+    { key: 'zalo', label: '💬 Zalo', chiGiamDoc: true },
     { key: 'tailieu', label: '📎 Tài liệu & dữ liệu' },
   ];
-  const hien = tabs.filter((t) => !t.chiGd || isDirector);
+  const hien = tabs.filter((t) => (t.chiGiamDoc ? laGiamDoc : !t.chiGd || isDirector));
   const dangXem = hien.some((t) => t.key === tab) ? tab : 'kho';
 
   return (
@@ -587,6 +592,7 @@ export default function Brain() {
       {dangXem === 'rieng' && (
         <TabDanhSach status="published" category="rieng" nhomList={nhomList} rong="Chưa có mục riêng nào." onChanged={doi} />
       )}
+      {dangXem === 'zalo' && laGiamDoc && <BrainZalo />}
       {dangXem === 'tailieu' && <DuLieuKho />}
     </div>
   );

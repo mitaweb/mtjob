@@ -5,6 +5,7 @@ import { asyncHandler, ApiError } from '../util/errors.js';
 import { runDailyReports } from '../jobs/dailyReport.js';
 import { runMonthlyReport } from '../jobs/monthlyReport.js';
 import { runDueReminders } from './reminders.service.js';
+import { runInBackground } from '../util/background.js';
 
 export const jobsRouter = Router();
 
@@ -44,5 +45,12 @@ jobsRouter.get(
     checkCron(req.headers.authorization);
     const sent = await runDueReminders();
     res.json({ ok: true, job: 'reminders', sent });
+    // Zalo → kho tri thức ăn theo nhịp cron này (anh Tâm 8/10/2026: chạy trên Vercel, chỉ ban đêm).
+    // Ban ngày / chưa đăng nhập Zalo thì không làm gì. Chạy nền sau khi đã trả lời cron.
+    runInBackground(
+      import('./zalo.client.js')
+        .then((z) => z.chayBanDem())
+        .catch((e) => console.warn('[zalo] ban đêm:', (e as Error).message)),
+    );
   }),
 );

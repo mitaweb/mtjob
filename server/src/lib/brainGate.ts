@@ -109,10 +109,18 @@ export interface KetQuaXep {
  * Đổi quyết định của AI ra trạng thái lưu.
  *
  * - `laGiamDoc`: giám đốc/admin gửi thì "can_duyet" ban hành luôn (chính anh là người duyệt).
- * - `nguon === 'auto'` (AI tự vơ từ chat): KHÔNG BAO GIỜ tự mở cho cả công ty — câu trả lời của
- *   trợ lý có thể sai, nên việc công việc thì vào hàng chờ; riêng tư thì giữ riêng giám đốc.
+ * - Nguồn `auto` (AI tự vơ từ chat với trợ lý): KHÔNG BAO GIỜ tự mở cho cả công ty — câu trả lời
+ *   của trợ lý có thể sai, nên việc công việc vào hàng chờ; riêng tư giữ riêng giám đốc.
+ * - Nguồn `zalo` (AI rút từ tin nhắn Zalo của giám đốc với khách): anh Tâm 8/10/2026 "cái nào oke
+ *   thì đưa vào tri thức" → việc công việc rõ ràng VÀO KHO LUÔN; còn "chưa chắc" thì vẫn chờ duyệt
+ *   (không được ban hành thay giám đốc dù người gửi đứng tên giám đốc).
  * - Nhóm `rieng` luôn đi kèm phạm vi `director`, kể cả khi AI ghi lệch.
  */
+/** Nguồn mà AI tự rút ra, không có người đọc lại trước khi gửi: không bao giờ tự mở cho công ty. */
+export const NGUON_AI_TU_RUT = new Set(['auto']);
+/** Nguồn tự động: điều AI "chưa chắc" luôn vào hàng chờ, kể cả khi đứng tên giám đốc. */
+const NGUON_TU_DONG = new Set(['auto', 'zalo']);
+
 export function xepTrangThai(
   q: { quyetDinh: QuyetDinh; category: string; teamId?: string },
   ctx: { laGiamDoc: boolean; nguon: string },
@@ -125,10 +133,10 @@ export function xepTrangThai(
     return { status: 'published', scope: 'director', category: 'rieng' };
   }
   if (q.quyetDinh === 'can_duyet') {
-    return { status: ctx.laGiamDoc && ctx.nguon !== 'auto' ? 'published' : 'pending', scope: phamViCongViec, category: nhom };
+    return { status: ctx.laGiamDoc && !NGUON_TU_DONG.has(ctx.nguon) ? 'published' : 'pending', scope: phamViCongViec, category: nhom };
   }
   // cong_viec
-  if (ctx.nguon === 'auto') return { status: 'pending', scope: phamViCongViec, category: nhom };
+  if (NGUON_AI_TU_RUT.has(ctx.nguon)) return { status: 'pending', scope: phamViCongViec, category: nhom };
   return { status: 'published', scope: phamViCongViec, category: nhom };
 }
 

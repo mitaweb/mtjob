@@ -578,6 +578,51 @@ ALTER TABLE brain_chunks ADD COLUMN IF NOT EXISTS category text DEFAULT '';
 ALTER TABLE brain_chunks ADD COLUMN IF NOT EXISTS customer_id text DEFAULT '';
 CREATE INDEX IF NOT EXISTS brain_chunks_customer_idx ON brain_chunks (customer_id);
 
+-- ── Zalo cá nhân → kho tri thức (anh Tâm 5/10/2026) ──
+-- Worker (thư mục zalo-worker/, chạy trên máy của anh) nghe tin nhắn rồi đẩy về đây. PHIÊN ĐĂNG
+-- NHẬP ZALO KHÔNG BAO GIỜ VỀ ĐÂY — chỉ tin nhắn. Cuộc trò chuyện mặc định TẮT: chỉ đếm số tin,
+-- không lưu nội dung, cho tới khi anh bật "học từ cuộc này" (chat riêng với người nhà không bị đọc).
+CREATE TABLE IF NOT EXISTS zalo_threads (
+  thread_id      text PRIMARY KEY,
+  name           text DEFAULT '',
+  is_group       boolean DEFAULT false,
+  enabled        boolean DEFAULT false,
+  customer_id    text DEFAULT '',
+  customer       text DEFAULT '',
+  msg_count      integer DEFAULT 0,
+  last_msg_at    text DEFAULT '',
+  last_digest_at text DEFAULT '',
+  created_at     text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS zalo_threads_last_idx ON zalo_threads (last_msg_at DESC);
+-- Nội dung tin — CHỈ của cuộc đã bật. Rút tri thức xong 30 ngày thì xoá.
+CREATE TABLE IF NOT EXISTS zalo_messages (
+  msg_id    text PRIMARY KEY,
+  thread_id text NOT NULL,
+  from_self boolean DEFAULT false,
+  sender    text DEFAULT '',
+  content   text NOT NULL,
+  ts        text NOT NULL,
+  digested  boolean DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS zalo_messages_thread_idx ON zalo_messages (thread_id, ts);
+CREATE INDEX IF NOT EXISTS zalo_messages_digest_idx ON zalo_messages (digested, ts);
+-- Trạng thái worker (một dòng): đang chờ quét QR / đang chạy / mất kết nối.
+CREATE TABLE IF NOT EXISTS zalo_status (
+  id        text PRIMARY KEY,
+  status    text DEFAULT 'offline',
+  qr        text DEFAULT '',
+  account   text DEFAULT '',
+  note      text DEFAULT '',
+  last_seen text DEFAULT ''
+);
+-- Chạy thẳng trên Vercel (anh Tâm 8/10/2026: "worker luôn trên vercel"): máy chủ tự đăng nhập Zalo
+-- mỗi lượt đồng bộ nên phải giữ phiên. Chỉ giữ BẢN MÃ (AES-256-GCM, lib/maHoa.ts) — khoá nằm ở biến
+-- môi trường ZALO_SESSION_KEY trên Vercel, lộ DB thôi chưa đủ để vào Zalo của anh.
+ALTER TABLE zalo_status ADD COLUMN IF NOT EXISTS session_enc text DEFAULT '';
+ALTER TABLE zalo_status ADD COLUMN IF NOT EXISTS last_msg_id text DEFAULT '';
+ALTER TABLE zalo_status ADD COLUMN IF NOT EXISTS last_sync text DEFAULT '';
+
 -- Anh Tâm 4/10/2026: "lịch trình cá nhân, phân tích task chỉ anh được hỏi". Các đoạn AI tự vơ
 -- từ chat, đoạn lưu tay kiểu cũ và lịch hẹn đang mở cho cả công ty → ẩn về riêng giám đốc.
 -- Nút "Phân loại lại kho" sẽ đưa phần công việc ra lại cho nhân viên sau khi AI xếp nhãn.

@@ -74,6 +74,14 @@ describe('xepTrangThai — quyết định AI → trạng thái lưu', () => {
     expect(xepTrangThai({ quyetDinh: 'can_duyet', category: 'quy_trinh' }, { laGiamDoc: true, nguon: 'auto' }).status).toBe('pending');
   });
 
+  it('tin nhắn Zalo: ý rõ ràng vào kho luôn; chưa chắc vẫn chờ duyệt; riêng tư giữ riêng giám đốc', () => {
+    // Anh Tâm 8/10/2026: "cái nào oke thì đưa vào tri thức".
+    const zalo = { laGiamDoc: true, nguon: 'zalo' };
+    expect(xepTrangThai({ quyetDinh: 'cong_viec', category: 'khach_hang' }, zalo)).toMatchObject({ status: 'published', scope: 'all' });
+    expect(xepTrangThai({ quyetDinh: 'can_duyet', category: 'khach_hang' }, zalo).status).toBe('pending');
+    expect(xepTrangThai({ quyetDinh: 'rieng_giam_doc', category: 'khach_hang' }, zalo)).toMatchObject({ status: 'published', scope: 'director' });
+  });
+
   it('không lưu → rejected; nhóm lạ → quy trình', () => {
     expect(xepTrangThai({ quyetDinh: 'khong_luu', category: 'quy_trinh' }, gd).status).toBe('rejected');
     expect(xepTrangThai({ quyetDinh: 'cong_viec', category: 'linh_tinh' }, nv).category).toBe('quy_trinh');
