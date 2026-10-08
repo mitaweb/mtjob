@@ -1,5 +1,5 @@
-// Zalo cá nhân → kho tri thức (anh Tâm 5/10/2026). Chỉ lưu TIN NHẮN; phiên đăng nhập Zalo nằm
-// trên máy chạy worker, không bao giờ về đây.
+// Zalo cá nhân → kho tri thức (anh Tâm 5/10/2026). Tin nhắn + trạng thái kết nối; phiên đăng nhập
+// chỉ ở dạng bản mã (zalo.client.ts).
 import { q } from '../db/client.js';
 import type { TinZalo } from '../lib/zalo.js';
 
@@ -15,6 +15,11 @@ export interface ZaloThread {
   lastDigestAt: string;
   /** Số tin đã lưu mà chưa rút tri thức (chỉ cuộc đang bật mới có). */
   chuaRut: number;
+  /** Nhóm: AI đã xét là nhóm khách hay không chưa, và kết luận. */
+  aiChecked: boolean;
+  aiNote: string;
+  /** Nhóm khách: đã kéo lịch sử cũ chưa. */
+  historyDone: boolean;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -30,6 +35,9 @@ function rowToThread(r: any): ZaloThread {
     lastMsgAt: String(r.last_msg_at || ''),
     lastDigestAt: String(r.last_digest_at || ''),
     chuaRut: Number(r.chua_rut) || 0,
+    aiChecked: !!r.ai_checked,
+    aiNote: String(r.ai_note || ''),
+    historyDone: !!r.history_done,
   };
 }
 
@@ -38,6 +46,7 @@ export const SQL_GHI_CUOC = `INSERT INTO zalo_threads (thread_id, name, is_group
   VALUES ($1, $2, $3, false, $4, $5, $6)
   ON CONFLICT (thread_id) DO UPDATE SET
     name = CASE WHEN EXCLUDED.name <> '' THEN EXCLUDED.name ELSE zalo_threads.name END,
+    is_group = zalo_threads.is_group OR EXCLUDED.is_group,
     msg_count = zalo_threads.msg_count + EXCLUDED.msg_count,
     last_msg_at = GREATEST(zalo_threads.last_msg_at, EXCLUDED.last_msg_at)
   RETURNING enabled`;
@@ -81,6 +90,9 @@ export async function suaCuoc(threadId: string, patch: { enabled?: boolean; cust
   if (patch.enabled !== undefined) {
     params.push(patch.enabled);
     sets.push(`enabled = $${params.length}`);
+    // Anh đã tự quyết → AI không xét lại nhóm này. Tắt thì tin bị xoá, bật lại sẽ kéo lịch sử lại.
+    sets.push('ai_checked = true');
+    if (!patch.enabled) sets.push('history_done = false');
   }
   if (patch.customerId !== undefined) {
     params.push(patch.customerId);
@@ -178,4 +190,73 @@ export async function ghiTrangThai(s: Partial<ZaloStatus> & { lastSeen: string }
        note = EXCLUDED.note, last_seen = EXCLUDED.last_seen`,
     [s.status || 'online', s.qr || '', s.account || '', s.note || '', s.lastSeen],
   );
+}
+
+// ── Nhóm khách (anh Tâm 8/10/2026) ──
+
+/**
+ * Ghi danh sách nhóm (kể cả nhóm im lâu) — chỉ tạo/đổi tên, không đụng số tin hay trạng thái học.
+ * Nhóm CHƯA xét: `moTa` (số thành viên + mô tả nhóm) tạm để ở ai_note cho AI đọc lúc xét.
+ */
+export async function ghiDanhSachNhom(ds: Array<{ threadId: string; name: string; moTa?: string }>, now: string): Promise<void> {
+  for (const n of ds) {
+    await q(
+      `INSERT INTO zalo_threads (thread_id, name, is_group, enabled, msg_count, last_msg_at, created_at, ai_note)
+       VALUES ($1, $2, true, false, 0, '', $3, $4)
+       ON CONFLICT (thread_id) DO UPDATE SET is_group = true,
+         name = CASE WHEN EXCLUDED.name <> '' THEN EXCLUDED.name ELSE zalo_threads.name END,
+         ai_note = CASE WHEN COALESCE(zalo_threads.ai_checked, false) THEN zalo_threads.ai_note ELSE EXCLUDED.ai_note END`,
+      [n.threadId, n.name, now, n.moTa || ''],
+    );
+  }
+}
+
+/** Mã các nhóm đã biết tên — khỏi hỏi lại Zalo thông tin nhóm mỗi đêm. */
+export async function nhomDaBiet(): Promise<Set<string>> {
+  const r = await q(`SELECT thread_id FROM zalo_threads WHERE is_group AND name <> ''`);
+  return new Set(r.map((x) => String(x.thread_id)));
+}
+
+export const SQL_NHOM_CHUA_XET = `SELECT t.*, 0 AS chua_rut FROM zalo_threads t
+  WHERE t.is_group AND NOT COALESCE(t.ai_checked, false) ORDER BY t.last_msg_at DESC LIMIT $1`;
+
+export async function nhomChuaXet(limit: number): Promise<ZaloThread[]> {
+  return (await q(SQL_NHOM_CHUA_XET, [limit])).map(rowToThread);
+}
+
+/** Ghi kết luận của AI cho một nhóm. Nhóm khách thì bật học + gắn khách; không phải thì để nguyên. */
+export async function ghiKetQuaXet(
+  threadId: string,
+  kq: { aiNote: string; laNhomKhach: boolean; customerId: string; customer: string },
+): Promise<void> {
+  if (kq.laNhomKhach) {
+    await q(
+      `UPDATE zalo_threads SET ai_checked = true, ai_note = $2, enabled = true, customer_id = $3, customer = $4
+       WHERE thread_id = $1`,
+      [threadId, kq.aiNote, kq.customerId, kq.customer],
+    );
+  } else {
+    await q('UPDATE zalo_threads SET ai_checked = true, ai_note = $2 WHERE thread_id = $1', [threadId, kq.aiNote]);
+  }
+}
+
+export const SQL_NHOM_CAN_KEO = `SELECT t.*, 0 AS chua_rut FROM zalo_threads t
+  WHERE t.is_group AND t.enabled AND NOT COALESCE(t.history_done, false) ORDER BY t.last_msg_at DESC LIMIT $1`;
+
+export async function nhomCanKeoLichSu(limit: number): Promise<ZaloThread[]> {
+  return (await q(SQL_NHOM_CAN_KEO, [limit])).map(rowToThread);
+}
+
+export async function daKeoLichSu(threadId: string): Promise<void> {
+  await q('UPDATE zalo_threads SET history_done = true WHERE thread_id = $1', [threadId]);
+}
+
+/** Còn bao nhiêu nhóm chưa xét / chưa kéo lịch sử — để biết lượt đêm còn việc nhóm không. */
+export async function demViecNhom(): Promise<{ chuaXet: number; chuaKeo: number }> {
+  const r = await q(
+    `SELECT COUNT(*) FILTER (WHERE NOT COALESCE(ai_checked, false))::int AS chua_xet,
+            COUNT(*) FILTER (WHERE enabled AND NOT COALESCE(history_done, false))::int AS chua_keo
+     FROM zalo_threads WHERE is_group`,
+  );
+  return { chuaXet: Number(r[0]?.chua_xet) || 0, chuaKeo: Number(r[0]?.chua_keo) || 0 };
 }

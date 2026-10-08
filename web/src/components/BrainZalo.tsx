@@ -1,5 +1,6 @@
 // Tab Zalo của Kho tri thức (anh Tâm 5/10 + 8/10/2026): đăng nhập Zalo cá nhân bằng QR, chọn cuộc
-// trò chuyện nào cho app "học", rút tri thức vào hàng chờ duyệt. Chỉ giám đốc/admin.
+// trò chuyện nào cho app "học", rút tri thức vào kho. Nhóm khách ("TÊN KH - MT DIGITAL") do AI tự
+// nhận ra, khớp/tạo khách ở CRM và kéo lịch sử cũ. Chỉ giám đốc.
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import AsyncButton from './AsyncButton';
@@ -15,6 +16,10 @@ interface Cuoc {
   lastMsgAt: string;
   lastDigestAt: string;
   chuaRut: number;
+  isGroup: boolean;
+  aiChecked: boolean;
+  aiNote: string;
+  historyDone: boolean;
 }
 
 interface TrangThai {
@@ -41,8 +46,12 @@ const NHAN: Record<string, { label: string; variant: BadgeVariant }> = {
 const ngayGio = (iso: string) =>
   iso ? new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
 
+type Loc = 'hoc' | 'nhom' | 'rieng' | 'tat_ca';
+
 export default function BrainZalo() {
   const toast = useToast();
+  const [loc, setLoc] = useState<Loc | ''>('');
+  const [tim, setTim] = useState('');
   const [st, setSt] = useState<TrangThai | null>(null);
   const [khach, setKhach] = useState<Record<string, string>>({});
   const [choQR, setChoQR] = useState(0); // mốc ms bắt đầu chờ QR (0 = không chờ)
@@ -104,6 +113,29 @@ export default function BrainZalo() {
     }
   }
 
+  /** Quét nhóm khách — mỗi lần máy chủ làm ~45 giây; còn việc thì gọi tiếp (tối đa 8 lần). */
+  async function quetNhom() {
+    try {
+      for (let lan = 0; lan < 8; lan++) {
+        const r = await api<{ ok: boolean; note: string; conLai: number }>('/zalo/groups', { body: {} });
+        await tai();
+        if (!r.ok) {
+          toast.error(r.note);
+          return;
+        }
+        if (!r.conLai) {
+          toast.success(r.note);
+          setLoc('nhom');
+          return;
+        }
+        toast.info(r.note);
+      }
+      toast.info('Còn nhóm chưa xét xong — đêm nay app tự làm tiếp, hoặc bấm lại.');
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
   async function rut(threadId?: string) {
     try {
       const r = await api<{ cuoc: number; y: number }>('/zalo/digest', { body: threadId ? { threadId } : {} });
@@ -139,6 +171,20 @@ export default function BrainZalo() {
   const nhan = NHAN[st.status] || NHAN.offline!;
   const anhQR = st.qr ? (st.qr.startsWith('data:') ? st.qr : `data:image/png;base64,${st.qr}`) : '';
   const cuocBat = st.threads.filter((c) => c.enabled);
+  const soNhom = st.threads.filter((c) => c.isGroup).length;
+  const locHienTai: Loc = loc || (cuocBat.length ? 'hoc' : 'tat_ca');
+  const tuKhoa = tim.trim().toLowerCase();
+  const hien = st.threads
+    .filter((c) =>
+      locHienTai === 'hoc' ? c.enabled : locHienTai === 'nhom' ? c.isGroup : locHienTai === 'rieng' ? !c.isGroup : true,
+    )
+    .filter((c) => !tuKhoa || `${c.name} ${c.customer}`.toLowerCase().includes(tuKhoa));
+  const LOC: Array<[Loc, string, number]> = [
+    ['hoc', 'Đang học', cuocBat.length],
+    ['nhom', 'Nhóm', soNhom],
+    ['rieng', 'Chat 1-1', st.threads.length - soNhom],
+    ['tat_ca', 'Tất cả', st.threads.length],
+  ];
 
   return (
     <div className="space-y-3">
@@ -182,6 +228,9 @@ export default function BrainZalo() {
                 <AsyncButton className="btn-ghost" onClick={dongBo} busyLabel="Đang đồng bộ…">
                   🔄 Đồng bộ ngay
                 </AsyncButton>
+                <AsyncButton className="btn-ghost" onClick={quetNhom} busyLabel="AI đang xét nhóm…">
+                  🔎 Quét nhóm khách
+                </AsyncButton>
                 <button className="btn-ghost text-rose-600" onClick={dangXuat}>
                   Đăng xuất
                 </button>
@@ -200,9 +249,13 @@ export default function BrainZalo() {
         )}
 
         <p className="text-xs text-ink-muted">
-          App chạy <b>mỗi đêm</b> (22h–5h): đồng bộ một lượt, rồi AI xem xét các cuộc đã bật — lưu ý, yêu cầu của khách nào ổn thì đưa thẳng vào
-          kho, điều chưa chắc thì vào tab Chờ duyệt. Mỗi lượt đồng bộ Zalo chỉ trả một lô tin gần đây, ngày nào nhắn quá nhiều thì tin đầu ngày
-          có thể bị sót.
+          App chạy <b>mỗi đêm</b> (22h–5h): đồng bộ một lượt, quét nhóm mới, rồi AI xem xét các cuộc đã bật — lưu ý, yêu cầu của khách nào ổn
+          thì đưa thẳng vào kho, điều chưa chắc thì vào tab Chờ duyệt.
+        </p>
+        <p className="text-xs text-ink-muted">
+          <b>Nhóm khách</b>: AI tự nhận ra nhóm làm việc với khách (tên kiểu “TÊN KH - MT DIGITAL”, tên khác AI tự phán đoán), khớp với khách
+          trong CRM — chưa có thì tạo mới — rồi bật học và <b>kéo lịch sử cũ</b> (~200 tin gần nhất mỗi nhóm). <b>Chat 1-1</b>: Zalo không cho
+          lấy tin cũ trước lúc đăng nhập, chỉ có tin từ lúc kết nối trở đi.
         </p>
       </div>
 
@@ -211,8 +264,8 @@ export default function BrainZalo() {
           <div>
             <h3 className="font-medium">Cuộc trò chuyện ({st.threads.length})</h3>
             <p className="text-xs text-ink-muted">
-              Mặc định <b>không học</b> cuộc nào — chỉ đếm số tin. Bật <b>Học</b> ở cuộc nào là khách thì app mới lưu nội dung, và ban đêm AI
-              rút lưu ý, yêu cầu của khách đó vào kho tri thức.
+              Chat 1-1 mặc định <b>không học</b> — chỉ đếm số tin. Bật <b>Học</b> ở cuộc nào là khách thì app mới lưu nội dung, và ban đêm AI
+              rút lưu ý, yêu cầu của khách đó vào kho tri thức. Nhóm khách AI bật sẵn; anh tắt/bật tay thì AI không đổi lại.
             </p>
           </div>
           {cuocBat.length > 0 && (
@@ -221,19 +274,40 @@ export default function BrainZalo() {
             </AsyncButton>
           )}
         </div>
+        {st.threads.length > 0 && (
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            {LOC.map(([k, nhanLoc, so]) => (
+              <button
+                key={k}
+                className={`rounded-full border px-3 py-1 text-xs ${locHienTai === k ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-line text-ink-soft'}`}
+                onClick={() => setLoc(k)}
+              >
+                {nhanLoc} ({so})
+              </button>
+            ))}
+            <input className="input max-w-[12rem] py-1 text-sm" placeholder="Tìm tên…" value={tim} onChange={(e) => setTim(e.target.value)} />
+          </div>
+        )}
         {st.threads.length === 0 ? (
-          <EmptyState icon="💬" text={st.coPhien ? 'Chưa có tin nào. Bấm Đồng bộ ngay.' : 'Đăng nhập Zalo để bắt đầu.'} />
+          <EmptyState icon="💬" text={st.coPhien ? 'Chưa có tin nào. Bấm Đồng bộ ngay hoặc Quét nhóm khách.' : 'Đăng nhập Zalo để bắt đầu.'} />
+        ) : hien.length === 0 ? (
+          <EmptyState icon="🔍" text="Không có cuộc nào khớp bộ lọc." />
         ) : (
           <ul className="divide-y">
-            {st.threads.map((c) => (
+            {hien.map((c) => (
               <li key={c.threadId} className="space-y-1.5 py-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="truncate font-medium">{c.name || `(chưa rõ tên) ${c.threadId.slice(-6)}`}</div>
-                    <div className="text-xs text-ink-faint">
-                      {c.msgCount} tin · gần nhất {ngayGio(c.lastMsgAt)}
-                      {c.enabled && c.chuaRut > 0 ? ` · ${c.chuaRut} tin chưa rút` : ''}
+                    <div className="flex items-center gap-1.5">
+                      {c.isGroup && <Badge variant="neutral">👥 Nhóm</Badge>}
+                      <span className="truncate font-medium">{c.name || `(chưa rõ tên) ${c.threadId.slice(-6)}`}</span>
                     </div>
+                    <div className="text-xs text-ink-faint">
+                      {c.msgCount} tin{c.lastMsgAt ? ` · gần nhất ${ngayGio(c.lastMsgAt)}` : ''}
+                      {c.enabled && c.chuaRut > 0 ? ` · ${c.chuaRut} tin chưa rút` : ''}
+                      {c.isGroup && c.enabled && !c.historyDone ? ' · chờ kéo lịch sử' : ''}
+                    </div>
+                    {c.isGroup && c.aiChecked && c.aiNote && <div className="text-xs text-ink-muted">🤖 {c.aiNote}</div>}
                   </div>
                   <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-sm">
                     <input type="checkbox" checked={c.enabled} onChange={(e) => suaCuoc(c, { enabled: e.target.checked })} />

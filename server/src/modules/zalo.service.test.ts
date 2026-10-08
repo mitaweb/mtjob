@@ -10,7 +10,18 @@ const DA_RUT: string[][] = [];
 let AI_Y: Array<{ tieuDe: string; noiDung: string }> = [];
 let CHUA_RUT: Array<Record<string, unknown>> = [];
 
-vi.mock('../gemini/client.js', () => ({ generateJson: vi.fn(async () => ({ y: AI_Y })) }));
+let AI_NHOM: Array<Record<string, unknown>> = [];
+let NHOM_CHUA_XET: Array<Record<string, unknown>> = [];
+const KET_QUA_XET: Array<{ id: string; kq: Record<string, unknown> }> = [];
+const KHACH_MOI: Array<Record<string, unknown>> = [];
+let PROMPT = '';
+
+vi.mock('../gemini/client.js', () => ({
+  generateJson: vi.fn(async (prompt: string) => {
+    PROMPT = prompt;
+    return prompt.includes('CÁC NHÓM') ? { nhom: AI_NHOM } : { y: AI_Y };
+  }),
+}));
 vi.mock('./zalo.repo.js', () => ({
   ghiCuoc: vi.fn(async (c: Record<string, unknown>) => {
     CUOC.push(c);
@@ -29,6 +40,10 @@ vi.mock('./zalo.repo.js', () => ({
     DA_RUT.push(ids);
   }),
   donTinCu: vi.fn(async () => undefined),
+  nhomChuaXet: vi.fn(async () => NHOM_CHUA_XET),
+  ghiKetQuaXet: vi.fn(async (id: string, kq: Record<string, unknown>) => {
+    KET_QUA_XET.push({ id, kq });
+  }),
 }));
 vi.mock('./brainItems.service.js', () => ({
   xetDuaVaoKho: vi.fn(async (input: Record<string, unknown>, nguoi: Record<string, unknown>) => {
@@ -36,7 +51,13 @@ vi.mock('./brainItems.service.js', () => ({
     return { item: { id: 'x', status: 'pending' }, message: 'Đã gửi — chờ giám đốc duyệt' };
   }),
 }));
-vi.mock('./crm.repo.js', () => ({ getCustomers: async () => [{ id: 'K3', name: 'Savax Door' }] }));
+vi.mock('./crm.repo.js', () => ({
+  CLOSED_STATUS: 'Đã chốt',
+  getCustomers: async () => [{ id: 'K3', name: 'Savax Door' }],
+  upsertCustomer: vi.fn(async (c: Record<string, unknown>) => {
+    KHACH_MOI.push(c);
+  }),
+}));
 vi.mock('./members.repo.js', () => ({ getDirectors: async () => [{ id: 'GD', fullName: 'Anh Tâm' }] }));
 
 const S = await import('./zalo.service.js');
@@ -49,6 +70,56 @@ beforeEach(() => {
   DA_RUT.length = 0;
   AI_Y = [];
   CHUA_RUT = [];
+  AI_NHOM = [];
+  NHOM_CHUA_XET = [];
+  KET_QUA_XET.length = 0;
+  KHACH_MOI.length = 0;
+  PROMPT = '';
+});
+
+// Anh Tâm 8/10/2026: nhóm khách "TÊN KH - MT DIGITAL", một số khác — AI quyết, khớp/tạo ở CRM.
+describe('xacDinhNhomKhach', () => {
+  const nhom = (threadId: string, name: string) => ({ threadId, name, isGroup: true, enabled: false });
+
+  it('khớp khách đã có; khách mới thì tạo trong CRM; không phải nhóm khách thì chỉ ghi chú', async () => {
+    NHOM_CHUA_XET = [nhom('G1', 'SAVAX DOOR - MT DIGITAL'), nhom('G2', 'Topaz Spa x MT'), nhom('G3', 'Gia đình')];
+    AI_NHOM = [
+      { id: 'G1', laNhomKhach: true, tenKhach: 'Savax Door', lyDo: 'đúng quy ước' },
+      { id: 'G2', laNhomKhach: true, tenKhach: 'Topaz Spa', lyDo: 'tên thương hiệu + MT' },
+      { id: 'G3', laNhomKhach: false, lyDo: 'nhóm gia đình' },
+      { id: 'LA', laNhomKhach: true, tenKhach: 'Bịa' },
+    ];
+    const r = await S.xacDinhNhomKhach();
+    expect(r).toEqual({ xet: 3, nhomKhach: 2, khachMoi: ['Topaz Spa'] });
+    expect(PROMPT).toContain('"goiYTenKhach":"SAVAX DOOR"');
+    expect(PROMPT).toContain('Savax Door');
+    expect(KHACH_MOI).toHaveLength(1);
+    expect(KHACH_MOI[0]).toMatchObject({ name: 'Topaz Spa', status: 'Đã chốt', assignedTo: 'GD', phone: '' });
+    const theo = Object.fromEntries(KET_QUA_XET.map((x) => [x.id, x.kq]));
+    expect(theo.G1).toMatchObject({ laNhomKhach: true, customerId: 'K3', customer: 'Savax Door' });
+    expect(theo.G2).toMatchObject({ laNhomKhach: true, customerId: KHACH_MOI[0]!.id, customer: 'Topaz Spa' });
+    expect(theo.G3).toMatchObject({ laNhomKhach: false, customerId: '' });
+    expect(String(theo.G3!.aiNote)).toContain('nhóm gia đình');
+  });
+
+  it('AI bỏ sót nhóm nào thì nhóm đó để lượt sau xét lại', async () => {
+    NHOM_CHUA_XET = [nhom('G1', 'A - MT DIGITAL'), nhom('G2', 'B')];
+    AI_NHOM = [{ id: 'G2', laNhomKhach: false, lyDo: 'không rõ' }];
+    const r = await S.xacDinhNhomKhach();
+    expect(r.xet).toBe(1);
+    expect(KET_QUA_XET.map((x) => x.id)).toEqual(['G2']);
+  });
+
+  it('hai nhóm cùng một khách mới → chỉ tạo khách một lần', async () => {
+    NHOM_CHUA_XET = [nhom('G1', 'Kingpen - MT DIGITAL'), nhom('G2', 'Kingpen Ads')];
+    AI_NHOM = [
+      { id: 'G1', laNhomKhach: true, tenKhach: 'Kingpen' },
+      { id: 'G2', laNhomKhach: true, tenKhach: 'Kingpen' },
+    ];
+    await S.xacDinhNhomKhach();
+    expect(KHACH_MOI).toHaveLength(1);
+    expect(KET_QUA_XET.map((x) => x.kq.customerId)).toEqual([KHACH_MOI[0]!.id, KHACH_MOI[0]!.id]);
+  });
 });
 
 describe('nhanTin — chỉ lưu nội dung cuộc đã bật', () => {

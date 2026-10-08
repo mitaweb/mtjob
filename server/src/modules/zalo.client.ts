@@ -4,7 +4,9 @@
 // cần liên tục ("chạy vào ban đêm là được"). Nên MỖI ĐÊM (lib/zalo.viecBanDem, ăn theo cron nhắc hẹn):
 //   1. một lượt đồng bộ: đăng nhập bằng phiên đã lưu, mở kết nối ~20 giây, xin Zalo gửi lại các tin
 //      gần đây (requestOldMessages — chính cách Zalo Web lấy tin lúc mở lại tab), gom rồi ngắt;
-//   2. các lượt sau trong đêm: AI xem xét cuộc đã bật, cái nào ổn thì đưa vào kho tri thức.
+//   2. nhóm (anh Tâm 8/10/2026): cập nhật danh sách nhóm, AI xét nhóm nào là nhóm khách (tên kiểu
+//      "TÊN KH - MT DIGITAL"), khớp/tạo khách ở CRM, bật học và kéo lịch sử cũ của nhóm đó về;
+//   3. các lượt sau trong đêm: AI xem xét cuộc đã bật, cái nào ổn thì đưa vào kho tri thức.
 //
 // AN TOÀN:
 //   - Phiên đăng nhập lưu dạng BẢN MÃ (lib/maHoa.ts); khoá ở biến môi trường ZALO_SESSION_KEY.
@@ -14,8 +16,19 @@
 import { maHoa, giaiMa } from '../lib/maHoa.js';
 import { maTinLonNhat, viecBanDem } from '../lib/zalo.js';
 import { nowTz } from '../lib/datetime.js';
-import { docTrangThai, ghiTrangThai, docPhienMa, ghiPhienMa, ghiMocDongBo } from './zalo.repo.js';
-import { nhanTin, rutTriThucZalo, type TinTuWorker } from './zalo.service.js';
+import {
+  docTrangThai,
+  ghiTrangThai,
+  docPhienMa,
+  ghiPhienMa,
+  ghiMocDongBo,
+  ghiDanhSachNhom,
+  nhomDaBiet,
+  nhomCanKeoLichSu,
+  daKeoLichSu,
+  demViecNhom,
+} from './zalo.repo.js';
+import { nhanTin, rutTriThucZalo, xacDinhNhomKhach, type TinTuWorker } from './zalo.service.js';
 
 const now = () => nowTz().toISOString();
 
@@ -26,9 +39,11 @@ const now = () => nowTz().toISOString();
 export async function chayBanDem(): Promise<string> {
   const st = await docTrangThai();
   if (!st.coPhien) return 'chưa đăng nhập Zalo';
-  const viec = viecBanDem({ gioVN: nowTz().hour(), lastSync: st.lastSync, now: Date.now() });
+  const vn = await demViecNhom().catch(() => ({ chuaXet: 0, chuaKeo: 0 }));
+  const viec = viecBanDem({ gioVN: nowTz().hour(), lastSync: st.lastSync, now: Date.now(), viecNhom: vn.chuaXet + vn.chuaKeo });
   if (viec === 'nghi') return 'ngoài giờ ban đêm';
   if (viec === 'dong_bo') return (await dongBoZalo()).note;
+  if (viec === 'nhom') return (await quetNhomKhach()).note;
   const r = await rutTriThucZalo({ epNgay: true, limit: 3 });
   return r.cuoc ? `rút ${r.y} ý từ ${r.cuoc} cuộc` : 'không còn gì để rút';
 }
@@ -122,12 +137,151 @@ export async function dangXuat(): Promise<void> {
 
 /** Tin Zalo (dạng thư viện trả) → dạng nhanTin nhận. Tên cuộc: tên người kia (không phải tên mình). */
 type TinThuVien = {
+  /** ThreadType: 0 = chat 1-1, 1 = nhóm. */
+  type?: number;
   threadId: string;
   isSelf: boolean;
   data: { msgId?: string; cliMsgId?: string; dName?: string; content?: unknown; ts?: string };
 };
 
 let dangDongBo = false;
+
+type Zca = Awaited<ReturnType<typeof taiZca>>;
+type ApiZalo = Awaited<ReturnType<InstanceType<Zca['Zalo']>['login']>>;
+
+/** Đăng nhập bằng phiên đã lưu. Phiên hỏng / hết hạn / bị đăng xuất → xoá phiên, báo anh đăng nhập lại. */
+async function moPhien(): Promise<{ api: ApiZalo; zca: Zca } | { loi: string }> {
+  let credentials: unknown;
+  try {
+    credentials = JSON.parse(giaiMa(await docPhienMa(), khoaPhien()));
+  } catch (e) {
+    await ghiPhienMa('');
+    const note = `Không mở được phiên đã lưu (${(e as Error).message}) — bấm Đăng nhập lại`;
+    await ghiTrangThai({ status: 'expired', note, lastSeen: now() });
+    return { loi: note };
+  }
+  const zca = await taiZca();
+  try {
+    const api = await new zca.Zalo({ selfListen: true, checkUpdate: false, logging: false }).login(
+      credentials as Parameters<InstanceType<Zca['Zalo']>['login']>[0],
+    );
+    return { api, zca };
+  } catch (e) {
+    await ghiPhienMa('');
+    const note = 'Phiên Zalo hết hạn hoặc đã bị đăng xuất — bấm Đăng nhập lại';
+    await ghiTrangThai({ status: 'expired', note: `${note} (${(e as Error).message})`.slice(0, 250), lastSeen: now() });
+    return { loi: note };
+  }
+}
+
+/**
+ * Cập nhật danh sách nhóm Zalo (kể cả nhóm im lâu không có tin mới). Chỉ hỏi thông tin những nhóm
+ * chưa biết tên.
+ */
+async function capNhatDanhSachNhom(api: ApiZalo): Promise<{ tong: number; moi: number }> {
+  const all = await api.getAllGroups();
+  const ids = Object.keys(all?.gridVerMap || {});
+  const daBiet = await nhomDaBiet();
+  const can = ids.filter((id) => !daBiet.has(id));
+  const gio = now();
+  for (let i = 0; i < can.length; i += 50) {
+    const lo = can.slice(i, i + 50);
+    try {
+      const info = await api.getGroupInfo(lo);
+      const ds: Array<{ threadId: string; name: string; moTa: string }> = [];
+      for (const id of lo) {
+        const g = info?.gridInfoMap?.[id];
+        if (!g?.name) continue;
+        const moTa = [g.totalMember ? `${g.totalMember} thành viên` : '', String(g.desc || '').trim()].filter(Boolean).join(' · ');
+        ds.push({ threadId: id, name: String(g.name).slice(0, 200), moTa: moTa.slice(0, 300) });
+      }
+      await ghiDanhSachNhom(ds, gio);
+    } catch (e) {
+      console.warn('[zalo] thông tin nhóm', (e as Error).message);
+    }
+  }
+  return { tong: ids.length, moi: can.length };
+}
+
+/** Tin nhóm (thư viện) → dạng nhanTin. Người nói ghi theo tên hiển thị trong nhóm. */
+function tinNhom(m: TinThuVien): TinTuWorker {
+  return {
+    msgId: String(m.data.msgId || m.data.cliMsgId),
+    threadId: String(m.threadId),
+    threadName: '', // tên nhóm lấy từ danh sách nhóm, không lấy tên người nói
+    isGroup: true,
+    fromSelf: !!m.isSelf,
+    sender: m.isSelf ? '' : String(m.data.dName || ''),
+    content: m.data.content,
+    ts: String(m.data.ts || Date.now()),
+  };
+}
+
+/**
+ * Kéo lịch sử cũ của các nhóm khách vừa bật — Zalo CHO lấy lịch sử nhóm (không cho lấy lịch sử chat
+ * 1-1 trước lúc đăng nhập). Mỗi nhóm một lần, ~200 tin gần nhất.
+ */
+async function keoLichSuNhom(api: ApiZalo, han: number): Promise<number> {
+  let xong = 0;
+  for (const n of await nhomCanKeoLichSu(10)) {
+    if (Date.now() > han) break;
+    try {
+      const r = await api.getGroupChatHistory(n.threadId, 200).catch(() => api.getGroupChatHistory(n.threadId, 50));
+      const ds = ((r?.groupMsgs || []) as unknown as TinThuVien[]).filter((m) => m?.data?.msgId || m?.data?.cliMsgId);
+      if (ds.length) await nhanTin(ds.map(tinNhom));
+      xong++;
+    } catch (e) {
+      console.warn('[zalo] lịch sử nhóm', n.threadId, (e as Error).message);
+    }
+    // Lỗi cũng đánh dấu — khỏi kẹt mãi một nhóm; tin mới của nhóm vẫn vào qua đồng bộ hằng đêm.
+    await daKeoLichSu(n.threadId);
+  }
+  return xong;
+}
+
+/**
+ * Quét nhóm khách (anh Tâm 8/10/2026): cập nhật danh sách nhóm → AI xét nhóm nào là nhóm khách,
+ * khớp/tạo khách ở CRM, bật học → kéo lịch sử cũ. Chạy ~45 giây (máy chủ sống 60 giây); còn việc thì
+ * lượt sau làm tiếp (ban đêm tự chạy, hoặc anh bấm lại).
+ */
+export async function quetNhomKhach(): Promise<{ ok: boolean; note: string; conLai: number }> {
+  const st = await docTrangThai();
+  if (!st.coPhien) return { ok: false, note: 'Chưa đăng nhập Zalo', conLai: 0 };
+  if (dangDongBo) return { ok: true, note: 'Đang có lượt đồng bộ khác — thử lại sau ít phút', conLai: 1 };
+  dangDongBo = true;
+  const han = Date.now() + 45_000;
+  try {
+    const p = await moPhien();
+    if ('loi' in p) return { ok: false, note: p.loi, conLai: 0 };
+    const ds = await capNhatDanhSachNhom(p.api);
+    let xet = 0;
+    let nhomKhach = 0;
+    const khachMoi: string[] = [];
+    while (Date.now() < han - 15_000) {
+      const r = await xacDinhNhomKhach(40);
+      xet += r.xet;
+      nhomKhach += r.nhomKhach;
+      khachMoi.push(...r.khachMoi);
+      if (r.xet === 0) break;
+    }
+    const keo = await keoLichSuNhom(p.api, han);
+    const con = await demViecNhom();
+    const conLai = con.chuaXet + con.chuaKeo;
+    const note =
+      `Quét nhóm lúc ${nowTz().format('HH:mm DD/MM')} — ${ds.tong} nhóm (${ds.moi} mới), AI xét ${xet}: ${nhomKhach} nhóm khách` +
+      (khachMoi.length ? `, tạo mới trong CRM: ${khachMoi.join(', ')}` : '') +
+      `; kéo lịch sử ${keo} nhóm` +
+      (conLai ? ` · còn ${conLai} việc, lượt sau làm tiếp` : '');
+    await ghiTrangThai({ status: 'online', note: note.slice(0, 600), lastSeen: now() });
+    return { ok: true, note, conLai };
+  } catch (e) {
+    const note = `Quét nhóm lỗi: ${(e as Error).message}`.slice(0, 250);
+    await ghiTrangThai({ status: 'online', note, lastSeen: now() }).catch(() => undefined);
+    return { ok: false, note, conLai: 0 };
+  } finally {
+    dangDongBo = false;
+  }
+}
 
 /**
  * Một lượt đồng bộ (chỉ lấy tin, KHÔNG rút tri thức — việc đó để ban đêm hoặc nút "Rút ngay").
@@ -139,33 +293,15 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
   if (dangDongBo) return { ok: true, tin: 0, note: 'Đang đồng bộ' };
   dangDongBo = true;
   try {
-    let credentials: unknown;
-    try {
-      credentials = JSON.parse(giaiMa(await docPhienMa(), khoaPhien()));
-    } catch (e) {
-      await ghiPhienMa('');
-      const note = `Không mở được phiên đã lưu (${(e as Error).message}) — bấm Đăng nhập lại`;
-      await ghiTrangThai({ status: 'expired', note, lastSeen: now() });
-      return { ok: false, tin: 0, note };
-    }
-
-    const { Zalo, ThreadType } = await taiZca();
-    let api: Awaited<ReturnType<InstanceType<typeof Zalo>['login']>>;
-    try {
-      api = await new Zalo({ selfListen: true, checkUpdate: false, logging: false }).login(
-        credentials as Parameters<InstanceType<typeof Zalo>['login']>[0],
-      );
-    } catch (e) {
-      await ghiPhienMa('');
-      const note = 'Phiên Zalo hết hạn hoặc đã bị đăng xuất — bấm Đăng nhập lại';
-      await ghiTrangThai({ status: 'expired', note: `${note} (${(e as Error).message})`.slice(0, 250), lastSeen: now() });
-      return { ok: false, tin: 0, note };
-    }
+    const p = await moPhien();
+    if ('loi' in p) return { ok: false, tin: 0, note: p.loi };
+    const { api } = p;
+    const { ThreadType } = p.zca;
 
     const gom = new Map<string, TinThuVien>();
     let biDay = '';
     // Chẩn đoán cho dòng trạng thái: kết nối có nhận khoá không, Zalo trả mấy lô / mấy tin.
-    const chanDoan = { khoa: false, lo: 0, tinLo: 0, trucTiep: 0 };
+    const chanDoan = { khoa: false, lo: 0, tinLo: 0, trucTiep: 0, loNhom: 0 };
     await new Promise<void>((resolve) => {
       let xong = false;
       const ket = () => {
@@ -199,9 +335,19 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
         // Xin tin gần đây — cả lô mới nhất lẫn từ mốc lần trước. Trùng thì tự bỏ (msg_id).
         api.listener.requestOldMessages(ThreadType.User, null);
         if (st.lastMsgId) api.listener.requestOldMessages(ThreadType.User, st.lastMsgId);
+        // Tin nhóm gần đây (anh Tâm 8/10/2026: cần cả nhóm khách). Lịch sử cũ của nhóm khách kéo
+        // riêng bằng getGroupChatHistory ở bước quét nhóm.
+        api.listener.requestOldMessages(ThreadType.Group, null);
         henChot(12_000);
       });
       api.listener.on('old_messages', (msgs, type) => {
+        if (type === ThreadType.Group) {
+          chanDoan.loNhom++;
+          chanDoan.tinLo += msgs.length;
+          for (const m of msgs as unknown as TinThuVien[]) nhan(m);
+          henChot(2_500);
+          return;
+        }
         if (type !== ThreadType.User) return;
         chanDoan.lo++;
         chanDoan.tinLo += msgs.length;
@@ -219,7 +365,6 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
         }
       });
       api.listener.on('message', (m) => {
-        if (m.type !== ThreadType.User) return;
         chanDoan.trucTiep++;
         nhan(m as unknown as TinThuVien);
       });
@@ -232,8 +377,11 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
       api.listener.start({ retryOnClose: false });
     });
 
+    const tatCa = [...gom.values()];
+    const laNhom = (m: TinThuVien) => m.type === ThreadType.Group;
+    const nhom = tatCa.filter(laNhom);
     // Tên cuộc = tên người kia. Tin của mình không mang tên người kia → tra hồ sơ.
-    const ds = [...gom.values()];
+    const ds = tatCa.filter((m) => !laNhom(m));
     const ten = new Map<string, string>();
     for (const m of ds) if (!m.isSelf && m.data?.dName) ten.set(m.threadId, String(m.data.dName));
     const thieu = [...new Set(ds.map((m) => m.threadId).filter((id) => !ten.has(id)))];
@@ -259,12 +407,23 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
       content: m.data.content,
       ts: String(m.data.ts || Date.now()),
     }));
+    // Danh sách nhóm trước (để có tên nhóm), rồi mới ghi tin nhóm.
+    let dsNhom = { tong: 0, moi: 0 };
+    try {
+      dsNhom = await capNhatDanhSachNhom(api);
+    } catch (e) {
+      console.warn('[zalo] danh sách nhóm', (e as Error).message);
+    }
+    lo.push(...nhom.map(tinNhom));
     const kq = lo.length ? await nhanTin(lo) : { luu: 0, boQua: 0 };
     const gio = now();
     await ghiMocDongBo(maTinLonNhat(ds.map((m) => String(m.data.msgId || '')), st.lastMsgId), gio);
-    const chiTiet = `kết nối ${chanDoan.khoa ? '✓' : '✗ (không nhận được khoá)'}, Zalo trả ${chanDoan.lo} lô / ${chanDoan.tinLo} tin, tin trực tiếp ${chanDoan.trucTiep}`;
+    const chiTiet =
+      `kết nối ${chanDoan.khoa ? '✓' : '✗ (không nhận được khoá)'}, Zalo trả ${chanDoan.lo} lô 1-1 + ${chanDoan.loNhom} lô nhóm / ` +
+      `${chanDoan.tinLo} tin, tin trực tiếp ${chanDoan.trucTiep} · ${dsNhom.tong} nhóm${dsNhom.moi ? ` (${dsNhom.moi} mới)` : ''}`;
     const note =
-      biDay || `Đồng bộ lúc ${nowTz().format('HH:mm DD/MM')} — ${lo.length} tin (${kq.luu} tin ở cuộc đã bật) · ${chiTiet}`;
+      biDay ||
+      `Đồng bộ lúc ${nowTz().format('HH:mm DD/MM')} — ${lo.length} tin (${nhom.length} tin nhóm; ${kq.luu} tin ở cuộc đã bật) · ${chiTiet}`;
     await ghiTrangThai({ status: 'online', note, lastSeen: gio });
     return { ok: true, tin: lo.length, note };
   } finally {

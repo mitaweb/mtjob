@@ -81,13 +81,29 @@ export function maTinLonNhat(ids: string[], hienTai = ''): string {
  * Lịch chạy Zalo: CHỈ BAN ĐÊM (anh Tâm 8/10/2026: "không cần tin nhắn phải liên tục ... chạy vào
  * ban đêm là được"). Từ 22h tới trước 5h sáng giờ VN, cron ~5 phút gọi một lần:
  *   - đêm nay chưa đồng bộ (lần cuối cách đây > 12 giờ) → 'dong_bo' (lấy tin một lượt);
- *   - đã đồng bộ rồi → 'rut' (AI rút tri thức, mỗi lượt vài cuộc, tới khi hết);
+ *   - còn nhóm chưa xét / nhóm khách chưa kéo lịch sử → 'nhom' (vài nhóm mỗi lượt);
+ *   - xong hết → 'rut' (AI rút tri thức, mỗi lượt vài cuộc, tới khi hết);
  *   - ngoài giờ đêm → 'nghi'.
  */
-export function viecBanDem(o: { gioVN: number; lastSync: string; now: number }): 'dong_bo' | 'rut' | 'nghi' {
+export function viecBanDem(o: { gioVN: number; lastSync: string; now: number; viecNhom?: number }): 'dong_bo' | 'nhom' | 'rut' | 'nghi' {
   const dem = o.gioVN >= 22 || o.gioVN < 5;
   if (!dem) return 'nghi';
   const last = Date.parse(o.lastSync);
   if (!Number.isFinite(last) || o.now - last > 12 * 3600_000) return 'dong_bo';
+  if ((o.viecNhom ?? 0) > 0) return 'nhom';
   return 'rut';
+}
+
+/**
+ * Gợi ý tên khách từ tên nhóm theo quy ước "TÊN KH - MT DIGITAL" (anh Tâm 8/10/2026). Chỉ là GỢI Ý
+ * cho AI — "một số sẽ khác", AI vẫn tự quyết. Không theo quy ước thì `theoMau = false`.
+ */
+export function goiYTenKhachTuNhom(tenNhom: string): { theoMau: boolean; ten: string } {
+  const s = String(tenNhom || '').trim();
+  // Dấu nối: "-", "–", "|", ":", "&", "+" hoặc chữ "x" đứng riêng ("Kingpen x MTDigital").
+  const noi = String.raw`(?:\s*[-–—|:&+]+\s*|\s+[x×]\s+)`;
+  const mt = String.raw`m\.?\s*t\.?\s*digital`;
+  const mau = new RegExp(`^(.*?)${noi}${mt}\\s*$`, 'i').exec(s) || new RegExp(`^${mt}${noi}(.*)$`, 'i').exec(s);
+  if (mau && mau[1]!.trim()) return { theoMau: true, ten: mau[1]!.trim() };
+  return { theoMau: false, ten: s };
 }

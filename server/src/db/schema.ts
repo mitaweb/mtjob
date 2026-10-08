@@ -595,6 +595,11 @@ CREATE TABLE IF NOT EXISTS zalo_threads (
   created_at     text DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS zalo_threads_last_idx ON zalo_threads (last_msg_at DESC);
+-- Nhóm khách (anh Tâm 8/10/2026: "tin nhắn các nhóm khách hàng ... TÊN KH - MT DIGITAL, AI quyết định
+-- tên KH, so khớp, tạo ở CRM"): AI xét mỗi nhóm MỘT lần, ghi lý do; nhóm khách thì kéo lịch sử cũ một lần.
+ALTER TABLE zalo_threads ADD COLUMN IF NOT EXISTS ai_checked boolean DEFAULT false;
+ALTER TABLE zalo_threads ADD COLUMN IF NOT EXISTS ai_note text DEFAULT '';
+ALTER TABLE zalo_threads ADD COLUMN IF NOT EXISTS history_done boolean DEFAULT false;
 -- Nội dung tin — CHỈ của cuộc đã bật. Rút tri thức xong 30 ngày thì xoá.
 CREATE TABLE IF NOT EXISTS zalo_messages (
   msg_id    text PRIMARY KEY,

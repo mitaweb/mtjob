@@ -8,7 +8,7 @@ import { requireAuth, requireRole } from '../auth/middleware.js';
 import { runInBackground } from '../util/background.js';
 import { docTrangThai, dsCuoc, suaCuoc, timCuoc } from './zalo.repo.js';
 import { rutTriThucZalo, khopKhachCuoc } from './zalo.service.js';
-import { dangNhapQR, dangXuat, dongBoZalo, khoaPhien } from './zalo.client.js';
+import { dangNhapQR, dangXuat, dongBoZalo, quetNhomKhach, khoaPhien } from './zalo.client.js';
 import { isMissingTable } from './brain.repo.js';
 
 export const zaloRouter = Router();
@@ -27,10 +27,10 @@ zaloRouter.get(
   '/status',
   asyncHandler(async (_req, res) => {
     try {
-      const [st, cuoc] = await Promise.all([docTrangThai(), dsCuoc(300)]);
+      const [st, cuoc] = await Promise.all([docTrangThai(), dsCuoc(800)]);
       res.json({ configured: daCauHinh(), ...st, threads: cuoc });
     } catch (e) {
-      if (isMissingTable(e) || /zalo_|session_enc|last_sync/.test((e as Error).message)) {
+      if (isMissingTable(e) || /zalo_|session_enc|last_sync|ai_checked|ai_note|history_done/.test((e as Error).message)) {
         res.json({ configured: daCauHinh(), status: 'offline', qr: '', account: '', note: '', coPhien: false, threads: [], needsMigrate: true });
         return;
       }
@@ -62,6 +62,17 @@ zaloRouter.post(
   '/sync',
   asyncHandler(async (_req, res) => {
     res.json(await dongBoZalo());
+  }),
+);
+
+/**
+ * Quét nhóm khách (anh Tâm 8/10/2026): AI xét nhóm nào là nhóm khách, khớp/tạo khách ở CRM, bật học,
+ * kéo lịch sử cũ. Mỗi lần ~45 giây; `conLai` > 0 thì trang tự gọi tiếp.
+ */
+zaloRouter.post(
+  '/groups',
+  asyncHandler(async (_req, res) => {
+    res.json(await quetNhomKhach());
   }),
 );
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { noiDungTin, gioTin, dungDoanChat, denLucRut, maTinLonNhat, viecBanDem, type TinZalo } from './zalo.js';
+import { noiDungTin, gioTin, dungDoanChat, denLucRut, maTinLonNhat, viecBanDem, goiYTenKhachTuNhom, type TinZalo } from './zalo.js';
 
 // Anh Tâm 5/10/2026: đọc tin nhắn Zalo giữa anh và khách để đưa vào kho có chọn lọc.
 
@@ -76,5 +76,29 @@ describe('viecBanDem — chỉ chạy ban đêm', () => {
     expect(viecBanDem({ gioVN: 23, lastSync: '2026-10-07T16:00:00Z', now })).toBe('dong_bo'); // đêm qua
     expect(viecBanDem({ gioVN: 23, lastSync: '2026-10-08T15:10:00Z', now })).toBe('rut'); // 22h10 đêm nay
     expect(viecBanDem({ gioVN: 2, lastSync: '2026-10-08T15:10:00Z', now: now + 3 * 3600_000 })).toBe('rut');
+  });
+});
+
+describe('viecBanDem — bước nhóm', () => {
+  const now = Date.parse('2026-10-08T16:00:00Z');
+  it('đã đồng bộ mà còn việc nhóm → làm nhóm trước khi rút', () => {
+    expect(viecBanDem({ gioVN: 23, lastSync: '2026-10-08T15:10:00Z', now, viecNhom: 4 })).toBe('nhom');
+    expect(viecBanDem({ gioVN: 23, lastSync: '2026-10-08T15:10:00Z', now, viecNhom: 0 })).toBe('rut');
+    expect(viecBanDem({ gioVN: 23, lastSync: '', now, viecNhom: 4 })).toBe('dong_bo');
+  });
+});
+
+// Anh Tâm 8/10/2026: nhóm khách đặt tên "TÊN KH - MT DIGITAL", một số khác.
+describe('goiYTenKhachTuNhom', () => {
+  it('đúng quy ước → lấy phần tên khách', () => {
+    expect(goiYTenKhachTuNhom('SAVAX DOOR - MT DIGITAL')).toEqual({ theoMau: true, ten: 'SAVAX DOOR' });
+    expect(goiYTenKhachTuNhom('Quốc Phong Salon – MT Digital')).toEqual({ theoMau: true, ten: 'Quốc Phong Salon' });
+    expect(goiYTenKhachTuNhom('Kingpen x MTDigital')).toEqual({ theoMau: true, ten: 'Kingpen' });
+    expect(goiYTenKhachTuNhom('MT DIGITAL - TOPAZ')).toEqual({ theoMau: true, ten: 'TOPAZ' });
+  });
+  it('khác quy ước → để AI tự xét', () => {
+    expect(goiYTenKhachTuNhom('Gia đình nhà mình')).toEqual({ theoMau: false, ten: 'Gia đình nhà mình' });
+    expect(goiYTenKhachTuNhom('MT DIGITAL').theoMau).toBe(false);
+    expect(goiYTenKhachTuNhom('MAX-MT DIGITAL')).toEqual({ theoMau: true, ten: 'MAX' });
   });
 });
