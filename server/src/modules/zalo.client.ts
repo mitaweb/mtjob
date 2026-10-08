@@ -164,6 +164,8 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
 
     const gom = new Map<string, TinThuVien>();
     let biDay = '';
+    // Chẩn đoán cho dòng trạng thái: kết nối có nhận khoá không, Zalo trả mấy lô / mấy tin.
+    const chanDoan = { khoa: false, lo: 0, tinLo: 0, trucTiep: 0 };
     await new Promise<void>((resolve) => {
       let xong = false;
       const ket = () => {
@@ -185,23 +187,41 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
           ket();
         }, ms);
       };
-      const nhan = (m: TinThuVien) => {
+      /** Trả true nếu là tin CHƯA có trong lượt này. */
+      const nhan = (m: TinThuVien): boolean => {
         const id = String(m.data?.msgId || m.data?.cliMsgId || '');
-        if (id) gom.set(id, m);
+        if (!id || gom.has(id)) return false;
+        gom.set(id, m);
+        return true;
       };
       api.listener.on('cipher_key', () => {
-        // Xin tin gần đây — cả lô mới nhất lẫn từ mốc lần trước. Trùng thì máy chủ tự bỏ (msg_id).
+        chanDoan.khoa = true;
+        // Xin tin gần đây — cả lô mới nhất lẫn từ mốc lần trước. Trùng thì tự bỏ (msg_id).
         api.listener.requestOldMessages(ThreadType.User, null);
         if (st.lastMsgId) api.listener.requestOldMessages(ThreadType.User, st.lastMsgId);
         henChot(12_000);
       });
       api.listener.on('old_messages', (msgs, type) => {
         if (type !== ThreadType.User) return;
-        for (const m of msgs as unknown as TinThuVien[]) nhan(m);
-        henChot(3_000);
+        chanDoan.lo++;
+        chanDoan.tinLo += msgs.length;
+        let moi = 0;
+        for (const m of msgs as unknown as TinThuVien[]) if (nhan(m)) moi++;
+        // Lô có tin mới → xin tiếp lô kế từ tin CŨ NHẤT của lô này (tối đa 8 lô). Zalo không nói rõ
+        // chiều phân trang; lô trùng thì không có tin mới và dừng.
+        const ids = (msgs as unknown as TinThuVien[]).map((m) => String(m.data?.msgId || '')).filter((x) => /^\d+$/.test(x));
+        if (moi > 0 && chanDoan.lo < 8 && ids.length) {
+          const cuNhat = ids.reduce((a, b) => (BigInt(a) < BigInt(b) ? a : b));
+          api.listener.requestOldMessages(ThreadType.User, cuNhat);
+          henChot(5_000);
+        } else {
+          henChot(2_500);
+        }
       });
       api.listener.on('message', (m) => {
-        if (m.type === ThreadType.User) nhan(m as unknown as TinThuVien);
+        if (m.type !== ThreadType.User) return;
+        chanDoan.trucTiep++;
+        nhan(m as unknown as TinThuVien);
       });
       api.listener.on('closed', (code) => {
         if (code === 3000 || code === 3003) biDay = 'Zalo Web đang mở ở trình duyệt khác nên lượt này bị đẩy ra.';
@@ -242,7 +262,9 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
     const kq = lo.length ? await nhanTin(lo) : { luu: 0, boQua: 0 };
     const gio = now();
     await ghiMocDongBo(maTinLonNhat(ds.map((m) => String(m.data.msgId || '')), st.lastMsgId), gio);
-    const note = biDay || `Đồng bộ lúc ${nowTz().format('HH:mm DD/MM')} — ${lo.length} tin (${kq.luu} tin ở cuộc đã bật)`;
+    const chiTiet = `kết nối ${chanDoan.khoa ? '✓' : '✗ (không nhận được khoá)'}, Zalo trả ${chanDoan.lo} lô / ${chanDoan.tinLo} tin, tin trực tiếp ${chanDoan.trucTiep}`;
+    const note =
+      biDay || `Đồng bộ lúc ${nowTz().format('HH:mm DD/MM')} — ${lo.length} tin (${kq.luu} tin ở cuộc đã bật) · ${chiTiet}`;
     await ghiTrangThai({ status: 'online', note, lastSeen: gio });
     return { ok: true, tin: lo.length, note };
   } finally {
