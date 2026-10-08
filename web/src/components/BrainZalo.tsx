@@ -249,8 +249,8 @@ export default function BrainZalo() {
         )}
 
         <p className="text-xs text-ink-muted">
-          App chạy <b>mỗi đêm</b> (22h–5h): đồng bộ một lượt, quét nhóm mới, rồi AI xem xét các cuộc đã bật — lưu ý, yêu cầu của khách nào ổn
-          thì đưa thẳng vào kho, điều chưa chắc thì vào tab Chờ duyệt.
+          App <b>tự đồng bộ 3 tiếng/lần</b> cả ngày. <b>Ban đêm</b> (22h–5h) quét thêm nhóm mới, rồi AI xem xét các cuộc đã bật — lưu ý,
+          yêu cầu của khách nào ổn thì đưa thẳng vào kho, điều chưa chắc thì vào tab Chờ duyệt.
         </p>
         <p className="text-xs text-ink-muted">
           <b>Nhóm khách</b>: AI tự nhận ra nhóm làm việc với khách (tên kiểu “TÊN KH - MT DIGITAL”, tên khác AI tự phán đoán), khớp với khách

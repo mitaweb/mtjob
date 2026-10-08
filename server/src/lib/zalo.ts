@@ -77,19 +77,24 @@ export function maTinLonNhat(ids: string[], hienTai = ''): string {
   return max < 0n ? '' : max.toString();
 }
 
+/** Tự đồng bộ cách nhau bao lâu (cả ngày lẫn đêm). */
+export const KHOANG_DONG_BO_MS = 3 * 3600_000;
+
 /**
- * Lịch chạy Zalo: CHỈ BAN ĐÊM (anh Tâm 8/10/2026: "không cần tin nhắn phải liên tục ... chạy vào
- * ban đêm là được"). Từ 22h tới trước 5h sáng giờ VN, cron ~5 phút gọi một lần:
- *   - đêm nay chưa đồng bộ (lần cuối cách đây > 12 giờ) → 'dong_bo' (lấy tin một lượt);
- *   - còn nhóm chưa xét / nhóm khách chưa kéo lịch sử → 'nhom' (vài nhóm mỗi lượt);
- *   - xong hết → 'rut' (AI rút tri thức, mỗi lượt vài cuộc, tới khi hết);
- *   - ngoài giờ đêm → 'nghi'.
+ * Lịch chạy Zalo, cron ~5 phút gọi một lần:
+ *   - lần đồng bộ trước đã quá 3 tiếng → 'dong_bo' (lấy tin một lượt) — GIỜ NÀO CŨNG VẬY. Trước đây
+ *     chỉ đồng bộ ban đêm khi lần trước cách > 12 tiếng, nên anh bấm tay buổi chiều là cả đêm đó
+ *     không tự đồng bộ (anh Tâm 8/10/2026: "không thấy tự động đồng bộ"). Zalo mỗi lượt chỉ trả
+ *     một lô tin gần đây, đồng bộ dày hơn thì ít sót tin hơn;
+ *   - ban đêm (22h–5h) còn nhóm chưa xét / nhóm khách chưa kéo lịch sử → 'nhom';
+ *   - ban đêm, xong hết → 'rut' (AI rút tri thức, mỗi lượt vài cuộc, tới khi hết);
+ *   - còn lại → 'nghi'. Việc tốn AI (xét nhóm, rút tri thức) vẫn CHỈ ban đêm.
  */
 export function viecBanDem(o: { gioVN: number; lastSync: string; now: number; viecNhom?: number }): 'dong_bo' | 'nhom' | 'rut' | 'nghi' {
+  const last = Date.parse(o.lastSync);
+  if (!Number.isFinite(last) || o.now - last > KHOANG_DONG_BO_MS) return 'dong_bo';
   const dem = o.gioVN >= 22 || o.gioVN < 5;
   if (!dem) return 'nghi';
-  const last = Date.parse(o.lastSync);
-  if (!Number.isFinite(last) || o.now - last > 12 * 3600_000) return 'dong_bo';
   if ((o.viecNhom ?? 0) > 0) return 'nhom';
   return 'rut';
 }

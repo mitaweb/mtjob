@@ -64,18 +64,22 @@ describe('maTinLonNhat', () => {
   });
 });
 
-describe('viecBanDem — chỉ chạy ban đêm', () => {
+describe('viecBanDem — đồng bộ 3 tiếng/lần, việc AI chỉ ban đêm', () => {
   const now = Date.parse('2026-10-08T16:00:00Z'); // 23h giờ VN
-  it('ban ngày thì nghỉ', () => {
-    expect(viecBanDem({ gioVN: 9, lastSync: '', now })).toBe('nghi');
-    expect(viecBanDem({ gioVN: 21, lastSync: '', now })).toBe('nghi');
-    expect(viecBanDem({ gioVN: 5, lastSync: '', now })).toBe('nghi');
+  it('ban ngày: quá 3 tiếng thì vẫn đồng bộ, mới đồng bộ thì nghỉ (không rút, không xét nhóm)', () => {
+    expect(viecBanDem({ gioVN: 9, lastSync: '', now })).toBe('dong_bo');
+    expect(viecBanDem({ gioVN: 14, lastSync: '2026-10-08T03:00:00Z', now: Date.parse('2026-10-08T07:00:00Z') })).toBe('dong_bo');
+    expect(viecBanDem({ gioVN: 14, lastSync: '2026-10-08T06:00:00Z', now: Date.parse('2026-10-08T07:00:00Z'), viecNhom: 5 })).toBe('nghi');
   });
-  it('đêm nay chưa đồng bộ → đồng bộ; đã đồng bộ → rút tri thức', () => {
+  it('lỗi cũ: bấm đồng bộ tay buổi chiều thì đêm đó vẫn phải tự đồng bộ', () => {
+    // đồng bộ tay 16h (09:00Z) → 23h tối (16:00Z) cách 7 tiếng → đồng bộ
+    expect(viecBanDem({ gioVN: 23, lastSync: '2026-10-08T09:00:00Z', now })).toBe('dong_bo');
+  });
+  it('ban đêm vừa đồng bộ → rút tri thức', () => {
     expect(viecBanDem({ gioVN: 23, lastSync: '', now })).toBe('dong_bo');
-    expect(viecBanDem({ gioVN: 23, lastSync: '2026-10-07T16:00:00Z', now })).toBe('dong_bo'); // đêm qua
     expect(viecBanDem({ gioVN: 23, lastSync: '2026-10-08T15:10:00Z', now })).toBe('rut'); // 22h10 đêm nay
-    expect(viecBanDem({ gioVN: 2, lastSync: '2026-10-08T15:10:00Z', now: now + 3 * 3600_000 })).toBe('rut');
+    expect(viecBanDem({ gioVN: 1, lastSync: '2026-10-08T17:30:00Z', now: now + 2 * 3600_000 })).toBe('rut');
+    expect(viecBanDem({ gioVN: 2, lastSync: '2026-10-08T15:10:00Z', now: now + 3 * 3600_000 })).toBe('dong_bo'); // 3h50 sau
   });
 });
 

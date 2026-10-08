@@ -33,8 +33,8 @@ import { nhanTin, rutTriThucZalo, xacDinhNhomKhach, type TinTuWorker } from './z
 const now = () => nowTz().toISOString();
 
 /**
- * Gọi từ cron nhắc hẹn (~5 phút/lần). Ban ngày không làm gì; ban đêm đồng bộ một lượt rồi rút tri
- * thức dần (mỗi lượt vài cuộc — máy chủ chỉ sống 60 giây) tới khi hết.
+ * Gọi từ cron nhắc hẹn (~5 phút/lần). Cả ngày: cứ 3 tiếng tự đồng bộ một lượt. Ban đêm thêm: quét
+ * nhóm, rút tri thức dần (mỗi lượt vài cuộc — máy chủ chỉ sống 60 giây) tới khi hết.
  */
 export async function chayBanDem(): Promise<string> {
   const st = await docTrangThai();
