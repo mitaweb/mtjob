@@ -273,7 +273,31 @@ adminRouter.get(
       claudeModel: cfg.claudeModel || '',
       claudeBaseUrl: cfg.claudeBaseUrl || '',
       autoCapture: cfg.brainAutoCapture !== 'off',
+      brainAiProvider: cfg.brainAiProvider === 'claude' ? 'claude' : 'gemini',
+      brainAiModel: cfg.brainAiModel || '',
+      brainAiFallback: cfg.brainAiFallback || '',
     });
+  }),
+);
+
+/** Thử AI của Kho tri thức với cài đặt đang lưu — biết ngay model còn lượt hay không. */
+adminRouter.post(
+  '/brain-ai-test',
+  asyncHandler(async (_req, res) => {
+    const { aiKhoJson, cauHinhAiKho } = await import('../ai/brainAi.js');
+    const ch = await cauHinhAiKho();
+    const ten = `${ch.provider === 'claude' ? 'Claude' : 'Gemini'} ${ch.model || '(model của trợ lý)'}`;
+    const batDau = Date.now();
+    try {
+      const r = await aiKhoJson('Trả lời ok = true.', {
+        type: 'OBJECT',
+        properties: { ok: { type: 'BOOLEAN' } },
+        required: ['ok'],
+      });
+      res.json({ ok: !!r?.ok, message: `${ten} trả lời sau ${((Date.now() - batDau) / 1000).toFixed(1)} giây.` });
+    } catch (e) {
+      res.json({ ok: false, message: `${ten}: ${(e as Error).message.slice(0, 300)}` });
+    }
   }),
 );
 

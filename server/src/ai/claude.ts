@@ -34,7 +34,7 @@ export async function claudeAvailable(): Promise<boolean> {
 
 // ── Chuyển đổi schema: Gemini dùng type CHỮ HOA, Claude dùng JSON Schema chuẩn (chữ thường) ──
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function toJsonSchema(node: any): any {
+export function toJsonSchema(node: any): any {
   if (Array.isArray(node)) return node.map(toJsonSchema);
   if (!node || typeof node !== 'object') return node;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -162,6 +162,14 @@ export function toClaudeMessages(contents: GeminiContent[]): any[] {
         const r = p.functionResponse.response as Record<string, unknown>;
         const text = typeof r?.result === 'string' ? r.result : JSON.stringify(r ?? {});
         blocks.push({ type: 'tool_result', tool_use_id: id, content: text });
+      } else if (p.inlineData) {
+        // Tệp gửi kèm (đọc tài liệu cho Kho tri thức): ảnh → image, PDF → document. Loại khác Claude
+        // không đọc được → ghi chú để AI biết thiếu tệp, khỏi bịa nội dung.
+        const { mimeType, data } = p.inlineData;
+        const source = { type: 'base64', media_type: mimeType, data };
+        if (/^image\/(png|jpe?g|gif|webp)$/i.test(mimeType)) blocks.push({ type: 'image', source });
+        else if (mimeType === 'application/pdf') blocks.push({ type: 'document', source });
+        else blocks.push({ type: 'text', text: `[Tệp ${mimeType} — Claude không đọc được loại tệp này]` });
       } else if (p.text) {
         blocks.push({ type: 'text', text: p.text });
       }

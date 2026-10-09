@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import AsyncButton from './AsyncButton';
 import { useToast } from './Toaster';
-import { Badge, EmptyState, SkeletonRows, type BadgeVariant } from './ui';
+import { Badge, EmptyState, PhanTrang, SkeletonRows, type BadgeVariant } from './ui';
 
 export interface BrainItem {
   id: string;
@@ -553,14 +553,27 @@ export function TabDanhSach({ status, category, nhomList, rong, onChanged }: { s
   const toast = useToast();
   const [items, setItems] = useState<BrainItem[] | null>(null);
   const [mo, setMo] = useState<BrainItem | null>(null);
+  const [trang, setTrang] = useState(1);
+  // Tích chọn để ban hành / bỏ hàng loạt (anh Tâm 10/10/2026).
+  const [chon, setChon] = useState<Set<string>>(new Set());
+  const [dangLam, setDangLam] = useState('');
   const tenNhom = useMemo(() => new Map(nhomList.map((n) => [n.key, n.label])), [nhomList]);
+  const CO = 20;
+  const duyet = status === 'pending';
 
   async function tai() {
     const p = new URLSearchParams({ status });
     if (category) p.set('category', category);
-    setItems((await api<{ items: BrainItem[] }>(`/brain/items?${p}`)).items);
+    const ds = (await api<{ items: BrainItem[] }>(`/brain/items?${p}`)).items;
+    setItems(ds);
+    // Bỏ tích những mục không còn trong danh sách; lùi trang nếu trang hiện tại đã trống.
+    const con = new Set(ds.map((i) => i.id));
+    setChon((cu) => new Set([...cu].filter((id) => con.has(id))));
+    setTrang((t) => Math.min(t, Math.max(1, Math.ceil(ds.length / CO))));
   }
   useEffect(() => {
+    setTrang(1);
+    setChon(new Set());
     tai().catch((e) => toast.error((e as Error).message));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, category]);
@@ -576,16 +589,103 @@ export function TabDanhSach({ status, category, nhomList, rong, onChanged }: { s
     }
   }
 
+  /** Ban hành / bỏ các mục đã tích. Máy chủ làm ~40 giây mỗi lượt; còn thì gọi tiếp. */
+  async function hangLoat(st: 'published' | 'rejected') {
+    let ids = [...chon];
+    if (!ids.length) return;
+    if (st === 'rejected' && !window.confirm(`Không lưu ${ids.length} mục đã chọn?`)) return;
+    let xong = 0;
+    const loi: string[] = [];
+    try {
+      for (let lan = 0; ids.length && lan < 10; lan++) {
+        setDangLam(`${st === 'published' ? 'Đang ban hành' : 'Đang bỏ'} ${xong}/${chon.size}…`);
+        const r = await api<{ xong: number; loi: string[]; conLai: string[] }>('/brain/items/bulk', { body: { ids, status: st } });
+        xong += r.xong;
+        loi.push(...r.loi);
+        ids = r.conLai;
+      }
+      if (loi.length) toast.error(`${loi.length} mục lỗi: ${loi[0]}`);
+      toast.success(`${st === 'published' ? 'Đã ban hành' : 'Đã bỏ'} ${xong} mục`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDangLam('');
+      setChon(new Set());
+      await tai().catch(() => undefined);
+      onChanged();
+    }
+  }
+
+  const tong = items?.length || 0;
+  const trangNay = (items || []).slice((trang - 1) * CO, trang * CO);
+  const tichHetTrang = trangNay.length > 0 && trangNay.every((i) => chon.has(i.id));
+  const doiChon = (id: string, co: boolean) =>
+    setChon((cu) => {
+      const m = new Set(cu);
+      if (co) m.add(id);
+      else m.delete(id);
+      return m;
+    });
+
   return (
     <div className="card">
+      {duyet && tong > 0 && (
+        <div className="sticky top-0 z-10 -mx-1 mb-2 flex flex-wrap items-center gap-2 rounded-xl bg-brand-50 px-3 py-2 text-sm">
+          <label className="flex cursor-pointer items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={tichHetTrang}
+              onChange={(e) => trangNay.forEach((i) => doiChon(i.id, e.target.checked))}
+            />
+            Chọn cả trang
+          </label>
+          {chon.size < tong && (
+            <button className="text-brand-600 underline" onClick={() => setChon(new Set((items || []).map((i) => i.id)))}>
+              Chọn tất cả {tong}
+            </button>
+          )}
+          {chon.size > 0 && (
+            <>
+              <span className="text-ink-muted">· đã chọn {chon.size}</span>
+              <button className="text-ink-muted underline" onClick={() => setChon(new Set())}>
+                Bỏ chọn
+              </button>
+              <div className="ml-auto flex flex-wrap gap-2">
+                {dangLam ? (
+                  <span className="text-ink-soft">{dangLam}</span>
+                ) : (
+                  <>
+                    <button className="btn-primary px-3 py-1 text-sm" onClick={() => hangLoat('published')}>
+                      ✓ Ban hành {chon.size} mục
+                    </button>
+                    <button className="btn-ghost px-3 py-1 text-sm text-rose-600" onClick={() => hangLoat('rejected')}>
+                      Không lưu {chon.size} mục
+                    </button>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
       {items === null ? (
         <SkeletonRows rows={4} />
       ) : items.length === 0 ? (
         <EmptyState icon="✅" text={rong} />
       ) : (
         <ul className="divide-y">
-          {items.map((i) => (
-            <li key={i.id} className="py-2">
+          {trangNay.map((i) => (
+            <li key={i.id} className={`flex gap-2 py-2 ${chon.has(i.id) ? 'bg-brand-50/60' : ''}`}>
+              {duyet && (
+                <input
+                  type="checkbox"
+                  className="mt-1.5 h-4 w-4 shrink-0"
+                  aria-label={`Chọn ${i.title}`}
+                  checked={chon.has(i.id)}
+                  onChange={(e) => doiChon(i.id, e.target.checked)}
+                />
+              )}
+              <div className="min-w-0 flex-1">
               <button className="w-full text-left" onClick={() => setMo(i)}>
                 <div className="flex flex-wrap items-center gap-1.5">
                   <Badge variant="info">{tenNhom.get(i.category) || i.category}</Badge>
@@ -612,10 +712,12 @@ export function TabDanhSach({ status, category, nhomList, rong, onChanged }: { s
                   </AsyncButton>
                 </div>
               )}
+              </div>
             </li>
           ))}
         </ul>
       )}
+      <PhanTrang trang={trang} tong={tong} co={CO} onDoi={setTrang} />
       {mo && <PopupMuc item={mo} nhomList={nhomList} isDirector onClose={() => setMo(null)} onSaved={() => { tai(); onChanged(); }} />}
     </div>
   );

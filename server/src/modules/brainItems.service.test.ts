@@ -13,6 +13,11 @@ const BAO: Array<{ ids: string[]; type: string }> = [];
 let HITS: Array<Record<string, unknown>> = [];
 let CHU: Array<Record<string, unknown>> = [];
 
+// AI của kho đi qua ai/brainAi.ts — chuyển thẳng về generateJson giả lập ở dưới.
+vi.mock('../ai/brainAi.js', async () => {
+  const g = await import('../gemini/client.js');
+  return { aiKhoJson: (p: string, s: unknown) => (g.generateJson as (p: string, s: unknown) => Promise<unknown>)(p, s) };
+});
 vi.mock('../gemini/client.js', () => ({
   generateJson: vi.fn(async () => {
     if (AI.loi) throw new Error('hết quota');

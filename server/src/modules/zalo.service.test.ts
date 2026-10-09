@@ -16,6 +16,11 @@ const KET_QUA_XET: Array<{ id: string; kq: Record<string, unknown> }> = [];
 const KHACH_MOI: Array<Record<string, unknown>> = [];
 let PROMPT = '';
 
+// AI của kho đi qua ai/brainAi.ts — chuyển thẳng về generateJson giả lập ở dưới.
+vi.mock('../ai/brainAi.js', async () => {
+  const g = await import('../gemini/client.js');
+  return { aiKhoJson: (p: string, s: unknown) => (g.generateJson as (p: string, s: unknown) => Promise<unknown>)(p, s) };
+});
 vi.mock('../gemini/client.js', () => ({
   generateJson: vi.fn(async (prompt: string) => {
     PROMPT = prompt;

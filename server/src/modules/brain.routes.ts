@@ -271,7 +271,7 @@ brainRouter.get(
         customerId: String(req.query.customerId || '') || undefined,
         keyword: kw || undefined,
         submittedBy: mine ? nguoi.id : undefined,
-        limit: 200,
+        limit: gd ? 500 : 200,
       });
       res.json({ items });
     } catch (e) {
@@ -323,6 +323,39 @@ brainRouter.patch(
     } catch (e) {
       throw new ApiError(400, (e as Error).message);
     }
+  }),
+);
+
+/**
+ * Ban hành / bỏ HÀNG LOẠT (anh Tâm 10/10/2026: "thêm tích để ban hành hàng loạt"). Mỗi mục ban hành
+ * phải nạp đoạn + mã hoá vector nên chậm — làm trong ~40 giây, mục chưa kịp trả về `conLai` để trang
+ * gọi tiếp.
+ */
+brainRouter.post(
+  '/items/bulk',
+  asyncHandler(async (req, res) => {
+    chiGiamDoc(req);
+    const b = z
+      .object({ ids: z.array(z.string().min(1)).min(1).max(200), status: z.enum(['published', 'rejected']) })
+      .parse(req.body);
+    const nguoi = await nguoiDangNhap(req);
+    const han = Date.now() + 40_000;
+    let xong = 0;
+    const loi: string[] = [];
+    const conLai: string[] = [];
+    for (const id of b.ids) {
+      if (Date.now() > han) {
+        conLai.push(id);
+        continue;
+      }
+      try {
+        await suaMuc(id, { status: b.status }, nguoi);
+        xong++;
+      } catch (e) {
+        loi.push(`${id}: ${(e as Error).message}`);
+      }
+    }
+    res.json({ ok: true, xong, loi, conLai });
   }),
 );
 

@@ -196,6 +196,26 @@ describe('toClaudeMessages', () => {
     const msgs = toClaudeMessages(contents);
     expect(msgs[2].content[0].content).toBe('{"a":1}');
   });
+
+  it('tệp gửi kèm: ảnh → image, PDF → document, loại khác → ghi chú', () => {
+    const msgs = toClaudeMessages([
+      {
+        role: 'user',
+        parts: [
+          { inlineData: { mimeType: 'image/png', data: 'AAA' } },
+          { inlineData: { mimeType: 'application/pdf', data: 'BBB' } },
+          { inlineData: { mimeType: 'application/zip', data: 'CCC' } },
+          { text: 'Đọc giúp' },
+        ],
+      },
+    ]);
+    expect(msgs[0].content).toEqual([
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAA' } },
+      { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'BBB' } },
+      { type: 'text', text: '[Tệp application/zip — Claude không đọc được loại tệp này]' },
+      { type: 'text', text: 'Đọc giúp' },
+    ]);
+  });
 });
 
 describe('toGeminiParts', () => {

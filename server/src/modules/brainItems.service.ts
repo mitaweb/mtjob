@@ -6,7 +6,8 @@
 //   Hỏi:      timTriThuc    — đúng khách (theo id CRM), đúng nhóm, đúng quyền; tìm lai vector + chữ;
 //             trả theo MỤC (tiêu đề · nhóm · ngày) để trợ lý trích được nguồn.
 //   Chưa có:  chuyenCauHoi → giám đốc traLoiCauHoi một lần → thành mục, báo lại người hỏi.
-import { generateJson, embedTexts, embeddingsAvailable } from '../gemini/client.js';
+import { embedTexts, embeddingsAvailable } from '../gemini/client.js';
+import { aiKhoJson } from '../ai/brainAi.js';
 import {
   NHOM,
   NHOM_KEYS,
@@ -116,7 +117,7 @@ export async function phanLoaiNoiDung(
     .filter((x) => x !== '')
     .join('\n');
 
-  const r = await generateJson(prompt, SCHEMA_PHAN_LOAI, 'gemini-2.5-flash');
+  const r = await aiKhoJson(prompt, SCHEMA_PHAN_LOAI);
   const qd = String(r?.quyetDinh || '');
   if (!['cong_viec', 'rieng_giam_doc', 'khong_luu', 'can_duyet'].includes(qd)) {
     throw new Error('AI không trả về quyết định hợp lệ');

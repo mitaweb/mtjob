@@ -63,3 +63,38 @@ export function SkeletonRows({ rows = 4 }: { rows?: number }) {
     </div>
   );
 }
+
+/**
+ * Phân trang gọn (anh Tâm 10/10/2026: danh sách Zalo, Chờ duyệt "dài quá"). Ẩn khi chỉ có một trang.
+ * `trang` tính từ 1.
+ */
+export function PhanTrang({ trang, tong, co, onDoi }: { trang: number; tong: number; co: number; onDoi: (t: number) => void }) {
+  const soTrang = Math.max(1, Math.ceil(tong / co));
+  if (soTrang <= 1) return null;
+  const tu = (trang - 1) * co + 1;
+  const den = Math.min(tong, trang * co);
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-brand-100 pt-3 text-sm">
+      <span className="text-ink-muted">
+        {tu}–{den} / {tong}
+      </span>
+      <div className="flex items-center gap-1">
+        <button className="btn-ghost px-2 py-1" disabled={trang <= 1} onClick={() => onDoi(1)} aria-label="Trang đầu">
+          «
+        </button>
+        <button className="btn-ghost px-3 py-1" disabled={trang <= 1} onClick={() => onDoi(trang - 1)}>
+          ‹ Trước
+        </button>
+        <span className="px-2 text-ink-soft">
+          Trang {trang}/{soTrang}
+        </span>
+        <button className="btn-ghost px-3 py-1" disabled={trang >= soTrang} onClick={() => onDoi(trang + 1)}>
+          Sau ›
+        </button>
+        <button className="btn-ghost px-2 py-1" disabled={trang >= soTrang} onClick={() => onDoi(soTrang)} aria-label="Trang cuối">
+          »
+        </button>
+      </div>
+    </div>
+  );
+}

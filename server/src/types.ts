@@ -96,6 +96,10 @@ export interface AppConfig {
   claudeModel: string; // '' = mặc định claude-sonnet-5
   claudeBaseUrl: string; // '' = endpoint mặc định của Anthropic
   brainAutoCapture: string; // '' = bật (mặc định), 'off' = tắt AI tự ghi tri thức từ chat
+  // AI riêng cho Kho tri thức (phân loại, rút ý Zalo, xét nhóm, đọc tệp) — anh Tâm 10/10/2026.
+  brainAiProvider: string; // '' | 'gemini' = Gemini, 'claude' = Claude
+  brainAiModel: string; // '' = mặc định (Gemini: gemini-2.5-flash; Claude: model của trợ lý)
+  brainAiFallback: string; // model dự phòng cùng nhà cung cấp khi model chính hết lượt ('' = không)
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -122,4 +126,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   claudeModel: '',
   claudeBaseUrl: '',
   brainAutoCapture: '',
+  brainAiProvider: '',
+  brainAiModel: '',
+  brainAiFallback: '',
 };

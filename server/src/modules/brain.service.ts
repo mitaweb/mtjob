@@ -3,10 +3,9 @@
 import {
   embedTexts,
   embeddingsAvailable,
-  generateJson,
-  generateContent,
   type GeminiPart,
 } from '../gemini/client.js';
+import { aiKhoJson, aiKhoContent } from '../ai/brainAi.js';
 import { removeAccents } from '../lib/people.js';
 import { parseSheetUrl, sheetCsvUrl, rowsToLabeledText } from '../lib/table.js';
 import { parseCsv } from './admin.sync.js';
@@ -346,7 +345,7 @@ export async function rebuildProfile(key: string, customer: string): Promise<boo
 
   // Dùng Gemini Flash: đây là việc tóm tắt, không cần model mạnh — giữ chi phí thấp
   // kể cả khi trợ lý đang chạy model cao cấp.
-  const r = await generateJson(prompt, PROFILE_SCHEMA, 'gemini-2.5-flash');
+  const r = await aiKhoJson(prompt, PROFILE_SCHEMA);
   const summary = String(r?.summary || '').trim();
   if (!summary) return false;
 
@@ -462,7 +461,7 @@ export async function autoCaptureKnowledge(
 
   try {
     // Tầng 2 — Gemini Flash phán đoán: việc phân loại đơn giản, giữ chi phí thấp.
-    const r = await generateJson(prompt, CAPTURE_SCHEMA, 'gemini-2.5-flash');
+    const r = await aiKhoJson(prompt, CAPTURE_SCHEMA);
     if (!r?.worth) return false;
     const title = String(r.title || '').trim() || q.slice(0, 120);
     // Qua bộ phân loại như mọi đường khác. Nguồn 'auto' KHÔNG BAO GIỜ tự mở cho cả công ty
@@ -564,9 +563,8 @@ export async function docNoiDung(doc: Pick<BrainDocument, 'url' | 'name' | 'mime
     ? [{ text: `${prompt}\n\nNỘI DUNG:\n${buf.toString('utf8').slice(0, 30000)}` }]
     : [{ inlineData: { mimeType: doc.mime, data: buf.toString('base64') } }, { text: prompt }];
 
-  const out = await generateContent({
+  const out = await aiKhoContent({
     contents: [{ role: 'user', parts }],
-    model: 'gemini-2.5-flash', // đọc/trích xuất — không cần model cao cấp
     timeoutMs: DOC_TIMEOUT_MS,
   });
   const transcript = out.map((p) => p.text || '').join('').trim();

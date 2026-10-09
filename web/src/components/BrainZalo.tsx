@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import AsyncButton from './AsyncButton';
 import { useToast } from './Toaster';
-import { Badge, EmptyState, SkeletonRows, type BadgeVariant } from './ui';
+import { Badge, EmptyState, PhanTrang, SkeletonRows, type BadgeVariant } from './ui';
 
 interface Cuoc {
   threadId: string;
@@ -32,7 +32,13 @@ interface TrangThai {
   coPhien: boolean;
   lastSync?: string;
   threads: Cuoc[];
+  /** Số cuộc theo từng bộ lọc (đã áp ô tìm). */
+  dem?: Record<Loc, number>;
+  /** Bộ lọc máy chủ đã dùng (chưa chọn gì thì máy chủ tự chọn). */
+  loc?: Loc;
 }
+
+const CO_TRANG = 30;
 
 const NHAN: Record<string, { label: string; variant: BadgeVariant }> = {
   online: { label: 'Đã kết nối', variant: 'success' },
@@ -50,15 +56,22 @@ type Loc = 'hoc' | 'nhom' | 'rieng' | 'tat_ca';
 
 export default function BrainZalo() {
   const toast = useToast();
-  const [loc, setLoc] = useState<Loc | ''>('');
+  const [loc, setLocState] = useState<Loc | ''>('');
   const [tim, setTim] = useState('');
+  const [trang, setTrangState] = useState(1);
   const [st, setSt] = useState<TrangThai | null>(null);
   const [khach, setKhach] = useState<Record<string, string>>({});
   const [choQR, setChoQR] = useState(0); // mốc ms bắt đầu chờ QR (0 = không chờ)
   const hen = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Bộ lọc hiện tại — tai() được gọi từ nhiều chỗ (cả vòng chờ QR), đọc qua ref cho khỏi cũ.
+  const boLoc = useRef<{ loc: Loc | ''; tim: string; trang: number }>({ loc: '', tim: '', trang: 1 });
 
   async function tai() {
-    const r = await api<TrangThai>('/zalo/status');
+    const { loc: l, tim: t, trang: p } = boLoc.current;
+    const qs = new URLSearchParams({ page: String(p), size: String(CO_TRANG) });
+    if (l) qs.set('loc', l);
+    if (t.trim()) qs.set('q', t.trim());
+    const r = await api<TrangThai>(`/zalo/status?${qs}`);
     setSt(r);
     setKhach((cu) => {
       const moi = { ...cu };
@@ -72,6 +85,22 @@ export default function BrainZalo() {
     tai().catch((e) => toast.error((e as Error).message));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function doiBoLoc(p: Partial<{ loc: Loc | ''; tim: string; trang: number }>) {
+    boLoc.current = { ...boLoc.current, ...p };
+    if (p.loc !== undefined) setLocState(p.loc);
+    if (p.trang !== undefined) setTrangState(p.trang);
+    tai().catch((e) => toast.error((e as Error).message));
+  }
+  const setLoc = (l: Loc) => doiBoLoc({ loc: l, trang: 1 });
+
+  // Gõ tìm: đợi ngừng gõ 350ms rồi mới hỏi máy chủ.
+  useEffect(() => {
+    if (tim === boLoc.current.tim) return;
+    const h = setTimeout(() => doiBoLoc({ tim, trang: 1 }), 350);
+    return () => clearTimeout(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tim]);
 
   // Đang chờ quét QR: hỏi trạng thái 2 giây/lần, tối đa 75 giây (máy chủ chỉ chờ ~52 giây).
   useEffect(() => {
@@ -170,20 +199,14 @@ export default function BrainZalo() {
 
   const nhan = NHAN[st.status] || NHAN.offline!;
   const anhQR = st.qr ? (st.qr.startsWith('data:') ? st.qr : `data:image/png;base64,${st.qr}`) : '';
-  const cuocBat = st.threads.filter((c) => c.enabled);
-  const soNhom = st.threads.filter((c) => c.isGroup).length;
-  const locHienTai: Loc = loc || (cuocBat.length ? 'hoc' : 'tat_ca');
-  const tuKhoa = tim.trim().toLowerCase();
-  const hien = st.threads
-    .filter((c) =>
-      locHienTai === 'hoc' ? c.enabled : locHienTai === 'nhom' ? c.isGroup : locHienTai === 'rieng' ? !c.isGroup : true,
-    )
-    .filter((c) => !tuKhoa || `${c.name} ${c.customer}`.toLowerCase().includes(tuKhoa));
+  const dem: Record<Loc, number> = st.dem || { hoc: 0, nhom: 0, rieng: 0, tat_ca: 0 };
+  const locHienTai: Loc = loc || st.loc || 'tat_ca';
+  const hien = st.threads;
   const LOC: Array<[Loc, string, number]> = [
-    ['hoc', 'Đang học', cuocBat.length],
-    ['nhom', 'Nhóm', soNhom],
-    ['rieng', 'Chat 1-1', st.threads.length - soNhom],
-    ['tat_ca', 'Tất cả', st.threads.length],
+    ['hoc', 'Đang học', dem.hoc],
+    ['nhom', 'Nhóm', dem.nhom],
+    ['rieng', 'Chat 1-1', dem.rieng],
+    ['tat_ca', 'Tất cả', dem.tat_ca],
   ];
 
   return (
@@ -262,19 +285,19 @@ export default function BrainZalo() {
       <div className="card">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h3 className="font-medium">Cuộc trò chuyện ({st.threads.length})</h3>
+            <h3 className="font-medium">Cuộc trò chuyện ({dem.tat_ca})</h3>
             <p className="text-xs text-ink-muted">
               Chat 1-1 mặc định <b>không học</b> — chỉ đếm số tin. Bật <b>Học</b> ở cuộc nào là khách thì app mới lưu nội dung, và ban đêm AI
               rút lưu ý, yêu cầu của khách đó vào kho tri thức. Nhóm khách AI bật sẵn; anh tắt/bật tay thì AI không đổi lại.
             </p>
           </div>
-          {cuocBat.length > 0 && (
+          {dem.hoc > 0 && (
             <AsyncButton className="btn-ghost text-sm" onClick={() => rut()} busyLabel="AI đang đọc…">
               Rút tri thức ngay
             </AsyncButton>
           )}
         </div>
-        {st.threads.length > 0 && (
+        {(dem.tat_ca > 0 || tim) && (
           <div className="mb-2 flex flex-wrap items-center gap-2">
             {LOC.map(([k, nhanLoc, so]) => (
               <button
@@ -288,7 +311,7 @@ export default function BrainZalo() {
             <input className="input max-w-[12rem] py-1 text-sm" placeholder="Tìm tên…" value={tim} onChange={(e) => setTim(e.target.value)} />
           </div>
         )}
-        {st.threads.length === 0 ? (
+        {dem.tat_ca === 0 && !tim ? (
           <EmptyState icon="💬" text={st.coPhien ? 'Chưa có tin nào. Bấm Đồng bộ ngay hoặc Quét nhóm khách.' : 'Đăng nhập Zalo để bắt đầu.'} />
         ) : hien.length === 0 ? (
           <EmptyState icon="🔍" text="Không có cuộc nào khớp bộ lọc." />
@@ -334,6 +357,7 @@ export default function BrainZalo() {
             ))}
           </ul>
         )}
+        <PhanTrang trang={trang} tong={dem[locHienTai]} co={CO_TRANG} onDoi={(t) => doiBoLoc({ trang: t })} />
       </div>
     </div>
   );

@@ -71,6 +71,54 @@ export async function dsCuoc(limit = 200): Promise<ZaloThread[]> {
   return (await q(SQL_DS_CUOC, [limit])).map(rowToThread);
 }
 
+export type LocCuoc = 'hoc' | 'nhom' | 'rieng' | 'tat_ca';
+
+const DK_LOC: Record<LocCuoc, string> = {
+  hoc: 't.enabled',
+  nhom: 't.is_group',
+  rieng: 'NOT t.is_group',
+  tat_ca: 'true',
+};
+
+/**
+ * Một trang cuộc trò chuyện cho tab Zalo (anh Tâm 10/10/2026: "phân trang trang này, hiện dài quá" —
+ * gần 800 nhóm). Đếm theo từng bộ lọc để hiện trên nút lọc; tìm theo tên cuộc / tên khách.
+ */
+export async function trangCuoc(o: { loc: LocCuoc; tim: string; trang: number; co: number }): Promise<{
+  threads: ZaloThread[];
+  dem: Record<LocCuoc, number>;
+}> {
+  const params: unknown[] = [];
+  let dkTim = 'true';
+  const tim = o.tim.trim();
+  if (tim) {
+    params.push(`%${tim.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+    dkTim = `(t.name ILIKE $${params.length} OR t.customer ILIKE $${params.length})`;
+  }
+  const demR = await q(
+    `SELECT COUNT(*) FILTER (WHERE t.enabled)::int AS hoc, COUNT(*) FILTER (WHERE t.is_group)::int AS nhom,
+            COUNT(*) FILTER (WHERE NOT t.is_group)::int AS rieng, COUNT(*)::int AS tat_ca
+     FROM zalo_threads t WHERE ${dkTim}`,
+    params,
+  );
+  const d = demR[0] || {};
+  const dem: Record<LocCuoc, number> = {
+    hoc: Number(d.hoc) || 0,
+    nhom: Number(d.nhom) || 0,
+    rieng: Number(d.rieng) || 0,
+    tat_ca: Number(d.tat_ca) || 0,
+  };
+  const p2 = [...params, o.co, Math.max(0, o.trang - 1) * o.co];
+  const rows = await q(
+    `SELECT t.*, (SELECT COUNT(*) FROM zalo_messages m WHERE m.thread_id = t.thread_id AND NOT m.digested)::int AS chua_rut
+     FROM zalo_threads t WHERE ${DK_LOC[o.loc]} AND ${dkTim}
+     ORDER BY t.enabled DESC, t.last_msg_at DESC, t.name, t.thread_id
+     LIMIT $${p2.length - 1} OFFSET $${p2.length}`,
+    p2,
+  );
+  return { threads: rows.map(rowToThread), dem };
+}
+
 export async function timCuoc(threadId: string): Promise<ZaloThread | undefined> {
   const r = await q(
     `SELECT t.*, (SELECT COUNT(*) FROM zalo_messages m WHERE m.thread_id = t.thread_id AND NOT m.digested)::int AS chua_rut

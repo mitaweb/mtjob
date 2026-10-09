@@ -6,7 +6,7 @@
 //      hẹn giờ gọi, OTP, chuyện vặt.
 //   3. Mỗi ý đi qua bộ phân loại kho với nguồn 'zalo' → KHÔNG BAO GIỜ tự mở cho cả công ty: việc
 //      công việc vào hàng chờ duyệt, chuyện riêng giữ riêng giám đốc.
-import { generateJson } from '../gemini/client.js';
+import { aiKhoJson } from '../ai/brainAi.js';
 import { dungDoanChat, denLucRut, noiDungTin, goiYTenKhachTuNhom, type TinZalo } from '../lib/zalo.js';
 import { khopKhach } from '../lib/brainGate.js';
 import {
@@ -126,7 +126,7 @@ export async function rutY(
     'ĐOẠN CHAT (cũ → mới):',
     doanChat,
   ].join('\n');
-  const r = await generateJson(prompt, SCHEMA_RUT, 'gemini-2.5-flash');
+  const r = await aiKhoJson(prompt, SCHEMA_RUT);
   const ds = Array.isArray(r?.y) ? r.y : [];
   return ds
     .map((x: { tieuDe?: unknown; noiDung?: unknown }) => ({ tieuDe: String(x.tieuDe || '').trim(), noiDung: String(x.noiDung || '').trim() }))
@@ -264,7 +264,7 @@ export async function xetNhom(ds: NhomCanXet[], tenKhachCRM: string[]): Promise<
     'CÁC NHÓM (mỗi dòng một JSON):',
     ...dong,
   ].join('\n');
-  const r = await generateJson(prompt, SCHEMA_NHOM, 'gemini-2.5-flash');
+  const r = await aiKhoJson(prompt, SCHEMA_NHOM);
   const hopLe = new Set(ds.map((n) => n.threadId));
   for (const x of Array.isArray(r?.nhom) ? r.nhom : []) {
     const id = String(x?.id || '');
