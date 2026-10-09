@@ -12,6 +12,7 @@ type NhaCungCap = 'gemini' | 'claude';
 
 interface AiInfo {
   hasClaudeKey: boolean;
+  claudeBaseUrl: string;
   brainAiProvider: NhaCungCap;
   brainAiModel: string;
   brainAiFallback: string;
@@ -104,8 +105,8 @@ export default function AdminBrainAi() {
             theo. Phần tìm kiếm trong kho vẫn dùng Gemini (Claude không có chức năng này).
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="label mb-0" htmlFor="brain-ai-provider">
+        <div className="flex shrink-0 items-center gap-2">
+          <label className="label mb-0 whitespace-nowrap" htmlFor="brain-ai-provider">
             Nhà cung cấp:
           </label>
           <select
@@ -119,6 +120,26 @@ export default function AdminBrainAi() {
           </select>
         </div>
       </div>
+
+      <p className="rounded-xl bg-brand-50 p-3 text-sm text-ink-soft">
+        🔑 Dùng <b>chung API key</b> đã lưu ở phần <b>Trợ lý AI</b> phía trên —{' '}
+        {claude ? (
+          <>
+            key Claude{' '}
+            {info.claudeBaseUrl ? (
+              <>
+                và endpoint riêng <b>{info.claudeBaseUrl}</b>
+              </>
+            ) : (
+              <>với endpoint mặc định của Anthropic</>
+            )}
+            .
+          </>
+        ) : (
+          <>key Gemini (AIza…).</>
+        )}{' '}
+        Chỉ <b>model</b> là chọn riêng ở đây.
+      </p>
 
       {claude && !info.hasClaudeKey && (
         <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">
