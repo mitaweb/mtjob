@@ -41,7 +41,11 @@ function rowToThread(r: any): ZaloThread {
   };
 }
 
-/** Ghi nhận có tin ở một cuộc: tạo cuộc nếu mới (MẶC ĐỊNH TẮT), cộng số tin, cập nhật tên + giờ. */
+/**
+ * Ghi nhận có tin ở một cuộc: tạo cuộc nếu mới, cộng số tin, cập nhật tên + giờ. Trả về có LƯU NỘI DUNG
+ * không (anh Tâm 10/10/2026: "AI tự đọc sau đó tự học"): lưu mọi cuộc, trừ cuộc đã bị loại (AI thấy
+ * là chuyện cá nhân, hoặc anh tự tắt) — tức `ai_checked` mà không `enabled`.
+ */
 export const SQL_GHI_CUOC = `INSERT INTO zalo_threads (thread_id, name, is_group, enabled, msg_count, last_msg_at, created_at)
   VALUES ($1, $2, $3, false, $4, $5, $6)
   ON CONFLICT (thread_id) DO UPDATE SET
@@ -49,7 +53,7 @@ export const SQL_GHI_CUOC = `INSERT INTO zalo_threads (thread_id, name, is_group
     is_group = zalo_threads.is_group OR EXCLUDED.is_group,
     msg_count = zalo_threads.msg_count + EXCLUDED.msg_count,
     last_msg_at = GREATEST(zalo_threads.last_msg_at, EXCLUDED.last_msg_at)
-  RETURNING enabled`;
+  RETURNING (enabled OR NOT COALESCE(ai_checked, false)) AS luu`;
 
 /** Lưu nội dung tin (chỉ gọi cho cuộc đang bật). Gửi trùng (worker gửi lại khi mạng chập) thì bỏ qua. */
 export const SQL_GHI_TIN = `INSERT INTO zalo_messages (msg_id, thread_id, from_self, sender, content, ts, digested)
@@ -57,7 +61,7 @@ export const SQL_GHI_TIN = `INSERT INTO zalo_messages (msg_id, thread_id, from_s
 
 export async function ghiCuoc(c: { threadId: string; name: string; isGroup: boolean; soTin: number; lastMsgAt: string; now: string }): Promise<boolean> {
   const r = await q(SQL_GHI_CUOC, [c.threadId, c.name, c.isGroup, c.soTin, c.lastMsgAt, c.now]);
-  return !!r[0]?.enabled;
+  return !!r[0]?.luu;
 }
 
 export async function ghiTin(t: TinZalo): Promise<void> {
@@ -153,10 +157,16 @@ export async function suaCuoc(threadId: string, patch: { enabled?: boolean; cust
 }
 
 export async function tinChuaRut(threadId: string, limit = 400): Promise<TinZalo[]> {
-  const rows = await q(
-    `SELECT * FROM zalo_messages WHERE thread_id = $1 AND NOT digested ORDER BY ts DESC LIMIT $2`,
-    [threadId, limit],
-  );
+  return docTin(`SELECT * FROM zalo_messages WHERE thread_id = $1 AND NOT digested ORDER BY ts DESC LIMIT $2`, threadId, limit);
+}
+
+/** Tin gần đây, kể cả tin đã đọc — làm ngữ cảnh khi AI chưa rõ cuộc này là gì. */
+export async function tinGanDay(threadId: string, limit = 200): Promise<TinZalo[]> {
+  return docTin(`SELECT * FROM zalo_messages WHERE thread_id = $1 ORDER BY ts DESC LIMIT $2`, threadId, limit);
+}
+
+async function docTin(sql: string, threadId: string, limit: number): Promise<TinZalo[]> {
+  const rows = await q(sql, [threadId, limit]);
   return rows.map((r) => ({
     msgId: String(r.msg_id),
     threadId: String(r.thread_id),
@@ -265,8 +275,12 @@ export async function nhomDaBiet(): Promise<Set<string>> {
   return new Set(r.map((x) => String(x.thread_id)));
 }
 
+/** Ghi chú cho nhóm mà tên không đủ để AI xếp loại — không xét lại theo tên, để AI đọc tin rồi xếp. */
+export const CHUA_RO_THEO_TEN = 'Chưa rõ theo tên nhóm';
+const DK_CHUA_XET = `NOT COALESCE(ai_checked, false) AND COALESCE(ai_note, '') NOT LIKE '${CHUA_RO_THEO_TEN}%'`;
+
 export const SQL_NHOM_CHUA_XET = `SELECT t.*, 0 AS chua_rut FROM zalo_threads t
-  WHERE t.is_group AND NOT COALESCE(t.ai_checked, false) ORDER BY t.last_msg_at DESC LIMIT $1`;
+  WHERE t.is_group AND ${DK_CHUA_XET} ORDER BY t.last_msg_at DESC LIMIT $1`;
 
 export async function nhomChuaXet(limit: number): Promise<ZaloThread[]> {
   return (await q(SQL_NHOM_CHUA_XET, [limit])).map(rowToThread);
@@ -302,9 +316,45 @@ export async function daKeoLichSu(threadId: string): Promise<void> {
 /** Còn bao nhiêu nhóm chưa xét / chưa kéo lịch sử — để biết lượt đêm còn việc nhóm không. */
 export async function demViecNhom(): Promise<{ chuaXet: number; chuaKeo: number }> {
   const r = await q(
-    `SELECT COUNT(*) FILTER (WHERE NOT COALESCE(ai_checked, false))::int AS chua_xet,
+    `SELECT COUNT(*) FILTER (WHERE ${DK_CHUA_XET})::int AS chua_xet,
             COUNT(*) FILTER (WHERE enabled AND NOT COALESCE(history_done, false))::int AS chua_keo
      FROM zalo_threads WHERE is_group`,
   );
   return { chuaXet: Number(r[0]?.chua_xet) || 0, chuaKeo: Number(r[0]?.chua_keo) || 0 };
+}
+
+// ── AI tự đọc mọi cuộc (anh Tâm 10/10/2026: "AI tự đọc sau đó tự học những thứ liên quan đến công
+// việc luôn, không cần anh phải duyệt, cái nào phân vân mới tới lượt anh") ──
+
+/** Cuộc có tin chưa rút và chưa bị loại — AI đọc lần lượt, cuộc nhắn gần nhất trước. */
+export const SQL_CUOC_CAN_RUT = `SELECT t.*, x.chua_rut FROM zalo_threads t
+  JOIN (SELECT thread_id, COUNT(*)::int AS chua_rut FROM zalo_messages WHERE NOT digested GROUP BY thread_id) x
+    ON x.thread_id = t.thread_id
+  WHERE (t.enabled OR NOT COALESCE(t.ai_checked, false))
+  ORDER BY t.last_msg_at DESC LIMIT $1`;
+
+export async function cuocCanRut(limit: number): Promise<ZaloThread[]> {
+  return (await q(SQL_CUOC_CAN_RUT, [limit])).map(rowToThread);
+}
+
+/** AI thấy là chuyện cá nhân → thôi đọc cuộc này, xoá nội dung đã lưu. Anh bật tay lại được. */
+export async function danhDauCaNhan(threadId: string, aiNote: string): Promise<void> {
+  await q('UPDATE zalo_threads SET enabled = false, ai_checked = true, ai_note = $2 WHERE thread_id = $1', [threadId, aiNote]);
+  await q('DELETE FROM zalo_messages WHERE thread_id = $1', [threadId]);
+}
+
+/** AI thấy là chuyện công việc → học tiếp; gắn khách nếu cuộc chưa gắn khách nào. */
+export async function danhDauCongViec(threadId: string, o: { aiNote: string; customerId: string; customer: string }): Promise<void> {
+  await q(
+    `UPDATE zalo_threads SET enabled = true, ai_checked = true, ai_note = $2,
+       customer_id = CASE WHEN COALESCE(customer_id, '') = '' THEN $3 ELSE customer_id END,
+       customer = CASE WHEN COALESCE(customer_id, '') = '' AND $3 <> '' THEN $4 ELSE customer END
+     WHERE thread_id = $1`,
+    [threadId, o.aiNote, o.customerId, o.customer],
+  );
+}
+
+/** Chỉ ghi lời AI về cuộc (vd "chưa rõ — đọc thêm lần sau"), không đổi trạng thái. */
+export async function ghiGhiChuAi(threadId: string, aiNote: string): Promise<void> {
+  await q('UPDATE zalo_threads SET ai_note = $2 WHERE thread_id = $1', [threadId, aiNote]);
 }

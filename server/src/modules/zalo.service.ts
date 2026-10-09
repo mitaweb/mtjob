@@ -1,30 +1,37 @@
 // Zalo cá nhân → kho tri thức "có chọn lọc" (anh Tâm 5/10/2026).
 //
-// Chọn lọc ba lớp:
-//   1. Cuộc trò chuyện mặc định TẮT — anh tự bật cuộc nào là khách. Cuộc tắt không lưu nội dung.
-//   2. AI chỉ rút những ý ĐÁNG NHỚ LÂU (yêu cầu, sở thích, điều đã chốt, phàn nàn…), bỏ chào hỏi,
-//      hẹn giờ gọi, OTP, chuyện vặt.
-//   3. Mỗi ý đi qua bộ phân loại kho với nguồn 'zalo' → KHÔNG BAO GIỜ tự mở cho cả công ty: việc
-//      công việc vào hàng chờ duyệt, chuyện riêng giữ riêng giám đốc.
+// Từ 10/10/2026 (anh Tâm: "AI tự đọc sau đó tự học những thứ liên quan đến công việc luôn, không cần
+// anh phải duyệt, cái nào phân vân mới tới lượt anh"):
+//   1. AI đọc MỌI cuộc (không cần bật "Học"). Chuyện cá nhân → thôi đọc, xoá nội dung đã lưu.
+//   2. Cuộc công việc: AI rút ý ĐÁNG NHỚ LÂU, bỏ chào hỏi, OTP, chuyện vặt. Mỗi ý qua bộ phân loại kho
+//      nguồn 'zalo': rõ ràng → vào kho luôn; phân vân / trùng mục cũ → chờ giám đốc duyệt.
+//   3. Cập nhật khách: khớp/tạo khách trong CRM, thêm điều mới vào "Thông tin khách".
+//   4. Việc giám đốc cần làm (khách hỏi báo giá chưa trả lời…) → đặt nhắc hẹn cho giám đốc.
 import { aiKhoJson } from '../ai/brainAi.js';
-import { dungDoanChat, denLucRut, noiDungTin, goiYTenKhachTuNhom, type TinZalo } from '../lib/zalo.js';
-import { khopKhach } from '../lib/brainGate.js';
+import { dungDoanChat, denLucRut, noiDungTin, goiYTenKhachTuNhom, gioNhac, noiThongTinKhach, type TinZalo } from '../lib/zalo.js';
+import { khopKhach, xoaLienHe } from '../lib/brainGate.js';
 import {
   ghiCuoc,
   ghiTin,
-  dsCuoc,
+  cuocCanRut,
+  tinGanDay,
+  danhDauCaNhan,
+  danhDauCongViec,
+  ghiGhiChuAi,
   timCuoc,
   tinChuaRut,
   danhDauDaRut,
   donTinCu,
   nhomChuaXet,
   ghiKetQuaXet,
+  CHUA_RO_THEO_TEN,
   type ZaloThread,
 } from './zalo.repo.js';
 import { xetDuaVaoKho, type NguoiGui } from './brainItems.service.js';
 import { getCustomers, upsertCustomer, CLOSED_STATUS, type Customer } from './crm.repo.js';
 import { newId } from '../util/id.js';
 import { getDirectors } from './members.repo.js';
+import { addReminder } from './reminders.repo.js';
 import { nowTz } from '../lib/datetime.js';
 
 export interface TinTuWorker {
@@ -39,8 +46,8 @@ export interface TinTuWorker {
 }
 
 /**
- * Nhận một lô tin vừa đồng bộ từ Zalo. Cuộc chưa bật: chỉ đếm (để anh thấy ai nhắn mà bật), KHÔNG lưu
- * nội dung. Cuộc đã bật: lưu nội dung để lát nữa rút tri thức.
+ * Nhận một lô tin vừa đồng bộ từ Zalo. Lưu nội dung để AI đọc — trừ cuộc đã bị loại (AI thấy là chuyện
+ * cá nhân, hoặc anh tự tắt): chỉ đếm số tin, KHÔNG lưu nội dung.
  */
 export async function nhanTin(lo: TinTuWorker[]): Promise<{ luu: number; boQua: number }> {
   const now = nowTz().toISOString();
@@ -85,9 +92,13 @@ export async function nhanTin(lo: TinTuWorker[]): Promise<{ luu: number; boQua: 
   return { luu, boQua };
 }
 
-const SCHEMA_RUT = {
+const SCHEMA_DOC = {
   type: 'OBJECT',
   properties: {
+    loai: { type: 'STRING', enum: ['cong_viec', 'ca_nhan', 'chua_ro'] },
+    laKhachHang: { type: 'BOOLEAN' },
+    tenKhach: { type: 'STRING' },
+    tomTat: { type: 'STRING' },
     y: {
       type: 'ARRAY',
       items: {
@@ -96,96 +107,253 @@ const SCHEMA_RUT = {
         required: ['tieuDe', 'noiDung'],
       },
     },
+    boSungKhach: { type: 'STRING' },
+    nhac: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: { viec: { type: 'STRING' }, han: { type: 'STRING' } },
+        required: ['viec'],
+      },
+    },
   },
-  required: ['y'],
+  required: ['loai', 'y'],
 };
 
-/** Nhờ AI rút các ý đáng nhớ lâu dài từ một đoạn chat. Trả mảng rỗng nếu không có gì đáng giữ. */
-export async function rutY(
+export interface KetQuaDoc {
+  /** cong_viec: học; ca_nhan: thôi đọc cuộc này; chua_ro: đọc thêm lần sau. */
+  loai: 'cong_viec' | 'ca_nhan' | 'chua_ro';
+  laKhachHang: boolean;
+  tenKhach: string;
+  tomTat: string;
+  y: Array<{ tieuDe: string; noiDung: string }>;
+  boSungKhach: string;
+  nhac: Array<{ viec: string; han: string }>;
+}
+
+/**
+ * AI đọc MỘT đoạn chat (anh Tâm 10/10/2026: "AI tự đọc sau đó tự học những thứ liên quan đến công việc
+ * luôn ... Đọc và cập nhật khách hàng, nội dung khách hàng, lên lịch nhắc cho anh nếu cần, ví dụ khách
+ * hỏi báo giá chưa trả lời"). Một lời gọi trả đủ: công việc hay cá nhân, tri thức đáng nhớ, điều mới về
+ * khách, việc cần nhắc anh.
+ */
+export async function docCuoc(
   doanChat: string,
-  khach: string,
-  chu: string,
-  nhom = '',
-): Promise<Array<{ tieuDe: string; noiDung: string }>> {
-  if (!doanChat.trim()) return [];
+  o: { chu: string; ten: string; nhom: boolean; khachDaGan: string; thongTinKhach: string; bayGio: string },
+): Promise<KetQuaDoc> {
+  const rong: KetQuaDoc = { loai: 'chua_ro', laKhachHang: false, tenKhach: '', tomTat: '', y: [], boSungKhach: '', nhac: [] };
+  if (!doanChat.trim()) return rong;
   const prompt = [
-    nhom
-      ? `Đây là đoạn chat trong nhóm Zalo «${nhom}» giữa agency marketing MT Digital (${chu} là giám đốc, cùng nhân viên) và khách hàng ${khach}. Tên người nói ghi trước dấu hai chấm.`
-      : `Đây là đoạn chat Zalo giữa ${chu} (giám đốc agency marketing MT Digital) và ${khach || 'một khách hàng'}.`,
-    'Rút ra những Ý ĐÁNG NHỚ LÂU DÀI để nhân viên phục vụ khách này tốt hơn, mỗi ý một mục tự hiểu được.',
-    'TẬP TRUNG vào LƯU Ý và YÊU CẦU của khách (anh Tâm 8/10/2026):',
-    '- yêu cầu, mong muốn, sở thích, điều khách KHÔNG thích, cách khách muốn được làm việc;',
-    '- lưu ý khi làm cho khách: màu sắc/giọng văn/sản phẩm cần nhấn, điều cấm, giờ duyệt bài, người duyệt;',
-    '- điều hai bên đã CHỐT: phạm vi công việc, giá, hạn, cách nghiệm thu, người liên hệ phía khách;',
-    '- phàn nàn của khách và cách đã xử lý; thông tin bền vững về doanh nghiệp/sản phẩm của khách.',
-    'BỎ QUA: chào hỏi, cảm ơn, hẹn giờ gọi, "ok anh", gửi file không kèm nội dung, mã OTP, mật khẩu,',
-    'số tài khoản, số điện thoại, chuyện cá nhân không liên quan công việc.',
-    'Không có ý nào đáng giữ thì trả y = []. KHÔNG bịa điều không có trong đoạn chat. Viết tiếng Việt,',
-    'nội dung mỗi ý 1-4 câu, ghi rõ ngày nếu là điều đã chốt.',
+    o.nhom
+      ? `Đây là đoạn chat trong nhóm Zalo «${o.ten}» mà ${o.chu} (giám đốc agency marketing MT Digital) là thành viên. Tên người nói ghi trước dấu hai chấm; "${o.chu}" là giám đốc.`
+      : `Đây là đoạn chat Zalo 1-1 giữa ${o.chu} (giám đốc agency marketing MT Digital) và «${o.ten}».`,
+    o.khachDaGan ? `Cuộc này đã gắn với khách hàng "${o.khachDaGan}" trong CRM.` : '',
+    `Bây giờ là ${o.bayGio} (giờ Việt Nam).`,
+    '',
+    '1) loai: "cong_viec" nếu là trao đổi công việc (khách hàng, khách tiềm năng hỏi dịch vụ, đối tác, nhà',
+    '   cung cấp, nhân viên, việc của công ty); "ca_nhan" nếu là gia đình, bạn bè, chuyện riêng, quảng cáo/rao',
+    '   vặt, hội nhóm không liên quan; "chua_ro" nếu quá ít tin để biết.',
+    '2) laKhachHang + tenKhach: người/nhóm bên kia có phải KHÁCH HÀNG (đang dùng hoặc đang hỏi dịch vụ của MT',
+    '   Digital) không; tenKhach = tên doanh nghiệp/thương hiệu nếu biết, không thì tên người. Đối tác, nhân viên,',
+    '   nhà cung cấp thì laKhachHang = false.',
+    '3) tomTat: MỘT câu ngắn cuộc này nói về gì (vd "Khách hỏi báo giá web bán nội thất").',
+    '4) y: Ý ĐÁNG NHỚ LÂU DÀI cho công ty, mỗi ý một mục tự hiểu được — yêu cầu, mong muốn, điều khách không',
+    '   thích, lưu ý khi làm cho khách (màu sắc, giọng văn, người duyệt, giờ duyệt), điều hai bên đã CHỐT (phạm',
+    '   vi, giá, hạn, nghiệm thu), phàn nàn và cách xử lý, thông tin bền vững về doanh nghiệp khách; quy trình,',
+    '   quyết định nội bộ nếu là chat công việc với nhân viên. Mỗi ý 1-4 câu, ghi ngày nếu là điều đã chốt.',
+    '5) boSungKhach: điều MỚI về khách nên ghi vào hồ sơ CRM (lĩnh vực, sản phẩm, nhu cầu, dịch vụ đang dùng,',
+    '   người liên hệ và vai trò) — một câu, KHÔNG số điện thoại/email; không có gì mới thì để trống.',
+    o.thongTinKhach ? `   Hồ sơ CRM hiện có: "${o.thongTinKhach.slice(0, 600)}" — đừng lặp lại điều đã có.` : '',
+    '6) nhac: việc GIÁM ĐỐC cần làm mà có vẻ CHƯA làm — vd khách hỏi báo giá / hỏi thông tin mà tin cuối',
+    '   chưa thấy trả lời, hứa gửi tài liệu, hẹn gọi lại, hạn khách đặt ra. Mỗi việc: viec (ngắn, có tên khách),',
+    '   han = "YYYY-MM-DD HH:mm" lúc nên nhắc (theo hẹn trong chat; không rõ thì để trống). Đã trả lời / đã',
+    '   xong rồi thì KHÔNG nhắc. Không có thì nhac = [].',
+    'Nếu loai = "ca_nhan" thì y, boSungKhach, nhac đều để trống.',
+    'BỎ QUA: chào hỏi, cảm ơn, "ok anh", OTP, mật khẩu, số tài khoản, số điện thoại. KHÔNG bịa điều không',
+    'có trong đoạn chat. Viết tiếng Việt.',
     '',
     'ĐOẠN CHAT (cũ → mới):',
     doanChat,
-  ].join('\n');
-  const r = await aiKhoJson(prompt, SCHEMA_RUT);
-  const ds = Array.isArray(r?.y) ? r.y : [];
-  return ds
-    .map((x: { tieuDe?: unknown; noiDung?: unknown }) => ({ tieuDe: String(x.tieuDe || '').trim(), noiDung: String(x.noiDung || '').trim() }))
-    .filter((x: { tieuDe: string; noiDung: string }) => x.tieuDe && x.noiDung.length >= 10)
-    .slice(0, 8);
+  ]
+    .filter((d) => d !== '')
+    .join('\n');
+  const r = await aiKhoJson(prompt, SCHEMA_DOC);
+  const loai = r?.loai === 'cong_viec' || r?.loai === 'ca_nhan' ? r.loai : 'chua_ro';
+  const chu = (x: unknown, n: number) => String(x ?? '').trim().slice(0, n);
+  return {
+    loai,
+    laKhachHang: !!r?.laKhachHang,
+    tenKhach: chu(r?.tenKhach, 120),
+    tomTat: chu(r?.tomTat, 200),
+    y: (Array.isArray(r?.y) ? r.y : [])
+      .map((x: { tieuDe?: unknown; noiDung?: unknown }) => ({ tieuDe: chu(x?.tieuDe, 200), noiDung: chu(x?.noiDung, 2000) }))
+      .filter((x: { tieuDe: string; noiDung: string }) => x.tieuDe && x.noiDung.length >= 10)
+      .slice(0, 8),
+    boSungKhach: loai === 'ca_nhan' ? '' : chu(r?.boSungKhach, 400),
+    nhac:
+      loai === 'ca_nhan'
+        ? []
+        : (Array.isArray(r?.nhac) ? r.nhac : [])
+            .map((x: { viec?: unknown; han?: unknown }) => ({ viec: chu(x?.viec, 200), han: chu(x?.han, 20) }))
+            .filter((x: { viec: string }) => x.viec.length >= 5)
+            .slice(0, 3),
+  };
 }
 
-/** Rút tri thức cho MỘT cuộc: AI rút ý → từng ý qua bộ phân loại kho (nguồn 'zalo'). */
-export async function rutCuoc(c: ZaloThread, chu: NguoiGui): Promise<{ y: number; vaoKho: string[] }> {
+export interface KetQuaRut {
+  y: number;
+  vaoKho: string[];
+  loai: KetQuaDoc['loai'];
+  nhac: number;
+}
+
+/**
+ * Đọc MỘT cuộc: AI xét công việc hay cá nhân → tri thức qua bộ phân loại kho (nguồn 'zalo': rõ ràng thì
+ * vào kho luôn, phân vân thì chờ giám đốc) → bổ sung hồ sơ khách → đặt nhắc việc cho giám đốc.
+ */
+export async function rutCuoc(c: ZaloThread, chu: NguoiGui): Promise<KetQuaRut> {
   const tin: TinZalo[] = await tinChuaRut(c.threadId);
-  if (tin.length === 0) return { y: 0, vaoKho: [] };
-  const tenKhach = c.customer || c.name;
+  if (tin.length === 0) return { y: 0, vaoKho: [], loai: 'chua_ro', nhac: 0 };
+  const now = nowTz();
+  const khachDs: Customer[] = await getCustomers().catch(() => []);
+  const daGan = c.customerId ? khachDs.find((k) => k.id === c.customerId) : undefined;
+  // Cuộc AI chưa xếp loại: đọc cả tin cũ đã xem (lần trước "chưa rõ") làm ngữ cảnh.
+  const docTu = c.aiChecked ? tin : await tinGanDay(c.threadId, 200);
   // Nhóm khách có cả lịch sử kéo về (vài trăm tin) → cho AI đọc dài hơn.
-  const doan = dungDoanChat(tin, chu.name || 'Giám đốc', tenKhach, c.isGroup ? 40000 : 15000);
-  const ys = await rutY(doan, tenKhach, chu.name || 'Giám đốc', c.isGroup ? c.name || tenKhach : '');
-  const nguon = c.isGroup ? `nhóm Zalo «${c.name || tenKhach}»` : `trao đổi Zalo với ${tenKhach}`;
+  const doan = dungDoanChat(docTu, chu.name || 'Giám đốc', c.customer || c.name, c.isGroup ? 40000 : 15000);
+  const kq = await docCuoc(doan, {
+    chu: chu.name || 'Giám đốc',
+    ten: c.name || c.customer || 'người nhắn',
+    nhom: c.isGroup,
+    khachDaGan: daGan?.name || c.customer,
+    thongTinKhach: daGan?.info || '',
+    bayGio: now.format('HH:mm DD/MM/YYYY'),
+  });
+  const xongTin = () => danhDauDaRut(c.threadId, tin.map((t) => t.msgId), now.toISOString());
+
+  // Anh đã tự bật / AI đã xếp là công việc thì không bao giờ tự loại.
+  const daChotCongViec = c.enabled;
+  if (kq.loai === 'ca_nhan' && !daChotCongViec) {
+    await danhDauCaNhan(c.threadId, `Cá nhân — AI thôi đọc${kq.tomTat ? ` (${kq.tomTat})` : ''}`);
+    return { y: 0, vaoKho: [], loai: 'ca_nhan', nhac: 0 };
+  }
+  if (kq.loai === 'chua_ro' && !daChotCongViec) {
+    // Ít tin quá để biết → không gửi gì vào kho. Đánh dấu đã đọc (khỏi đọc lại mỗi lượt); khi có tin
+    // mới, các tin này được đọc lại làm ngữ cảnh (tinGanDay).
+    await ghiGhiChuAi(c.threadId, `AI chưa rõ là việc gì — đọc thêm khi có tin mới${kq.tomTat ? ` (${kq.tomTat})` : ''}`);
+    await xongTin();
+    return { y: 0, vaoKho: [], loai: 'chua_ro', nhac: 0 };
+  }
+
+  // Công việc: gắn khách (khớp CRM; khách mới thì tạo khách tiềm năng).
+  let kh: Customer | undefined = daGan;
+  if (!kh && kq.laKhachHang && kq.tenKhach) {
+    kh = khopKhach(kq.tenKhach, khachDs) || undefined;
+    if (!kh) {
+      const gd = (await getDirectors())[0];
+      kh = {
+        id: newId('C-'),
+        name: kq.tenKhach,
+        phone: '',
+        status: 'Mới',
+        note: `Tạo tự động từ Zalo «${c.name || kq.tenKhach}».`,
+        info: '',
+        assignedTo: gd?.id || chu.id,
+        dob: '',
+        closedAt: '',
+        source: '',
+        createdAt: now.toISOString(),
+      };
+      await upsertCustomer(kh);
+    }
+  }
+  await danhDauCongViec(c.threadId, {
+    aiNote: `Công việc${kh ? ` · khách ${kh.name}` : ''}${kq.tomTat ? ` — ${kq.tomTat}` : ''}`,
+    customerId: kh?.id || '',
+    customer: kh?.name || '',
+  });
+
+  const tenKhach = kh?.name || c.customer || '';
+  const nguon = c.isGroup ? `nhóm Zalo «${c.name || tenKhach}»` : `trao đổi Zalo với ${c.name || tenKhach}`;
   const vaoKho: string[] = [];
-  for (const y of ys) {
-    const kq = await xetDuaVaoKho(
+  for (const y of kq.y) {
+    const r = await xetDuaVaoKho(
       { title: y.tieuDe, body: `${y.noiDung}\n\n(Rút từ ${nguon}.)`, customer: tenKhach, source: 'zalo' },
       chu,
     );
-    if (kq.item) vaoKho.push(kq.message);
+    if (r.item) vaoKho.push(r.message);
   }
-  await danhDauDaRut(c.threadId, tin.map((t) => t.msgId), nowTz().toISOString());
-  return { y: ys.length, vaoKho };
+
+  // Hồ sơ khách: chỉ THÊM dòng mới, không sửa điều anh đã ghi.
+  if (kh && kq.boSungKhach) {
+    const info = noiThongTinKhach(kh.info, xoaLienHe(kq.boSungKhach).text, now.format('YYYY-MM-DD'));
+    if (info !== kh.info) await upsertCustomer({ ...kh, info });
+  }
+
+  // Nhắc việc cho giám đốc.
+  let nhac = 0;
+  for (const [i, n] of kq.nhac.entries()) {
+    const gio = gioNhac(n.han, { ngay: now.format('YYYY-MM-DD'), gio: now.format('HH:mm') });
+    try {
+      await addReminder({
+        id: `ZR-${c.threadId}-${tin[tin.length - 1]!.msgId}-${i}`.slice(0, 120),
+        memberId: chu.id,
+        title: `${n.viec} (Zalo: ${c.name || tenKhach})`.slice(0, 200),
+        atTime: gio.atTime,
+        repeatKind: 'once',
+        onDate: gio.onDate,
+        weekday: 1,
+        dayOfMonth: 1,
+        active: true,
+        lastFired: '',
+        createdAt: now.toISOString(),
+      });
+      nhac++;
+    } catch (e) {
+      console.warn('[zalo] đặt nhắc', (e as Error).message); // trùng mã = đã đặt ở lượt trước
+    }
+  }
+
+  await xongTin();
+  return { y: kq.y.length, vaoKho, loai: 'cong_viec', nhac };
 }
 
 let dangRut = false;
 let lanRutCuoi = 0;
 
 /**
- * Rút tri thức cho các cuộc đã bật, đã lắng, có tin mới. Gọi sau mỗi lượt đồng bộ (~10 phút) và
- * từ nút "Rút ngay". Mỗi lượt tối đa vài cuộc — máy chủ chỉ sống 60 giây.
+ * AI đọc các cuộc có tin mới (mọi cuộc chưa bị loại, không cần anh bật), đã lắng. Mỗi lượt vài cuộc —
+ * máy chủ chỉ sống 60 giây; ban đêm cron gọi lặp tới khi hết.
  */
-export async function rutTriThucZalo(opts: { epNgay?: boolean; threadId?: string; limit?: number } = {}): Promise<{ cuoc: number; y: number }> {
-  if (dangRut) return { cuoc: 0, y: 0 };
-  if (!opts.epNgay && Date.now() - lanRutCuoi < 4 * 60_000) return { cuoc: 0, y: 0 };
+export async function rutTriThucZalo(
+  opts: { epNgay?: boolean; threadId?: string; limit?: number } = {},
+): Promise<{ cuoc: number; y: number; nhac: number; caNhan: number }> {
+  const rong = { cuoc: 0, y: 0, nhac: 0, caNhan: 0 };
+  if (dangRut) return rong;
+  if (!opts.epNgay && Date.now() - lanRutCuoi < 4 * 60_000) return rong;
   dangRut = true;
   lanRutCuoi = Date.now();
   try {
     const gd = (await getDirectors())[0];
     const chu: NguoiGui = { id: gd?.id || '', name: gd?.fullName || 'Giám đốc', role: 'director', teamId: '' };
-    const ds = opts.threadId ? [await timCuoc(opts.threadId)].filter((x): x is ZaloThread => !!x) : await dsCuoc(300);
+    const ds = opts.threadId ? [await timCuoc(opts.threadId)].filter((x): x is ZaloThread => !!x) : await cuocCanRut(60);
     const now = Date.now();
     const canRut = ds
-      .filter((c) => c.enabled)
       .filter((c) => denLucRut({ chuaRut: c.chuaRut, lastMsgAt: c.lastMsgAt, now, epNgay: opts.epNgay }))
       .slice(0, opts.limit ?? 3);
-    let y = 0;
+    const kq = { ...rong, cuoc: canRut.length };
     for (const c of canRut) {
       try {
-        y += (await rutCuoc(c, chu)).y;
+        const r = await rutCuoc(c, chu);
+        kq.y += r.y;
+        kq.nhac += r.nhac;
+        if (r.loai === 'ca_nhan') kq.caNhan++;
       } catch (e) {
         console.warn('[zalo] rút tri thức', c.threadId, (e as Error).message);
       }
     }
     await donTinCu(now - 30 * 24 * 3600 * 1000).catch(() => undefined);
-    return { cuoc: canRut.length, y };
+    return kq;
   } finally {
     dangRut = false;
   }
@@ -210,11 +378,12 @@ const SCHEMA_NHOM = {
         type: 'OBJECT',
         properties: {
           id: { type: 'STRING' },
+          loai: { type: 'STRING', enum: ['khach', 'cong_viec', 'khac', 'chua_ro'] },
           laNhomKhach: { type: 'BOOLEAN' },
           tenKhach: { type: 'STRING' },
           lyDo: { type: 'STRING' },
         },
-        required: ['id', 'laNhomKhach'],
+        required: ['id', 'loai'],
       },
     },
   },
@@ -228,6 +397,9 @@ export interface NhomCanXet {
 }
 
 export interface KetLuanNhom {
+  /** khach: nhóm làm việc với một khách; cong_viec: nhóm công việc khác (nội bộ, đối tác);
+   *  khac: không liên quan công việc; chua_ro: tên nhóm không đủ để biết → AI đọc tin rồi xét. */
+  loai: 'khach' | 'cong_viec' | 'khac' | 'chua_ro';
   laNhomKhach: boolean;
   tenKhach: string;
   lyDo: string;
@@ -248,15 +420,17 @@ export async function xetNhom(ds: NhomCanXet[], tenKhachCRM: string[]): Promise<
   });
   const prompt = [
     'MT Digital là agency marketing (quảng cáo, SEO, nội dung, thiết kế, video). Giám đốc có nhiều nhóm Zalo.',
-    'Với mỗi nhóm dưới đây, xét xem đó có phải NHÓM LÀM VIỆC VỚI MỘT KHÁCH HÀNG không.',
-    '- Quy ước đặt tên nhóm khách: "TÊN KH - MT DIGITAL" (khi đúng quy ước có sẵn "goiYTenKhach"). Một số',
-    '  nhóm khách đặt tên khác (vd "Dự án web ABC", "Savax x MT", "Ads Quốc Phong") — tự phán đoán.',
-    '- KHÔNG phải nhóm khách: gia đình, bạn bè, lớp học, nhóm nội bộ chỉ có nhân viên MT Digital, hội nhóm',
-    '  cộng đồng/rao vặt/chia sẻ kiến thức đông người, nhóm của đối tác/nhà cung cấp.',
-    '- tenKhach: tên doanh nghiệp/thương hiệu của khách, viết gọn như khách hay dùng. Trùng với một khách',
-    '  đã có trong CRM (danh sách dưới) thì ghi ĐÚNG tên trong CRM.',
+    'Với mỗi nhóm dưới đây, xếp loai:',
+    '- "khach": NHÓM LÀM VIỆC VỚI MỘT KHÁCH HÀNG. Quy ước đặt tên "TÊN KH - MT DIGITAL" (khi đúng quy ước có',
+    '  sẵn "goiYTenKhach"); một số nhóm khách đặt tên khác (vd "Dự án web ABC", "Savax x MT", "Ads Quốc Phong").',
+    '- "cong_viec": nhóm công việc nhưng không phải của một khách — nội bộ nhân viên MT Digital, đối tác, nhà',
+    '  cung cấp, dự án chung.',
+    '- "khac": không liên quan công việc — gia đình, bạn bè, lớp học, hội nhóm cộng đồng/rao vặt/chia sẻ kiến',
+    '  thức đông người.',
+    '- "chua_ro": tên và mô tả không đủ để biết (AI sẽ đọc tin nhắn rồi xét sau).',
+    '- tenKhach (chỉ khi "khach"): tên doanh nghiệp/thương hiệu của khách, viết gọn như khách hay dùng. Trùng',
+    '  với một khách đã có trong CRM (danh sách dưới) thì ghi ĐÚNG tên trong CRM.',
     '- lyDo: một câu ngắn tiếng Việt.',
-    'Không chắc thì laNhomKhach = false (giám đốc tự bật tay được).',
     '',
     'KHÁCH ĐÃ CÓ TRONG CRM:',
     tenKhachCRM.slice(0, 400).join(' | ') || '(chưa có)',
@@ -269,8 +443,14 @@ export async function xetNhom(ds: NhomCanXet[], tenKhachCRM: string[]): Promise<
   for (const x of Array.isArray(r?.nhom) ? r.nhom : []) {
     const id = String(x?.id || '');
     if (!hopLe.has(id)) continue;
+    const loai: KetLuanNhom['loai'] = ['khach', 'cong_viec', 'khac', 'chua_ro'].includes(x.loai)
+      ? x.loai
+      : x.laNhomKhach
+        ? 'khach'
+        : 'khac';
     kq.set(id, {
-      laNhomKhach: !!x.laNhomKhach,
+      loai,
+      laNhomKhach: loai === 'khach',
       tenKhach: String(x.tenKhach || '').trim().slice(0, 120),
       lyDo: String(x.lyDo || '').trim().slice(0, 300),
     });
@@ -297,10 +477,19 @@ export async function xacDinhNhomKhach(limit = 40): Promise<{ xet: number; nhomK
   for (const n of ds) {
     const k = kl.get(n.threadId);
     if (!k) continue;
+    if (k.loai === 'cong_viec') {
+      await danhDauCongViec(n.threadId, { aiNote: `Nhóm công việc${k.lyDo ? ` — ${k.lyDo}` : ''}`, customerId: '', customer: '' });
+      continue;
+    }
+    if (k.loai === 'chua_ro') {
+      // Không xét lại theo tên nữa; AI đọc tin nhắn của nhóm (rutCuoc) rồi tự xếp.
+      await ghiGhiChuAi(n.threadId, `${CHUA_RO_THEO_TEN} — AI sẽ đọc tin nhắn để xét${k.lyDo ? ` (${k.lyDo})` : ''}`);
+      continue;
+    }
     const ten = k.laNhomKhach ? k.tenKhach || goiYTenKhachTuNhom(n.name).ten : '';
     if (!ten) {
       await ghiKetQuaXet(n.threadId, {
-        aiNote: `Không phải nhóm khách — ${k.lyDo || 'AI không thấy dấu hiệu khách hàng'}`,
+        aiNote: `Không liên quan công việc — AI thôi đọc${k.lyDo ? ` (${k.lyDo})` : ''}`,
         laNhomKhach: false,
         customerId: '',
         customer: '',

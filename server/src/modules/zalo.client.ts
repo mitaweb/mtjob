@@ -38,14 +38,23 @@ const now = () => nowTz().toISOString();
  */
 export async function chayBanDem(): Promise<string> {
   const st = await docTrangThai();
-  if (!st.coPhien) return 'chưa đăng nhập Zalo';
+  const gioVN = nowTz().hour();
+  if (!st.coPhien) return (gioVN >= 22 || gioVN < 5) ? xetLaiKhoBanDem() : 'chưa đăng nhập Zalo';
   const vn = await demViecNhom().catch(() => ({ chuaXet: 0, chuaKeo: 0 }));
-  const viec = viecBanDem({ gioVN: nowTz().hour(), lastSync: st.lastSync, now: Date.now(), viecNhom: vn.chuaXet + vn.chuaKeo });
+  const viec = viecBanDem({ gioVN, lastSync: st.lastSync, now: Date.now(), viecNhom: vn.chuaXet + vn.chuaKeo });
   if (viec === 'nghi') return 'ngoài giờ ban đêm';
   if (viec === 'dong_bo') return (await dongBoZalo()).note;
   if (viec === 'nhom') return (await quetNhomKhach()).note;
   const r = await rutTriThucZalo({ epNgay: true, limit: 3 });
-  return r.cuoc ? `rút ${r.y} ý từ ${r.cuoc} cuộc` : 'không còn gì để rút';
+  if (r.cuoc) return `đọc ${r.cuoc} cuộc: ${r.y} ý, ${r.nhac} nhắc việc, ${r.caNhan} cuộc cá nhân bỏ qua`;
+  return xetLaiKhoBanDem();
+}
+
+/** Hết tin Zalo để đọc → cho AI xét lại các mục chờ duyệt chỉ vì lúc gửi AI lỗi (hết lượt…). */
+async function xetLaiKhoBanDem(): Promise<string> {
+  const { xetLaiMucCho } = await import('./brainItems.service.js');
+  const x = await xetLaiMucCho({ han: Date.now() + 35_000, limit: 10 });
+  return x.xong ? `AI xét lại ${x.xong} mục chờ: ban hành ${x.banHanh}, còn chờ anh ${x.conCho}, bỏ ${x.bo}` : 'không còn gì để làm';
 }
 
 export function khoaPhien(): string {

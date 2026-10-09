@@ -30,6 +30,8 @@ import {
 import {
   xetDuaVaoKho,
   suaMuc,
+  xetLaiMucCho,
+  demMucAiLoi,
   traLoiCauHoi,
   boQuaCauHoi,
   phanLoaiLaiKho,
@@ -356,6 +358,20 @@ brainRouter.post(
       }
     }
     res.json({ ok: true, xong, loi, conLai });
+  }),
+);
+
+/**
+ * Cho AI xét lại mục đang chờ (đã chọn, hoặc mọi mục chờ chỉ vì AI lỗi lúc gửi): rõ ràng → ban hành,
+ * phân vân → vẫn chờ anh, không đáng lưu → bỏ. ~40 giây mỗi lượt, còn thì trang gọi tiếp.
+ */
+brainRouter.post(
+  '/items/recheck',
+  asyncHandler(async (req, res) => {
+    chiGiamDoc(req);
+    const b = z.object({ ids: z.array(z.string().min(1)).max(200).optional() }).parse(req.body ?? {});
+    const kq = await xetLaiMucCho({ ids: b.ids, han: Date.now() + 40_000 });
+    res.json({ ok: true, ...kq, aiLoiConLai: await demMucAiLoi() });
   }),
 );
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { noiDungTin, gioTin, dungDoanChat, denLucRut, maTinLonNhat, viecBanDem, goiYTenKhachTuNhom, type TinZalo } from './zalo.js';
+import { noiDungTin, gioTin, dungDoanChat, denLucRut, maTinLonNhat, viecBanDem, goiYTenKhachTuNhom, gioNhac, noiThongTinKhach, type TinZalo } from './zalo.js';
 
 // Anh Tâm 5/10/2026: đọc tin nhắn Zalo giữa anh và khách để đưa vào kho có chọn lọc.
 
@@ -104,5 +104,38 @@ describe('goiYTenKhachTuNhom', () => {
     expect(goiYTenKhachTuNhom('Gia đình nhà mình')).toEqual({ theoMau: false, ten: 'Gia đình nhà mình' });
     expect(goiYTenKhachTuNhom('MT DIGITAL').theoMau).toBe(false);
     expect(goiYTenKhachTuNhom('MAX-MT DIGITAL')).toEqual({ theoMau: true, ten: 'MAX' });
+  });
+});
+
+// Anh Tâm 10/10/2026: "lên lịch nhắc cho anh nếu cần, ví dụ khách hỏi báo giá chưa trả lời".
+describe('gioNhac', () => {
+  const luc = { ngay: '2026-10-10', gio: '23:10' };
+  it('giờ hợp lệ trong tương lai → giữ nguyên', () => {
+    expect(gioNhac('2026-10-12 14:00', luc)).toEqual({ onDate: '2026-10-12', atTime: '14:00' });
+    expect(gioNhac('2026-10-12T9:05', luc)).toEqual({ onDate: '2026-10-12', atTime: '09:05' });
+  });
+  it('chỉ có ngày → 8h30 ngày đó', () => {
+    expect(gioNhac('2026-10-13', luc)).toEqual({ onDate: '2026-10-13', atTime: '08:30' });
+  });
+  it('trống / sai / đã qua → 8h30 sáng gần nhất', () => {
+    expect(gioNhac('', luc)).toEqual({ onDate: '2026-10-11', atTime: '08:30' });
+    expect(gioNhac('mai', luc)).toEqual({ onDate: '2026-10-11', atTime: '08:30' });
+    expect(gioNhac('2026-10-09 10:00', luc)).toEqual({ onDate: '2026-10-11', atTime: '08:30' });
+    expect(gioNhac('', { ngay: '2026-10-11', gio: '02:00' })).toEqual({ onDate: '2026-10-11', atTime: '08:30' });
+    // 23h59 → dời 8h30 cùng ngày, nhưng 8h30 hôm nay đã qua → 8h30 sáng mai (qua năm mới)
+    expect(gioNhac('2026-12-31 23:59', { ngay: '2026-12-31', gio: '10:00' })).toEqual({ onDate: '2027-01-01', atTime: '08:30' });
+  });
+  it('giữa đêm → dời 8h30', () => {
+    expect(gioNhac('2026-10-12 02:00', luc)).toEqual({ onDate: '2026-10-12', atTime: '08:30' });
+  });
+});
+
+describe('noiThongTinKhach', () => {
+  it('chỉ thêm dòng mới, không sửa cái cũ, không lặp', () => {
+    expect(noiThongTinKhach('', 'Bán cửa nhôm cao cấp', '2026-10-10')).toBe('• 10/10 (Zalo): Bán cửa nhôm cao cấp');
+    const a = noiThongTinKhach('Khách VIP', 'Muốn chạy Ads Tết', '2026-10-10');
+    expect(a).toBe('Khách VIP\n• 10/10 (Zalo): Muốn chạy Ads Tết');
+    expect(noiThongTinKhach(a, 'Muốn chạy Ads Tết', '2026-10-11')).toBe(a);
+    expect(noiThongTinKhach('x', '  ', '2026-10-11')).toBe('x');
   });
 });

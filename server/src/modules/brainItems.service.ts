@@ -681,3 +681,74 @@ export async function chuyenLuuYKhach(limit = 6): Promise<{ done: number; remain
   return { done: rows.length, remaining: await demLuuYChuaChuyen() };
 }
 
+
+// ── AI xét lại mục đang chờ (anh Tâm 10/10/2026: "AI tự đọc ... tự học những thứ liên quan đến công
+// việc luôn, không cần anh phải duyệt, cái nào phân vân mới tới lượt anh") ──
+
+/** Lời ghi của mục mà lúc gửi AI không phân loại được (lỗi / hết lượt) — AI xét lại được. */
+export const AI_LOI_LUC_GUI = 'AI chưa phân loại được lúc gửi';
+
+/** Còn bao nhiêu mục chờ duyệt chỉ vì lúc gửi AI lỗi. */
+export async function demMucAiLoi(): Promise<number> {
+  const r = await q(`SELECT COUNT(*)::int AS n FROM brain_items WHERE status = 'pending' AND ai_reason LIKE $1`, [`${AI_LOI_LUC_GUI}%`]);
+  return Number(r[0]?.n) || 0;
+}
+
+/**
+ * Cho AI xét lại các mục đang chờ duyệt: rõ ràng là việc công ty → ban hành luôn; phân vân / trùng mục
+ * cũ → vẫn chờ giám đốc; không đáng lưu → bỏ. Không truyền `ids` → các mục chờ chỉ vì AI lỗi lúc gửi.
+ * Làm tới `han` (ms) rồi dừng — máy chủ chỉ sống 60 giây; trả các mục chưa kịp xét.
+ */
+export async function xetLaiMucCho(o: { ids?: string[]; han: number; limit?: number }): Promise<{
+  xong: number;
+  banHanh: number;
+  conCho: number;
+  bo: number;
+  conLai: string[];
+}> {
+  const ids =
+    o.ids ??
+    (
+      await q(`SELECT item_id FROM brain_items WHERE status = 'pending' AND ai_reason LIKE $1 ORDER BY created_at LIMIT $2`, [
+        `${AI_LOI_LUC_GUI}%`,
+        o.limit ?? 20,
+      ])
+    ).map((r) => String(r.item_id));
+  const kq = { xong: 0, banHanh: 0, conCho: 0, bo: 0, conLai: [] as string[] };
+  // Người gửi "hệ thống" (không phải giám đốc) → điều phân vân VẪN chờ giám đốc, không tự ban hành.
+  const heThong: NguoiGui = { id: '', name: 'AI xét lại', role: 'system', teamId: '' };
+  for (const id of ids) {
+    if (Date.now() > o.han) {
+      kq.conLai.push(id);
+      continue;
+    }
+    const cu = await findItem(id);
+    if (!cu || cu.status !== 'pending') continue;
+    const r = await xetDuaVaoKho(
+      {
+        title: cu.title,
+        body: cu.body,
+        customer: cu.customer,
+        source: cu.source,
+        itemId: cu.id,
+        // Lưu ý KH chuyển sang: biết chắc là nhóm Khách hàng, chỉ để AI xét có đáng giữ / rõ ràng không.
+        ...(cu.source === 'customer_note' ? { ep: { category: 'khach_hang' as NhomKey } } : {}),
+        goc: { submittedBy: cu.submittedBy, submittedName: cu.submittedName, createdAt: cu.createdAt },
+      },
+      heThong,
+    );
+    const moi = r.item ?? (await findItem(id));
+    // AI lỗi tiếp (hết lượt) → dừng, để lượt sau.
+    if (moi?.aiReason.startsWith(AI_LOI_LUC_GUI)) {
+      kq.conLai.push(id, ...ids.slice(ids.indexOf(id) + 1));
+      break;
+    }
+    if (!r.item && moi?.status === 'pending') await upsertItem({ ...moi, status: 'rejected', aiReason: r.message || 'AI xét lại: không đáng lưu' });
+    const st = r.item?.status ?? 'rejected';
+    kq.xong++;
+    if (st === 'published') kq.banHanh++;
+    else if (st === 'pending') kq.conCho++;
+    else kq.bo++;
+  }
+  return kq;
+}

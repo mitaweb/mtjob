@@ -249,3 +249,47 @@ describe('câu hỏi chưa có lời giải', () => {
     expect(BAO.filter((b) => b.type === 'brain_answer')).toHaveLength(0);
   });
 });
+
+// Anh Tâm 10/10/2026: "AI tự đọc ... tự học những thứ liên quan đến công việc luôn, không cần anh phải
+// duyệt, cái nào phân vân mới tới lượt anh" — mục kẹt "chờ duyệt" chỉ vì AI lỗi lúc gửi.
+describe('xetLaiMucCho — AI xét lại mục đang chờ', () => {
+  async function mucKet(): Promise<string> {
+    AI.loi = true;
+    const r = await S.xetDuaVaoKho({ title: 'Lưu ý Savax', body: 'Khách duyệt bài trước 10h sáng thứ Hai.', source: 'manual' }, NV);
+    AI.loi = false;
+    expect(r.item).toMatchObject({ status: 'pending' });
+    expect(r.item!.aiReason.startsWith(S.AI_LOI_LUC_GUI)).toBe(true);
+    return r.item!.id;
+  }
+
+  it('rõ ràng là việc công ty → ban hành luôn, không cần giám đốc', async () => {
+    const id = await mucKet();
+    phanLoai({ quyetDinh: 'cong_viec' });
+    const kq = await S.xetLaiMucCho({ ids: [id], han: Date.now() + 10_000 });
+    expect(kq).toEqual({ xong: 1, banHanh: 1, conCho: 0, bo: 0, conLai: [] });
+    expect(MUC.get(id)).toMatchObject({ status: 'published', scope: 'all' });
+  });
+
+  it('phân vân → vẫn chờ giám đốc (người xét lại không phải giám đốc nên không tự ban hành)', async () => {
+    const id = await mucKet();
+    phanLoai({ quyetDinh: 'can_duyet', lyDo: 'chưa chắc là quy định chung' });
+    const kq = await S.xetLaiMucCho({ ids: [id], han: Date.now() + 10_000 });
+    expect(kq.conCho).toBe(1);
+    expect(MUC.get(id)).toMatchObject({ status: 'pending', aiReason: 'chưa chắc là quy định chung' });
+  });
+
+  it('AI vẫn lỗi (hết lượt) → dừng, để lượt sau; hết giờ → trả phần chưa xét', async () => {
+    const a = await mucKet();
+    const b = await mucKet();
+    AI.loi = true;
+    expect(await S.xetLaiMucCho({ ids: [a, b], han: Date.now() + 10_000 })).toMatchObject({ xong: 0, conLai: [a, b] });
+    AI.loi = false;
+    expect(await S.xetLaiMucCho({ ids: [a, b], han: Date.now() - 1 })).toMatchObject({ xong: 0, conLai: [a, b] });
+  });
+
+  it('mục không còn chờ (đã ban hành) thì bỏ qua', async () => {
+    const id = await mucKet();
+    MUC.set(id, { ...MUC.get(id), status: 'published' });
+    expect(await S.xetLaiMucCho({ ids: [id], han: Date.now() + 10_000 })).toMatchObject({ xong: 0 });
+  });
+});

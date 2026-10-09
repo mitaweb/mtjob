@@ -112,3 +112,40 @@ export function goiYTenKhachTuNhom(tenNhom: string): { theoMau: boolean; ten: st
   if (mau && mau[1]!.trim()) return { theoMau: true, ten: mau[1]!.trim() };
   return { theoMau: false, ten: s };
 }
+
+/** Cộng `n` ngày vào ngày dạng YYYY-MM-DD. */
+function congNgayIso(d: string, n: number): string {
+  const t = new Date(`${d}T00:00:00Z`);
+  t.setUTCDate(t.getUTCDate() + n);
+  return t.toISOString().slice(0, 10);
+}
+
+/**
+ * Giờ đặt nhắc việc AI đề xuất từ tin Zalo (anh Tâm 10/10/2026: "lên lịch nhắc cho anh nếu cần, ví
+ * dụ khách hỏi báo giá chưa trả lời"). `han` dạng "YYYY-MM-DD HH:mm" hoặc "YYYY-MM-DD" (giờ VN).
+ * Thiếu / sai / đã qua → 8h30 sáng gần nhất. Không bao giờ nhắc giữa đêm (22h–7h) → dời 8h30.
+ */
+export function gioNhac(han: string, bayGio: { ngay: string; gio: string }): { onDate: string; atTime: string } {
+  const sang = (): { onDate: string; atTime: string } =>
+    bayGio.gio < '08:30' ? { onDate: bayGio.ngay, atTime: '08:30' } : { onDate: congNgayIso(bayGio.ngay, 1), atTime: '08:30' };
+  const m = /^(\d{4}-\d{2}-\d{2})(?:[ T](\d{1,2}):(\d{2}))?/.exec(String(han || '').trim());
+  if (!m || Number.isNaN(Date.parse(`${m[1]}T00:00:00Z`))) return sang();
+  const ngay = m[1]!;
+  let gio = m[2] !== undefined ? `${m[2]!.padStart(2, '0')}:${m[3]}` : '08:30';
+  if (gio >= '24:00') return sang();
+  if (gio < '07:00' || gio >= '22:00') gio = '08:30';
+  if (`${ngay} ${gio}` <= `${bayGio.ngay} ${bayGio.gio}`) return sang();
+  return { onDate: ngay, atTime: gio };
+}
+
+/**
+ * Bổ sung "Thông tin khách" trong CRM bằng điều AI mới biết từ Zalo — CHỈ THÊM dòng, không sửa
+ * điều anh đã ghi. Dài quá thì thôi không thêm (đã có kho tri thức giữ chi tiết).
+ */
+export function noiThongTinKhach(cu: string, moi: string, ngay: string): string {
+  const them = String(moi || '').replace(/\s+/g, ' ').trim();
+  const goc = String(cu || '').trim();
+  if (!them || goc.includes(them) || goc.length > 3000) return goc;
+  const dong = `• ${ngay.slice(8, 10)}/${ngay.slice(5, 7)} (Zalo): ${them.slice(0, 400)}`;
+  return goc ? `${goc}\n${dong}` : dong;
+}

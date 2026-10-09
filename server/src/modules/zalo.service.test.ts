@@ -1,19 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Zalo cá nhân → kho tri thức "có chọn lọc" (anh Tâm 5/10/2026).
+// Zalo cá nhân → kho tri thức (anh Tâm 5/10/2026). Từ 10/10/2026: "AI tự đọc sau đó tự học những thứ
+// liên quan đến công việc luôn, không cần anh phải duyệt, cái nào phân vân mới tới lượt anh" + "Đọc và
+// cập nhật khách hàng, nội dung khách hàng, lên lịch nhắc cho anh nếu cần".
 
-const BAT = new Set<string>();
+const LUU = new Set<string>();
 const CUOC: Array<Record<string, unknown>> = [];
 const TIN: Array<Record<string, unknown>> = [];
 const VAO_KHO: Array<{ input: Record<string, unknown>; nguoi: Record<string, unknown> }> = [];
 const DA_RUT: string[][] = [];
 let AI_Y: Array<{ tieuDe: string; noiDung: string }> = [];
+let AI_DOC: Record<string, unknown> | null = null;
 let CHUA_RUT: Array<Record<string, unknown>> = [];
+let CUOC_CAN_RUT: Array<Record<string, unknown>> = [];
+const TRANG_THAI: Array<{ loai: string; id: string; o: unknown }> = [];
+const NHAC: Array<Record<string, unknown>> = [];
 
 let AI_NHOM: Array<Record<string, unknown>> = [];
 let NHOM_CHUA_XET: Array<Record<string, unknown>> = [];
 const KET_QUA_XET: Array<{ id: string; kq: Record<string, unknown> }> = [];
-const KHACH_MOI: Array<Record<string, unknown>> = [];
+const CRM_GHI: Array<Record<string, unknown>> = [];
 let PROMPT = '';
 
 // AI của kho đi qua ai/brainAi.ts — chuyển thẳng về generateJson giả lập ở dưới.
@@ -24,27 +30,35 @@ vi.mock('../ai/brainAi.js', async () => {
 vi.mock('../gemini/client.js', () => ({
   generateJson: vi.fn(async (prompt: string) => {
     PROMPT = prompt;
-    return prompt.includes('CÁC NHÓM') ? { nhom: AI_NHOM } : { y: AI_Y };
+    return prompt.includes('CÁC NHÓM') ? { nhom: AI_NHOM } : (AI_DOC ?? { y: AI_Y });
   }),
 }));
 vi.mock('./zalo.repo.js', () => ({
+  CHUA_RO_THEO_TEN: 'Chưa rõ theo tên nhóm',
   ghiCuoc: vi.fn(async (c: Record<string, unknown>) => {
     CUOC.push(c);
-    return BAT.has(String(c.threadId));
+    return LUU.has(String(c.threadId));
   }),
   ghiTin: vi.fn(async (t: Record<string, unknown>) => {
     TIN.push(t);
   }),
-  dsCuoc: vi.fn(async () => [
-    { threadId: 'T1', name: 'Chị Hà', customer: 'Savax Door', enabled: true, chuaRut: 3, lastMsgAt: '2026-10-05T01:00:00Z' },
-    { threadId: 'T2', name: 'Mẹ', customer: '', enabled: false, chuaRut: 0, lastMsgAt: '2026-10-05T01:00:00Z' },
-  ]),
+  cuocCanRut: vi.fn(async () => CUOC_CAN_RUT),
   timCuoc: vi.fn(async () => undefined),
   tinChuaRut: vi.fn(async () => CHUA_RUT),
+  tinGanDay: vi.fn(async () => CHUA_RUT),
   danhDauDaRut: vi.fn(async (_t: string, ids: string[]) => {
     DA_RUT.push(ids);
   }),
   donTinCu: vi.fn(async () => undefined),
+  danhDauCaNhan: vi.fn(async (id: string, note: string) => {
+    TRANG_THAI.push({ loai: 'ca_nhan', id, o: note });
+  }),
+  danhDauCongViec: vi.fn(async (id: string, o: unknown) => {
+    TRANG_THAI.push({ loai: 'cong_viec', id, o });
+  }),
+  ghiGhiChuAi: vi.fn(async (id: string, note: string) => {
+    TRANG_THAI.push({ loai: 'ghi_chu', id, o: note });
+  }),
   nhomChuaXet: vi.fn(async () => NHOM_CHUA_XET),
   ghiKetQuaXet: vi.fn(async (id: string, kq: Record<string, unknown>) => {
     KET_QUA_XET.push({ id, kq });
@@ -53,32 +67,41 @@ vi.mock('./zalo.repo.js', () => ({
 vi.mock('./brainItems.service.js', () => ({
   xetDuaVaoKho: vi.fn(async (input: Record<string, unknown>, nguoi: Record<string, unknown>) => {
     VAO_KHO.push({ input, nguoi });
-    return { item: { id: 'x', status: 'pending' }, message: 'Đã gửi — chờ giám đốc duyệt' };
+    return { item: { id: 'x', status: 'published' }, message: 'Đã vào kho' };
   }),
 }));
 vi.mock('./crm.repo.js', () => ({
   CLOSED_STATUS: 'Đã chốt',
-  getCustomers: async () => [{ id: 'K3', name: 'Savax Door' }],
+  getCustomers: async () => [{ id: 'K3', name: 'Savax Door', info: 'Khách VIP' }],
   upsertCustomer: vi.fn(async (c: Record<string, unknown>) => {
-    KHACH_MOI.push(c);
+    CRM_GHI.push(c);
   }),
 }));
 vi.mock('./members.repo.js', () => ({ getDirectors: async () => [{ id: 'GD', fullName: 'Anh Tâm' }] }));
+vi.mock('./reminders.repo.js', () => ({
+  addReminder: vi.fn(async (r: Record<string, unknown>) => {
+    NHAC.push(r);
+  }),
+}));
 
 const S = await import('./zalo.service.js');
 
 beforeEach(() => {
-  BAT.clear();
+  LUU.clear();
   CUOC.length = 0;
   TIN.length = 0;
   VAO_KHO.length = 0;
   DA_RUT.length = 0;
   AI_Y = [];
+  AI_DOC = null;
   CHUA_RUT = [];
+  CUOC_CAN_RUT = [];
+  TRANG_THAI.length = 0;
+  NHAC.length = 0;
   AI_NHOM = [];
   NHOM_CHUA_XET = [];
   KET_QUA_XET.length = 0;
-  KHACH_MOI.length = 0;
+  CRM_GHI.length = 0;
   PROMPT = '';
 });
 
@@ -86,25 +109,39 @@ beforeEach(() => {
 describe('xacDinhNhomKhach', () => {
   const nhom = (threadId: string, name: string) => ({ threadId, name, isGroup: true, enabled: false });
 
-  it('khớp khách đã có; khách mới thì tạo trong CRM; không phải nhóm khách thì chỉ ghi chú', async () => {
+  it('khớp khách đã có; khách mới thì tạo trong CRM; không liên quan công việc thì thôi đọc', async () => {
     NHOM_CHUA_XET = [nhom('G1', 'SAVAX DOOR - MT DIGITAL'), nhom('G2', 'Topaz Spa x MT'), nhom('G3', 'Gia đình')];
     AI_NHOM = [
       { id: 'G1', laNhomKhach: true, tenKhach: 'Savax Door', lyDo: 'đúng quy ước' },
-      { id: 'G2', laNhomKhach: true, tenKhach: 'Topaz Spa', lyDo: 'tên thương hiệu + MT' },
-      { id: 'G3', laNhomKhach: false, lyDo: 'nhóm gia đình' },
+      { id: 'G2', loai: 'khach', tenKhach: 'Topaz Spa', lyDo: 'tên thương hiệu + MT' },
+      { id: 'G3', loai: 'khac', lyDo: 'nhóm gia đình' },
       { id: 'LA', laNhomKhach: true, tenKhach: 'Bịa' },
     ];
     const r = await S.xacDinhNhomKhach();
     expect(r).toEqual({ xet: 3, nhomKhach: 2, khachMoi: ['Topaz Spa'] });
     expect(PROMPT).toContain('"goiYTenKhach":"SAVAX DOOR"');
     expect(PROMPT).toContain('Savax Door');
-    expect(KHACH_MOI).toHaveLength(1);
-    expect(KHACH_MOI[0]).toMatchObject({ name: 'Topaz Spa', status: 'Đã chốt', assignedTo: 'GD', phone: '' });
+    expect(CRM_GHI).toHaveLength(1);
+    expect(CRM_GHI[0]).toMatchObject({ name: 'Topaz Spa', status: 'Đã chốt', assignedTo: 'GD', phone: '' });
     const theo = Object.fromEntries(KET_QUA_XET.map((x) => [x.id, x.kq]));
     expect(theo.G1).toMatchObject({ laNhomKhach: true, customerId: 'K3', customer: 'Savax Door' });
-    expect(theo.G2).toMatchObject({ laNhomKhach: true, customerId: KHACH_MOI[0]!.id, customer: 'Topaz Spa' });
+    expect(theo.G2).toMatchObject({ laNhomKhach: true, customerId: CRM_GHI[0]!.id, customer: 'Topaz Spa' });
     expect(theo.G3).toMatchObject({ laNhomKhach: false, customerId: '' });
     expect(String(theo.G3!.aiNote)).toContain('nhóm gia đình');
+  });
+
+  it('nhóm công việc không phải của khách (nội bộ, đối tác) → vẫn học; tên chưa rõ → để AI đọc tin', async () => {
+    NHOM_CHUA_XET = [nhom('G4', 'Team Ads MT'), nhom('G5', 'Nhóm 2024')];
+    AI_NHOM = [
+      { id: 'G4', loai: 'cong_viec', lyDo: 'nhóm nội bộ' },
+      { id: 'G5', loai: 'chua_ro' },
+    ];
+    await S.xacDinhNhomKhach();
+    expect(KET_QUA_XET).toHaveLength(0);
+    expect(TRANG_THAI).toEqual([
+      { loai: 'cong_viec', id: 'G4', o: { aiNote: 'Nhóm công việc — nhóm nội bộ', customerId: '', customer: '' } },
+      { loai: 'ghi_chu', id: 'G5', o: 'Chưa rõ theo tên nhóm — AI sẽ đọc tin nhắn để xét' },
+    ]);
   });
 
   it('AI bỏ sót nhóm nào thì nhóm đó để lượt sau xét lại', async () => {
@@ -122,25 +159,25 @@ describe('xacDinhNhomKhach', () => {
       { id: 'G2', laNhomKhach: true, tenKhach: 'Kingpen' },
     ];
     await S.xacDinhNhomKhach();
-    expect(KHACH_MOI).toHaveLength(1);
-    expect(KET_QUA_XET.map((x) => x.kq.customerId)).toEqual([KHACH_MOI[0]!.id, KHACH_MOI[0]!.id]);
+    expect(CRM_GHI).toHaveLength(1);
+    expect(KET_QUA_XET.map((x) => x.kq.customerId)).toEqual([CRM_GHI[0]!.id, CRM_GHI[0]!.id]);
   });
 });
 
-describe('nhanTin — chỉ lưu nội dung cuộc đã bật', () => {
+describe('nhanTin — lưu mọi cuộc, trừ cuộc đã bị loại', () => {
   const tin = (threadId: string, msgId: string, content: unknown, extra: Record<string, unknown> = {}) => ({
     msgId, threadId, content, ts: Date.UTC(2026, 9, 5, 2, 0), threadName: 'Người nhắn', ...extra,
   });
 
-  it('cuộc chưa bật (mặc định): chỉ đếm, KHÔNG lưu nội dung', async () => {
+  it('cuộc đã bị loại (cá nhân / anh tắt): chỉ đếm, KHÔNG lưu nội dung', async () => {
     const r = await S.nhanTin([tin('T9', 'm1', 'Con ăn cơm chưa'), tin('T9', 'm2', 'Tối về sớm nhé')]);
     expect(r).toEqual({ luu: 0, boQua: 2 });
     expect(TIN).toHaveLength(0);
     expect(CUOC[0]).toMatchObject({ threadId: 'T9', soTin: 2 });
   });
 
-  it('cuộc đã bật: lưu chữ + link, bỏ sticker; ghi đúng tin của mình / của khách', async () => {
-    BAT.add('T1');
+  it('cuộc còn đọc: lưu chữ + link, bỏ sticker; ghi đúng tin của mình / của khách', async () => {
+    LUU.add('T1');
     const r = await S.nhanTin([
       tin('T1', 'm1', 'Chị muốn tông xanh', { sender: 'Chị Hà' }),
       tin('T1', 'm2', { catId: 3 }),
@@ -156,31 +193,97 @@ describe('nhanTin — chỉ lưu nội dung cuộc đã bật', () => {
   });
 });
 
-describe('rút tri thức', () => {
-  const tinDb = (id: string, fromSelf: boolean, content: string, phut: number) => ({
-    msgId: id, threadId: 'T1', fromSelf, sender: fromSelf ? '' : 'Chị Hà', content, ts: String(Date.UTC(2026, 9, 5, 1, phut)),
+describe('AI tự đọc cuộc trò chuyện', () => {
+  const tinDb = (id: string, fromSelf: boolean, content: string, phut: number, threadId = 'T1') => ({
+    msgId: id, threadId, fromSelf, sender: fromSelf ? '' : 'Chị Hà', content, ts: String(Date.UTC(2026, 9, 5, 1, phut)),
+  });
+  const cuoc = (o: Record<string, unknown>) => ({
+    threadId: 'T1', name: 'Chị Hà', customer: '', customerId: '', enabled: false, aiChecked: false, isGroup: false,
+    chuaRut: 2, lastMsgAt: '2026-10-05T01:00:00Z', ...o,
   });
 
-  it('chỉ cuộc ĐÃ BẬT; mỗi ý đi qua bộ phân loại với nguồn zalo + đúng khách; đánh dấu đã rút', async () => {
+  it('cuộc khách đã gắn: ý vào kho nguồn zalo + đúng khách, đánh dấu đã đọc', async () => {
+    CUOC_CAN_RUT = [cuoc({ customer: 'Savax Door', customerId: 'K3', enabled: true, aiChecked: true })];
     CHUA_RUT = [tinDb('a', false, 'Chị không thích chữ đỏ', 1), tinDb('b', true, 'Dạ em ghi nhận', 2)];
     AI_Y = [{ tieuDe: 'Savax không thích chữ đỏ', noiDung: 'Khách không muốn dùng chữ màu đỏ trong thiết kế.' }];
     const r = await S.rutTriThucZalo({ epNgay: true });
-    expect(r).toEqual({ cuoc: 1, y: 1 });
+    expect(r).toEqual({ cuoc: 1, y: 1, nhac: 0, caNhan: 0 });
     expect(VAO_KHO).toHaveLength(1);
     expect(VAO_KHO[0]!.input).toMatchObject({ source: 'zalo', customer: 'Savax Door', title: 'Savax không thích chữ đỏ' });
     expect(VAO_KHO[0]!.nguoi).toMatchObject({ id: 'GD', role: 'director' });
     expect(DA_RUT).toEqual([['a', 'b']]);
   });
 
-  it('AI thấy không có gì đáng giữ → không gửi gì vào kho, vẫn đánh dấu đã rút (khỏi rút lại)', async () => {
-    CHUA_RUT = [tinDb('a', false, 'ok anh', 1)];
-    AI_Y = [];
+  it('chuyện cá nhân → thôi đọc, xoá nội dung, không gửi gì vào kho', async () => {
+    CUOC_CAN_RUT = [cuoc({ name: 'Mẹ' })];
+    CHUA_RUT = [tinDb('a', false, 'Con ăn cơm chưa', 1)];
+    AI_DOC = { loai: 'ca_nhan', tomTat: 'Mẹ hỏi thăm', y: [{ tieuDe: 'x', noiDung: 'không được vào kho đâu' }] };
+    const r = await S.rutTriThucZalo({ epNgay: true });
+    expect(r.caNhan).toBe(1);
+    expect(TRANG_THAI).toEqual([{ loai: 'ca_nhan', id: 'T1', o: 'Cá nhân — AI thôi đọc (Mẹ hỏi thăm)' }]);
+    expect(VAO_KHO).toHaveLength(0);
+    expect(NHAC).toHaveLength(0);
+  });
+
+  it('cuộc anh đã bật / đã là công việc thì AI không tự loại', async () => {
+    CUOC_CAN_RUT = [cuoc({ enabled: true, aiChecked: true })];
+    CHUA_RUT = [tinDb('a', false, 'Hôm nay trời đẹp', 1)];
+    AI_DOC = { loai: 'ca_nhan', y: [] };
     await S.rutTriThucZalo({ epNgay: true });
+    expect(TRANG_THAI.some((t) => t.loai === 'ca_nhan')).toBe(false);
+    expect(DA_RUT).toEqual([['a']]);
+  });
+
+  it('chưa rõ → không vào kho, đánh dấu đã đọc (khỏi đọc lại mỗi lượt), ghi lời AI', async () => {
+    CUOC_CAN_RUT = [cuoc({})];
+    CHUA_RUT = [tinDb('a', false, 'Alo', 1)];
+    AI_DOC = { loai: 'chua_ro', y: [] };
+    await S.rutTriThucZalo({ epNgay: true });
+    expect(TRANG_THAI[0]).toMatchObject({ loai: 'ghi_chu', id: 'T1' });
     expect(VAO_KHO).toHaveLength(0);
     expect(DA_RUT).toEqual([['a']]);
   });
 
+  it('khách mới hỏi báo giá chưa trả lời → tạo khách tiềm năng, học, ghi hồ sơ, đặt nhắc anh', async () => {
+    CUOC_CAN_RUT = [cuoc({ name: 'Anh Long' })];
+    CHUA_RUT = [tinDb('a', false, 'Bên em báo giá web bán nội thất giúp anh', 1)];
+    AI_DOC = {
+      loai: 'cong_viec',
+      laKhachHang: true,
+      tenKhach: 'Nội Thất Long Phát',
+      tomTat: 'Khách hỏi báo giá web',
+      y: [{ tieuDe: 'Long Phát cần web bán nội thất', noiDung: 'Khách muốn làm web bán nội thất, có giỏ hàng.' }],
+      boSungKhach: 'Bán nội thất gỗ, cần web có giỏ hàng. Liên hệ 0901234567',
+      nhac: [{ viec: 'Gửi báo giá web cho Long Phát', han: '' }],
+    };
+    const r = await S.rutTriThucZalo({ epNgay: true });
+    expect(r).toMatchObject({ cuoc: 1, y: 1, nhac: 1, caNhan: 0 });
+    // Khách mới: tạo 'Mới', rồi ghi thêm hồ sơ (không SĐT)
+    expect(CRM_GHI[0]).toMatchObject({ name: 'Nội Thất Long Phát', status: 'Mới', assignedTo: 'GD', info: '' });
+    expect(String(CRM_GHI[1]!.info)).toContain('Bán nội thất gỗ');
+    expect(String(CRM_GHI[1]!.info)).not.toContain('0901234567');
+    expect(TRANG_THAI[0]).toMatchObject({
+      loai: 'cong_viec',
+      o: { customerId: CRM_GHI[0]!.id, customer: 'Nội Thất Long Phát', aiNote: 'Công việc · khách Nội Thất Long Phát — Khách hỏi báo giá web' },
+    });
+    expect(VAO_KHO[0]!.input).toMatchObject({ customer: 'Nội Thất Long Phát', source: 'zalo' });
+    expect(NHAC[0]).toMatchObject({ memberId: 'GD', repeatKind: 'once', atTime: '08:30', active: true });
+    expect(String(NHAC[0]!.title)).toContain('Gửi báo giá web cho Long Phát');
+    expect(String(NHAC[0]!.onDate)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('khách đã có trong CRM → khớp, chỉ THÊM dòng vào hồ sơ, không tạo khách mới', async () => {
+    CUOC_CAN_RUT = [cuoc({})];
+    CHUA_RUT = [tinDb('a', false, 'Tháng sau chị chạy thêm Ads Tết', 1)];
+    AI_DOC = { loai: 'cong_viec', laKhachHang: true, tenKhach: 'Savax Door', y: [], boSungKhach: 'Muốn chạy Ads Tết', nhac: [] };
+    await S.rutTriThucZalo({ epNgay: true });
+    expect(CRM_GHI).toHaveLength(1);
+    expect(CRM_GHI[0]).toMatchObject({ id: 'K3', name: 'Savax Door' });
+    expect(String(CRM_GHI[0]!.info)).toMatch(/^Khách VIP\n• \d\d\/\d\d \(Zalo\): Muốn chạy Ads Tết$/);
+  });
+
   it('ý quá ngắn bị loại', async () => {
+    CUOC_CAN_RUT = [cuoc({ enabled: true, aiChecked: true })];
     CHUA_RUT = [tinDb('a', false, 'x', 1)];
     AI_Y = [{ tieuDe: 'x', noiDung: 'ngắn' }];
     await S.rutTriThucZalo({ epNgay: true });

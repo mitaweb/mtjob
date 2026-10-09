@@ -1,4 +1,5 @@
-// Tab Zalo của Kho tri thức (anh Tâm 5/10 + 8/10/2026): đăng nhập Zalo cá nhân bằng QR, chọn cuộc
+// Tab Zalo của Kho tri thức (anh Tâm 5/10, 8/10, 10/10/2026): đăng nhập Zalo cá nhân bằng QR; AI tự đọc
+// mọi cuộc — công việc thì học + cập nhật khách + nhắc việc, cá nhân thì bỏ qua. Trước 10/10: chọn cuộc
 // trò chuyện nào cho app "học", rút tri thức vào kho. Nhóm khách ("TÊN KH - MT DIGITAL") do AI tự
 // nhận ra, khớp/tạo khách ở CRM và kéo lịch sử cũ. Chỉ giám đốc.
 import { useEffect, useRef, useState } from 'react';
@@ -167,8 +168,12 @@ export default function BrainZalo() {
 
   async function rut(threadId?: string) {
     try {
-      const r = await api<{ cuoc: number; y: number }>('/zalo/digest', { body: threadId ? { threadId } : {} });
-      toast.success(r.cuoc ? `Đã rút ${r.y} ý từ ${r.cuoc} cuộc — xem ở tab Kho / Chờ duyệt` : 'Không có tin mới để rút');
+      const r = await api<{ cuoc: number; y: number; nhac?: number; caNhan?: number }>('/zalo/digest', { body: threadId ? { threadId } : {} });
+      toast.success(
+        r.cuoc
+          ? `AI đã đọc ${r.cuoc} cuộc: ${r.y} ý vào kho${r.nhac ? `, ${r.nhac} nhắc việc cho anh` : ''}${r.caNhan ? `, ${r.caNhan} cuộc cá nhân bỏ qua` : ''}`
+          : 'Không có tin mới để đọc',
+      );
       await tai();
     } catch (e) {
       toast.error((e as Error).message);
@@ -186,7 +191,11 @@ export default function BrainZalo() {
   }
 
   async function suaCuoc(c: Cuoc, patch: { enabled?: boolean; customer?: string }) {
-    if (patch.enabled === false && !window.confirm(`Tắt "${c.name || c.threadId}"? Nội dung tin đã lưu của cuộc này sẽ bị xoá (tri thức đã vào kho vẫn giữ).`)) return;
+    if (
+      patch.enabled === false &&
+      !window.confirm(`Cho AI bỏ qua "${c.name || c.threadId}"? Nội dung tin đã lưu của cuộc này sẽ bị xoá, AI thôi đọc (tri thức đã vào kho vẫn giữ).`)
+    )
+      return;
     try {
       await api(`/zalo/threads/${encodeURIComponent(c.threadId)}`, { body: patch });
       await tai();
@@ -203,7 +212,7 @@ export default function BrainZalo() {
   const locHienTai: Loc = loc || st.loc || 'tat_ca';
   const hien = st.threads;
   const LOC: Array<[Loc, string, number]> = [
-    ['hoc', 'Đang học', dem.hoc],
+    ['hoc', 'Công việc', dem.hoc],
     ['nhom', 'Nhóm', dem.nhom],
     ['rieng', 'Chat 1-1', dem.rieng],
     ['tat_ca', 'Tất cả', dem.tat_ca],
@@ -272,9 +281,22 @@ export default function BrainZalo() {
         )}
 
         <p className="text-xs text-ink-muted">
-          App <b>tự đồng bộ 3 tiếng/lần</b> cả ngày. <b>Ban đêm</b> (22h–5h) quét thêm nhóm mới, rồi AI xem xét các cuộc đã bật — lưu ý,
-          yêu cầu của khách nào ổn thì đưa thẳng vào kho, điều chưa chắc thì vào tab Chờ duyệt.
+          App <b>tự đồng bộ 3 tiếng/lần</b> cả ngày. <b>Ban đêm</b> (22h–5h) AI <b>tự đọc mọi cuộc</b>, anh không cần bật gì:
         </p>
+        <ul className="ml-4 list-disc text-xs text-ink-muted">
+          <li>
+            <b>Công việc</b> → tự học vào kho (yêu cầu, lưu ý, điều đã chốt của khách…); điều <b>phân vân</b> mới vào tab Chờ duyệt cho anh.
+          </li>
+          <li>
+            <b>Cập nhật khách</b>: khớp khách trong CRM (khách mới thì tạo), thêm điều mới vào “Thông tin khách” — không xoá điều anh đã ghi.
+          </li>
+          <li>
+            <b>Nhắc anh</b> khi có việc chưa làm — vd khách hỏi báo giá chưa trả lời, hứa gửi tài liệu, hẹn gọi lại (xem ở Nhắc hẹn).
+          </li>
+          <li>
+            <b>Cá nhân</b> (gia đình, bạn bè, hội nhóm) → AI thôi đọc và xoá nội dung đã lưu.
+          </li>
+        </ul>
         <p className="text-xs text-ink-muted">
           <b>Nhóm khách</b>: AI tự nhận ra nhóm làm việc với khách (tên kiểu “TÊN KH - MT DIGITAL”, tên khác AI tự phán đoán), khớp với khách
           trong CRM — chưa có thì tạo mới — rồi bật học và <b>kéo lịch sử cũ</b> (~200 tin gần nhất mỗi nhóm). <b>Chat 1-1</b>: Zalo không cho
@@ -287,13 +309,13 @@ export default function BrainZalo() {
           <div>
             <h3 className="font-medium">Cuộc trò chuyện ({dem.tat_ca})</h3>
             <p className="text-xs text-ink-muted">
-              Chat 1-1 mặc định <b>không học</b> — chỉ đếm số tin. Bật <b>Học</b> ở cuộc nào là khách thì app mới lưu nội dung, và ban đêm AI
-              rút lưu ý, yêu cầu của khách đó vào kho tri thức. Nhóm khách AI bật sẵn; anh tắt/bật tay thì AI không đổi lại.
+              🤖 dưới mỗi cuộc là AI xếp nó thế nào. Ô <b>Học</b> để anh tự quyết khi AI xếp sai: tích = luôn học, bỏ tích = bỏ qua. AI không
+              đổi lại quyết định của anh.
             </p>
           </div>
-          {dem.hoc > 0 && (
+          {st.coPhien && (
             <AsyncButton className="btn-ghost text-sm" onClick={() => rut()} busyLabel="AI đang đọc…">
-              Rút tri thức ngay
+              🤖 AI đọc ngay
             </AsyncButton>
           )}
         </div>
@@ -327,10 +349,15 @@ export default function BrainZalo() {
                     </div>
                     <div className="text-xs text-ink-faint">
                       {c.msgCount} tin{c.lastMsgAt ? ` · gần nhất ${ngayGio(c.lastMsgAt)}` : ''}
-                      {c.enabled && c.chuaRut > 0 ? ` · ${c.chuaRut} tin chưa rút` : ''}
+                      {c.chuaRut > 0 ? ` · ${c.chuaRut} tin AI chưa đọc` : ''}
                       {c.isGroup && c.enabled && !c.historyDone ? ' · chờ kéo lịch sử' : ''}
                     </div>
-                    {c.isGroup && c.aiChecked && c.aiNote && <div className="text-xs text-ink-muted">🤖 {c.aiNote}</div>}
+                    <div className="text-xs text-ink-muted">
+                      🤖{' '}
+                      {c.aiChecked || /^(AI chưa rõ|Chưa rõ theo tên)/.test(c.aiNote)
+                        ? c.aiNote || (c.enabled ? 'Anh đã bật học' : 'Anh đã cho bỏ qua')
+                        : 'AI chưa đọc — đêm nay AI sẽ xếp loại'}
+                    </div>
                   </div>
                   <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-sm">
                     <input type="checkbox" checked={c.enabled} onChange={(e) => suaCuoc(c, { enabled: e.target.checked })} />
@@ -348,7 +375,7 @@ export default function BrainZalo() {
                     />
                     {c.chuaRut > 0 && (
                       <AsyncButton className="btn-ghost px-2 py-1 text-xs" onClick={() => rut(c.threadId)} busyLabel="…">
-                        Rút ngay
+                        Đọc ngay
                       </AsyncButton>
                     )}
                   </div>
