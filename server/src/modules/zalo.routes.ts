@@ -8,7 +8,7 @@ import { requireAuth, requireRole } from '../auth/middleware.js';
 import { runInBackground } from '../util/background.js';
 import { docTrangThai, suaCuoc, timCuoc, trangCuoc, type LocCuoc } from './zalo.repo.js';
 import { rutTriThucZalo, khopKhachCuoc } from './zalo.service.js';
-import { dangNhapQR, dangXuat, dongBoZalo, quetNhomKhach, khoaPhien } from './zalo.client.js';
+import { dangNhapQR, dangXuat, dongBoZalo, quetNhomKhach, xuLyNgay, khoaPhien } from './zalo.client.js';
 import { isMissingTable } from './brain.repo.js';
 
 export const zaloRouter = Router();
@@ -107,5 +107,16 @@ zaloRouter.post(
   asyncHandler(async (req, res) => {
     const threadId = typeof req.body?.threadId === 'string' ? req.body.threadId : undefined;
     res.json(await rutTriThucZalo({ epNgay: true, threadId, limit: threadId ? 1 : 3 }));
+  }),
+);
+
+/**
+ * "⚡ Đọc & phân loại ngay" (anh Tâm 10/10/2026: "không cần chờ đến tối") — một bước ~40 giây; trang
+ * gọi lặp tới khi `buoc = 'xong'`.
+ */
+zaloRouter.post(
+  '/process',
+  asyncHandler(async (_req, res) => {
+    res.json(await xuLyNgay());
   }),
 );

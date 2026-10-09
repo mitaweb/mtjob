@@ -64,6 +64,10 @@ export default function BrainZalo() {
   const [khach, setKhach] = useState<Record<string, string>>({});
   const [choQR, setChoQR] = useState(0); // mốc ms bắt đầu chờ QR (0 = không chờ)
   const hen = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // "⚡ Đọc & phân loại ngay": dòng tiến trình + cờ dừng.
+  const [tienTrinh, setTienTrinh] = useState<string[]>([]);
+  const [dangXuLy, setDangXuLy] = useState(false);
+  const dung = useRef(false);
   // Bộ lọc hiện tại — tai() được gọi từ nhiều chỗ (cả vòng chờ QR), đọc qua ref cho khỏi cũ.
   const boLoc = useRef<{ loc: Loc | ''; tim: string; trang: number }>({ loc: '', tim: '', trang: 1 });
 
@@ -163,6 +167,53 @@ export default function BrainZalo() {
       toast.info('Còn nhóm chưa xét xong — đêm nay app tự làm tiếp, hoặc bấm lại.');
     } catch (e) {
       toast.error((e as Error).message);
+    }
+  }
+
+  /**
+   * Đọc & phân loại ngay (anh Tâm 10/10/2026: "không cần chờ đến tối"): đồng bộ tin mới một lượt, rồi
+   * gọi lặp từng bước ~40 giây — xét nhóm → AI đọc cuộc → AI xét lại mục chờ — tới khi xong.
+   */
+  async function xuLyNgay() {
+    dung.current = false;
+    setDangXuLy(true);
+    const ghi = (d: string) => setTienTrinh((cu) => [...cu, `${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} · ${d}`]);
+    setTienTrinh([]);
+    try {
+      if (st?.coPhien) {
+        ghi('Đang đồng bộ tin mới từ Zalo…');
+        const s = await api<{ ok: boolean; note: string }>('/zalo/sync', { body: {} });
+        ghi(s.note);
+        await tai();
+      }
+      let dungYen = 0;
+      let truoc = '';
+      for (let lan = 0; lan < 40 && !dung.current; lan++) {
+        const r = await api<{ ok: boolean; buoc: string; note: string; con: { nhom: number; doc: number } }>('/zalo/process', { body: {} });
+        ghi(`${r.note}${r.buoc !== 'xong' ? ` — còn ${r.con.nhom} việc nhóm, ${r.con.doc} cuộc chưa đọc` : ''}`);
+        await tai();
+        if (!r.ok) {
+          toast.error(r.note.slice(0, 200));
+          break;
+        }
+        if (r.buoc === 'xong') {
+          toast.success('Đã đọc và phân loại xong');
+          break;
+        }
+        const bay = `${r.buoc}:${r.con.nhom}:${r.con.doc}`;
+        dungYen = bay === truoc ? dungYen + 1 : 0;
+        truoc = bay;
+        if (dungYen >= 3) {
+          ghi('Không tiến thêm được — để đêm nay app tự làm tiếp.');
+          break;
+        }
+      }
+      if (dung.current) ghi('Đã dừng theo yêu cầu.');
+    } catch (e) {
+      ghi(`Lỗi: ${(e as Error).message}`);
+      toast.error((e as Error).message);
+    } finally {
+      setDangXuLy(false);
     }
   }
 
@@ -313,12 +364,24 @@ export default function BrainZalo() {
               đổi lại quyết định của anh.
             </p>
           </div>
-          {st.coPhien && (
-            <AsyncButton className="btn-ghost text-sm" onClick={() => rut()} busyLabel="AI đang đọc…">
-              🤖 AI đọc ngay
-            </AsyncButton>
-          )}
+          {dangXuLy ? (
+              <button className="btn-ghost text-sm text-rose-600" onClick={() => (dung.current = true)}>
+                ⏹ Dừng
+              </button>
+            ) : (
+              <button className="btn-primary text-sm" onClick={xuLyNgay}>
+                ⚡ Đọc & phân loại ngay
+              </button>
+            )}
         </div>
+        {tienTrinh.length > 0 && (
+          <div className="mb-3 max-h-48 overflow-y-auto rounded-xl bg-brand-50 p-3 text-xs text-ink-soft">
+            {tienTrinh.map((d, i) => (
+              <div key={i}>{d}</div>
+            ))}
+            {dangXuLy && <div className="text-brand-700">⏳ AI đang làm…</div>}
+          </div>
+        )}
         {(dem.tat_ca > 0 || tim) && (
           <div className="mb-2 flex flex-wrap items-center gap-2">
             {LOC.map(([k, nhanLoc, so]) => (
@@ -356,7 +419,9 @@ export default function BrainZalo() {
                       🤖{' '}
                       {c.aiChecked || /^(AI chưa rõ|Chưa rõ theo tên)/.test(c.aiNote)
                         ? c.aiNote || (c.enabled ? 'Anh đã bật học' : 'Anh đã cho bỏ qua')
-                        : 'AI chưa đọc — đêm nay AI sẽ xếp loại'}
+                        : c.chuaRut > 0
+                          ? 'AI chưa đọc — bấm ⚡ Đọc & phân loại ngay, hoặc đêm nay AI tự đọc'
+                          : 'Chưa có nội dung để đọc (tin trước 10/10 chỉ được đếm, không lưu) — AI đọc khi có tin mới'}
                     </div>
                   </div>
                   <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-sm">

@@ -439,3 +439,54 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
     dangDongBo = false;
   }
 }
+
+/**
+ * Nút "⚡ Đọc & phân loại ngay" (anh Tâm 10/10/2026: "cho anh 1 nút chủ động đọc và phân loại không cần
+ * chờ đến tối"). Mỗi lần gọi làm MỘT bước ~40 giây theo thứ tự ban đêm — nhóm (xét theo tên + kéo lịch
+ * sử) → AI đọc cuộc → AI xét lại mục chờ duyệt — trang gọi lặp tới khi `buoc = 'xong'`.
+ */
+export async function xuLyNgay(): Promise<{
+  ok: boolean;
+  buoc: 'nhom' | 'doc' | 'kho' | 'xong';
+  note: string;
+  con: { nhom: number; doc: number };
+}> {
+  const { demCuocCanRut } = await import('./zalo.repo.js');
+  const demCon = async () => {
+    const vn = await demViecNhom().catch(() => ({ chuaXet: 0, chuaKeo: 0 }));
+    return { nhom: vn.chuaXet + vn.chuaKeo, doc: await demCuocCanRut().catch(() => 0) };
+  };
+  const truoc = await demCon();
+  const st = await docTrangThai();
+
+  if (truoc.nhom > 0) {
+    if (st.coPhien) {
+      const r = await quetNhomKhach();
+      return { ok: r.ok, buoc: 'nhom', note: r.note, con: await demCon() };
+    }
+    // Chưa đăng nhập Zalo: vẫn xét được nhóm theo tên (không cần Zalo), chỉ không kéo lịch sử.
+    const r = await xacDinhNhomKhach(40);
+    if (r.xet > 0) return { ok: true, buoc: 'nhom', note: `AI xét ${r.xet} nhóm: ${r.nhomKhach} nhóm khách`, con: await demCon() };
+  }
+
+  if (truoc.doc > 0) {
+    const r = await rutTriThucZalo({ epNgay: true, limit: 40, han: Date.now() + 40_000 });
+    if (r.loi) return { ok: false, buoc: 'doc', note: `AI hết lượt: ${r.loi}`, con: await demCon() };
+    if (r.cuoc > 0) {
+      const note = `AI đọc ${r.cuoc} cuộc: ${r.y} ý vào kho, ${r.nhac} nhắc việc, ${r.caNhan} cuộc cá nhân bỏ qua`;
+      return { ok: true, buoc: 'doc', note, con: await demCon() };
+    }
+  }
+
+  const { xetLaiMucCho } = await import('./brainItems.service.js');
+  const x = await xetLaiMucCho({ han: Date.now() + 40_000, limit: 20 });
+  if (x.xong > 0) {
+    return {
+      ok: true,
+      buoc: 'kho',
+      note: `AI xét lại ${x.xong} mục chờ: ban hành ${x.banHanh}, còn chờ anh ${x.conCho}, bỏ ${x.bo}`,
+      con: await demCon(),
+    };
+  }
+  return { ok: true, buoc: 'xong', note: 'Đã đọc và phân loại hết', con: await demCon() };
+}

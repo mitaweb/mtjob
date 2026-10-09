@@ -302,8 +302,14 @@ export async function ghiKetQuaXet(
   }
 }
 
+/**
+ * Nhóm cần kéo lịch sử: nhóm đang học, và nhóm mà tên không đủ để xếp loại (kéo tin về cho AI đọc rồi
+ * xếp — anh Tâm 10/10/2026: "chủ động đọc và phân loại").
+ */
+const DK_CAN_KEO = `(enabled OR COALESCE(ai_note, '') LIKE '${CHUA_RO_THEO_TEN}%') AND NOT COALESCE(history_done, false)`;
+
 export const SQL_NHOM_CAN_KEO = `SELECT t.*, 0 AS chua_rut FROM zalo_threads t
-  WHERE t.is_group AND t.enabled AND NOT COALESCE(t.history_done, false) ORDER BY t.last_msg_at DESC LIMIT $1`;
+  WHERE t.is_group AND ${DK_CAN_KEO} ORDER BY t.last_msg_at DESC LIMIT $1`;
 
 export async function nhomCanKeoLichSu(limit: number): Promise<ZaloThread[]> {
   return (await q(SQL_NHOM_CAN_KEO, [limit])).map(rowToThread);
@@ -317,7 +323,7 @@ export async function daKeoLichSu(threadId: string): Promise<void> {
 export async function demViecNhom(): Promise<{ chuaXet: number; chuaKeo: number }> {
   const r = await q(
     `SELECT COUNT(*) FILTER (WHERE ${DK_CHUA_XET})::int AS chua_xet,
-            COUNT(*) FILTER (WHERE enabled AND NOT COALESCE(history_done, false))::int AS chua_keo
+            COUNT(*) FILTER (WHERE ${DK_CAN_KEO})::int AS chua_keo
      FROM zalo_threads WHERE is_group`,
   );
   return { chuaXet: Number(r[0]?.chua_xet) || 0, chuaKeo: Number(r[0]?.chua_keo) || 0 };
@@ -357,4 +363,13 @@ export async function danhDauCongViec(threadId: string, o: { aiNote: string; cus
 /** Chỉ ghi lời AI về cuộc (vd "chưa rõ — đọc thêm lần sau"), không đổi trạng thái. */
 export async function ghiGhiChuAi(threadId: string, aiNote: string): Promise<void> {
   await q('UPDATE zalo_threads SET ai_note = $2 WHERE thread_id = $1', [threadId, aiNote]);
+}
+
+/** Số cuộc còn tin AI chưa đọc (chưa bị loại) — cho nút "Đọc & phân loại ngay" biết còn bao nhiêu. */
+export async function demCuocCanRut(): Promise<number> {
+  const r = await q(
+    `SELECT COUNT(DISTINCT m.thread_id)::int AS n FROM zalo_messages m JOIN zalo_threads t ON t.thread_id = m.thread_id
+     WHERE NOT m.digested AND (t.enabled OR NOT COALESCE(t.ai_checked, false))`,
+  );
+  return Number(r[0]?.n) || 0;
 }

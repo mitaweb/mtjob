@@ -326,9 +326,9 @@ let lanRutCuoi = 0;
  * máy chủ chỉ sống 60 giây; ban đêm cron gọi lặp tới khi hết.
  */
 export async function rutTriThucZalo(
-  opts: { epNgay?: boolean; threadId?: string; limit?: number } = {},
-): Promise<{ cuoc: number; y: number; nhac: number; caNhan: number }> {
-  const rong = { cuoc: 0, y: 0, nhac: 0, caNhan: 0 };
+  opts: { epNgay?: boolean; threadId?: string; limit?: number; han?: number } = {},
+): Promise<{ cuoc: number; y: number; nhac: number; caNhan: number; loi: string }> {
+  const rong = { cuoc: 0, y: 0, nhac: 0, caNhan: 0, loi: '' };
   if (dangRut) return rong;
   if (!opts.epNgay && Date.now() - lanRutCuoi < 4 * 60_000) return rong;
   dangRut = true;
@@ -341,15 +341,24 @@ export async function rutTriThucZalo(
     const canRut = ds
       .filter((c) => denLucRut({ chuaRut: c.chuaRut, lastMsgAt: c.lastMsgAt, now, epNgay: opts.epNgay }))
       .slice(0, opts.limit ?? 3);
-    const kq = { ...rong, cuoc: canRut.length };
+    const kq = { ...rong };
     for (const c of canRut) {
+      // Có hạn giờ (nút "Đọc & phân loại ngay"): hết giờ thì dừng, lượt sau đọc tiếp.
+      if (opts.han && Date.now() > opts.han) break;
       try {
         const r = await rutCuoc(c, chu);
+        kq.cuoc++;
         kq.y += r.y;
         kq.nhac += r.nhac;
         if (r.loai === 'ca_nhan') kq.caNhan++;
       } catch (e) {
-        console.warn('[zalo] rút tri thức', c.threadId, (e as Error).message);
+        const m = (e as Error).message;
+        console.warn('[zalo] rút tri thức', c.threadId, m);
+        // AI hết lượt → dừng luôn, đọc tiếp cũng chỉ lỗi.
+        if (/429|quota|RESOURCE_EXHAUSTED|rate.?limit|overloaded/i.test(m)) {
+          kq.loi = m.slice(0, 200);
+          break;
+        }
       }
     }
     await donTinCu(now - 30 * 24 * 3600 * 1000).catch(() => undefined);

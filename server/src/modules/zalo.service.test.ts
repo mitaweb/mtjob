@@ -207,7 +207,7 @@ describe('AI tự đọc cuộc trò chuyện', () => {
     CHUA_RUT = [tinDb('a', false, 'Chị không thích chữ đỏ', 1), tinDb('b', true, 'Dạ em ghi nhận', 2)];
     AI_Y = [{ tieuDe: 'Savax không thích chữ đỏ', noiDung: 'Khách không muốn dùng chữ màu đỏ trong thiết kế.' }];
     const r = await S.rutTriThucZalo({ epNgay: true });
-    expect(r).toEqual({ cuoc: 1, y: 1, nhac: 0, caNhan: 0 });
+    expect(r).toEqual({ cuoc: 1, y: 1, nhac: 0, caNhan: 0, loi: '' });
     expect(VAO_KHO).toHaveLength(1);
     expect(VAO_KHO[0]!.input).toMatchObject({ source: 'zalo', customer: 'Savax Door', title: 'Savax không thích chữ đỏ' });
     expect(VAO_KHO[0]!.nguoi).toMatchObject({ id: 'GD', role: 'director' });
@@ -288,5 +288,31 @@ describe('AI tự đọc cuộc trò chuyện', () => {
     AI_Y = [{ tieuDe: 'x', noiDung: 'ngắn' }];
     await S.rutTriThucZalo({ epNgay: true });
     expect(VAO_KHO).toHaveLength(0);
+  });
+});
+
+// Anh Tâm 10/10/2026: "cho anh 1 nút chủ động đọc và phân loại không cần chờ đến tối".
+describe('đọc ngay — hạn giờ và hết lượt AI', () => {
+  const cuoc = (threadId: string) => ({
+    threadId, name: threadId, customer: '', customerId: '', enabled: true, aiChecked: true, isGroup: false,
+    chuaRut: 1, lastMsgAt: '2026-10-05T01:00:00Z',
+  });
+
+  it('hết giờ thì dừng, lượt sau đọc tiếp', async () => {
+    CUOC_CAN_RUT = [cuoc('A'), cuoc('B')];
+    CHUA_RUT = [{ msgId: 'a', threadId: 'A', fromSelf: false, sender: 'K', content: 'xin chào', ts: '1' }];
+    const r = await S.rutTriThucZalo({ epNgay: true, limit: 40, han: Date.now() - 1 });
+    expect(r.cuoc).toBe(0);
+    expect(DA_RUT).toEqual([]);
+  });
+
+  it('AI hết lượt (429) → dừng ngay, báo lỗi, không đọc tiếp cuộc sau', async () => {
+    CUOC_CAN_RUT = [cuoc('A'), cuoc('B')];
+    CHUA_RUT = [{ msgId: 'a', threadId: 'A', fromSelf: false, sender: 'K', content: 'xin chào', ts: '1' }];
+    const g = await import('../gemini/client.js');
+    (g.generateJson as unknown as { mockRejectedValueOnce: (e: Error) => void }).mockRejectedValueOnce(new Error('Gemini 429: quota'));
+    const r = await S.rutTriThucZalo({ epNgay: true, limit: 40, han: Date.now() + 10_000 });
+    expect(r).toMatchObject({ cuoc: 0, loi: 'Gemini 429: quota' });
+    expect(DA_RUT).toEqual([]);
   });
 });
