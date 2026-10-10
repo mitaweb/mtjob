@@ -21,6 +21,19 @@ interface Cuoc {
   aiChecked: boolean;
   aiNote: string;
   historyDone: boolean;
+  /** AI phân vân (50:50) — chờ anh quyết. */
+  aiHoi: boolean;
+  /** 'hoc' | 'bo' khi anh đã tự quyết. */
+  anhQuyet: string;
+  tomTat: string;
+}
+
+interface TinXem {
+  msgId: string;
+  fromSelf: boolean;
+  sender: string;
+  content: string;
+  ts: string;
 }
 
 interface TrangThai {
@@ -53,7 +66,7 @@ const NHAN: Record<string, { label: string; variant: BadgeVariant }> = {
 const ngayGio = (iso: string) =>
   iso ? new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
 
-type Loc = 'hoc' | 'nhom' | 'rieng' | 'tat_ca';
+type Loc = 'hoi' | 'hoc' | 'bo' | 'nhom' | 'rieng' | 'tat_ca';
 
 export default function BrainZalo() {
   const toast = useToast();
@@ -67,6 +80,8 @@ export default function BrainZalo() {
   // "⚡ Đọc & phân loại ngay": dòng tiến trình + cờ dừng.
   const [tienTrinh, setTienTrinh] = useState<string[]>([]);
   const [dangXuLy, setDangXuLy] = useState(false);
+  // Tin gần đây đang mở xem, theo từng cuộc.
+  const [dangXem, setDangXem] = useState<Record<string, TinXem[]>>({});
   const dung = useRef(false);
   // Bộ lọc hiện tại — tai() được gọi từ nhiều chỗ (cả vòng chờ QR), đọc qua ref cho khỏi cũ.
   const boLoc = useRef<{ loc: Loc | ''; tim: string; trang: number }>({ loc: '', tim: '', trang: 1 });
@@ -241,14 +256,36 @@ export default function BrainZalo() {
     }
   }
 
+  /** Mở/đóng vài tin gần đây của một cuộc — để anh biết nội dung mà quyết. */
+  async function xemTin(c: Cuoc) {
+    if (dangXem[c.threadId]) {
+      setDangXem((cu) => {
+        const m = { ...cu };
+        delete m[c.threadId];
+        return m;
+      });
+      return;
+    }
+    try {
+      const r = await api<{ messages: TinXem[] }>(`/zalo/threads/${encodeURIComponent(c.threadId)}/messages`);
+      setDangXem((cu) => ({ ...cu, [c.threadId]: r.messages }));
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
   async function suaCuoc(c: Cuoc, patch: { enabled?: boolean; customer?: string }) {
     if (
       patch.enabled === false &&
+      !c.aiHoi &&
       !window.confirm(`Cho AI bỏ qua "${c.name || c.threadId}"? Nội dung tin đã lưu của cuộc này sẽ bị xoá, AI thôi đọc (tri thức đã vào kho vẫn giữ).`)
     )
       return;
     try {
       await api(`/zalo/threads/${encodeURIComponent(c.threadId)}`, { body: patch });
+      if (c.aiHoi && patch.enabled !== undefined) {
+        toast.success(patch.enabled ? `Đã chọn học "${c.name}" — AI sẽ đọc lại tin của cuộc này` : `Đã bỏ qua "${c.name}"`);
+      }
       await tai();
     } catch (e) {
       toast.error((e as Error).message);
@@ -259,11 +296,13 @@ export default function BrainZalo() {
 
   const nhan = NHAN[st.status] || NHAN.offline!;
   const anhQR = st.qr ? (st.qr.startsWith('data:') ? st.qr : `data:image/png;base64,${st.qr}`) : '';
-  const dem: Record<Loc, number> = st.dem || { hoc: 0, nhom: 0, rieng: 0, tat_ca: 0 };
+  const dem: Record<Loc, number> = { hoi: 0, hoc: 0, bo: 0, nhom: 0, rieng: 0, tat_ca: 0, ...st.dem };
   const locHienTai: Loc = loc || st.loc || 'tat_ca';
   const hien = st.threads;
   const LOC: Array<[Loc, string, number]> = [
-    ['hoc', 'Công việc', dem.hoc],
+    ['hoi', '❓ Cần anh quyết', dem.hoi],
+    ['hoc', 'Đang học', dem.hoc],
+    ['bo', 'Bỏ qua', dem.bo],
     ['nhom', 'Nhóm', dem.nhom],
     ['rieng', 'Chat 1-1', dem.rieng],
     ['tat_ca', 'Tất cả', dem.tat_ca],
@@ -360,8 +399,9 @@ export default function BrainZalo() {
           <div>
             <h3 className="font-medium">Cuộc trò chuyện ({dem.tat_ca})</h3>
             <p className="text-xs text-ink-muted">
-              🤖 dưới mỗi cuộc là AI xếp nó thế nào. Ô <b>Học</b> để anh tự quyết khi AI xếp sai: tích = luôn học, bỏ tích = bỏ qua. AI không
-              đổi lại quyết định của anh.
+              AI <b>tự quyết</b>: liên quan công việc thì học, nhóm chợ / không liên quan thì bỏ qua không đọc. Chỉ cuộc AI phân vân
+              (50:50) mới vào <b>❓ Cần anh quyết</b> — anh chọn Học / Bỏ qua, AI ghi nhớ để lần sau tự quyết giống anh. Ô <b>Học</b> để anh sửa
+              khi AI xếp sai.
             </p>
           </div>
           {dangXuLy ? (
@@ -415,20 +455,66 @@ export default function BrainZalo() {
                       {c.chuaRut > 0 ? ` · ${c.chuaRut} tin AI chưa đọc` : ''}
                       {c.isGroup && c.enabled && !c.historyDone ? ' · chờ kéo lịch sử' : ''}
                     </div>
-                    <div className="text-xs text-ink-muted">
-                      🤖{' '}
-                      {c.aiChecked || /^(AI chưa rõ|Chưa rõ theo tên)/.test(c.aiNote)
-                        ? c.aiNote || (c.enabled ? 'Anh đã bật học' : 'Anh đã cho bỏ qua')
-                        : c.chuaRut > 0
-                          ? 'AI chưa đọc — bấm ⚡ Đọc & phân loại ngay, hoặc đêm nay AI tự đọc'
-                          : 'Chưa có nội dung để đọc (tin trước 10/10 chỉ được đếm, không lưu) — AI đọc khi có tin mới'}
+                    {c.anhQuyet ? (
+                      <div className="text-xs text-ink-muted">
+                        👤 Anh đã chọn {c.anhQuyet === 'hoc' ? 'học' : 'bỏ qua'}
+                        {c.tomTat ? ` — ${c.tomTat}` : ''}
+                      </div>
+                    ) : (
+                      !c.aiHoi && (
+                        <div className="text-xs text-ink-muted">
+                          🤖{' '}
+                          {c.aiChecked || /^(AI chưa rõ|Chưa rõ theo tên)/.test(c.aiNote)
+                            ? c.aiNote || (c.enabled ? 'Đang học' : 'Bỏ qua')
+                            : c.chuaRut > 0
+                              ? 'AI chưa đọc — bấm ⚡ Đọc & phân loại ngay, hoặc đêm nay AI tự đọc'
+                              : 'Chưa có nội dung để đọc (tin trước 10/10 chỉ được đếm, không lưu) — AI đọc khi có tin mới'}
+                        </div>
+                      )
+                    )}
+                  </div>
+                  {!c.aiHoi && (
+                    <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-sm">
+                      <input type="checkbox" checked={c.enabled} onChange={(e) => suaCuoc(c, { enabled: e.target.checked })} />
+                      Học
+                    </label>
+                  )}
+                </div>
+                {c.aiHoi && (
+                  <div className="rounded-xl bg-amber-50 p-3 text-sm">
+                    <div className="text-amber-900">
+                      ❓ <b>AI phân vân:</b> {c.aiNote.replace(/^Hỏi anh:\s*/, '')}
+                    </div>
+                    {c.tomTat && <div className="text-xs text-ink-soft">Nội dung: {c.tomTat}</div>}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <AsyncButton className="btn-primary px-3 py-1 text-sm" onClick={() => suaCuoc(c, { enabled: true })} busyLabel="…">
+                        ✓ Học
+                      </AsyncButton>
+                      <AsyncButton className="btn-ghost px-3 py-1 text-sm text-rose-600" onClick={() => suaCuoc(c, { enabled: false })} busyLabel="…">
+                        ✗ Bỏ qua
+                      </AsyncButton>
                     </div>
                   </div>
-                  <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-sm">
-                    <input type="checkbox" checked={c.enabled} onChange={(e) => suaCuoc(c, { enabled: e.target.checked })} />
-                    Học
-                  </label>
-                </div>
+                )}
+                {(c.aiHoi || c.chuaRut > 0 || c.enabled) && (
+                  <button className="text-xs text-brand-600 underline" onClick={() => xemTin(c)}>
+                    {dangXem[c.threadId] ? 'Ẩn tin' : 'Xem tin gần đây'}
+                  </button>
+                )}
+                {dangXem[c.threadId] && (
+                  <div className="max-h-56 space-y-0.5 overflow-y-auto rounded-xl border border-brand-100 bg-white p-2 text-xs">
+                    {dangXem[c.threadId]!.length === 0 ? (
+                      <div className="text-ink-faint">Không có tin nào được lưu.</div>
+                    ) : (
+                      dangXem[c.threadId]!.map((t) => (
+                        <div key={t.msgId}>
+                          <span className="text-ink-faint">{ngayGio(new Date(Number(t.ts)).toISOString())} </span>
+                          <b>{t.fromSelf ? 'Anh' : t.sender || c.name}:</b> {t.content}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
                 {c.enabled && (
                   <div className="flex flex-wrap items-center gap-2">
                     <input

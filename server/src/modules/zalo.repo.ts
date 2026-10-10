@@ -20,6 +20,12 @@ export interface ZaloThread {
   aiNote: string;
   /** Nhóm khách: đã kéo lịch sử cũ chưa. */
   historyDone: boolean;
+  /** AI phân vân (50:50) — chờ anh quyết. */
+  aiHoi: boolean;
+  /** 'hoc' | 'bo' khi anh tự quyết; '' khi để AI quyết. */
+  anhQuyet: string;
+  /** Một câu AI tóm cuộc này nói gì. */
+  tomTat: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -38,6 +44,9 @@ function rowToThread(r: any): ZaloThread {
     aiChecked: !!r.ai_checked,
     aiNote: String(r.ai_note || ''),
     historyDone: !!r.history_done,
+    aiHoi: !!r.ai_hoi,
+    anhQuyet: String(r.anh_quyet || ''),
+    tomTat: String(r.tom_tat || ''),
   };
 }
 
@@ -75,10 +84,12 @@ export async function dsCuoc(limit = 200): Promise<ZaloThread[]> {
   return (await q(SQL_DS_CUOC, [limit])).map(rowToThread);
 }
 
-export type LocCuoc = 'hoc' | 'nhom' | 'rieng' | 'tat_ca';
+export type LocCuoc = 'hoi' | 'hoc' | 'bo' | 'nhom' | 'rieng' | 'tat_ca';
 
 const DK_LOC: Record<LocCuoc, string> = {
+  hoi: 'COALESCE(t.ai_hoi, false)',
   hoc: 't.enabled',
+  bo: 'COALESCE(t.ai_checked, false) AND NOT t.enabled',
   nhom: 't.is_group',
   rieng: 'NOT t.is_group',
   tat_ca: 'true',
@@ -100,13 +111,16 @@ export async function trangCuoc(o: { loc: LocCuoc; tim: string; trang: number; c
     dkTim = `(t.name ILIKE $${params.length} OR t.customer ILIKE $${params.length})`;
   }
   const demR = await q(
-    `SELECT COUNT(*) FILTER (WHERE t.enabled)::int AS hoc, COUNT(*) FILTER (WHERE t.is_group)::int AS nhom,
+    `SELECT COUNT(*) FILTER (WHERE ${DK_LOC.hoi})::int AS hoi, COUNT(*) FILTER (WHERE ${DK_LOC.bo})::int AS bo,
+            COUNT(*) FILTER (WHERE t.enabled)::int AS hoc, COUNT(*) FILTER (WHERE t.is_group)::int AS nhom,
             COUNT(*) FILTER (WHERE NOT t.is_group)::int AS rieng, COUNT(*)::int AS tat_ca
      FROM zalo_threads t WHERE ${dkTim}`,
     params,
   );
   const d = demR[0] || {};
   const dem: Record<LocCuoc, number> = {
+    hoi: Number(d.hoi) || 0,
+    bo: Number(d.bo) || 0,
     hoc: Number(d.hoc) || 0,
     nhom: Number(d.nhom) || 0,
     rieng: Number(d.rieng) || 0,
@@ -142,9 +156,18 @@ export async function suaCuoc(threadId: string, patch: { enabled?: boolean; cust
   if (patch.enabled !== undefined) {
     params.push(patch.enabled);
     sets.push(`enabled = $${params.length}`);
-    // Anh đã tự quyết → AI không xét lại nhóm này. Tắt thì tin bị xoá, bật lại sẽ kéo lịch sử lại.
-    sets.push('ai_checked = true');
+    // Anh đã tự quyết → AI không xét lại cuộc này, và lấy làm ví dụ để lần sau tự quyết giống anh.
+    // Tắt thì tin bị xoá, bật lại sẽ kéo lịch sử lại.
+    sets.push('ai_checked = true', 'ai_hoi = false', `anh_quyet = '${patch.enabled ? 'hoc' : 'bo'}'`);
     if (!patch.enabled) sets.push('history_done = false');
+    // Cuộc AI đang hỏi mà anh chọn học → cho AI đọc lại các tin đã lưu (lúc phân vân AI chưa học gì).
+    if (patch.enabled) {
+      await q(
+        `UPDATE zalo_messages SET digested = false
+         WHERE thread_id = $1 AND EXISTS (SELECT 1 FROM zalo_threads WHERE thread_id = $1 AND ai_hoi)`,
+        [threadId],
+      );
+    }
   }
   if (patch.customerId !== undefined) {
     params.push(patch.customerId);
@@ -344,20 +367,55 @@ export async function cuocCanRut(limit: number): Promise<ZaloThread[]> {
 }
 
 /** AI thấy là chuyện cá nhân → thôi đọc cuộc này, xoá nội dung đã lưu. Anh bật tay lại được. */
-export async function danhDauCaNhan(threadId: string, aiNote: string): Promise<void> {
-  await q('UPDATE zalo_threads SET enabled = false, ai_checked = true, ai_note = $2 WHERE thread_id = $1', [threadId, aiNote]);
+export async function danhDauCaNhan(threadId: string, aiNote: string, tomTat = ''): Promise<void> {
+  await q('UPDATE zalo_threads SET enabled = false, ai_checked = true, ai_hoi = false, ai_note = $2, tom_tat = $3 WHERE thread_id = $1', [
+    threadId,
+    aiNote,
+    tomTat,
+  ]);
   await q('DELETE FROM zalo_messages WHERE thread_id = $1', [threadId]);
 }
 
 /** AI thấy là chuyện công việc → học tiếp; gắn khách nếu cuộc chưa gắn khách nào. */
-export async function danhDauCongViec(threadId: string, o: { aiNote: string; customerId: string; customer: string }): Promise<void> {
+export async function danhDauCongViec(
+  threadId: string,
+  o: { aiNote: string; customerId: string; customer: string; tomTat?: string },
+): Promise<void> {
   await q(
-    `UPDATE zalo_threads SET enabled = true, ai_checked = true, ai_note = $2,
+    `UPDATE zalo_threads SET enabled = true, ai_checked = true, ai_hoi = false, ai_note = $2,
+       tom_tat = CASE WHEN $5 <> '' THEN $5 ELSE tom_tat END,
        customer_id = CASE WHEN COALESCE(customer_id, '') = '' THEN $3 ELSE customer_id END,
        customer = CASE WHEN COALESCE(customer_id, '') = '' AND $3 <> '' THEN $4 ELSE customer END
      WHERE thread_id = $1`,
-    [threadId, o.aiNote, o.customerId, o.customer],
+    [threadId, o.aiNote, o.customerId, o.customer, o.tomTat || ''],
   );
+}
+
+/**
+ * AI phân vân (50:50) → hỏi anh (anh Tâm 10/10/2026). Không học gì, vẫn lưu tin mới; anh chọn Học thì
+ * AI đọc lại các tin đã lưu.
+ */
+export async function hoiAnh(threadId: string, o: { lyDo: string; tomTat: string }): Promise<void> {
+  await q('UPDATE zalo_threads SET ai_hoi = true, ai_note = $2, tom_tat = $3 WHERE thread_id = $1', [
+    threadId,
+    `Hỏi anh: ${o.lyDo || 'AI phân vân có liên quan công việc không'}`,
+    o.tomTat,
+  ]);
+}
+
+/** Những cuộc anh đã tự quyết — đưa cho AI làm ví dụ để lần sau tự quyết giống anh. */
+export async function viDuAnhQuyet(limit = 40): Promise<Array<{ ten: string; nhom: boolean; tomTat: string; quyet: 'hoc' | 'bo' }>> {
+  const rows = await q(
+    `SELECT name, is_group, tom_tat, anh_quyet FROM zalo_threads WHERE anh_quyet IN ('hoc', 'bo')
+     ORDER BY last_msg_at DESC LIMIT $1`,
+    [limit],
+  );
+  return rows.map((x) => ({
+    ten: String(x.name || ''),
+    nhom: !!x.is_group,
+    tomTat: String(x.tom_tat || ''),
+    quyet: x.anh_quyet === 'hoc' ? 'hoc' : 'bo',
+  }));
 }
 
 /** Chỉ ghi lời AI về cuộc (vd "chưa rõ — đọc thêm lần sau"), không đổi trạng thái. */

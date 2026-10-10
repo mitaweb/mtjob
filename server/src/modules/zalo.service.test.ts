@@ -15,6 +15,8 @@ let CHUA_RUT: Array<Record<string, unknown>> = [];
 let CUOC_CAN_RUT: Array<Record<string, unknown>> = [];
 const TRANG_THAI: Array<{ loai: string; id: string; o: unknown }> = [];
 const NHAC: Array<Record<string, unknown>> = [];
+const BAO: Array<{ id: string; n: Record<string, unknown> }> = [];
+let VI_DU: Array<Record<string, unknown>> = [];
 
 let AI_NHOM: Array<Record<string, unknown>> = [];
 let NHOM_CHUA_XET: Array<Record<string, unknown>> = [];
@@ -59,6 +61,10 @@ vi.mock('./zalo.repo.js', () => ({
   ghiGhiChuAi: vi.fn(async (id: string, note: string) => {
     TRANG_THAI.push({ loai: 'ghi_chu', id, o: note });
   }),
+  hoiAnh: vi.fn(async (id: string, o: unknown) => {
+    TRANG_THAI.push({ loai: 'hoi', id, o });
+  }),
+  viDuAnhQuyet: vi.fn(async () => VI_DU),
   nhomChuaXet: vi.fn(async () => NHOM_CHUA_XET),
   ghiKetQuaXet: vi.fn(async (id: string, kq: Record<string, unknown>) => {
     KET_QUA_XET.push({ id, kq });
@@ -78,6 +84,11 @@ vi.mock('./crm.repo.js', () => ({
   }),
 }));
 vi.mock('./members.repo.js', () => ({ getDirectors: async () => [{ id: 'GD', fullName: 'Anh Tâm' }] }));
+vi.mock('./notifications.service.js', () => ({
+  notify: vi.fn(async (id: string, n: Record<string, unknown>) => {
+    BAO.push({ id, n });
+  }),
+}));
 vi.mock('./reminders.repo.js', () => ({
   addReminder: vi.fn(async (r: Record<string, unknown>) => {
     NHAC.push(r);
@@ -98,6 +109,8 @@ beforeEach(() => {
   CUOC_CAN_RUT = [];
   TRANG_THAI.length = 0;
   NHAC.length = 0;
+  BAO.length = 0;
+  VI_DU = [];
   AI_NHOM = [];
   NHOM_CHUA_XET = [];
   KET_QUA_XET.length = 0;
@@ -207,7 +220,7 @@ describe('AI tự đọc cuộc trò chuyện', () => {
     CHUA_RUT = [tinDb('a', false, 'Chị không thích chữ đỏ', 1), tinDb('b', true, 'Dạ em ghi nhận', 2)];
     AI_Y = [{ tieuDe: 'Savax không thích chữ đỏ', noiDung: 'Khách không muốn dùng chữ màu đỏ trong thiết kế.' }];
     const r = await S.rutTriThucZalo({ epNgay: true });
-    expect(r).toEqual({ cuoc: 1, y: 1, nhac: 0, caNhan: 0, loi: '' });
+    expect(r).toEqual({ cuoc: 1, y: 1, nhac: 0, caNhan: 0, hoi: 0, loi: '' });
     expect(VAO_KHO).toHaveLength(1);
     expect(VAO_KHO[0]!.input).toMatchObject({ source: 'zalo', customer: 'Savax Door', title: 'Savax không thích chữ đỏ' });
     expect(VAO_KHO[0]!.nguoi).toMatchObject({ id: 'GD', role: 'director' });
@@ -220,7 +233,7 @@ describe('AI tự đọc cuộc trò chuyện', () => {
     AI_DOC = { loai: 'ca_nhan', tomTat: 'Mẹ hỏi thăm', y: [{ tieuDe: 'x', noiDung: 'không được vào kho đâu' }] };
     const r = await S.rutTriThucZalo({ epNgay: true });
     expect(r.caNhan).toBe(1);
-    expect(TRANG_THAI).toEqual([{ loai: 'ca_nhan', id: 'T1', o: 'Cá nhân — AI thôi đọc (Mẹ hỏi thăm)' }]);
+    expect(TRANG_THAI).toEqual([{ loai: 'ca_nhan', id: 'T1', o: 'Không liên quan công việc — AI thôi đọc' }]);
     expect(VAO_KHO).toHaveLength(0);
     expect(NHAC).toHaveLength(0);
   });
@@ -314,5 +327,56 @@ describe('đọc ngay — hạn giờ và hết lượt AI', () => {
     const r = await S.rutTriThucZalo({ epNgay: true, limit: 40, han: Date.now() + 10_000 });
     expect(r).toMatchObject({ cuoc: 0, loi: 'Gemini 429: quota' });
     expect(DA_RUT).toEqual([]);
+  });
+});
+
+// Anh Tâm 10/10/2026: "cái nào cứ liên quan thì học, 50:50 thì hỏi anh rồi sau này tự quyết định".
+describe('50:50 thì hỏi anh, rồi học theo anh', () => {
+  const cuoc = (o: Record<string, unknown>) => ({
+    threadId: 'T5', name: 'Anh Bình', customer: '', customerId: '', enabled: false, aiChecked: false, isGroup: false,
+    chuaRut: 1, lastMsgAt: '2026-10-05T01:00:00Z', ...o,
+  });
+
+  it('phân vân → hỏi anh (kèm lý do + tóm tắt), không học gì, báo anh một lần', async () => {
+    CUOC_CAN_RUT = [cuoc({})];
+    CHUA_RUT = [{ msgId: 'a', threadId: 'T5', fromSelf: false, sender: 'Bình', content: 'Cuối tuần đi cafe, tiện bàn vụ web', ts: '1' }];
+    AI_DOC = { loai: 'phan_van', lyDo: 'vừa chuyện riêng vừa nhắc việc', tomTat: 'Rủ cafe, nhắc vụ web', y: [{ tieuDe: 'x', noiDung: 'không được học đâu' }] };
+    const r = await S.rutTriThucZalo({ epNgay: true });
+    expect(r.hoi).toBe(1);
+    expect(TRANG_THAI).toEqual([{ loai: 'hoi', id: 'T5', o: { lyDo: 'vừa chuyện riêng vừa nhắc việc', tomTat: 'Rủ cafe, nhắc vụ web' } }]);
+    expect(VAO_KHO).toHaveLength(0);
+    expect(DA_RUT).toEqual([['a']]);
+    expect(BAO).toHaveLength(1);
+    expect(BAO[0]).toMatchObject({ id: 'GD', n: { type: 'zalo_hoi', url: '/brain?tab=zalo' } });
+  });
+
+  it('cuộc anh đã chọn học thì AI không hỏi lại', async () => {
+    CUOC_CAN_RUT = [cuoc({ enabled: true, aiChecked: true })];
+    CHUA_RUT = [{ msgId: 'a', threadId: 'T5', fromSelf: false, sender: 'Bình', content: 'Gửi anh file brief', ts: '1' }];
+    AI_DOC = { loai: 'phan_van', y: [] };
+    const r = await S.rutTriThucZalo({ epNgay: true });
+    expect(r.hoi).toBe(0);
+    expect(TRANG_THAI.some((t) => t.loai === 'hoi')).toBe(false);
+  });
+
+  it('quyết định trước của anh được đưa cho AI làm ví dụ (cả lúc đọc tin lẫn lúc xét nhóm)', async () => {
+    VI_DU = [
+      { ten: 'Chợ sỉ Quảng Châu', nhom: true, tomTat: 'Mua bán hàng sỉ', quyet: 'bo' },
+      { ten: 'Anh Bình', nhom: false, tomTat: 'Đối tác in ấn', quyet: 'hoc' },
+    ];
+    CUOC_CAN_RUT = [cuoc({})];
+    CHUA_RUT = [{ msgId: 'a', threadId: 'T5', fromSelf: false, sender: 'Bình', content: 'Báo giá in catalogue', ts: '1' }];
+    AI_DOC = { loai: 'cong_viec', y: [] };
+    await S.rutTriThucZalo({ epNgay: true });
+    expect(PROMPT).toContain('GIÁM ĐỐC ĐÃ TỰ QUYẾT');
+    expect(PROMPT).toContain('- BỎ QUA: nhóm «Chợ sỉ Quảng Châu» — Mua bán hàng sỉ');
+    expect(PROMPT).toContain('- HỌC: chat «Anh Bình» — Đối tác in ấn');
+
+    NHOM_CHUA_XET = [{ threadId: 'G7', name: 'Chợ sỉ Hà Nội', isGroup: true, enabled: false }];
+    AI_NHOM = [{ id: 'G7', loai: 'khac', lyDo: 'nhóm chợ' }];
+    await S.xacDinhNhomKhach();
+    expect(PROMPT).toContain('- BỎ QUA: nhóm «Chợ sỉ Quảng Châu»');
+    expect(PROMPT).not.toContain('Anh Bình'); // lúc xét nhóm chỉ đưa ví dụ là nhóm
+    expect(PROMPT).toContain('nhóm CHỢ / mua bán');
   });
 });

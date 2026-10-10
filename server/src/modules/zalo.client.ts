@@ -46,7 +46,7 @@ export async function chayBanDem(): Promise<string> {
   if (viec === 'dong_bo') return (await dongBoZalo()).note;
   if (viec === 'nhom') return (await quetNhomKhach()).note;
   const r = await rutTriThucZalo({ epNgay: true, limit: 3 });
-  if (r.cuoc) return `đọc ${r.cuoc} cuộc: ${r.y} ý, ${r.nhac} nhắc việc, ${r.caNhan} cuộc cá nhân bỏ qua`;
+  if (r.cuoc) return `đọc ${r.cuoc} cuộc: ${r.y} ý, ${r.nhac} nhắc việc, ${r.caNhan} cuộc không liên quan bỏ qua, ${r.hoi} cuộc cần anh quyết`;
   return xetLaiKhoBanDem();
 }
 
@@ -473,7 +473,7 @@ export async function xuLyNgay(): Promise<{
     const r = await rutTriThucZalo({ epNgay: true, limit: 40, han: Date.now() + 40_000 });
     if (r.loi) return { ok: false, buoc: 'doc', note: `AI hết lượt: ${r.loi}`, con: await demCon() };
     if (r.cuoc > 0) {
-      const note = `AI đọc ${r.cuoc} cuộc: ${r.y} ý vào kho, ${r.nhac} nhắc việc, ${r.caNhan} cuộc cá nhân bỏ qua`;
+      const note = `AI đọc ${r.cuoc} cuộc: ${r.y} ý vào kho, ${r.nhac} nhắc việc, ${r.caNhan} cuộc không liên quan bỏ qua, ${r.hoi} cuộc cần anh quyết`;
       return { ok: true, buoc: 'doc', note, con: await demCon() };
     }
   }

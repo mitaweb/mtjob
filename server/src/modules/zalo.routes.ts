@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { asyncHandler, ApiError } from '../util/errors.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
 import { runInBackground } from '../util/background.js';
-import { docTrangThai, suaCuoc, timCuoc, trangCuoc, type LocCuoc } from './zalo.repo.js';
+import { docTrangThai, suaCuoc, timCuoc, trangCuoc, tinGanDay, type LocCuoc } from './zalo.repo.js';
 import { rutTriThucZalo, khopKhachCuoc } from './zalo.service.js';
 import { dangNhapQR, dangXuat, dongBoZalo, quetNhomKhach, xuLyNgay, khoaPhien } from './zalo.client.js';
 import { isMissingTable } from './brain.repo.js';
@@ -27,22 +27,22 @@ zaloRouter.get(
   '/status',
   asyncHandler(async (req, res) => {
     try {
-      const LOC = ['hoc', 'nhom', 'rieng', 'tat_ca'] as const;
+      const LOC = ['hoi', 'hoc', 'bo', 'nhom', 'rieng', 'tat_ca'] as const;
       const locHoi = LOC.find((x) => x === req.query.loc);
       const tim = String(req.query.q || '').slice(0, 100);
       const trang = Math.max(1, Math.floor(Number(req.query.page)) || 1);
       const co = Math.min(100, Math.max(5, Math.floor(Number(req.query.size)) || 30));
       const st = await docTrangThai();
-      let loc: LocCuoc = locHoi || 'hoc';
+      let loc: LocCuoc = locHoi || 'hoi';
       let ds = await trangCuoc({ loc, tim, trang, co });
-      // Chưa chọn lọc mà chưa bật học cuộc nào → hiện tất cả.
-      if (!locHoi && ds.dem.hoc === 0) {
-        loc = 'tat_ca';
+      // Chưa chọn lọc: có cuộc AI đang hỏi anh thì hiện trước; không thì cuộc đang học; không nữa thì tất cả.
+      if (!locHoi && ds.dem.hoi === 0) {
+        loc = ds.dem.hoc > 0 ? 'hoc' : 'tat_ca';
         ds = await trangCuoc({ loc, tim, trang, co });
       }
       res.json({ configured: daCauHinh(), ...st, threads: ds.threads, dem: ds.dem, loc, page: trang, size: co });
     } catch (e) {
-      if (isMissingTable(e) || /zalo_|session_enc|last_sync|ai_checked|ai_note|history_done/.test((e as Error).message)) {
+      if (isMissingTable(e) || /zalo_|session_enc|last_sync|ai_checked|ai_note|history_done|ai_hoi|anh_quyet|tom_tat/.test((e as Error).message)) {
         res.json({ configured: daCauHinh(), status: 'offline', qr: '', account: '', note: '', coPhien: false, threads: [], needsMigrate: true });
         return;
       }
@@ -118,5 +118,14 @@ zaloRouter.post(
   '/process',
   asyncHandler(async (_req, res) => {
     res.json(await xuLyNgay());
+  }),
+);
+
+/** Vài tin gần đây của một cuộc — để anh xem nội dung rồi quyết Học / Bỏ qua. */
+zaloRouter.get(
+  '/threads/:id/messages',
+  asyncHandler(async (req, res) => {
+    const tin = await tinGanDay(String(req.params.id), 20);
+    res.json({ messages: tin.reverse() });
   }),
 );

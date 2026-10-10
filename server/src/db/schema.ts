@@ -600,6 +600,12 @@ CREATE INDEX IF NOT EXISTS zalo_threads_last_idx ON zalo_threads (last_msg_at DE
 ALTER TABLE zalo_threads ADD COLUMN IF NOT EXISTS ai_checked boolean DEFAULT false;
 ALTER TABLE zalo_threads ADD COLUMN IF NOT EXISTS ai_note text DEFAULT '';
 ALTER TABLE zalo_threads ADD COLUMN IF NOT EXISTS history_done boolean DEFAULT false;
+-- AI tự quyết (anh Tâm 10/10/2026: "cái nào liên quan thì học, 50:50 thì hỏi anh rồi sau này tự quyết
+-- định"): ai_hoi = AI phân vân, chờ anh quyết; anh_quyet = 'hoc' | 'bo' khi anh tự quyết (AI lấy làm ví
+-- dụ để lần sau tự quyết giống anh); tom_tat = một câu AI tóm cuộc này nói gì.
+ALTER TABLE zalo_threads ADD COLUMN IF NOT EXISTS ai_hoi boolean DEFAULT false;
+ALTER TABLE zalo_threads ADD COLUMN IF NOT EXISTS anh_quyet text DEFAULT '';
+ALTER TABLE zalo_threads ADD COLUMN IF NOT EXISTS tom_tat text DEFAULT '';
 -- Nội dung tin — CHỈ của cuộc đã bật. Rút tri thức xong 30 ngày thì xoá.
 CREATE TABLE IF NOT EXISTS zalo_messages (
   msg_id    text PRIMARY KEY,
