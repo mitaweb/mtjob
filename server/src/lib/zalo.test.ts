@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { noiDungTin, gioTin, dungDoanChat, denLucRut, maTinLonNhat, viecBanDem, goiYTenKhachTuNhom, gioNhac, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, type TinZalo } from './zalo.js';
+import { noiDungTin, gioTin, dungDoanChat, denLucRut, maTinLonNhat, viecBanDem, goiYTenKhachTuNhom, gioNhac, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, dangDoc, type TinZalo } from './zalo.js';
 
 // Anh Tâm 5/10/2026: đọc tin nhắn Zalo giữa anh và khách để đưa vào kho có chọn lọc.
 
@@ -64,31 +64,29 @@ describe('maTinLonNhat', () => {
   });
 });
 
-describe('viecBanDem — đồng bộ 3 tiếng/lần, việc AI chỉ ban đêm', () => {
-  const now = Date.parse('2026-10-08T16:00:00Z'); // 23h giờ VN
-  it('ban ngày: quá 3 tiếng thì vẫn đồng bộ, mới đồng bộ thì nghỉ (không rút, không xét nhóm)', () => {
-    expect(viecBanDem({ gioVN: 9, lastSync: '', now })).toBe('dong_bo');
-    expect(viecBanDem({ gioVN: 14, lastSync: '2026-10-08T03:00:00Z', now: Date.parse('2026-10-08T07:00:00Z') })).toBe('dong_bo');
-    expect(viecBanDem({ gioVN: 14, lastSync: '2026-10-08T06:00:00Z', now: Date.parse('2026-10-08T07:00:00Z'), viecNhom: 5 })).toBe('nghi');
+// Anh Tâm 11/10/2026: "AI cập nhật chat 1 tiếng 1 lần" — cả ngày, không chỉ ban đêm.
+describe('viecBanDem — đồng bộ 1 tiếng/lần, AI đọc cả ngày', () => {
+  const now = Date.parse('2026-10-11T03:00:00Z'); // 10h sáng giờ VN
+  it('quá 1 tiếng chưa đồng bộ → đồng bộ', () => {
+    expect(viecBanDem({ gioVN: 10, lastSync: '', now })).toBe('dong_bo');
+    expect(viecBanDem({ gioVN: 10, lastSync: '2026-10-11T01:50:00Z', now })).toBe('dong_bo');
   });
-  it('lỗi cũ: bấm đồng bộ tay buổi chiều thì đêm đó vẫn phải tự đồng bộ', () => {
-    // đồng bộ tay 16h (09:00Z) → 23h tối (16:00Z) cách 7 tiếng → đồng bộ
-    expect(viecBanDem({ gioVN: 23, lastSync: '2026-10-08T09:00:00Z', now })).toBe('dong_bo');
-  });
-  it('ban đêm vừa đồng bộ → rút tri thức', () => {
-    expect(viecBanDem({ gioVN: 23, lastSync: '', now })).toBe('dong_bo');
-    expect(viecBanDem({ gioVN: 23, lastSync: '2026-10-08T15:10:00Z', now })).toBe('rut'); // 22h10 đêm nay
-    expect(viecBanDem({ gioVN: 1, lastSync: '2026-10-08T17:30:00Z', now: now + 2 * 3600_000 })).toBe('rut');
-    expect(viecBanDem({ gioVN: 2, lastSync: '2026-10-08T15:10:00Z', now: now + 3 * 3600_000 })).toBe('dong_bo'); // 3h50 sau
+  it('vừa đồng bộ → ban ngày vẫn xét nhóm / AI đọc', () => {
+    expect(viecBanDem({ gioVN: 10, lastSync: '2026-10-11T02:30:00Z', now, viecNhom: 3 })).toBe('nhom');
+    expect(viecBanDem({ gioVN: 10, lastSync: '2026-10-11T02:30:00Z', now })).toBe('rut');
+    expect(viecBanDem({ gioVN: 23, lastSync: '2026-10-11T02:30:00Z', now })).toBe('rut');
   });
 });
 
-describe('viecBanDem — bước nhóm', () => {
-  const now = Date.parse('2026-10-08T16:00:00Z');
-  it('đã đồng bộ mà còn việc nhóm → làm nhóm trước khi rút', () => {
-    expect(viecBanDem({ gioVN: 23, lastSync: '2026-10-08T15:10:00Z', now, viecNhom: 4 })).toBe('nhom');
-    expect(viecBanDem({ gioVN: 23, lastSync: '2026-10-08T15:10:00Z', now, viecNhom: 0 })).toBe('rut');
-    expect(viecBanDem({ gioVN: 23, lastSync: '', now, viecNhom: 4 })).toBe('dong_bo');
+// Anh Tâm 11/10/2026: "đỡ tốn token đọc tin".
+describe('dangDoc — bỏ tin xác nhận ngắn', () => {
+  it('chỉ "ok", "dạ", "cảm ơn", sticker → không gọi AI', () => {
+    expect(dangDoc([{ content: 'ok' }, { content: 'Dạ vâng ạ' }, { content: 'cảm ơn anh 🙏' }, { content: '' }])).toBe(false);
+    expect(dangDoc([{ content: 'Oke nhé!!' }, { content: '👍' }])).toBe(false);
+  });
+  it('có nội dung thật → đọc', () => {
+    expect(dangDoc([{ content: 'ok' }, { content: 'Mai gửi chị báo giá web nhé' }])).toBe(true);
+    expect(dangDoc([{ content: '[Tệp/link: brief.pdf — https://f/x]' }])).toBe(true);
   });
 });
 

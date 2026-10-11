@@ -274,7 +274,7 @@ describe('AI tự đọc cuộc trò chuyện', () => {
 
   it('chưa rõ → không vào kho, đánh dấu đã đọc (khỏi đọc lại mỗi lượt), ghi lời AI', async () => {
     CUOC_CAN_RUT = [cuoc({})];
-    CHUA_RUT = [tinDb('a', false, 'Alo', 1)];
+    CHUA_RUT = [tinDb('a', false, 'Alo anh ơi, em hỏi chút', 1)];
     AI_DOC = { loai: 'chua_ro', y: [] };
     await S.rutTriThucZalo({ epNgay: true });
     expect(TRANG_THAI[0]).toMatchObject({ loai: 'ghi_chu', id: 'T1' });
@@ -341,7 +341,7 @@ describe('đọc ngay — hạn giờ và hết lượt AI', () => {
 
   it('hết giờ thì dừng, lượt sau đọc tiếp', async () => {
     CUOC_CAN_RUT = [cuoc('A'), cuoc('B')];
-    CHUA_RUT = [{ msgId: 'a', threadId: 'A', fromSelf: false, sender: 'K', content: 'xin chào', ts: '1' }];
+    CHUA_RUT = [{ msgId: 'a', threadId: 'A', fromSelf: false, sender: 'K', content: 'xin chào anh, em muốn hỏi giá làm web', ts: '1' }];
     const r = await S.rutTriThucZalo({ epNgay: true, limit: 40, han: Date.now() - 1 });
     expect(r.cuoc).toBe(0);
     expect(DA_RUT).toEqual([]);
@@ -349,7 +349,7 @@ describe('đọc ngay — hạn giờ và hết lượt AI', () => {
 
   it('AI hết lượt (429) → dừng ngay, báo lỗi, không đọc tiếp cuộc sau', async () => {
     CUOC_CAN_RUT = [cuoc('A'), cuoc('B')];
-    CHUA_RUT = [{ msgId: 'a', threadId: 'A', fromSelf: false, sender: 'K', content: 'xin chào', ts: '1' }];
+    CHUA_RUT = [{ msgId: 'a', threadId: 'A', fromSelf: false, sender: 'K', content: 'xin chào anh, em muốn hỏi giá làm web', ts: '1' }];
     const g = await import('../gemini/client.js');
     (g.generateJson as unknown as { mockRejectedValueOnce: (e: Error) => void }).mockRejectedValueOnce(new Error('Gemini 429: quota'));
     const r = await S.rutTriThucZalo({ epNgay: true, limit: 40, han: Date.now() + 10_000 });
@@ -416,7 +416,7 @@ describe('mỗi khách một nhắc, đúng chủ thể', () => {
     threadId: '777', name: 'Hồng Thanh', customer: 'Savax Door', customerId: 'K3', enabled: true, aiChecked: true, isGroup: false,
     chuaRut: 1, lastMsgAt: '2026-10-05T01:00:00Z', ...o,
   });
-  const tin = (threadId = '777') => [{ msgId: 'm1', threadId, fromSelf: false, sender: 'X', content: 'nội dung', ts: '1' }];
+  const tin = (threadId = '777') => [{ msgId: 'm1', threadId, fromSelf: false, sender: 'X', content: 'Nội dung trao đổi công việc với khách', ts: '1' }];
 
   it('đọc lần 2: AI nhận danh sách đang theo dõi và trả danh sách mới nhất — vẫn MỘT nhắc', async () => {
     CUOC_CAN_RUT = [cuoc({})];
@@ -508,5 +508,20 @@ describe('AI tự gỡ lưu ý riêng đã xử lý', () => {
     await S.rutTriThucZalo({ epNgay: true });
     expect(PROMPT).toContain('[BI-hoadon] Hoá đơn đợt trước chưa xác nhận');
     expect(SUA_MUC).toEqual([{ id: 'BI-hoadon', patch: { status: 'archived' } }]);
+  });
+});
+
+// Anh Tâm 11/10/2026: "có cách nào xác định tin nhắn cũ để không đọc nữa ... đỡ tốn token đọc tin".
+describe('đỡ tốn token', () => {
+  it('tin mới chỉ là ok / dạ / cảm ơn → đánh dấu đã đọc, KHÔNG gọi AI', async () => {
+    CUOC_CAN_RUT = [{ threadId: 'T1', name: 'Chị Hà', customer: '', customerId: '', enabled: true, aiChecked: true, isGroup: false, chuaRut: 2, lastMsgAt: '' }];
+    CHUA_RUT = [
+      { msgId: 'o1', threadId: 'T1', fromSelf: false, sender: 'Hà', content: 'Dạ ok anh', ts: '1' },
+      { msgId: 'o2', threadId: 'T1', fromSelf: true, sender: '', content: 'cảm ơn chị 🙏', ts: '2' },
+    ];
+    PROMPT = '';
+    await S.rutTriThucZalo({ epNgay: true });
+    expect(PROMPT).toBe('');
+    expect(DA_RUT).toEqual([['o1', 'o2']]);
   });
 });

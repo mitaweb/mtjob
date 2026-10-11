@@ -179,7 +179,7 @@ export default function BrainZalo() {
         }
         toast.info(r.note);
       }
-      toast.info('Còn nhóm chưa xét xong — đêm nay app tự làm tiếp, hoặc bấm lại.');
+      toast.info('Còn nhóm chưa xét xong — app tự làm tiếp trong giờ tới, hoặc bấm lại.');
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -219,7 +219,7 @@ export default function BrainZalo() {
         dungYen = bay === truoc ? dungYen + 1 : 0;
         truoc = bay;
         if (dungYen >= 3) {
-          ghi('Không tiến thêm được — để đêm nay app tự làm tiếp.');
+          ghi('Không tiến thêm được — app tự làm tiếp trong giờ tới.');
           break;
         }
       }
@@ -371,7 +371,7 @@ export default function BrainZalo() {
         )}
 
         <p className="text-xs text-ink-muted">
-          App <b>tự đồng bộ 3 tiếng/lần</b> cả ngày. <b>Ban đêm</b> (22h–5h) AI <b>tự đọc mọi cuộc</b>, anh không cần bật gì:
+          App <b>tự đồng bộ 1 tiếng/lần</b>, rồi AI <b>đọc tin MỚI</b> của mọi cuộc (tin đã đọc không đọc lại; tin chỉ "ok", "dạ", "cảm ơn" bỏ qua không tốn AI; cuộc đang nói dở đợi 30 phút cho trọn câu chuyện) — anh không cần bật gì:
         </p>
         <ul className="ml-4 list-disc text-xs text-ink-muted">
           <li>
@@ -467,7 +467,7 @@ export default function BrainZalo() {
                           {c.aiChecked || /^(AI chưa rõ|Chưa rõ theo tên)/.test(c.aiNote)
                             ? c.aiNote || (c.enabled ? 'Đang học' : 'Bỏ qua')
                             : c.chuaRut > 0
-                              ? 'AI chưa đọc — bấm ⚡ Đọc & phân loại ngay, hoặc đêm nay AI tự đọc'
+                              ? 'AI chưa đọc — bấm ⚡ Đọc & phân loại ngay, hoặc AI tự đọc trong giờ tới'
                               : 'Chưa có nội dung để đọc (tin trước 10/10 chỉ được đếm, không lưu) — AI đọc khi có tin mới'}
                         </div>
                       )

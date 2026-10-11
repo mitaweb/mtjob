@@ -78,25 +78,39 @@ export function maTinLonNhat(ids: string[], hienTai = ''): string {
 }
 
 /** Tự đồng bộ cách nhau bao lâu (cả ngày lẫn đêm). */
-export const KHOANG_DONG_BO_MS = 3 * 3600_000;
+export const KHOANG_DONG_BO_MS = 3600_000;
 
 /**
- * Lịch chạy Zalo, cron ~5 phút gọi một lần:
- *   - lần đồng bộ trước đã quá 3 tiếng → 'dong_bo' (lấy tin một lượt) — GIỜ NÀO CŨNG VẬY. Trước đây
- *     chỉ đồng bộ ban đêm khi lần trước cách > 12 tiếng, nên anh bấm tay buổi chiều là cả đêm đó
- *     không tự đồng bộ (anh Tâm 8/10/2026: "không thấy tự động đồng bộ"). Zalo mỗi lượt chỉ trả
- *     một lô tin gần đây, đồng bộ dày hơn thì ít sót tin hơn;
- *   - ban đêm (22h–5h) còn nhóm chưa xét / nhóm khách chưa kéo lịch sử → 'nhom';
- *   - ban đêm, xong hết → 'rut' (AI rút tri thức, mỗi lượt vài cuộc, tới khi hết);
- *   - còn lại → 'nghi'. Việc tốn AI (xét nhóm, rút tri thức) vẫn CHỈ ban đêm.
+ * Lịch chạy Zalo, cron ~5 phút gọi một lần — CẢ NGÀY (anh Tâm 11/10/2026: "AI cập nhật chat 1 tiếng 1 lần"):
+ *   - lần đồng bộ trước đã quá 1 tiếng → 'dong_bo' (lấy tin mới một lượt);
+ *   - còn nhóm chưa xét theo tên / chưa kéo lịch sử → 'nhom';
+ *   - còn lại → 'rut': AI đọc các cuộc có tin MỚI (tin đã đọc không bao giờ đọc lại), mỗi lượt vài cuộc
+ *     tới khi hết; hết thì không gọi AI.
+ * Trước 11/10/2026 việc tốn AI chỉ chạy ban đêm; 'nghi' giữ lại cho tương thích, không còn trả về.
  */
 export function viecBanDem(o: { gioVN: number; lastSync: string; now: number; viecNhom?: number }): 'dong_bo' | 'nhom' | 'rut' | 'nghi' {
   const last = Date.parse(o.lastSync);
   if (!Number.isFinite(last) || o.now - last > KHOANG_DONG_BO_MS) return 'dong_bo';
-  const dem = o.gioVN >= 22 || o.gioVN < 5;
-  if (!dem) return 'nghi';
   if ((o.viecNhom ?? 0) > 0) return 'nhom';
   return 'rut';
+}
+
+/** Tin chỉ để xác nhận / xã giao — không đáng tốn AI đọc. */
+const TIN_VAT = /^(ok+|oke+|okie|okay|dạ+|da+|vâng|vang|ừ+|uh+|uk|ukm|ừm|yes|yep|được|đc|dc|rồi|roi|r|nhé|nha|ạ|cảm ơn|cám ơn|thanks?|thank you|tks|thx|cảm ơn (anh|chị|em|bạn)|dạ (vâng|ok|được|em cảm ơn)|ok (anh|chị|em|nhé|nha))(?:[\s.!,~]|😊|🙏|👍|❤️|❤)*$/iu;
+
+/**
+ * Đoạn tin MỚI có đáng cho AI đọc không (anh Tâm 11/10/2026: "đỡ tốn token đọc tin"): bỏ tin xác nhận
+ * ngắn ("ok", "dạ", "cảm ơn"…) và sticker; còn lại phải có ít nhất ~15 ký tự nội dung.
+ */
+export function dangDoc(tin: Array<{ content: string }>): boolean {
+  let chu = 0;
+  for (const t of tin) {
+    const s = String(t.content || '').trim();
+    if (!s || TIN_VAT.test(s)) continue;
+    chu += s.length;
+    if (chu >= 15) return true;
+  }
+  return false;
 }
 
 /**

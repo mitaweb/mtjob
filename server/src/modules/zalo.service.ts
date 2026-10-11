@@ -8,7 +8,7 @@
 //   3. Cập nhật khách: khớp/tạo khách trong CRM, thêm điều mới vào "Thông tin khách".
 //   4. Việc giám đốc cần làm (khách hỏi báo giá chưa trả lời…) → đặt nhắc hẹn cho giám đốc.
 import { aiKhoJson } from '../ai/brainAi.js';
-import { dungDoanChat, denLucRut, noiDungTin, goiYTenKhachTuNhom, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, type TinZalo } from '../lib/zalo.js';
+import { dungDoanChat, denLucRut, noiDungTin, goiYTenKhachTuNhom, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, dangDoc, type TinZalo } from '../lib/zalo.js';
 import { khopKhach, xoaLienHe, chuanTen } from '../lib/brainGate.js';
 import {
   ghiCuoc,
@@ -318,10 +318,17 @@ export async function rutCuoc(c: ZaloThread, chu: NguoiGui, viDu: ViDuQuyet = []
   const tin: TinZalo[] = await tinChuaRut(c.threadId);
   if (tin.length === 0) return { y: 0, vaoKho: [], loai: 'chua_ro', nhac: 0 };
   const now = nowTz();
+  // Tin mới chỉ là "ok", "dạ", "cảm ơn", sticker → đánh dấu đã đọc, KHÔNG gọi AI (anh Tâm 11/10/2026:
+  // "đỡ tốn token đọc tin"). Tin đã đọc không bao giờ đọc lại.
+  if (!dangDoc(tin)) {
+    await danhDauDaRut(c.threadId, tin.map((t) => t.msgId), now.toISOString());
+    return { y: 0, vaoKho: [], loai: 'chua_ro', nhac: 0 };
+  }
   const khachDs: Customer[] = await getCustomers().catch(() => []);
   const daGan = c.customerId ? khachDs.find((k) => k.id === c.customerId) : undefined;
   // Cuộc AI chưa xếp loại: đọc cả tin cũ đã xem (lần trước "chưa rõ") làm ngữ cảnh.
-  const docTu = c.aiChecked ? tin : await tinGanDay(c.threadId, 200);
+  // Chỉ lấy 60 tin gần nhất làm ngữ cảnh — đủ để xếp loại, khỏi tốn token đọc lại cả lịch sử.
+  const docTu = c.aiChecked ? tin : await tinGanDay(c.threadId, 60);
   // Nhóm khách có cả lịch sử kéo về (vài trăm tin) → cho AI đọc dài hơn.
   const doan = dungDoanChat(docTu, chu.name || 'Giám đốc', c.customer || c.name, c.isGroup ? 40000 : 15000);
   const nhanSu = (await getActiveMembers().catch(() => [])).map((m) => m.fullName).filter(Boolean);

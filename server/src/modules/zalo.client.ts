@@ -33,20 +33,22 @@ import { nhanTin, rutTriThucZalo, xacDinhNhomKhach, gopNhacCu, type TinTuWorker 
 const now = () => nowTz().toISOString();
 
 /**
- * Gọi từ cron nhắc hẹn (~5 phút/lần). Cả ngày: cứ 3 tiếng tự đồng bộ một lượt. Ban đêm thêm: quét
- * nhóm, rút tri thức dần (mỗi lượt vài cuộc — máy chủ chỉ sống 60 giây) tới khi hết.
+ * Gọi từ cron nhắc hẹn (~5 phút/lần), CẢ NGÀY (anh Tâm 11/10/2026: "AI cập nhật chat 1 tiếng 1 lần"): cứ 1
+ * tiếng đồng bộ một lượt, rồi xét nhóm và AI đọc tin MỚI dần (mỗi lượt vài cuộc — máy chủ chỉ sống 60 giây)
+ * tới khi hết; hết tin mới thì không gọi AI.
  */
 export async function chayBanDem(): Promise<string> {
   const st = await docTrangThai();
   const gioVN = nowTz().hour();
-  if (!st.coPhien) return (gioVN >= 22 || gioVN < 5) ? xetLaiKhoBanDem() : 'chưa đăng nhập Zalo';
+  if (!st.coPhien) return xetLaiKhoBanDem();
   const vn = await demViecNhom().catch(() => ({ chuaXet: 0, chuaKeo: 0 }));
   const viec = viecBanDem({ gioVN, lastSync: st.lastSync, now: Date.now(), viecNhom: vn.chuaXet + vn.chuaKeo });
   if (viec === 'nghi') return 'ngoài giờ ban đêm';
   if (viec === 'dong_bo') return (await dongBoZalo()).note;
   if (viec === 'nhom') return (await quetNhomKhach()).note;
   await gopNhacCu().catch(() => undefined);
-  const r = await rutTriThucZalo({ epNgay: true, limit: 3 });
+  // Cả ngày: cuộc đang nói dở (tin cuối < 30 phút) để lượt sau, đọc trọn câu chuyện một lần cho đỡ tốn.
+  const r = await rutTriThucZalo({ limit: 3 });
   if (r.cuoc) return `đọc ${r.cuoc} cuộc: ${r.y} ý, ${r.nhac} nhắc việc, ${r.caNhan} cuộc không liên quan bỏ qua, ${r.hoi} cuộc cần anh quyết`;
   return xetLaiKhoBanDem();
 }
