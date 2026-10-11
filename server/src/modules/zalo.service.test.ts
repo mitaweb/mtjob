@@ -138,7 +138,7 @@ beforeEach(() => {
 describe('xacDinhNhomKhach', () => {
   const nhom = (threadId: string, name: string) => ({ threadId, name, isGroup: true, enabled: false });
 
-  it('khớp khách đã có; khách mới thì tạo trong CRM; không liên quan công việc thì thôi đọc', async () => {
+  it('khớp khách đã có; khách chưa có thì CHƯA tạo CRM (chờ tương tác); không liên quan thì thôi đọc', async () => {
     NHOM_CHUA_XET = [nhom('G1', 'SAVAX DOOR - MT DIGITAL'), nhom('G2', 'Topaz Spa x MT'), nhom('G3', 'Gia đình')];
     AI_NHOM = [
       { id: 'G1', laNhomKhach: true, tenKhach: 'Savax Door', lyDo: 'đúng quy ước' },
@@ -147,14 +147,15 @@ describe('xacDinhNhomKhach', () => {
       { id: 'LA', laNhomKhach: true, tenKhach: 'Bịa' },
     ];
     const r = await S.xacDinhNhomKhach();
-    expect(r).toEqual({ xet: 3, nhomKhach: 2, khachMoi: ['Topaz Spa'] });
+    expect(r).toEqual({ xet: 3, nhomKhach: 2 });
     expect(PROMPT).toContain('"goiYTenKhach":"SAVAX DOOR"');
     expect(PROMPT).toContain('Savax Door');
-    expect(CRM_GHI).toHaveLength(1);
-    expect(CRM_GHI[0]).toMatchObject({ name: 'Topaz Spa', status: 'Đã chốt', assignedTo: 'GD', phone: '' });
+    // Anh Tâm 11/10/2026: tạo khách theo tên nhóm đa phần sai → không tạo nữa
+    expect(CRM_GHI).toHaveLength(0);
     const theo = Object.fromEntries(KET_QUA_XET.map((x) => [x.id, x.kq]));
     expect(theo.G1).toMatchObject({ laNhomKhach: true, customerId: 'K3', customer: 'Savax Door' });
-    expect(theo.G2).toMatchObject({ laNhomKhach: true, customerId: CRM_GHI[0]!.id, customer: 'Topaz Spa' });
+    expect(theo.G2).toMatchObject({ laNhomKhach: true, customerId: '', customer: 'Topaz Spa' });
+    expect(String(theo.G2!.aiNote)).toContain('chờ có tương tác gần đây');
     expect(theo.G3).toMatchObject({ laNhomKhach: false, customerId: '' });
     expect(String(theo.G3!.aiNote)).toContain('nhóm gia đình');
   });
@@ -181,15 +182,15 @@ describe('xacDinhNhomKhach', () => {
     expect(KET_QUA_XET.map((x) => x.id)).toEqual(['G2']);
   });
 
-  it('hai nhóm cùng một khách mới → chỉ tạo khách một lần', async () => {
+  it('nhóm khách chưa có trong CRM → chỉ ghi tên chờ, không tạo khách', async () => {
     NHOM_CHUA_XET = [nhom('G1', 'Kingpen - MT DIGITAL'), nhom('G2', 'Kingpen Ads')];
     AI_NHOM = [
       { id: 'G1', laNhomKhach: true, tenKhach: 'Kingpen' },
       { id: 'G2', laNhomKhach: true, tenKhach: 'Kingpen' },
     ];
     await S.xacDinhNhomKhach();
-    expect(CRM_GHI).toHaveLength(1);
-    expect(KET_QUA_XET.map((x) => x.kq.customerId)).toEqual([CRM_GHI[0]!.id, CRM_GHI[0]!.id]);
+    expect(CRM_GHI).toHaveLength(0);
+    expect(KET_QUA_XET.map((x) => x.kq.customer)).toEqual(['Kingpen', 'Kingpen']);
   });
 });
 
@@ -224,7 +225,7 @@ describe('nhanTin — lưu mọi cuộc, trừ cuộc đã bị loại', () => {
 
 describe('AI tự đọc cuộc trò chuyện', () => {
   const tinDb = (id: string, fromSelf: boolean, content: string, phut: number, threadId = 'T1') => ({
-    msgId: id, threadId, fromSelf, sender: fromSelf ? '' : 'Chị Hà', content, ts: String(Date.UTC(2026, 9, 5, 1, phut)),
+    msgId: id, threadId, fromSelf, sender: fromSelf ? '' : 'Chị Hà', content, ts: String(Date.now() - (60 - phut) * 60_000),
   });
   const cuoc = (o: Record<string, unknown>) => ({
     threadId: 'T1', name: 'Chị Hà', customer: '', customerId: '', enabled: false, aiChecked: false, isGroup: false,
@@ -467,5 +468,24 @@ describe('mỗi khách một nhắc, đúng chủ thể', () => {
     expect(NHAC[0]).toMatchObject({ id: 'ZR-T-555', title: 'Hồng Thanh: 1) Xin kho tư liệu; 2) Gửi báo giá' });
     expect(TAT).toEqual(['ZR-555-1-0', 'ZR-555-2-0']);
     expect(await S.gopNhacCu()).toEqual({ gop: 0, khach: 0 });
+  });
+});
+
+// Anh Tâm 11/10/2026: "chỉ lấy khách hàng có tương tác gần đây, lâu rồi không tương tác đa phần đã ngưng dịch vụ".
+describe('chỉ tạo khách khi có tương tác gần đây', () => {
+  const nhom = { threadId: '999', name: 'KINGPEN - MT DIGITAL', customer: 'Kingpen', customerId: '', enabled: true, aiChecked: true, isGroup: true, chuaRut: 1, lastMsgAt: '' };
+  it('nhóm khách có tin trong 60 ngày → tạo khách (đang dùng dịch vụ)', async () => {
+    CUOC_CAN_RUT = [nhom];
+    CHUA_RUT = [{ msgId: 'k1', threadId: '999', fromSelf: false, sender: 'Kingpen', content: 'Em gửi lịch đăng tuần sau', ts: String(Date.now() - 3 * 24 * 3600_000) }];
+    AI_DOC = { loai: 'cong_viec', y: [] };
+    await S.rutTriThucZalo({ epNgay: true });
+    expect(CRM_GHI[0]).toMatchObject({ name: 'Kingpen', status: 'Đã chốt' });
+  });
+  it('chỉ có lịch sử cũ (> 60 ngày) → không tạo khách', async () => {
+    CUOC_CAN_RUT = [nhom];
+    CHUA_RUT = [{ msgId: 'k2', threadId: '999', fromSelf: false, sender: 'Kingpen', content: 'Nghiệm thu web', ts: String(Date.now() - 120 * 24 * 3600_000) }];
+    AI_DOC = { loai: 'cong_viec', laKhachHang: true, tenKhach: 'Kingpen', y: [] };
+    await S.rutTriThucZalo({ epNgay: true });
+    expect(CRM_GHI).toHaveLength(0);
   });
 });

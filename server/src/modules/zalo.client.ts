@@ -266,12 +266,10 @@ export async function quetNhomKhach(): Promise<{ ok: boolean; note: string; conL
     const ds = await capNhatDanhSachNhom(p.api);
     let xet = 0;
     let nhomKhach = 0;
-    const khachMoi: string[] = [];
     while (Date.now() < han - 15_000) {
       const r = await xacDinhNhomKhach(40);
       xet += r.xet;
       nhomKhach += r.nhomKhach;
-      khachMoi.push(...r.khachMoi);
       if (r.xet === 0) break;
     }
     const keo = await keoLichSuNhom(p.api, han);
@@ -279,7 +277,6 @@ export async function quetNhomKhach(): Promise<{ ok: boolean; note: string; conL
     const conLai = con.chuaXet + con.chuaKeo;
     const note =
       `Quét nhóm lúc ${nowTz().format('HH:mm DD/MM')} — ${ds.tong} nhóm (${ds.moi} mới), AI xét ${xet}: ${nhomKhach} nhóm khách` +
-      (khachMoi.length ? `, tạo mới trong CRM: ${khachMoi.join(', ')}` : '') +
       `; kéo lịch sử ${keo} nhóm` +
       (conLai ? ` · còn ${conLai} việc, lượt sau làm tiếp` : '');
     await ghiTrangThai({ status: 'online', note: note.slice(0, 600), lastSeen: now() });

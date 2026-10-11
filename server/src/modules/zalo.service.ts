@@ -349,16 +349,22 @@ export async function rutCuoc(c: ZaloThread, chu: NguoiGui, viDu: ViDuQuyet = []
   // Nhân sự công ty (AI nhận ra, hoặc tên trùng nhân sự) → chat nội bộ, không bao giờ thành khách.
   const noiBo = kq.laNhanSu || laNhanSu(kq.tenKhach, nhanSu) || (!c.isGroup && !daGan && laNhanSu(c.name, nhanSu));
   let kh: Customer | undefined = daGan;
-  if (!kh && !noiBo && kq.laKhachHang && kq.tenKhach) {
-    kh = khopKhach(kq.tenKhach, khachDs) || undefined;
-    if (!kh) {
+  // Tên khách: AI đọc ra, hoặc tên chờ của nhóm khách (xét theo tên nhóm, chưa tạo CRM).
+  const tenTao = kq.laKhachHang && kq.tenKhach ? kq.tenKhach : c.isGroup && !c.customerId && c.customer ? c.customer : '';
+  if (!kh && !noiBo && tenTao) {
+    kh = khopKhach(tenTao, khachDs) || undefined;
+    // Chỉ TẠO khách khi có tương tác trong 60 ngày (tin mới nhất đang đọc) — lịch sử cũ kéo về không tính.
+    const tinMoiNhat = Math.max(...tin.map((t) => Number(t.ts) || 0));
+    const ganDay = now.valueOf() - tinMoiNhat <= 60 * 24 * 3600_000;
+    if (!kh && ganDay) {
       const gd = (await getDirectors())[0];
       kh = {
         id: newId('C-'),
-        name: kq.tenKhach,
+        name: tenTao,
         phone: '',
-        status: 'Mới',
-        note: `Tạo tự động từ Zalo «${c.name || kq.tenKhach}».`,
+        // Nhóm làm việc riêng với MT Digital mà còn nhắn gần đây → đang là khách; chat 1-1 → khách tiềm năng.
+        status: c.isGroup ? CLOSED_STATUS : 'Mới',
+        note: `Tạo tự động từ Zalo «${c.name || tenTao}».`,
         info: '',
         assignedTo: gd?.id || chu.id,
         dob: '',
@@ -635,9 +641,9 @@ export async function xetNhom(ds: NhomCanXet[], tenKhachCRM: string[], viDu: ViD
  * Xét các nhóm chưa xét: AI quyết định nhóm khách + tên khách → khớp khách trong CRM, chưa có thì
  * TẠO khách mới → bật học. Nhóm AI không trả kết luận thì để lượt sau xét lại.
  */
-export async function xacDinhNhomKhach(limit = 40): Promise<{ xet: number; nhomKhach: number; khachMoi: string[] }> {
+export async function xacDinhNhomKhach(limit = 40): Promise<{ xet: number; nhomKhach: number }> {
   const ds = await nhomChuaXet(limit);
-  if (ds.length === 0) return { xet: 0, nhomKhach: 0, khachMoi: [] };
+  if (ds.length === 0) return { xet: 0, nhomKhach: 0 };
   const khach: Customer[] = await getCustomers();
   // Nhóm chưa xét: ai_note đang tạm giữ "số thành viên · mô tả nhóm" (zalo.repo.ghiDanhSachNhom).
   const kl = await xetNhom(
@@ -645,9 +651,7 @@ export async function xacDinhNhomKhach(limit = 40): Promise<{ xet: number; nhomK
     khach.map((c) => c.name),
     await viDuAnhQuyet(40).catch(() => []),
   );
-  const gd = (await getDirectors())[0];
   let nhomKhach = 0;
-  const khachMoi: string[] = [];
   for (const n of ds) {
     const k = kl.get(n.threadId);
     if (!k) continue;
@@ -670,33 +674,16 @@ export async function xacDinhNhomKhach(limit = 40): Promise<{ xet: number; nhomK
       });
       continue;
     }
-    let kh: Customer | null = khopKhach(ten, khach);
-    let ghiChu = `Nhóm khách → ${ten}`;
-    if (kh) ghiChu += ' (đã có trong CRM)';
-    else {
-      kh = {
-        id: newId('C-'),
-        name: ten,
-        phone: '',
-        status: CLOSED_STATUS,
-        note: `Tạo tự động từ nhóm Zalo «${n.name}».`,
-        info: '',
-        assignedTo: gd?.id || '',
-        dob: '',
-        closedAt: '',
-        source: '',
-        createdAt: nowTz().toISOString(),
-      };
-      await upsertCustomer(kh);
-      khach.push(kh);
-      khachMoi.push(ten);
-      ghiChu += ' (mới tạo trong CRM)';
-    }
+    // KHÔNG tạo khách chỉ vì tên nhóm (anh Tâm 11/10/2026: 117 khách "Đã chốt" tạo theo tên nhóm đa phần
+    // sai — "chỉ lấy khách hàng có tương tác gần đây, lâu rồi không tương tác đa phần đã ngưng dịch vụ").
+    // Có sẵn trong CRM thì gắn; chưa có thì ghi tên chờ — khi AI đọc thấy tin trong 60 ngày mới tạo (rutCuoc).
+    const kh: Customer | null = khopKhach(ten, khach);
+    let ghiChu = kh ? `Nhóm khách → ${ten} (đã có trong CRM)` : `Nhóm khách → ${ten} (chưa tạo trong CRM — chờ có tương tác gần đây)`;
     if (k.lyDo) ghiChu += ` — ${k.lyDo}`;
-    await ghiKetQuaXet(n.threadId, { aiNote: ghiChu, laNhomKhach: true, customerId: kh.id, customer: kh.name });
+    await ghiKetQuaXet(n.threadId, { aiNote: ghiChu, laNhomKhach: true, customerId: kh?.id || '', customer: kh?.name || ten });
     nhomKhach++;
   }
-  return { xet: kl.size, nhomKhach, khachMoi };
+  return { xet: kl.size, nhomKhach };
 }
 
 /**
