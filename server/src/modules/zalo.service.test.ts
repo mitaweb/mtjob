@@ -45,6 +45,7 @@ vi.mock('./zalo.repo.js', () => ({
     TIN.push(t);
   }),
   cuocCanRut: vi.fn(async () => CUOC_CAN_RUT),
+  cuocCuaKhach: vi.fn(async () => CUOC_CAN_RUT),
   timCuoc: vi.fn(async () => undefined),
   tinChuaRut: vi.fn(async () => CHUA_RUT),
   tinGanDay: vi.fn(async () => CHUA_RUT),
@@ -539,5 +540,44 @@ describe('lời anh giải thích cho AI', () => {
     await S.rutTriThucZalo({ epNgay: true });
     expect(PROMPT).toContain('GIÁM ĐỐC GIẢI THÍCH VỀ CUỘC NÀY (làm theo đúng như vậy): "Nhóm nội bộ team Ads — học quy trình chạy quảng cáo"');
     expect(PROMPT).toContain('- BỎ QUA: chat «Nhi Lê» — Nhờ làm slide ngày hội (giám đốc giải thích: "Bạn trong BNI, việc hội nhóm — không phải khách")');
+  });
+});
+
+// Anh Tâm 11/10/2026: "c Hồng Thanh đã giải quyết và hẹn T2 gửi clip, phương án lồng tiếng 50 đô đã chốt mà giờ
+// còn nhắc lại" — trước khi bắn, AI đọc lại chat và cập nhật nhắc.
+describe('xét lại nhắc gộp trước khi bắn', () => {
+  const nhac = { id: 'ZR-K-K3', memberId: 'GD', title: 'Savax Door: 1) Giải thích khoản chi phí 121; 2) Báo phương án lồng tiếng 50 USD' };
+  const coTin = () => {
+    CUOC_CAN_RUT = [{ threadId: '777', name: 'Hồng Thanh', customer: 'Savax Door', customerId: 'K3', enabled: true, aiChecked: true, isGroup: false }];
+    CHUA_RUT = [{ msgId: 'x1', threadId: '777', fromSelf: false, sender: 'Hồng Thanh', content: 'Ok em, chị chốt gói 50 đô nhé, thứ Hai chị gửi clip', ts: String(Date.now()) }];
+  };
+
+  it('mọi việc đã xong → tắt nhắc, gỡ dòng việc trong ghi chú khách', async () => {
+    coTin();
+    AI_DOC = { con: [] };
+    expect(await S.xetLaiNhacZalo(nhac)).toEqual({ ket: 'xong' });
+    expect(PROMPT).toContain('Savax Door: 1) Giải thích khoản chi phí 121');
+    expect(PROMPT).toContain('chị chốt gói 50 đô');
+  });
+
+  it('còn việc chưa hẹn → bắn với danh sách mới', async () => {
+    coTin();
+    AI_DOC = { con: [{ viec: 'Gửi hoá đơn đợt 2', han: '' }] };
+    expect(await S.xetLaiNhacZalo(nhac)).toEqual({ ket: 'moi', title: 'Savax Door: Gửi hoá đơn đợt 2' });
+  });
+
+  it('khách hẹn ngày khác → dời nhắc tới hẹn đó, chưa bắn', async () => {
+    coTin();
+    const thu2 = new Date(Date.now() + 3 * 24 * 3600_000);
+    const han = `${thu2.toISOString().slice(0, 10)} 10:00`;
+    AI_DOC = { con: [{ viec: 'Nhận clip khách gửi', han }] };
+    expect(await S.xetLaiNhacZalo(nhac)).toEqual({ ket: 'doi' });
+    expect(NHAC[NHAC.length - 1]).toMatchObject({ id: 'ZR-K-K3', onDate: han.slice(0, 10), atTime: '10:00', title: 'Savax Door: Nhận clip khách gửi' });
+  });
+
+  it('không có tin / không phải nhắc Zalo → bắn như cũ', async () => {
+    CUOC_CAN_RUT = [];
+    expect(await S.xetLaiNhacZalo(nhac)).toEqual({ ket: 'giu' });
+    expect(await S.xetLaiNhacZalo({ ...nhac, id: 'R-123' })).toEqual({ ket: 'giu' });
   });
 });

@@ -444,3 +444,11 @@ export async function demCuocCanRut(): Promise<number> {
   );
   return Number(r[0]?.n) || 0;
 }
+
+/** Các cuộc đã gắn với một khách. */
+export async function cuocCuaKhach(customerId: string): Promise<ZaloThread[]> {
+  const r = await q(`SELECT t.*, 0 AS chua_rut FROM zalo_threads t WHERE t.customer_id = $1 ORDER BY t.last_msg_at DESC LIMIT 20`, [
+    customerId,
+  ]);
+  return r.map(rowToThread);
+}

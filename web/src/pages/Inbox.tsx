@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { enablePush, pushStatus, type PushStatus } from '../lib/push';
 import { useToast } from '../components/Toaster';
@@ -45,7 +45,7 @@ const GROUPS: GroupDef[] = [
   {
     key: 'work',
     label: '✅ Công việc',
-    types: ['task_done', 'task_assigned', 'attendance', 'kyluat', 'brain_question', 'brain_answer', 'brain_pending'],
+    types: ['task_done', 'task_assigned', 'attendance', 'kyluat', 'brain_question', 'brain_answer', 'brain_pending', 'zalo_hoi'],
     to: '/chat',
     hint: 'Việc được giao, việc hoàn thành, chấm công, kho tri thức.',
   },
@@ -71,7 +71,13 @@ export default function Inbox() {
   const navigate = useNavigate();
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Group>('request');
+  // Bấm thông báo đẩy mở thẳng đúng tab (vd nhắc hẹn → /inbox?tab=remind — anh Tâm 11/10/2026: "bấm vào thông
+  // báo thì ra trang Chat chứ không ra tab thông báo").
+  const [params] = useSearchParams();
+  const tabUrl = params.get('tab');
+  const [tab, setTab] = useState<Group>(
+    tabUrl === 'request' || tabUrl === 'report' || tabUrl === 'remind' || tabUrl === 'work' ? tabUrl : 'request',
+  );
   const [unread, setUnread] = useState<Record<Group, number>>({ request: 0, report: 0, remind: 0, work: 0 });
   const [push, setPush] = useState<PushStatus>('off');
 
@@ -104,7 +110,8 @@ export default function Inbox() {
   useEffect(() => {
     loadCounts()
       .then((counts) => {
-        const first = GROUPS.find((g) => sumTypes(counts, g.key) > 0)?.key ?? 'request';
+        // Có ?tab= (bấm từ thông báo đẩy) thì mở đúng tab đó; không thì tab đầu tiên còn tin chưa đọc.
+        const first = tabUrl && GROUPS.some((g) => g.key === tabUrl) ? (tabUrl as Group) : (GROUPS.find((g) => sumTypes(counts, g.key) > 0)?.key ?? 'request');
         setTab(first);
         return loadGroup(first);
       })

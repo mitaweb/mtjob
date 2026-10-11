@@ -48,11 +48,31 @@ export async function runDueReminders(): Promise<number> {
     // Giành quyền gửi trước, gửi sau — hai tiến trình song song chỉ một cái ăn.
     if (!(await markFired(r.id, today))) continue;
 
+    // Nhắc gộp từ Zalo (mã ZR-…): AI đọc lại chat gần nhất của khách ngay trước khi bắn — bỏ việc đã xong,
+    // cập nhật việc mới, dời nếu khách hẹn ngày khác (anh Tâm 11/10/2026: "đã giải quyết ... mà giờ còn
+    // nhắc lại"). AI lỗi thì bắn như cũ.
+    let title = r.title;
+    if (r.id.startsWith('ZR-')) {
+      try {
+        const { xetLaiNhacZalo } = await import('./zalo.service.js');
+        const x = await xetLaiNhacZalo(r);
+        if (x.ket === 'xong') {
+          await setReminderActive(r.id, r.memberId, false).catch(() => undefined);
+          continue;
+        }
+        if (x.ket === 'doi') continue; // đã dời sang hẹn sau (ghi lại nhắc, bật lại)
+        if (x.ket === 'moi') title = x.title;
+      } catch (e) {
+        console.warn('[reminders] xét lại nhắc Zalo:', (e as Error).message);
+      }
+    }
+
     await notify(r.memberId, {
       type: 'reminder',
-      title: `⏰ ${r.title}`,
+      title: `⏰ ${title}`,
       body: `Nhắc hẹn ${describeRule(rule)}.`,
-      url: '/chat',
+      // Bấm thông báo → mở thẳng tab Nhắc hẹn (trước mở trang Chat).
+      url: '/inbox?tab=remind',
     });
     sent++;
     // Nhắc 1 lần đã gửi xong thì tắt luôn.

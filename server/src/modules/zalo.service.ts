@@ -19,6 +19,7 @@ import {
   danhDauCongViec,
   ghiGhiChuAi,
   hoiAnh,
+  cuocCuaKhach,
   viDuAnhQuyet,
   timCuoc,
   tinChuaRut,
@@ -777,4 +778,90 @@ export async function gopNhacCu(): Promise<{ gop: number; khach: number }> {
     for (const id of g.ids) await tatNhac(id);
   }
   return { gop: cu.length, khach: theoMa.size };
+}
+
+const SCHEMA_XET_NHAC = {
+  type: 'OBJECT',
+  properties: {
+    con: {
+      type: 'ARRAY',
+      items: { type: 'OBJECT', properties: { viec: { type: 'STRING' }, han: { type: 'STRING' } }, required: ['viec'] },
+    },
+  },
+  required: ['con'],
+};
+
+export type KetQuaXetNhac = { ket: 'giu' } | { ket: 'xong' } | { ket: 'doi' } | { ket: 'moi'; title: string };
+
+/**
+ * Ngay trước khi bắn nhắc gộp của một khách, AI đọc lại chat gần nhất của khách đó và bỏ việc đã xong /
+ * đã chốt, cập nhật việc theo tin mới (anh Tâm 11/10/2026: "c Hồng Thanh đã giải quyết và hẹn T2 gửi clip,
+ * phương án lồng tiếng 50 đô đã chốt mà giờ còn nhắc lại").
+ *   - 'xong': hết việc → tắt nhắc, không bắn;   - 'doi': mọi việc còn lại đều có hẹn sau → dời nhắc;
+ *   - 'moi': bắn với danh sách mới;              - 'giu': không có tin / AI lỗi → bắn như cũ.
+ */
+export async function xetLaiNhacZalo(r: { id: string; title: string; memberId: string }): Promise<KetQuaXetNhac> {
+  const mK = /^ZR-K-(.+)$/.exec(r.id);
+  const mT = /^ZR-T-(.+)$/.exec(r.id);
+  if (!mK && !mT) return { ket: 'giu' };
+  const khachDs: Customer[] = await getCustomers().catch(() => []);
+  const kh = mK ? khachDs.find((k) => k.id === mK[1]) : undefined;
+  const cuoc = mK ? await cuocCuaKhach(mK[1]!) : [await timCuoc(mT![1]!)].filter((x): x is ZaloThread => !!x);
+  const tin: TinZalo[] = [];
+  for (const c of cuoc.slice(0, 6)) tin.push(...(await tinGanDay(c.threadId, 60)));
+  if (!tin.length) return { ket: 'giu' };
+  const gd = (await getDirectors())[0];
+  const ten = kh?.name || cuoc[0]?.name || 'khách';
+  const doan = dungDoanChat(tin, gd?.fullName || 'Giám đốc', ten, 20000);
+  const now = nowTz();
+  const prompt = [
+    `Giám đốc agency MT Digital đang theo dõi các việc sau với ${ten}: "${r.title}".`,
+    `Bây giờ là ${now.format('HH:mm DD/MM/YYYY')} (giờ Việt Nam). Đọc đoạn chat gần nhất bên dưới và trả về con = các việc`,
+    'CÒN CẦN LÀM: BỎ việc đã xong / đã trả lời / đã chốt (vd khách đã đồng ý phương án, đã thanh toán, đã nhận file);',
+    'CẬP NHẬT việc theo tin mới (vd khách hẹn thứ Hai gửi clip → "Nhận / nhắc gửi clip" với han là thứ Hai đó).',
+    'Mỗi việc: viec ngắn gọn (không lặp tên khách), han = "YYYY-MM-DD HH:mm" nếu có hẹn cụ thể, không thì để trống.',
+    'Hết việc thì con = []. KHÔNG bịa việc không có trong chat hoặc danh sách.',
+    '',
+    'ĐOẠN CHAT (cũ → mới):',
+    doan,
+  ].join('\n');
+  let con: Array<{ viec: string; han: string }>;
+  try {
+    const kq = await aiKhoJson(prompt, SCHEMA_XET_NHAC);
+    con = (Array.isArray(kq?.con) ? kq.con : [])
+      .map((x: { viec?: unknown; han?: unknown }) => ({ viec: String(x?.viec ?? '').trim().slice(0, 200), han: String(x?.han ?? '').trim().slice(0, 20) }))
+      .filter((x: { viec: string }) => x.viec.length >= 5)
+      .slice(0, 5);
+  } catch (e) {
+    console.warn('[zalo] xét lại nhắc', r.id, (e as Error).message);
+    return { ket: 'giu' };
+  }
+  const ngay = now.format('YYYY-MM-DD');
+  const bayGio = { ngay, gio: now.format('HH:mm') };
+  if (kh) {
+    const note = ghiChuViecAi(kh.note, con.map((v) => v.viec), ngay);
+    if (note !== kh.note) await upsertCustomer({ ...kh, note }).catch(() => undefined);
+  }
+  if (!con.length) return { ket: 'xong' };
+  const moi = nhacGop(ten, con, bayGio)!;
+  // Mọi việc đều có hẹn cụ thể ở tương lai → dời nhắc tới hẹn sớm nhất, chưa bắn bây giờ.
+  const hienTai = `${ngay} ${bayGio.gio}`;
+  const henSau = con.every((v) => /^\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}$/.test(v.han) && v.han > hienTai);
+  if (henSau) {
+    await luuNhacGop({
+      id: r.id,
+      memberId: r.memberId,
+      title: moi.title,
+      atTime: moi.atTime,
+      repeatKind: 'once',
+      onDate: moi.onDate,
+      weekday: 1,
+      dayOfMonth: 1,
+      active: true,
+      lastFired: '',
+      createdAt: now.toISOString(),
+    });
+    return { ket: 'doi' };
+  }
+  return { ket: 'moi', title: moi.title };
 }
