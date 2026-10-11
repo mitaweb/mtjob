@@ -70,7 +70,13 @@ vi.mock('./zalo.repo.js', () => ({
     KET_QUA_XET.push({ id, kq });
   }),
 }));
+let VIEC_MO: Array<Record<string, unknown>> = [];
+const SUA_MUC: Array<{ id: string; patch: Record<string, unknown> }> = [];
+vi.mock('./brainItems.repo.js', () => ({ listItems: vi.fn(async () => VIEC_MO) }));
 vi.mock('./brainItems.service.js', () => ({
+  suaMuc: vi.fn(async (id: string, patch: Record<string, unknown>) => {
+    SUA_MUC.push({ id, patch });
+  }),
   xetDuaVaoKho: vi.fn(async (input: Record<string, unknown>, nguoi: Record<string, unknown>) => {
     VAO_KHO.push({ input, nguoi });
     return { item: { id: 'x', status: 'published' }, message: 'Đã vào kho' };
@@ -123,6 +129,8 @@ beforeEach(() => {
   CUOC_CAN_RUT = [];
   TRANG_THAI.length = 0;
   NHAC.length = 0;
+  VIEC_MO = [];
+  SUA_MUC.length = 0;
   NHAC_DB.clear();
   TAT.length = 0;
   BAO.length = 0;
@@ -487,5 +495,18 @@ describe('chỉ tạo khách khi có tương tác gần đây', () => {
     AI_DOC = { loai: 'cong_viec', laKhachHang: true, tenKhach: 'Kingpen', y: [] };
     await S.rutTriThucZalo({ epNgay: true });
     expect(CRM_GHI).toHaveLength(0);
+  });
+});
+
+// Anh Tâm 11/10/2026: "nếu đã xử lý thì em cập nhật, vd khách đã thanh toán thì bỏ cái lưu ý đó đi".
+describe('AI tự gỡ lưu ý riêng đã xử lý', () => {
+  it('chat cho thấy đã xong → mục riêng chuyển sang lưu trữ; mã lạ thì bỏ qua', async () => {
+    CUOC_CAN_RUT = [{ threadId: '777', name: 'Hồng Thanh', customer: 'Savax Door', customerId: 'K3', enabled: true, aiChecked: true, isGroup: false, chuaRut: 1, lastMsgAt: '' }];
+    CHUA_RUT = [{ msgId: 'p1', threadId: '777', fromSelf: false, sender: 'Hồng Thanh', content: 'Bên chị chuyển khoản hoá đơn rồi nhé', ts: String(Date.now()) }];
+    VIEC_MO = [{ id: 'BI-hoadon', title: 'Hoá đơn đợt trước chưa xác nhận', summary: 'Chờ khách xác nhận hoá đơn' }];
+    AI_DOC = { loai: 'cong_viec', y: [], daXong: ['BI-hoadon', 'BI-bia'] };
+    await S.rutTriThucZalo({ epNgay: true });
+    expect(PROMPT).toContain('[BI-hoadon] Hoá đơn đợt trước chưa xác nhận');
+    expect(SUA_MUC).toEqual([{ id: 'BI-hoadon', patch: { status: 'archived' } }]);
   });
 });

@@ -338,7 +338,7 @@ brainRouter.post(
   asyncHandler(async (req, res) => {
     chiGiamDoc(req);
     const b = z
-      .object({ ids: z.array(z.string().min(1)).min(1).max(200), status: z.enum(['published', 'rejected']) })
+      .object({ ids: z.array(z.string().min(1)).min(1).max(200), status: z.enum(['published', 'rejected', 'archived']) })
       .parse(req.body);
     const nguoi = await nguoiDangNhap(req);
     const han = Date.now() + 40_000;

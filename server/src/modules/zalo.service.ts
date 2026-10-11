@@ -29,7 +29,8 @@ import {
   CHUA_RO_THEO_TEN,
   type ZaloThread,
 } from './zalo.repo.js';
-import { xetDuaVaoKho, type NguoiGui } from './brainItems.service.js';
+import { xetDuaVaoKho, suaMuc, type NguoiGui } from './brainItems.service.js';
+import { listItems } from './brainItems.repo.js';
 import { getCustomers, upsertCustomer, CLOSED_STATUS, type Customer } from './crm.repo.js';
 import { newId } from '../util/id.js';
 import { getDirectors, getActiveMembers } from './members.repo.js';
@@ -114,6 +115,7 @@ const SCHEMA_DOC = {
       },
     },
     boSungKhach: { type: 'STRING' },
+    daXong: { type: 'ARRAY', items: { type: 'STRING' } },
     nhac: {
       type: 'ARRAY',
       items: {
@@ -142,6 +144,8 @@ export interface KetQuaDoc {
   y: Array<{ tieuDe: string; noiDung: string; khach: string }>;
   boSungKhach: string;
   nhac: Array<{ viec: string; han: string; khach: string }>;
+  /** Mã các mục "riêng giám đốc" đang mở mà chat cho thấy ĐÃ XỬ LÝ (vd khách đã thanh toán). */
+  daXong: string[];
 }
 
 /**
@@ -175,6 +179,8 @@ export async function docCuoc(
     nhanSu?: string[];
     /** Các việc đang theo dõi với khách này (nhắc gộp hiện có) — AI trả lại danh sách mới nhất. */
     dangTheoDoi?: string;
+    /** Mục "riêng giám đốc" đang mở của khách này (hoá đơn, công nợ, lịch hẹn…) — AI báo cái nào đã xong. */
+    viecMo?: Array<{ id: string; tieuDe: string; tomTat: string }>;
   },
 ): Promise<KetQuaDoc> {
   const rong: KetQuaDoc = {
@@ -188,6 +194,7 @@ export async function docCuoc(
     y: [],
     boSungKhach: '',
     nhac: [],
+    daXong: [],
   };
   if (!doanChat.trim()) return rong;
   const prompt = [
@@ -237,6 +244,14 @@ export async function docCuoc(
       : '',
     '   Mỗi việc: viec (ngắn gọn, KHÔNG lặp tên khách), han = "YYYY-MM-DD HH:mm" lúc nên nhắc (theo hẹn trong',
     '   chat; không rõ thì để trống). Tối đa 5 việc. Hết việc thì nhac = [].',
+    ...(o.viecMo?.length
+      ? [
+          '7) daXong: các LƯU Ý / VIỆC ĐANG MỞ dưới đây của khách này — chat cho thấy đã XỬ LÝ XONG (vd khách đã',
+          '   thanh toán / đã xác nhận hoá đơn, đã gửi báo giá, lịch hẹn đã diễn ra) thì ghi mã vào daXong. Chưa chắc',
+          '   thì KHÔNG ghi.',
+          ...o.viecMo.map((v) => `   [${v.id}] ${v.tieuDe}${v.tomTat ? ` — ${v.tomTat}` : ''}`),
+        ]
+      : []),
     'Nếu loai khác "cong_viec" thì y, boSungKhach, nhac đều để trống.',
     'BỎ QUA: chào hỏi, cảm ơn, "ok anh", OTP, mật khẩu, số tài khoản, số điện thoại. KHÔNG bịa điều không',
     'có trong đoạn chat. Viết tiếng Việt.',
@@ -267,6 +282,7 @@ export async function docCuoc(
       .filter((x: { tieuDe: string; noiDung: string }) => x.tieuDe && x.noiDung.length >= 10)
       .slice(0, 8),
     boSungKhach: hoc ? chu(r?.boSungKhach, 400) : '',
+    daXong: (Array.isArray(r?.daXong) ? r.daXong : []).map((x: unknown) => String(x ?? '').trim()).filter(Boolean).slice(0, 20),
     nhac: !hoc
       ? []
       : (Array.isArray(r?.nhac) ? r.nhac : [])
@@ -312,6 +328,11 @@ export async function rutCuoc(c: ZaloThread, chu: NguoiGui, viDu: ViDuQuyet = []
   // Nhắc gộp: mỗi khách MỘT nhắc (mã theo khách); chưa gắn khách thì theo cuộc.
   const maNhacTruoc = khoaNhac(daGan?.id, c.threadId);
   const nhacCu = await findReminder(maNhacTruoc).catch(() => undefined);
+  // Lưu ý / việc riêng đang mở của khách (hoá đơn, công nợ, lịch hẹn…) — AI báo cái nào đã xong để tự gỡ
+  // (anh Tâm 11/10/2026: "nếu đã xử lý thì em cập nhật, vd khách đã thanh toán thì bỏ cái lưu ý đó đi").
+  const viecMo = daGan
+    ? await listItems({ directorScope: true, status: 'published', category: 'rieng', customerId: daGan.id, limit: 20 }).catch(() => [])
+    : [];
   const kq = await docCuoc(doan, {
     chu: chu.name || 'Giám đốc',
     ten: c.name || c.customer || 'người nhắn',
@@ -322,7 +343,13 @@ export async function rutCuoc(c: ZaloThread, chu: NguoiGui, viDu: ViDuQuyet = []
     viDu,
     nhanSu,
     dangTheoDoi: nhacCu?.active ? nhacCu.title : '',
+    viecMo: viecMo.map((i) => ({ id: i.id, tieuDe: i.title, tomTat: i.summary })),
   });
+  // Việc đã xử lý → chuyển sang "đã xong" (lưu trữ), không còn trong tab Riêng anh.
+  const moIds = new Set(viecMo.map((i) => i.id));
+  for (const id of kq.daXong.filter((x) => moIds.has(x))) {
+    await suaMuc(id, { status: 'archived' }, chu).catch((e) => console.warn('[zalo] đánh dấu xong', id, (e as Error).message));
+  }
   const xongTin = () => danhDauDaRut(c.threadId, tin.map((t) => t.msgId), now.toISOString());
 
   // Anh đã tự bật / AI đã xếp là công việc thì không bao giờ tự loại.

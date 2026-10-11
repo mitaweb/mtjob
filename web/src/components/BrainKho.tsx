@@ -651,6 +651,9 @@ export function TabDanhSach({ status, category, nhomList, rong, onChanged }: { s
   const tenNhom = useMemo(() => new Map(nhomList.map((n) => [n.key, n.label])), [nhomList]);
   const CO = 20;
   const duyet = status === 'pending';
+  // Tab Riêng anh: việc riêng (lịch hẹn, hoá đơn, công nợ…) — xong thì loại khỏi danh sách (anh Tâm 11/10/2026).
+  const rieng = category === 'rieng';
+  const coTich = duyet || rieng;
 
   async function tai() {
     const p = new URLSearchParams({ status });
@@ -672,7 +675,7 @@ export function TabDanhSach({ status, category, nhomList, rong, onChanged }: { s
   async function nhanh(i: BrainItem, st: BrainItem['status']) {
     try {
       await api(`/brain/items/${i.id}`, { method: 'PATCH', body: { status: st } });
-      toast.success(st === 'published' ? 'Đã ban hành' : 'Đã bỏ');
+      toast.success(st === 'published' ? 'Đã ban hành' : st === 'archived' ? 'Đã xong — loại khỏi danh sách' : 'Đã bỏ');
       await tai();
       onChanged();
     } catch (e) {
@@ -717,7 +720,7 @@ export function TabDanhSach({ status, category, nhomList, rong, onChanged }: { s
   }
 
   /** Ban hành / bỏ các mục đã tích. Máy chủ làm ~40 giây mỗi lượt; còn thì gọi tiếp. */
-  async function hangLoat(st: 'published' | 'rejected') {
+  async function hangLoat(st: 'published' | 'rejected' | 'archived') {
     let ids = [...chon];
     if (!ids.length) return;
     if (st === 'rejected' && !window.confirm(`Không lưu ${ids.length} mục đã chọn?`)) return;
@@ -725,14 +728,14 @@ export function TabDanhSach({ status, category, nhomList, rong, onChanged }: { s
     const loi: string[] = [];
     try {
       for (let lan = 0; ids.length && lan < 10; lan++) {
-        setDangLam(`${st === 'published' ? 'Đang ban hành' : 'Đang bỏ'} ${xong}/${chon.size}…`);
+        setDangLam(`${st === 'published' ? 'Đang ban hành' : st === 'archived' ? 'Đang đánh dấu xong' : 'Đang bỏ'} ${xong}/${chon.size}…`);
         const r = await api<{ xong: number; loi: string[]; conLai: string[] }>('/brain/items/bulk', { body: { ids, status: st } });
         xong += r.xong;
         loi.push(...r.loi);
         ids = r.conLai;
       }
       if (loi.length) toast.error(`${loi.length} mục lỗi: ${loi[0]}`);
-      toast.success(`${st === 'published' ? 'Đã ban hành' : 'Đã bỏ'} ${xong} mục`);
+      toast.success(`${st === 'published' ? 'Đã ban hành' : st === 'archived' ? 'Đã xong' : 'Đã bỏ'} ${xong} mục`);
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -769,7 +772,7 @@ export function TabDanhSach({ status, category, nhomList, rong, onChanged }: { s
         </div>
       )}
       {duyet && dangLam && !chon.size && <div className="mb-2 rounded-xl bg-brand-50 px-3 py-2 text-sm text-ink-soft">{dangLam}</div>}
-      {duyet && tong > 0 && (
+      {coTich && tong > 0 && (
         <div className="sticky top-0 z-10 -mx-1 mb-2 flex flex-wrap items-center gap-2 rounded-xl bg-brand-50 px-3 py-2 text-sm">
           <label className="flex cursor-pointer items-center gap-1.5">
             <input
@@ -793,6 +796,10 @@ export function TabDanhSach({ status, category, nhomList, rong, onChanged }: { s
               <div className="ml-auto flex flex-wrap gap-2">
                 {dangLam ? (
                   <span className="text-ink-soft">{dangLam}</span>
+                ) : rieng ? (
+                  <button className="btn-primary px-3 py-1 text-sm" onClick={() => hangLoat('archived')}>
+                    ✓ Đã xong {chon.size} mục
+                  </button>
                 ) : (
                   <>
                     <button className="btn-primary px-3 py-1 text-sm" onClick={() => hangLoat('published')}>
@@ -819,7 +826,7 @@ export function TabDanhSach({ status, category, nhomList, rong, onChanged }: { s
         <ul className="divide-y">
           {trangNay.map((i) => (
             <li key={i.id} className={`flex gap-2 py-2 ${chon.has(i.id) ? 'bg-brand-50/60' : ''}`}>
-              {duyet && (
+              {coTich && (
                 <input
                   type="checkbox"
                   className="mt-1.5 h-4 w-4 shrink-0"
@@ -842,6 +849,13 @@ export function TabDanhSach({ status, category, nhomList, rong, onChanged }: { s
                   {i.submittedName || 'Hệ thống'} · {fmtD(i.createdAt)}
                 </div>
               </button>
+              {rieng && (
+                <div className="mt-1.5">
+                  <AsyncButton className="btn-ghost px-3 py-1 text-sm text-emerald-700" onClick={() => nhanh(i, 'archived')} busyLabel="…">
+                    ✓ Đã xong
+                  </AsyncButton>
+                </div>
+              )}
               {status === 'pending' && (
                 <div className="mt-1.5 flex flex-wrap gap-2">
                   <AsyncButton className="btn-primary px-3 py-1 text-sm" onClick={() => nhanh(i, 'published')} busyLabel="…">
