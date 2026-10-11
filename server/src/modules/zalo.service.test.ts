@@ -83,16 +83,30 @@ vi.mock('./crm.repo.js', () => ({
     CRM_GHI.push(c);
   }),
 }));
-vi.mock('./members.repo.js', () => ({ getDirectors: async () => [{ id: 'GD', fullName: 'Anh Tâm' }] }));
+vi.mock('./members.repo.js', () => ({
+  getDirectors: async () => [{ id: 'GD', fullName: 'Anh Tâm' }],
+  getActiveMembers: async () => [{ id: 'GD', fullName: 'Anh Tâm' }, { id: 'M2', fullName: 'Ann Thuỳ' }],
+}));
 vi.mock('./notifications.service.js', () => ({
   notify: vi.fn(async (id: string, n: Record<string, unknown>) => {
     BAO.push({ id, n });
   }),
 }));
+const NHAC_DB = new Map<string, Record<string, unknown>>();
+const TAT: string[] = [];
 vi.mock('./reminders.repo.js', () => ({
-  addReminder: vi.fn(async (r: Record<string, unknown>) => {
+  findReminder: vi.fn(async (id: string) => NHAC_DB.get(id)),
+  luuNhacGop: vi.fn(async (r: Record<string, unknown>) => {
     NHAC.push(r);
+    NHAC_DB.set(String(r.id), { ...r, active: true });
   }),
+  tatNhac: vi.fn(async (id: string) => {
+    TAT.push(id);
+    const x = NHAC_DB.get(id);
+    if (x) x.active = false;
+  }),
+  tatNhacTheoTienTo: vi.fn(async () => 0),
+  nhacDangBatTheoTienTo: vi.fn(async (p: string) => [...NHAC_DB.values()].filter((x) => x.active && String(x.id).startsWith(p))),
 }));
 
 const S = await import('./zalo.service.js');
@@ -109,6 +123,8 @@ beforeEach(() => {
   CUOC_CAN_RUT = [];
   TRANG_THAI.length = 0;
   NHAC.length = 0;
+  NHAC_DB.clear();
+  TAT.length = 0;
   BAO.length = 0;
   VI_DU = [];
   AI_NHOM = [];
@@ -281,7 +297,10 @@ describe('AI tự đọc cuộc trò chuyện', () => {
     });
     expect(VAO_KHO[0]!.input).toMatchObject({ customer: 'Nội Thất Long Phát', source: 'zalo' });
     expect(NHAC[0]).toMatchObject({ memberId: 'GD', repeatKind: 'once', atTime: '08:30', active: true });
-    expect(String(NHAC[0]!.title)).toContain('Gửi báo giá web cho Long Phát');
+    expect(NHAC[0]!.title).toBe('Nội Thất Long Phát: Gửi báo giá web cho Long Phát');
+    expect(NHAC[0]!.id).toBe(`ZR-K-${CRM_GHI[0]!.id}`);
+    // Ghi chú khách có dòng việc cần theo dõi
+    expect(String(CRM_GHI[1]!.note)).toContain('📌 Việc cần theo dõi (AI');
     expect(String(NHAC[0]!.onDate)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
@@ -378,5 +397,75 @@ describe('50:50 thì hỏi anh, rồi học theo anh', () => {
     expect(PROMPT).toContain('- BỎ QUA: nhóm «Chợ sỉ Quảng Châu»');
     expect(PROMPT).not.toContain('Anh Bình'); // lúc xét nhóm chỉ đưa ví dụ là nhóm
     expect(PROMPT).toContain('nhóm CHỢ / mua bán');
+  });
+});
+
+// Anh Tâm 11/10/2026: "1 khách hàng 1 thông báo sau khi tổng hợp ... xác định chủ thể ... nhân viên nói về
+// Tín Đạt thì cũng đưa thông tin đó vào khách hàng Tín Đạt, dựa vào văn phong, nội dung để xác định nhân viên".
+describe('mỗi khách một nhắc, đúng chủ thể', () => {
+  const cuoc = (o: Record<string, unknown>) => ({
+    threadId: '777', name: 'Hồng Thanh', customer: 'Savax Door', customerId: 'K3', enabled: true, aiChecked: true, isGroup: false,
+    chuaRut: 1, lastMsgAt: '2026-10-05T01:00:00Z', ...o,
+  });
+  const tin = (threadId = '777') => [{ msgId: 'm1', threadId, fromSelf: false, sender: 'X', content: 'nội dung', ts: '1' }];
+
+  it('đọc lần 2: AI nhận danh sách đang theo dõi và trả danh sách mới nhất — vẫn MỘT nhắc', async () => {
+    CUOC_CAN_RUT = [cuoc({})];
+    CHUA_RUT = tin();
+    AI_DOC = { loai: 'cong_viec', y: [], nhac: [{ viec: 'Xin kho tư liệu', han: '' }, { viec: 'Gửi báo giá video', han: '' }] };
+    await S.rutTriThucZalo({ epNgay: true });
+    expect(NHAC).toHaveLength(1);
+    expect(NHAC[0]).toMatchObject({ id: 'ZR-K-K3', title: 'Savax Door: 1) Xin kho tư liệu; 2) Gửi báo giá video' });
+
+    // Lần sau: báo giá đã gửi → AI bỏ việc đó; nhắc cũ được ghi đè (cùng mã), không thêm nhắc mới
+    CHUA_RUT = [{ msgId: 'm2', threadId: '777', fromSelf: true, sender: '', content: 'Anh gửi báo giá rồi nhé', ts: '2' }];
+    AI_DOC = { loai: 'cong_viec', y: [], nhac: [{ viec: 'Xin kho tư liệu', han: '' }] };
+    await S.rutTriThucZalo({ epNgay: true });
+    expect(PROMPT).toContain('ĐANG THEO DÕI: "Savax Door: 1) Xin kho tư liệu; 2) Gửi báo giá video"');
+    expect(NHAC).toHaveLength(2);
+    expect(NHAC[1]).toMatchObject({ id: 'ZR-K-K3', title: 'Savax Door: Xin kho tư liệu' });
+
+    // Không đổi gì → không bắn lại
+    CHUA_RUT = [{ msgId: 'm3', threadId: '777', fromSelf: false, sender: 'X', content: 'ok', ts: '3' }];
+    await S.rutTriThucZalo({ epNgay: true });
+    expect(NHAC).toHaveLength(2);
+
+    // Hết việc → tắt nhắc
+    CHUA_RUT = [{ msgId: 'm4', threadId: '777', fromSelf: false, sender: 'X', content: 'em gửi tư liệu rồi', ts: '4' }];
+    AI_DOC = { loai: 'cong_viec', y: [], nhac: [] };
+    await S.rutTriThucZalo({ epNgay: true });
+    expect(TAT).toContain('ZR-K-K3');
+  });
+
+  it('nhân viên nói về khách khác trong chat nội bộ → ý vào kho đúng khách đó, việc gộp vào nhắc của khách đó', async () => {
+    CUOC_CAN_RUT = [cuoc({ threadId: '888', name: 'Ann Thuỳ', customer: '', customerId: '', enabled: false, aiChecked: false })];
+    CHUA_RUT = tin('888');
+    AI_DOC = {
+      loai: 'cong_viec',
+      laNhanSu: false, // AI quên — tên trùng nhân sự vẫn bị chặn thành khách
+      laKhachHang: true,
+      tenKhach: 'Ann Thuỳ',
+      y: [{ tieuDe: 'Savax muốn đổi màu logo', noiDung: 'Nhân viên báo Savax muốn đổi logo sang màu xanh.', khach: 'Savax Door' }],
+      nhac: [{ viec: 'Gửi Savax bản logo xanh', han: '', khach: 'Savax Door' }],
+    };
+    await S.rutTriThucZalo({ epNgay: true });
+    expect(CRM_GHI.some((k) => k.name === 'Ann Thuỳ')).toBe(false); // không tạo khách từ nhân sự
+    expect(TRANG_THAI[0]).toMatchObject({ loai: 'cong_viec', o: { customerId: '', aiNote: 'Nội bộ · nhân sự công ty' } });
+    expect(VAO_KHO[0]!.input).toMatchObject({ customer: 'Savax Door' });
+    expect(NHAC).toHaveLength(1);
+    expect(NHAC[0]).toMatchObject({ id: 'ZR-K-K3', title: 'Savax Door: Gửi Savax bản logo xanh' });
+    expect(PROMPT).toContain('NHÂN SỰ MT DIGITAL');
+    expect(PROMPT).toContain('VĂN PHONG');
+  });
+
+  it('dọn nhắc lẻ kiểu cũ → mỗi khách một nhắc', async () => {
+    NHAC_DB.set('ZR-555-1-0', { id: 'ZR-555-1-0', memberId: 'GD', title: 'Xin kho tư liệu (Zalo: Hồng Thanh)', onDate: '2026-10-11', atTime: '09:00', active: true });
+    NHAC_DB.set('ZR-555-2-0', { id: 'ZR-555-2-0', memberId: 'GD', title: 'Gửi báo giá (Zalo: Hồng Thanh)', onDate: '2026-10-11', atTime: '09:00', active: true });
+    const r = await S.gopNhacCu();
+    expect(r).toEqual({ gop: 2, khach: 1 });
+    expect(NHAC).toHaveLength(1);
+    expect(NHAC[0]).toMatchObject({ id: 'ZR-T-555', title: 'Hồng Thanh: 1) Xin kho tư liệu; 2) Gửi báo giá' });
+    expect(TAT).toEqual(['ZR-555-1-0', 'ZR-555-2-0']);
+    expect(await S.gopNhacCu()).toEqual({ gop: 0, khach: 0 });
   });
 });

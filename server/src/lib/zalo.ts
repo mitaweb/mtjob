@@ -149,3 +149,64 @@ export function noiThongTinKhach(cu: string, moi: string, ngay: string): string 
   const dong = `• ${ngay.slice(8, 10)}/${ngay.slice(5, 7)} (Zalo): ${them.slice(0, 400)}`;
   return goc ? `${goc}\n${dong}` : dong;
 }
+
+/**
+ * MỘT nhắc gộp cho một khách (anh Tâm 11/10/2026: "1 khách hàng 1 thông báo sau khi tổng hợp thông tin,
+ * gửi thông tin tổng hợp mới nhất thôi"). Giờ nhắc = sớm nhất trong các việc. Không có việc → null.
+ */
+export function nhacGop(
+  ten: string,
+  viecs: Array<{ viec: string; han: string }>,
+  bayGio: { ngay: string; gio: string },
+): { title: string; onDate: string; atTime: string } | null {
+  const ds = viecs.map((v) => ({ ...v, viec: v.viec.replace(/\s+/g, ' ').trim() })).filter((v) => v.viec);
+  if (!ds.length) return null;
+  const gio = ds.map((v) => gioNhac(v.han, bayGio)).sort((a, b) => `${a.onDate} ${a.atTime}`.localeCompare(`${b.onDate} ${b.atTime}`))[0]!;
+  const noi = ds.length === 1 ? ds[0]!.viec : ds.map((v, i) => `${i + 1}) ${v.viec}`).join('; ');
+  return { title: `${ten}: ${noi}`.slice(0, 600), ...gio };
+}
+
+export const DONG_VIEC_AI = '📌 Việc cần theo dõi (AI';
+
+/**
+ * Dòng "việc cần theo dõi" do AI quản lý trong Ghi chú của khách: thay dòng cũ bằng dòng mới (hoặc xoá
+ * khi hết việc). Mọi dòng khác anh ghi giữ nguyên.
+ */
+export function ghiChuViecAi(note: string, viecs: string[], ngay: string): string {
+  const giu = String(note || '')
+    .split('\n')
+    .filter((d) => !d.startsWith(DONG_VIEC_AI));
+  if (viecs.length) giu.push(`${DONG_VIEC_AI} ${ngay.slice(8, 10)}/${ngay.slice(5, 7)}): ${viecs.join('; ')}`.slice(0, 800));
+  return giu.join('\n').trim();
+}
+
+/** Đọc lại danh sách việc từ tiêu đề nhắc gộp "Tên: 1) a; 2) b" (hoặc "Tên: a"). */
+export function tachViec(title: string): string[] {
+  const t = String(title || '');
+  const i = t.indexOf(': ');
+  const than = (i >= 0 ? t.slice(i + 2) : t).trim();
+  if (!than) return [];
+  if (!/^1\)\s/.test(than)) return [than];
+  return than
+    .replace(/^1\)\s*/, '')
+    .split(/;\s*\d+\)\s*/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Thêm việc mới vào nhắc gộp của một khách KHÁC (vd nhân viên nhắc tới Tín Đạt trong chat nội bộ) —
+ * giữ các việc đang theo dõi, bỏ trùng, tối đa 8 việc (giữ việc mới nhất).
+ */
+export function gopThemViec(
+  titleCu: string,
+  ten: string,
+  moi: Array<{ viec: string; han: string }>,
+  bayGio: { ngay: string; gio: string },
+): { title: string; onDate: string; atTime: string } | null {
+  const chuan = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+  const cu = tachViec(titleCu).map((viec) => ({ viec, han: '' }));
+  const da = new Set(cu.map((v) => chuan(v.viec)));
+  const ds = [...cu, ...moi.filter((v) => v.viec.trim() && !da.has(chuan(v.viec)))].slice(-8);
+  return nhacGop(ten, ds, bayGio);
+}

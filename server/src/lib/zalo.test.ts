@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { noiDungTin, gioTin, dungDoanChat, denLucRut, maTinLonNhat, viecBanDem, goiYTenKhachTuNhom, gioNhac, noiThongTinKhach, type TinZalo } from './zalo.js';
+import { noiDungTin, gioTin, dungDoanChat, denLucRut, maTinLonNhat, viecBanDem, goiYTenKhachTuNhom, gioNhac, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, type TinZalo } from './zalo.js';
 
 // Anh Tâm 5/10/2026: đọc tin nhắn Zalo giữa anh và khách để đưa vào kho có chọn lọc.
 
@@ -137,5 +137,50 @@ describe('noiThongTinKhach', () => {
     expect(a).toBe('Khách VIP\n• 10/10 (Zalo): Muốn chạy Ads Tết');
     expect(noiThongTinKhach(a, 'Muốn chạy Ads Tết', '2026-10-11')).toBe(a);
     expect(noiThongTinKhach('x', '  ', '2026-10-11')).toBe('x');
+  });
+});
+
+// Anh Tâm 11/10/2026: "1 khách hàng 1 thông báo sau khi tổng hợp thông tin".
+describe('nhacGop / ghiChuViecAi', () => {
+  const luc = { ngay: '2026-10-11', gio: '12:00' };
+  it('gộp mọi việc của một khách thành một nhắc, giờ = sớm nhất', () => {
+    expect(
+      nhacGop('Tín Đạt Controls', [
+        { viec: 'Theo dõi xin kho tư liệu', han: '2026-10-13 10:00' },
+        { viec: 'Gửi báo giá video', han: '2026-10-12 15:00' },
+      ], luc),
+    ).toEqual({ title: 'Tín Đạt Controls: 1) Theo dõi xin kho tư liệu; 2) Gửi báo giá video', onDate: '2026-10-12', atTime: '15:00' });
+    expect(nhacGop('Maple', [{ viec: 'Theo dõi bản sửa video', han: '' }], luc)).toEqual({
+      title: 'Maple: Theo dõi bản sửa video',
+      onDate: '2026-10-12',
+      atTime: '08:30',
+    });
+    expect(nhacGop('X', [{ viec: '  ', han: '' }], luc)).toBeNull();
+  });
+  it('ghi chú: thay đúng dòng của AI, giữ dòng anh ghi', () => {
+    const a = ghiChuViecAi('Khách khó tính', ['Gửi báo giá'], '2026-10-11');
+    expect(a).toBe('Khách khó tính\n📌 Việc cần theo dõi (AI 11/10): Gửi báo giá');
+    const b = ghiChuViecAi(a, ['Gửi hợp đồng', 'Hẹn quay'], '2026-10-12');
+    expect(b).toBe('Khách khó tính\n📌 Việc cần theo dõi (AI 12/10): Gửi hợp đồng; Hẹn quay');
+    expect(ghiChuViecAi(b, [], '2026-10-13')).toBe('Khách khó tính');
+  });
+});
+
+// Anh Tâm 11/10/2026: "nhân viên nói về Tín Đạt thì cũng đưa thông tin đó vào khách hàng Tín Đạt".
+describe('tachViec / gopThemViec', () => {
+  const luc = { ngay: '2026-10-11', gio: '12:00' };
+  it('đọc lại danh sách từ tiêu đề nhắc gộp', () => {
+    expect(tachViec('Tín Đạt: 1) Xin kho tư liệu; 2) Gửi báo giá video')).toEqual(['Xin kho tư liệu', 'Gửi báo giá video']);
+    expect(tachViec('Maple: Theo dõi bản sửa video')).toEqual(['Theo dõi bản sửa video']);
+    expect(tachViec('')).toEqual([]);
+  });
+  it('thêm việc mới vào nhắc của khách khác, bỏ trùng', () => {
+    expect(
+      gopThemViec('Tín Đạt: Xin kho tư liệu', 'Tín Đạt', [
+        { viec: 'xin kho tư liệu', han: '' },
+        { viec: 'Gửi bản dựng thử', han: '2026-10-12 10:00' },
+      ], luc),
+    ).toEqual({ title: 'Tín Đạt: 1) Xin kho tư liệu; 2) Gửi bản dựng thử', onDate: '2026-10-12', atTime: '08:30' });
+    expect(gopThemViec('', 'Welllife', [{ viec: 'Nhắc cấp quyền Google Map', han: '' }], luc)!.title).toBe('Welllife: Nhắc cấp quyền Google Map');
   });
 });

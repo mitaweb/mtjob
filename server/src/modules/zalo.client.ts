@@ -28,7 +28,7 @@ import {
   daKeoLichSu,
   demViecNhom,
 } from './zalo.repo.js';
-import { nhanTin, rutTriThucZalo, xacDinhNhomKhach, type TinTuWorker } from './zalo.service.js';
+import { nhanTin, rutTriThucZalo, xacDinhNhomKhach, gopNhacCu, type TinTuWorker } from './zalo.service.js';
 
 const now = () => nowTz().toISOString();
 
@@ -45,6 +45,7 @@ export async function chayBanDem(): Promise<string> {
   if (viec === 'nghi') return 'ngoài giờ ban đêm';
   if (viec === 'dong_bo') return (await dongBoZalo()).note;
   if (viec === 'nhom') return (await quetNhomKhach()).note;
+  await gopNhacCu().catch(() => undefined);
   const r = await rutTriThucZalo({ epNgay: true, limit: 3 });
   if (r.cuoc) return `đọc ${r.cuoc} cuộc: ${r.y} ý, ${r.nhac} nhắc việc, ${r.caNhan} cuộc không liên quan bỏ qua, ${r.hoi} cuộc cần anh quyết`;
   return xetLaiKhoBanDem();
@@ -456,6 +457,11 @@ export async function xuLyNgay(): Promise<{
     const vn = await demViecNhom().catch(() => ({ chuaXet: 0, chuaKeo: 0 }));
     return { nhom: vn.chuaXet + vn.chuaKeo, doc: await demCuocCanRut().catch(() => 0) };
   };
+  // Nhắc lẻ kiểu cũ → mỗi khách MỘT nhắc gộp (nhanh, không cần AI).
+  const gop = await gopNhacCu().catch(() => ({ gop: 0, khach: 0 }));
+  if (gop.gop > 0) {
+    return { ok: true, buoc: 'nhom', note: `Gộp ${gop.gop} nhắc lẻ thành ${gop.khach} nhắc (mỗi khách một nhắc)`, con: await demCon() };
+  }
   const truoc = await demCon();
   const st = await docTrangThai();
 

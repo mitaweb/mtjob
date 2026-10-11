@@ -282,8 +282,14 @@ export function TabKho({ nhomList, isDirector, reloadKey, onChanged }: { nhomLis
   const [items, setItems] = useState<BrainItem[] | null>(null);
   const [mo, setMo] = useState<BrainItem | null>(null);
   const tenNhom = useMemo(() => new Map(nhomList.map((n) => [n.key, n.label])), [nhomList]);
+  // Anh Tâm 11/10/2026: "phần này cũng cần phân trang, phân loại khách hàng, chủ thể, thông tin thuộc 1 chủ thể
+  // gom về 1 nơi" — xem dạng danh sách (20 mục/trang) hoặc gom theo khách (10 khách/trang).
+  const [kieu, setKieu] = useState<'ds' | 'chu_the'>('chu_the');
+  const [trang, setTrang] = useState(1);
+  const [moNhom, setMoNhom] = useState<Record<string, boolean>>({});
 
   async function tai() {
+    setTrang(1);
     const p = new URLSearchParams();
     if (nhom) p.set('category', nhom);
     if (q.trim()) p.set('q', q.trim());
@@ -296,6 +302,24 @@ export function TabKho({ nhomList, isDirector, reloadKey, onChanged }: { nhomLis
   }, [nhom, reloadKey]);
 
   const tong = nhomList.filter((n) => n.key !== 'rieng').reduce((s, n) => s + n.count, 0);
+
+  // Gom theo chủ thể: mỗi khách một nhóm (nhiều mục nhất lên trước), mục chung của công ty để cuối.
+  const nhomChuThe = useMemo(() => {
+    const m = new Map<string, { ten: string; ds: BrainItem[] }>();
+    for (const i of items || []) {
+      const k = i.customerId || i.customer.trim().toLowerCase() || '';
+      const g = m.get(k) || { ten: i.customer || 'Chung của công ty (không gắn khách)', ds: [] };
+      g.ds.push(i);
+      m.set(k, g);
+    }
+    return [...m.entries()]
+      .map(([k, g]) => ({ k, ...g }))
+      .sort((a, b) => (a.k === '' ? 1 : b.k === '' ? -1 : b.ds.length - a.ds.length || a.ten.localeCompare(b.ten, 'vi')));
+  }, [items]);
+  const CO_DS = 20;
+  const CO_NHOM = 10;
+  const tongTrang = kieu === 'ds' ? (items?.length || 0) : nhomChuThe.length;
+  const coTrang = kieu === 'ds' ? CO_DS : CO_NHOM;
 
   return (
     <div className="space-y-3">
@@ -316,6 +340,24 @@ export function TabKho({ nhomList, isDirector, reloadKey, onChanged }: { nhomLis
               </button>
             ))}
         </div>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-ink-muted">Xem:</span>
+          {([
+            ['chu_the', '👤 Gom theo khách / chủ thể'],
+            ['ds', '📄 Danh sách'],
+          ] as const).map(([k, nhan]) => (
+            <button
+              key={k}
+              className={`rounded-full border px-3 py-1 text-xs ${kieu === k ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-line text-ink-soft'}`}
+              onClick={() => {
+                setKieu(k);
+                setTrang(1);
+              }}
+            >
+              {nhan}
+            </button>
+          ))}
+        </div>
         <div className="flex gap-2">
           <input className="input" placeholder="Tìm trong kho (vd: màu thương hiệu, CON05, Savax…)" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && tai()} />
           <AsyncButton className="btn-primary whitespace-nowrap" onClick={tai} busyLabel="…">
@@ -329,13 +371,40 @@ export function TabKho({ nhomList, isDirector, reloadKey, onChanged }: { nhomLis
           <SkeletonRows rows={4} />
         ) : items.length === 0 ? (
           <EmptyState icon="🧠" text={q || nhom ? 'Chưa có mục nào khớp.' : 'Kho chưa có mục nào. Vào tab "Đóng góp" để thêm mục đầu tiên.'} />
-        ) : (
+        ) : kieu === 'ds' ? (
           <ul className="divide-y">
-            {items.map((i) => (
+            {items.slice((trang - 1) * CO_DS, trang * CO_DS).map((i) => (
               <DongMuc key={i.id} i={i} nhom={tenNhom} onOpen={() => setMo(i)} />
             ))}
           </ul>
+        ) : (
+          <div className="space-y-3">
+            {nhomChuThe.slice((trang - 1) * CO_NHOM, trang * CO_NHOM).map((g) => {
+              const mo3 = moNhom[g.k] ? g.ds : g.ds.slice(0, 3);
+              return (
+                <div key={g.k || '_chung'} className="rounded-xl border border-brand-100 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="font-semibold">
+                      {g.k ? '👤 ' : '🏢 '}
+                      {g.ten} <span className="text-sm font-normal text-ink-muted">· {g.ds.length} mục</span>
+                    </div>
+                  </div>
+                  <ul className="divide-y">
+                    {mo3.map((i) => (
+                      <DongMuc key={i.id} i={i} nhom={tenNhom} onOpen={() => setMo(i)} />
+                    ))}
+                  </ul>
+                  {g.ds.length > 3 && (
+                    <button className="text-xs text-brand-600 underline" onClick={() => setMoNhom({ ...moNhom, [g.k]: !moNhom[g.k] })}>
+                      {moNhom[g.k] ? 'Thu gọn' : `Xem cả ${g.ds.length} mục`}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
+        <PhanTrang trang={trang} tong={tongTrang} co={coTrang} onDoi={setTrang} />
       </div>
       {mo && <PopupMuc item={mo} nhomList={nhomList} isDirector={isDirector} onClose={() => setMo(null)} onSaved={() => { tai(); onChanged(); }} />}
     </div>
@@ -355,6 +424,8 @@ export function TabKhach({ nhomList, isDirector, onChanged }: { nhomList: Nhom[]
   const toast = useToast();
   const [khach, setKhach] = useState<Array<{ id: string; name: string; count: number }> | null>(null);
   const [loc, setLoc] = useState('');
+  const [trangKhach, setTrangKhach] = useState(1);
+  const [trangMuc, setTrangMuc] = useState(1);
   const [chon, setChon] = useState<{ id: string; name: string } | null>(null);
   const [items, setItems] = useState<BrainItem[]>([]);
   const [hoSo, setHoSo] = useState<Profile | null>(null);
@@ -398,6 +469,8 @@ export function TabKhach({ nhomList, isDirector, onChanged }: { nhomList: Nhom[]
   }
 
   const ds = (khach || []).filter((k) => !loc.trim() || k.name.toLowerCase().includes(loc.trim().toLowerCase()));
+  const CO_KHACH = 30;
+  const CO_MUC = 20;
 
   if (chon) {
     return (
@@ -405,7 +478,13 @@ export function TabKhach({ nhomList, isDirector, onChanged }: { nhomList: Nhom[]
         <div className="card">
           <div className="flex items-center justify-between gap-2">
             <h2 className="font-semibold">👤 {chon.name}</h2>
-            <button className="btn-ghost px-2 py-1 text-sm" onClick={() => setChon(null)}>
+            <button
+              className="btn-ghost px-2 py-1 text-sm"
+              onClick={() => {
+                setChon(null);
+                setTrangMuc(1);
+              }}
+            >
               ← Danh sách khách
             </button>
           </div>
@@ -437,11 +516,12 @@ export function TabKhach({ nhomList, isDirector, onChanged }: { nhomList: Nhom[]
             <EmptyState icon="🗂" text="Chưa có mục nào về khách này." />
           ) : (
             <ul className="divide-y">
-              {items.map((i) => (
+              {items.slice((trangMuc - 1) * CO_MUC, trangMuc * CO_MUC).map((i) => (
                 <DongMuc key={i.id} i={i} nhom={tenNhom} onOpen={() => setMo(i)} />
               ))}
             </ul>
           )}
+          <PhanTrang trang={trangMuc} tong={items.length} co={CO_MUC} onDoi={setTrangMuc} />
         </div>
         {mo && <PopupMuc item={mo} nhomList={nhomList} isDirector={isDirector} onClose={() => setMo(null)} onSaved={() => chon && taiMuc(chon)} />}
       </div>
@@ -450,14 +530,22 @@ export function TabKhach({ nhomList, isDirector, onChanged }: { nhomList: Nhom[]
 
   return (
     <div className="card space-y-3">
-      <input className="input" placeholder="Tìm khách…" value={loc} onChange={(e) => setLoc(e.target.value)} />
+      <input
+        className="input"
+        placeholder="Tìm khách…"
+        value={loc}
+        onChange={(e) => {
+          setLoc(e.target.value);
+          setTrangKhach(1);
+        }}
+      />
       {khach === null ? (
         <SkeletonRows rows={5} />
       ) : ds.length === 0 ? (
         <EmptyState icon="👤" text="Không có khách nào khớp." />
       ) : (
         <ul className="divide-y">
-          {ds.map((k) => (
+          {ds.slice((trangKhach - 1) * CO_KHACH, trangKhach * CO_KHACH).map((k) => (
             <li key={k.id}>
               <button className="flex w-full items-center justify-between gap-2 py-2 text-left" onClick={() => setChon(k)}>
                 <span className="font-medium">{k.name}</span>
@@ -467,6 +555,7 @@ export function TabKhach({ nhomList, isDirector, onChanged }: { nhomList: Nhom[]
           ))}
         </ul>
       )}
+      <PhanTrang trang={trangKhach} tong={ds.length} co={CO_KHACH} onDoi={setTrangKhach} />
     </div>
   );
 }
@@ -478,6 +567,7 @@ export function TabGopY({ nhomList, onChanged }: { nhomList: Nhom[]; onChanged: 
   const [f, setF] = useState({ title: '', body: '', customer: '' });
   const [ketQua, setKetQua] = useState<{ message: string; item: BrainItem | null } | null>(null);
   const [cuaToi, setCuaToi] = useState<BrainItem[]>([]);
+  const [trangCuaToi, setTrangCuaToi] = useState(1);
   const tenNhom = useMemo(() => new Map(nhomList.map((n) => [n.key, n.label])), [nhomList]);
 
   async function taiCuaToi() {
@@ -528,7 +618,7 @@ export function TabGopY({ nhomList, onChanged }: { nhomList: Nhom[]; onChanged: 
           <EmptyState icon="✍️" text="Bạn chưa gửi mục nào." />
         ) : (
           <ul className="divide-y">
-            {cuaToi.map((i) => (
+            {cuaToi.slice((trangCuaToi - 1) * 20, trangCuaToi * 20).map((i) => (
               <li key={i.id} className="py-2">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <Badge variant={TRANG_THAI[i.status].variant}>{TRANG_THAI[i.status].label}</Badge>
@@ -542,6 +632,7 @@ export function TabGopY({ nhomList, onChanged }: { nhomList: Nhom[]; onChanged: 
             ))}
           </ul>
         )}
+        <PhanTrang trang={trangCuaToi} tong={cuaToi.length} co={20} onDoi={setTrangCuaToi} />
       </div>
     </div>
   );
