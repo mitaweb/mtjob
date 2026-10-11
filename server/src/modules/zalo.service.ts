@@ -155,13 +155,19 @@ export interface KetQuaDoc {
  * khách, việc cần nhắc anh.
  */
 /** Ví dụ những cuộc giám đốc đã tự quyết — AI học theo để lần sau tự quyết giống anh. */
-export type ViDuQuyet = Array<{ ten: string; nhom: boolean; tomTat: string; quyet: 'hoc' | 'bo' }>;
+export type ViDuQuyet = Array<{ ten: string; nhom: boolean; tomTat: string; quyet: 'hoc' | 'bo'; ghiChu?: string }>;
 
 export function dongViDu(viDu: ViDuQuyet): string[] {
   if (!viDu.length) return [];
   return [
     'GIÁM ĐỐC ĐÃ TỰ QUYẾT những cuộc sau — học theo cách anh ấy chọn (cuộc tương tự thì quyết giống vậy):',
-    ...viDu.slice(0, 40).map((v) => `- ${v.quyet === 'hoc' ? 'HỌC' : 'BỎ QUA'}: ${v.nhom ? 'nhóm' : 'chat'} «${v.ten}»${v.tomTat ? ` — ${v.tomTat}` : ''}`),
+    ...viDu
+      .slice(0, 40)
+      .map(
+        (v) =>
+          `- ${v.quyet === 'hoc' ? 'HỌC' : 'BỎ QUA'}: ${v.nhom ? 'nhóm' : 'chat'} «${v.ten}»${v.tomTat ? ` — ${v.tomTat}` : ''}` +
+          (v.ghiChu ? ` (giám đốc giải thích: "${v.ghiChu.slice(0, 200)}")` : ''),
+      ),
   ];
 }
 
@@ -179,6 +185,8 @@ export async function docCuoc(
     nhanSu?: string[];
     /** Các việc đang theo dõi với khách này (nhắc gộp hiện có) — AI trả lại danh sách mới nhất. */
     dangTheoDoi?: string;
+    /** Lời giám đốc giải thích về cuộc này — AI phải làm theo (anh Tâm 11/10/2026). */
+    ghiChuAnh?: string;
     /** Mục "riêng giám đốc" đang mở của khách này (hoá đơn, công nợ, lịch hẹn…) — AI báo cái nào đã xong. */
     viecMo?: Array<{ id: string; tieuDe: string; tomTat: string }>;
   },
@@ -202,6 +210,7 @@ export async function docCuoc(
       ? `Đây là đoạn chat trong nhóm Zalo «${o.ten}» mà ${o.chu} (giám đốc agency marketing MT Digital) là thành viên. Tên người nói ghi trước dấu hai chấm; "${o.chu}" là giám đốc.`
       : `Đây là đoạn chat Zalo 1-1 giữa ${o.chu} (giám đốc agency marketing MT Digital) và «${o.ten}».`,
     o.khachDaGan ? `Cuộc này đã gắn với khách hàng "${o.khachDaGan}" trong CRM.` : '',
+    o.ghiChuAnh ? `GIÁM ĐỐC GIẢI THÍCH VỀ CUỘC NÀY (làm theo đúng như vậy): "${o.ghiChuAnh.slice(0, 500)}"` : '',
     `Bây giờ là ${o.bayGio} (giờ Việt Nam).`,
     o.nhanSu?.length ? `NHÂN SỰ MT DIGITAL (người trong công ty, KHÔNG phải khách): ${o.nhanSu.slice(0, 80).join(', ')}.` : '',
     'Nhận ra nhân sự cả theo VĂN PHONG và NỘI DUNG, kể cả khi tên Zalo khác danh sách: xưng "em" báo cáo / nhận',
@@ -351,6 +360,7 @@ export async function rutCuoc(c: ZaloThread, chu: NguoiGui, viDu: ViDuQuyet = []
     nhanSu,
     dangTheoDoi: nhacCu?.active ? nhacCu.title : '',
     viecMo: viecMo.map((i) => ({ id: i.id, tieuDe: i.title, tomTat: i.summary })),
+    ghiChuAnh: c.anhGhiChu,
   });
   // Việc đã xử lý → chuyển sang "đã xong" (lưu trữ), không còn trong tab Riêng anh.
   const moIds = new Set(viecMo.map((i) => i.id));

@@ -33,8 +33,8 @@ import { nhanTin, rutTriThucZalo, xacDinhNhomKhach, gopNhacCu, type TinTuWorker 
 const now = () => nowTz().toISOString();
 
 /**
- * Gọi từ cron nhắc hẹn (~5 phút/lần), CẢ NGÀY (anh Tâm 11/10/2026: "AI cập nhật chat 1 tiếng 1 lần"): cứ 1
- * tiếng đồng bộ một lượt, rồi xét nhóm và AI đọc tin MỚI dần (mỗi lượt vài cuộc — máy chủ chỉ sống 60 giây)
+ * Gọi từ cron nhắc hẹn (~5 phút/lần), CẢ NGÀY (anh Tâm 11/10/2026): ban ngày cứ 3 tiếng đồng bộ một lượt, ban
+ * đêm chỉ một lượt lúc 5h sáng (lib/zalo.viecBanDem); rồi xét nhóm và AI đọc tin MỚI dần (mỗi lượt vài cuộc — máy chủ chỉ sống 60 giây)
  * tới khi hết; hết tin mới thì không gọi AI.
  */
 export async function chayBanDem(): Promise<string> {

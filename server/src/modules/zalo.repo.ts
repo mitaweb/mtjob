@@ -26,6 +26,8 @@ export interface ZaloThread {
   anhQuyet: string;
   /** Một câu AI tóm cuộc này nói gì. */
   tomTat: string;
+  /** Lời anh giải thích cho AI về cuộc này. */
+  anhGhiChu: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -47,6 +49,7 @@ function rowToThread(r: any): ZaloThread {
     aiHoi: !!r.ai_hoi,
     anhQuyet: String(r.anh_quyet || ''),
     tomTat: String(r.tom_tat || ''),
+    anhGhiChu: String(r.anh_ghi_chu || ''),
   };
 }
 
@@ -150,7 +153,10 @@ export async function timCuoc(threadId: string): Promise<ZaloThread | undefined>
  * Bật/tắt + gắn khách. TẮT thì xoá luôn nội dung đã lưu của cuộc đó — anh tắt nghĩa là không
  * muốn hệ thống giữ chuyện của cuộc này nữa (tri thức đã rút vào kho thì vẫn còn, xoá ở kho).
  */
-export async function suaCuoc(threadId: string, patch: { enabled?: boolean; customerId?: string; customer?: string }): Promise<void> {
+export async function suaCuoc(
+  threadId: string,
+  patch: { enabled?: boolean; customerId?: string; customer?: string; ghiChu?: string },
+): Promise<void> {
   const sets: string[] = [];
   const params: unknown[] = [threadId];
   if (patch.enabled !== undefined) {
@@ -168,6 +174,10 @@ export async function suaCuoc(threadId: string, patch: { enabled?: boolean; cust
         [threadId],
       );
     }
+  }
+  if (patch.ghiChu !== undefined) {
+    params.push(patch.ghiChu.trim().slice(0, 500));
+    sets.push(`anh_ghi_chu = $${params.length}`);
   }
   if (patch.customerId !== undefined) {
     params.push(patch.customerId);
@@ -404,9 +414,11 @@ export async function hoiAnh(threadId: string, o: { lyDo: string; tomTat: string
 }
 
 /** Những cuộc anh đã tự quyết — đưa cho AI làm ví dụ để lần sau tự quyết giống anh. */
-export async function viDuAnhQuyet(limit = 40): Promise<Array<{ ten: string; nhom: boolean; tomTat: string; quyet: 'hoc' | 'bo' }>> {
+export async function viDuAnhQuyet(
+  limit = 40,
+): Promise<Array<{ ten: string; nhom: boolean; tomTat: string; quyet: 'hoc' | 'bo'; ghiChu: string }>> {
   const rows = await q(
-    `SELECT name, is_group, tom_tat, anh_quyet FROM zalo_threads WHERE anh_quyet IN ('hoc', 'bo')
+    `SELECT name, is_group, tom_tat, anh_quyet, anh_ghi_chu FROM zalo_threads WHERE anh_quyet IN ('hoc', 'bo')
      ORDER BY last_msg_at DESC LIMIT $1`,
     [limit],
   );
@@ -415,6 +427,7 @@ export async function viDuAnhQuyet(limit = 40): Promise<Array<{ ten: string; nho
     nhom: !!x.is_group,
     tomTat: String(x.tom_tat || ''),
     quyet: x.anh_quyet === 'hoc' ? 'hoc' : 'bo',
+    ghiChu: String(x.anh_ghi_chu || ''),
   }));
 }
 

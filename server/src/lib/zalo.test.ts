@@ -64,17 +64,27 @@ describe('maTinLonNhat', () => {
   });
 });
 
-// Anh Tâm 11/10/2026: "AI cập nhật chat 1 tiếng 1 lần" — cả ngày, không chỉ ban đêm.
-describe('viecBanDem — đồng bộ 1 tiếng/lần, AI đọc cả ngày', () => {
-  const now = Date.parse('2026-10-11T03:00:00Z'); // 10h sáng giờ VN
-  it('quá 1 tiếng chưa đồng bộ → đồng bộ', () => {
-    expect(viecBanDem({ gioVN: 10, lastSync: '', now })).toBe('dong_bo');
-    expect(viecBanDem({ gioVN: 10, lastSync: '2026-10-11T01:50:00Z', now })).toBe('dong_bo');
+// Anh Tâm 11/10/2026: đồng bộ 3 tiếng/lần ban ngày; "ban đêm từ 22h đến 6h chỉ đồng bộ 1 lần lúc 5h sáng".
+describe('viecBanDem — 3 tiếng ban ngày, đêm chỉ 5h sáng', () => {
+  const luc = (gio: string) => Date.parse(`2026-10-11T${gio}:00+07:00`);
+  it('ban ngày: quá 3 tiếng thì đồng bộ', () => {
+    expect(viecBanDem({ gioVN: 10, lastSync: '', now: luc('10:00') })).toBe('dong_bo');
+    expect(viecBanDem({ gioVN: 10, lastSync: new Date(luc('06:50')).toISOString(), now: luc('10:00') })).toBe('dong_bo');
+    expect(viecBanDem({ gioVN: 10, lastSync: new Date(luc('08:00')).toISOString(), now: luc('10:00') })).toBe('rut');
   });
-  it('vừa đồng bộ → ban ngày vẫn xét nhóm / AI đọc', () => {
-    expect(viecBanDem({ gioVN: 10, lastSync: '2026-10-11T02:30:00Z', now, viecNhom: 3 })).toBe('nhom');
-    expect(viecBanDem({ gioVN: 10, lastSync: '2026-10-11T02:30:00Z', now })).toBe('rut');
-    expect(viecBanDem({ gioVN: 23, lastSync: '2026-10-11T02:30:00Z', now })).toBe('rut');
+  it('ban đêm 22h–6h: không đồng bộ, trừ một lượt lúc 5h', () => {
+    const toi = new Date(Date.parse('2026-10-10T19:00:00+07:00')).toISOString();
+    expect(viecBanDem({ gioVN: 23, lastSync: toi, now: Date.parse('2026-10-10T23:30:00+07:00') })).toBe('rut');
+    expect(viecBanDem({ gioVN: 3, lastSync: toi, now: luc('03:00') })).toBe('rut');
+    expect(viecBanDem({ gioVN: 5, lastSync: toi, now: luc('05:02') })).toBe('dong_bo');
+    expect(viecBanDem({ gioVN: 5, lastSync: new Date(luc('05:02')).toISOString(), now: luc('05:40') })).toBe('rut');
+    expect(viecBanDem({ gioVN: 6, lastSync: new Date(luc('05:02')).toISOString(), now: luc('06:30') })).toBe('rut');
+    expect(viecBanDem({ gioVN: 8, lastSync: new Date(luc('05:02')).toISOString(), now: luc('08:10') })).toBe('dong_bo');
+  });
+  it('xét nhóm / AI đọc chạy cả ngày lẫn đêm', () => {
+    const vua = new Date(luc('09:30')).toISOString();
+    expect(viecBanDem({ gioVN: 10, lastSync: vua, now: luc('10:00'), viecNhom: 3 })).toBe('nhom');
+    expect(viecBanDem({ gioVN: 23, lastSync: vua, now: luc('10:00') })).toBe('rut');
   });
 });
 

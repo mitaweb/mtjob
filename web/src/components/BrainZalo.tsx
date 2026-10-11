@@ -26,6 +26,8 @@ interface Cuoc {
   /** 'hoc' | 'bo' khi anh đã tự quyết. */
   anhQuyet: string;
   tomTat: string;
+  /** Lời anh giải thích cho AI về cuộc này. */
+  anhGhiChu: string;
 }
 
 interface TinXem {
@@ -82,6 +84,9 @@ export default function BrainZalo() {
   const [dangXuLy, setDangXuLy] = useState(false);
   // Tin gần đây đang mở xem, theo từng cuộc.
   const [dangXem, setDangXem] = useState<Record<string, TinXem[]>>({});
+  // Lời anh giải thích cho AI (anh Tâm 11/10/2026: "những chỗ phân vân này anh sẽ comment vào để phần mềm hiểu").
+  const [giaiThich, setGiaiThich] = useState<Record<string, string>>({});
+  const [moGiaiThich, setMoGiaiThich] = useState<Record<string, boolean>>({});
   const dung = useRef(false);
   // Bộ lọc hiện tại — tai() được gọi từ nhiều chỗ (cả vòng chờ QR), đọc qua ref cho khỏi cũ.
   const boLoc = useRef<{ loc: Loc | ''; tim: string; trang: number }>({ loc: '', tim: '', trang: 1 });
@@ -179,7 +184,7 @@ export default function BrainZalo() {
         }
         toast.info(r.note);
       }
-      toast.info('Còn nhóm chưa xét xong — app tự làm tiếp trong giờ tới, hoặc bấm lại.');
+      toast.info('Còn nhóm chưa xét xong — app tự làm tiếp ở lượt sau, hoặc bấm lại.');
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -219,7 +224,7 @@ export default function BrainZalo() {
         dungYen = bay === truoc ? dungYen + 1 : 0;
         truoc = bay;
         if (dungYen >= 3) {
-          ghi('Không tiến thêm được — app tự làm tiếp trong giờ tới.');
+          ghi('Không tiến thêm được — app tự làm tiếp ở lượt sau.');
           break;
         }
       }
@@ -274,7 +279,7 @@ export default function BrainZalo() {
     }
   }
 
-  async function suaCuoc(c: Cuoc, patch: { enabled?: boolean; customer?: string }) {
+  async function suaCuoc(c: Cuoc, patch: { enabled?: boolean; customer?: string; ghiChu?: string }) {
     if (
       patch.enabled === false &&
       !c.aiHoi &&
@@ -283,6 +288,7 @@ export default function BrainZalo() {
       return;
     try {
       await api(`/zalo/threads/${encodeURIComponent(c.threadId)}`, { body: patch });
+      if (patch.ghiChu !== undefined && patch.enabled === undefined) toast.success('Đã lưu — AI sẽ đọc lời anh mỗi lần đọc cuộc này');
       if (c.aiHoi && patch.enabled !== undefined) {
         toast.success(patch.enabled ? `Đã chọn học "${c.name}" — AI sẽ đọc lại tin của cuộc này` : `Đã bỏ qua "${c.name}"`);
       }
@@ -371,7 +377,7 @@ export default function BrainZalo() {
         )}
 
         <p className="text-xs text-ink-muted">
-          App <b>tự đồng bộ 1 tiếng/lần</b>, rồi AI <b>đọc tin MỚI</b> của mọi cuộc (tin đã đọc không đọc lại; tin chỉ "ok", "dạ", "cảm ơn" bỏ qua không tốn AI; cuộc đang nói dở đợi 30 phút cho trọn câu chuyện) — anh không cần bật gì:
+          App <b>tự đồng bộ 3 tiếng/lần</b> ban ngày (6h–22h), ban đêm chỉ một lượt lúc <b>5h sáng</b>; rồi AI <b>đọc tin MỚI</b> của mọi cuộc (tin đã đọc không đọc lại; tin chỉ "ok", "dạ", "cảm ơn" bỏ qua không tốn AI; cuộc đang nói dở đợi 30 phút cho trọn câu chuyện) — anh không cần bật gì:
         </p>
         <ul className="ml-4 list-disc text-xs text-ink-muted">
           <li>
@@ -467,7 +473,7 @@ export default function BrainZalo() {
                           {c.aiChecked || /^(AI chưa rõ|Chưa rõ theo tên)/.test(c.aiNote)
                             ? c.aiNote || (c.enabled ? 'Đang học' : 'Bỏ qua')
                             : c.chuaRut > 0
-                              ? 'AI chưa đọc — bấm ⚡ Đọc & phân loại ngay, hoặc AI tự đọc trong giờ tới'
+                              ? 'AI chưa đọc — bấm ⚡ Đọc & phân loại ngay, hoặc AI tự đọc ở lượt tới'
                               : 'Chưa có nội dung để đọc (tin trước 10/10 chỉ được đếm, không lưu) — AI đọc khi có tin mới'}
                         </div>
                       )
@@ -486,20 +492,64 @@ export default function BrainZalo() {
                       ❓ <b>AI phân vân:</b> {c.aiNote.replace(/^Hỏi anh:\s*/, '')}
                     </div>
                     {c.tomTat && <div className="text-xs text-ink-soft">Nội dung: {c.tomTat}</div>}
+                    <textarea
+                      className="input mt-2 min-h-[3.5rem] text-sm"
+                      placeholder="Anh giải thích cho AI (không bắt buộc) — vd: Nhi Lê là bạn trong BNI New Day, việc slide là hỗ trợ BNI, không phải khách; cuộc kiểu này thì học / bỏ qua…"
+                      value={giaiThich[c.threadId] ?? c.anhGhiChu}
+                      onChange={(e) => setGiaiThich({ ...giaiThich, [c.threadId]: e.target.value })}
+                    />
                     <div className="mt-2 flex flex-wrap gap-2">
-                      <AsyncButton className="btn-primary px-3 py-1 text-sm" onClick={() => suaCuoc(c, { enabled: true })} busyLabel="…">
+                      <AsyncButton
+                        className="btn-primary px-3 py-1 text-sm"
+                        onClick={() => suaCuoc(c, { enabled: true, ghiChu: giaiThich[c.threadId] ?? c.anhGhiChu })}
+                        busyLabel="…"
+                      >
                         ✓ Học
                       </AsyncButton>
-                      <AsyncButton className="btn-ghost px-3 py-1 text-sm text-rose-600" onClick={() => suaCuoc(c, { enabled: false })} busyLabel="…">
+                      <AsyncButton
+                        className="btn-ghost px-3 py-1 text-sm text-rose-600"
+                        onClick={() => suaCuoc(c, { enabled: false, ghiChu: giaiThich[c.threadId] ?? c.anhGhiChu })}
+                        busyLabel="…"
+                      >
                         ✗ Bỏ qua
                       </AsyncButton>
                     </div>
                   </div>
                 )}
-                {(c.aiHoi || c.chuaRut > 0 || c.enabled) && (
-                  <button className="text-xs text-brand-600 underline" onClick={() => xemTin(c)}>
-                    {dangXem[c.threadId] ? 'Ẩn tin' : 'Xem tin gần đây'}
-                  </button>
+                {!c.aiHoi && c.anhGhiChu && !moGiaiThich[c.threadId] && (
+                  <div className="text-xs text-ink-muted">💬 Anh: {c.anhGhiChu}</div>
+                )}
+                <div className="flex flex-wrap gap-3">
+                  {(c.aiHoi || c.chuaRut > 0 || c.enabled) && (
+                    <button className="text-xs text-brand-600 underline" onClick={() => xemTin(c)}>
+                      {dangXem[c.threadId] ? 'Ẩn tin' : 'Xem tin gần đây'}
+                    </button>
+                  )}
+                  {!c.aiHoi && (
+                    <button className="text-xs text-brand-600 underline" onClick={() => setMoGiaiThich({ ...moGiaiThich, [c.threadId]: !moGiaiThich[c.threadId] })}>
+                      💬 {c.anhGhiChu ? 'Sửa lời giải thích' : 'Giải thích cho AI'}
+                    </button>
+                  )}
+                </div>
+                {!c.aiHoi && moGiaiThich[c.threadId] && (
+                  <div className="flex flex-wrap items-start gap-2">
+                    <textarea
+                      className="input min-h-[3rem] max-w-xl flex-1 text-sm"
+                      placeholder="vd: Đây là nhóm nội bộ team Ads — học quy trình, không phải khách"
+                      value={giaiThich[c.threadId] ?? c.anhGhiChu}
+                      onChange={(e) => setGiaiThich({ ...giaiThich, [c.threadId]: e.target.value })}
+                    />
+                    <AsyncButton
+                      className="btn-primary px-3 py-1 text-sm"
+                      onClick={async () => {
+                        await suaCuoc(c, { ghiChu: giaiThich[c.threadId] ?? c.anhGhiChu });
+                        setMoGiaiThich({ ...moGiaiThich, [c.threadId]: false });
+                      }}
+                      busyLabel="…"
+                    >
+                      Lưu
+                    </AsyncButton>
+                  </div>
                 )}
                 {dangXem[c.threadId] && (
                   <div className="max-h-56 space-y-0.5 overflow-y-auto rounded-xl border border-brand-100 bg-white p-2 text-xs">

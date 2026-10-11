@@ -525,3 +525,19 @@ describe('đỡ tốn token', () => {
     expect(DA_RUT).toEqual([['o1', 'o2']]);
   });
 });
+
+// Anh Tâm 11/10/2026: "những chỗ phân vân này anh sẽ comment vào để phần mềm hiểu".
+describe('lời anh giải thích cho AI', () => {
+  it('AI đọc lời anh về chính cuộc đó, và lời anh ở cuộc khác thành ví dụ', async () => {
+    VI_DU = [{ ten: 'Nhi Lê', nhom: false, tomTat: 'Nhờ làm slide ngày hội', quyet: 'bo', ghiChu: 'Bạn trong BNI, việc hội nhóm — không phải khách' }];
+    CUOC_CAN_RUT = [{
+      threadId: 'T8', name: 'Team Ads MT', customer: '', customerId: '', enabled: true, aiChecked: true, isGroup: true,
+      chuaRut: 1, lastMsgAt: '', anhGhiChu: 'Nhóm nội bộ team Ads — học quy trình chạy quảng cáo',
+    }];
+    CHUA_RUT = [{ msgId: 'g1', threadId: 'T8', fromSelf: false, sender: 'Như', content: 'Em đã tắt camp cũ, lên camp mới ngân sách 500k/ngày', ts: String(Date.now()) }];
+    AI_DOC = { loai: 'cong_viec', y: [] };
+    await S.rutTriThucZalo({ epNgay: true });
+    expect(PROMPT).toContain('GIÁM ĐỐC GIẢI THÍCH VỀ CUỘC NÀY (làm theo đúng như vậy): "Nhóm nội bộ team Ads — học quy trình chạy quảng cáo"');
+    expect(PROMPT).toContain('- BỎ QUA: chat «Nhi Lê» — Nhờ làm slide ngày hội (giám đốc giải thích: "Bạn trong BNI, việc hội nhóm — không phải khách")');
+  });
+});

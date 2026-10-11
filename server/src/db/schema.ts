@@ -606,6 +606,9 @@ ALTER TABLE zalo_threads ADD COLUMN IF NOT EXISTS history_done boolean DEFAULT f
 ALTER TABLE zalo_threads ADD COLUMN IF NOT EXISTS ai_hoi boolean DEFAULT false;
 ALTER TABLE zalo_threads ADD COLUMN IF NOT EXISTS anh_quyet text DEFAULT '';
 ALTER TABLE zalo_threads ADD COLUMN IF NOT EXISTS tom_tat text DEFAULT '';
+-- Lời giám đốc giải thích cho AI về cuộc này (anh Tâm 11/10/2026: "những chỗ phân vân này anh sẽ comment
+-- vào để phần mềm hiểu") — AI đọc mỗi lần đọc cuộc, và lấy làm ví dụ cho cuộc tương tự.
+ALTER TABLE zalo_threads ADD COLUMN IF NOT EXISTS anh_ghi_chu text DEFAULT '';
 -- Nội dung tin — CHỈ của cuộc đã bật. Rút tri thức xong 30 ngày thì xoá.
 CREATE TABLE IF NOT EXISTS zalo_messages (
   msg_id    text PRIMARY KEY,

@@ -42,7 +42,7 @@ zaloRouter.get(
       }
       res.json({ configured: daCauHinh(), ...st, threads: ds.threads, dem: ds.dem, loc, page: trang, size: co });
     } catch (e) {
-      if (isMissingTable(e) || /zalo_|session_enc|last_sync|ai_checked|ai_note|history_done|ai_hoi|anh_quyet|tom_tat/.test((e as Error).message)) {
+      if (isMissingTable(e) || /zalo_|session_enc|last_sync|ai_checked|ai_note|history_done|ai_hoi|anh_quyet|tom_tat|anh_ghi_chu/.test((e as Error).message)) {
         res.json({ configured: daCauHinh(), status: 'offline', qr: '', account: '', note: '', coPhien: false, threads: [], needsMigrate: true });
         return;
       }
@@ -88,7 +88,12 @@ zaloRouter.post(
   }),
 );
 
-const suaSchema = z.object({ enabled: z.boolean().optional(), customer: z.string().max(200).optional() });
+const suaSchema = z.object({
+  enabled: z.boolean().optional(),
+  customer: z.string().max(200).optional(),
+  /** Lời anh giải thích cho AI về cuộc này (anh Tâm 11/10/2026). */
+  ghiChu: z.string().max(500).optional(),
+});
 
 zaloRouter.post(
   '/threads/:id',
@@ -97,7 +102,7 @@ zaloRouter.post(
     const id = String(req.params.id);
     if (!(await timCuoc(id))) throw new ApiError(404, 'Không tìm thấy cuộc trò chuyện');
     const kh = b.customer !== undefined ? await khopKhachCuoc(b.customer) : undefined;
-    await suaCuoc(id, { enabled: b.enabled, ...(kh || {}) });
+    await suaCuoc(id, { enabled: b.enabled, ghiChu: b.ghiChu, ...(kh || {}) });
     res.json({ ok: true, thread: await timCuoc(id) });
   }),
 );
