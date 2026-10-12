@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { del } from '@vercel/blob';
-import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
+// Nạp lười @vercel/blob khi tải lên / xoá tệp — không làm chậm khởi động lạnh.
+import type { HandleUploadBody } from '@vercel/blob/client';
 import { asyncHandler, ApiError } from '../util/errors.js';
 import { requireAuth } from '../auth/middleware.js';
 import { verifyToken } from '../auth/jwt.js';
@@ -85,6 +85,7 @@ brainRouter.post(
   '/upload',
   asyncHandler(async (req, res) => {
     const body = req.body as HandleUploadBody;
+    const { handleUpload } = await import('@vercel/blob/client');
     const json = await handleUpload({
       body,
       request: req,
@@ -633,6 +634,7 @@ brainRouter.delete(
     await deleteDocument(id);
     await removeSource('document', id);
     if (doc?.url) {
+      const { del } = await import('@vercel/blob');
       await del(doc.url, { token: process.env.mt_READ_WRITE_TOKEN }).catch(() => undefined);
     }
     res.json({ ok: true });

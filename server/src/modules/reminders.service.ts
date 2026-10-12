@@ -86,7 +86,10 @@ export async function runDueReminders(): Promise<number> {
 }
 
 // Kích hoạt cơ hội khi có người dùng app — lối lui khi chưa gắn cron ngoài.
-let lastSweep = 0;
+// Bắt đầu tính từ lúc instance khởi động: request ĐẦU TIÊN của instance lạnh không phải gánh thêm lượt quét
+// (giành kết nối DB với chính request đó). Cron-job.org gọi /api/jobs/reminders 5 phút/lần đã lo việc quét
+// (anh Tâm 12/10/2026: tăng tốc app).
+let lastSweep = Date.now();
 const SWEEP_EVERY_MS = 5 * 60_000;
 
 export function sweepRemindersOpportunistic(): void {

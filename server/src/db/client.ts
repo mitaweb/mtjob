@@ -45,7 +45,13 @@ export function pool(): pg.Pool {
     const url = stripSslMode(dbUrl());
     _pool = new pg.Pool({
       connectionString: url,
-      max: 3, // serverless-friendly: vài kết nối mỗi instance là đủ
+      // 8 kết nối: trang Bảng điểm / Tài chính chạy song song 5–8 truy vấn — max 3 bắt chúng xếp hàng. App
+      // đi qua pooler của Supabase (Supavisor) nên mở thêm vài kết nối mỗi instance không sao (12/10/2026).
+      max: 8,
+      // Giữ kết nối rảnh 60s (mặc định 10s → request cách nhau > 10s lại phải bắt tay TCP+TLS từ đầu).
+      idleTimeoutMillis: 60_000,
+      connectionTimeoutMillis: 5_000,
+      keepAlive: true,
       ssl: /localhost|127\.0\.0\.1/.test(url) ? undefined : { rejectUnauthorized: false },
     });
   }

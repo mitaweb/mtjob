@@ -1,7 +1,12 @@
 // Provider Claude — dùng SDK chính thức @anthropic-ai/sdk.
 // Nhận/trả đúng shape Gemini (xem ai/types.ts) rồi tự chuyển đổi sang định dạng Messages API,
 // nhờ vậy runToolLoop trong assistant.service.ts dùng chung cho cả hai nhà cung cấp.
-import Anthropic from '@anthropic-ai/sdk';
+// Nạp lười: SDK Claude chỉ cần khi thực sự gọi Claude — không làm chậm khởi động lạnh mọi request.
+import type Anthropic from '@anthropic-ai/sdk';
+
+async function taiSdk(): Promise<typeof Anthropic> {
+  return (await import('@anthropic-ai/sdk')).default;
+}
 import { getConfig } from '../config.js';
 import type { GeminiPart, GeminiContent, GenerateRequest } from '../gemini/client.js';
 import type { AiProvider } from './types.js';
@@ -200,7 +205,7 @@ async function buildRequest(req: GenerateRequest): Promise<{ client: Anthropic; 
   const { apiKey, model, baseUrl } = await cfg();
   if (!apiKey) throw new Error('Claude chưa cấu hình (dán API key trong Quản trị).');
 
-  const client = new Anthropic({
+  const client = new (await taiSdk())({
     apiKey,
     ...(baseUrl ? { baseURL: baseUrl.replace(/\/+$/, '') } : {}),
     timeout: TIMEOUT_MS,
@@ -240,7 +245,7 @@ async function generateContent(req: GenerateRequest): Promise<GeminiPart[]> {
 export async function listClaudeModels(): Promise<Array<{ id: string; label: string }>> {
   const { apiKey, baseUrl } = await cfg();
   if (!apiKey) throw new Error('Chưa cấu hình API key Claude.');
-  const client = new Anthropic({
+  const client = new (await taiSdk())({
     apiKey,
     ...(baseUrl ? { baseURL: baseUrl.replace(/\/+$/, '') } : {}),
     timeout: 15_000,

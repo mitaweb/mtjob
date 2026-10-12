@@ -1,4 +1,11 @@
-import webpush from 'web-push';
+// Nạp lười: web-push (kèm thư viện mã hoá) chỉ cần khi thực sự gửi thông báo — không làm chậm khởi động lạnh.
+import type WebPush from 'web-push';
+
+let _webpush: typeof WebPush | null = null;
+async function taiWebPush(): Promise<typeof WebPush> {
+  if (!_webpush) _webpush = (await import('web-push')).default;
+  return _webpush;
+}
 
 let configured: boolean | null = null;
 
@@ -25,7 +32,7 @@ export function normalizeSubject(raw: string | undefined): string {
   return FALLBACK_SUBJECT;
 }
 
-function ensureConfigured(): boolean {
+async function ensureConfigured(): Promise<boolean> {
   if (configured !== null) return configured;
   const pub = process.env.VAPID_PUBLIC_KEY;
   const priv = process.env.VAPID_PRIVATE_KEY;
@@ -38,7 +45,7 @@ function ensureConfigured(): boolean {
   if (subject !== (process.env.VAPID_SUBJECT || '').trim()) {
     console.warn(`[push] VAPID_SUBJECT không hợp lệ với Apple — dùng thay bằng ${subject}`);
   }
-  webpush.setVapidDetails(subject, pub, priv);
+  (await taiWebPush()).setVapidDetails(subject, pub, priv);
   configured = true;
   return true;
 }
@@ -81,11 +88,11 @@ function explain(status: number | undefined, raw: string): string {
 }
 
 export async function sendPush(sub: PushSub, payload: PushPayload): Promise<PushResult> {
-  if (!ensureConfigured()) {
+  if (!(await ensureConfigured())) {
     return { ok: false, gone: false, status: 0, error: 'Máy chủ chưa cấu hình VAPID.' };
   }
   try {
-    await webpush.sendNotification(sub as webpush.PushSubscription, JSON.stringify(payload));
+    await (await taiWebPush()).sendNotification(sub as WebPush.PushSubscription, JSON.stringify(payload));
     return { ok: true, gone: false, status: 201 };
   } catch (e) {
     const status = (e as { statusCode?: number }).statusCode;

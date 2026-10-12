@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { del } from '@vercel/blob';
-import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
+// Nạp lười @vercel/blob khi tải lên / xoá tệp — không làm chậm khởi động lạnh.
+import type { HandleUploadBody } from '@vercel/blob/client';
 import { asyncHandler, ApiError } from '../util/errors.js';
 import { requireAuth } from '../auth/middleware.js';
 import { verifyToken } from '../auth/jwt.js';
@@ -39,6 +39,7 @@ customerNotesRouter.post(
   '/upload',
   asyncHandler(async (req, res) => {
     const body = req.body as HandleUploadBody;
+    const { handleUpload } = await import('@vercel/blob/client');
     const json = await handleUpload({
       body,
       request: req,
@@ -193,6 +194,7 @@ customerNotesRouter.delete(
     for (const h of history) for (const u of blobUrlsOf({ content: h.content })) urls.add(u);
     if (urls.size) {
       try {
+        const { del } = await import('@vercel/blob');
         await del([...urls], { token: process.env.mt_READ_WRITE_TOKEN });
       } catch {
         // Không chặn xóa note nếu dọn blob lỗi.
