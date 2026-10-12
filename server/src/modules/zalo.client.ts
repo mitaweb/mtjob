@@ -27,8 +27,9 @@ import {
   nhomCanKeoLichSu,
   daKeoLichSu,
   demViecNhom,
+  demNhomAiDaChoHoc,
 } from './zalo.repo.js';
-import { nhanTin, rutTriThucZalo, xacDinhNhomKhach, gopNhacCu, type TinTuWorker } from './zalo.service.js';
+import { nhanTin, rutTriThucZalo, xacDinhNhomKhach, gopNhacCu, locLaiNhom, type TinTuWorker } from './zalo.service.js';
 
 const now = () => nowTz().toISOString();
 
@@ -46,6 +47,12 @@ export async function chayBanDem(): Promise<string> {
   if (viec === 'nghi') return 'ngoài giờ ban đêm';
   if (viec === 'dong_bo') return (await dongBoZalo()).note;
   if (viec === 'nhom') return (await quetNhomKhach()).note;
+  // Tự lọc lại nhóm AI đã cho học theo tiêu chí chặt — không cần anh bấm nút (anh Tâm 12/10/2026: "giảm nút lại
+  // ít nhất có thể, tự động nhiều nhất có thể"). Hết nhóm cần lọc thì bước này không tốn gì.
+  if ((await demNhomAiDaChoHoc().catch(() => 0)) > 0) {
+    const l = await locLaiNhom(Date.now() + 40_000).catch((e) => ({ xet: 0, giu: 0, bo: 0, conLai: 0, loi: (e as Error).message }));
+    if (l.xet > 0) return `lọc lại ${l.xet} nhóm: giữ ${l.giu}, bỏ ${l.bo}, còn ${l.conLai}`;
+  }
   await gopNhacCu().catch(() => undefined);
   // Cả ngày: cuộc đang nói dở (tin cuối < 30 phút) để lượt sau, đọc trọn câu chuyện một lần cho đỡ tốn.
   const r = await rutTriThucZalo({ limit: 3 });
@@ -472,6 +479,14 @@ export async function xuLyNgay(): Promise<{
     // Chưa đăng nhập Zalo: vẫn xét được nhóm theo tên (không cần Zalo), chỉ không kéo lịch sử.
     const r = await xacDinhNhomKhach(40);
     if (r.xet > 0) return { ok: true, buoc: 'nhom', note: `AI xét ${r.xet} nhóm: ${r.nhomKhach} nhóm khách`, con: await demCon() };
+  }
+
+  // Lọc lại nhóm AI đã cho học (tiêu chí chặt) — trước khi đọc, để khỏi tốn AI đọc nhóm thừa.
+  if ((await demNhomAiDaChoHoc().catch(() => 0)) > 0) {
+    const l = await locLaiNhom(Date.now() + 40_000);
+    if (l.xet > 0) {
+      return { ok: true, buoc: 'nhom', note: `Lọc lại ${l.xet} nhóm: giữ ${l.giu}, bỏ ${l.bo} nhóm không liên quan — còn ${l.conLai}`, con: await demCon() };
+    }
   }
 
   if (truoc.doc > 0) {

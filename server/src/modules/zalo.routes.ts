@@ -36,7 +36,7 @@ zaloRouter.get(
       const [st, ds] = await Promise.all([docTrangThai(), trangCuoc({ loc: locHoi || 'tu_dong', tim, trang, co })]);
       res.json({ configured: daCauHinh(), ...st, threads: ds.threads, dem: ds.dem, loc: ds.loc, page: trang, size: co });
     } catch (e) {
-      if (isMissingTable(e) || /zalo_|session_enc|last_sync|ai_checked|ai_note|history_done|ai_hoi|anh_quyet|tom_tat|anh_ghi_chu/.test((e as Error).message)) {
+      if (isMissingTable(e) || /zalo_|session_enc|last_sync|ai_checked|ai_note|history_done|ai_hoi|anh_quyet|tom_tat|anh_ghi_chu|mo_lai_at/.test((e as Error).message)) {
         res.json({ configured: daCauHinh(), status: 'offline', qr: '', account: '', note: '', coPhien: false, threads: [], needsMigrate: true });
         return;
       }

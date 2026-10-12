@@ -252,3 +252,14 @@ export function nhomKhongLienQuan(ten: string, moTa = ''): string {
   if (n > 150) return `nhóm đông ${n} thành viên — hội nhóm cộng đồng`;
   return '';
 }
+
+const DAU_HIEU_CONG_VIEC =
+  /(^|[^\p{L}])(báo giá|bao gia|gửi giá|xin giá|hợp đồng|hop dong|nghiệm thu|đặt cọc|công nợ|hoá đơn|hóa đơn|vat|deadline|timeline|brief|kịch bản|lịch quay|quay (?:video|clip|phim|tvc)|dựng (?:video|clip)|lồng tiếng|thiết kế|logo|banner|website|quảng cáo|chạy ads|fanpage|livestream|dự án|mt digital|mtdigital)(?![\p{L}])/iu;
+
+/**
+ * Tin có dấu hiệu công việc — xét bằng luật, không tốn lượt AI. Dùng cho cuộc đang bị loại: có tin như vậy thì mở
+ * lại cho AI đọc (anh Tâm 12/10/2026: "nếu hiện đang không học, người đó sau này phát sinh công việc thì sao").
+ */
+export function coDauHieuCongViec(noiDung: string): boolean {
+  return DAU_HIEU_CONG_VIEC.test(String(noiDung || ''));
+}

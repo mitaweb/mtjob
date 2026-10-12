@@ -515,6 +515,51 @@ export async function hoiAnh(threadId: string, o: { lyDo: string; tomTat: string
   ]);
 }
 
+export interface CuocBiLoai {
+  threadId: string;
+  name: string;
+  isGroup: boolean;
+  anhQuyet: string;
+  aiHoi: boolean;
+  aiNote: string;
+  moLaiAt: string;
+}
+
+/** Trong các cuộc cho trước, cuộc nào đang bị loại (AI hoặc anh tắt) — để xét mở lại khi có tin công việc. */
+export async function cuocBiLoai(ids: string[]): Promise<CuocBiLoai[]> {
+  if (!ids.length) return [];
+  const rows = await q(
+    `SELECT thread_id, name, is_group, anh_quyet, ai_hoi, ai_note, mo_lai_at FROM zalo_threads
+     WHERE thread_id = ANY($1) AND COALESCE(ai_checked, false) AND NOT enabled`,
+    [ids],
+  );
+  return rows.map((r) => ({
+    threadId: String(r.thread_id),
+    name: String(r.name || ''),
+    isGroup: !!r.is_group,
+    anhQuyet: String(r.anh_quyet || ''),
+    aiHoi: !!r.ai_hoi,
+    aiNote: String(r.ai_note || ''),
+    moLaiAt: String(r.mo_lai_at || ''),
+  }));
+}
+
+/**
+ * Mở lại cuộc bị loại vì có tin công việc mới. Anh đã tự tắt → chỉ HỎI anh (quyết định của anh thắng AI);
+ * AI tự loại → cho AI đọc lại. Nhóm ghi ai_note "Chưa rõ theo tên nhóm…" để không bị loại lại theo tên mà đọc tin.
+ */
+export async function moLaiCuoc(threadId: string, o: { hoiAnh: boolean; aiNote: string; now: string }): Promise<void> {
+  if (o.hoiAnh) {
+    await q('UPDATE zalo_threads SET ai_hoi = true, ai_note = $2, mo_lai_at = $3 WHERE thread_id = $1', [threadId, o.aiNote, o.now]);
+  } else {
+    await q('UPDATE zalo_threads SET ai_checked = false, ai_hoi = false, ai_note = $2, mo_lai_at = $3 WHERE thread_id = $1', [
+      threadId,
+      o.aiNote,
+      o.now,
+    ]);
+  }
+}
+
 /** Những cuộc anh đã tự quyết — đưa cho AI làm ví dụ để lần sau tự quyết giống anh. */
 export async function viDuAnhQuyet(
   limit = 40,

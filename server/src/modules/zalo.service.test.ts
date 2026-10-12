@@ -24,6 +24,8 @@ let NHOM_CHUA_XET: Array<Record<string, unknown>> = [];
 const KET_QUA_XET: Array<{ id: string; kq: Record<string, unknown> }> = [];
 const CRM_GHI: Array<Record<string, unknown>> = [];
 let PROMPT = '';
+let BI_LOAI: Array<Record<string, unknown>> = [];
+const MO_LAI: Array<{ id: string; o: Record<string, unknown> }> = [];
 
 // AI của kho đi qua ai/brainAi.ts — chuyển thẳng về generateJson giả lập ở dưới.
 vi.mock('../ai/brainAi.js', async () => {
@@ -77,6 +79,10 @@ vi.mock('./zalo.repo.js', () => ({
   demNhomAiDaChoHoc: vi.fn(async () => NHOM_LOC_LAI.length),
   ghiKetQuaXet: vi.fn(async (id: string, kq: Record<string, unknown>) => {
     KET_QUA_XET.push({ id, kq });
+  }),
+  cuocBiLoai: vi.fn(async (ids: string[]) => BI_LOAI.filter((c) => ids.includes(String(c.threadId)))),
+  moLaiCuoc: vi.fn(async (id: string, o: Record<string, unknown>) => {
+    MO_LAI.push({ id, o });
   }),
 }));
 let VIEC_MO: Array<Record<string, unknown>> = [];
@@ -239,6 +245,56 @@ describe('nhanTin — lưu mọi cuộc, trừ cuộc đã bị loại', () => {
 
   it('bỏ qua tin thiếu mã', async () => {
     expect(await S.nhanTin([{ msgId: '', threadId: 'T1', content: 'x', ts: 1 }])).toEqual({ luu: 0, boQua: 0 });
+  });
+});
+
+describe('nhanTin — cuộc đang không học mà phát sinh công việc thì mở lại', () => {
+  const moi = (threadId: string, msgId: string, content: string) => ({ msgId, threadId, content, ts: Date.now(), threadName: 'Bạn cũ' });
+  const loai = (threadId: string, x: Record<string, unknown> = {}) => ({
+    threadId, name: 'Bạn cũ', isGroup: false, anhQuyet: '', aiHoi: false, aiNote: 'Cá nhân', moLaiAt: '', ...x,
+  });
+  beforeEach(() => {
+    BI_LOAI = [];
+    MO_LAI.length = 0;
+  });
+
+  it('AI tự loại + tin có "báo giá" → mở lại cho AI đọc, lưu tin', async () => {
+    BI_LOAI = [loai('T5')];
+    const r = await S.nhanTin([moi('T5', 'm1', 'Em gửi anh báo giá quay video nhé')]);
+    expect(MO_LAI).toEqual([{ id: 'T5', o: expect.objectContaining({ hoiAnh: false }) }]);
+    expect(r).toEqual({ luu: 1, boQua: 0 });
+    expect(BAO).toHaveLength(0);
+  });
+
+  it('tin cá nhân bình thường → không mở lại, không tốn gì', async () => {
+    BI_LOAI = [loai('T5')];
+    expect(await S.nhanTin([moi('T5', 'm1', 'Cuối tuần đi cà phê không')])).toEqual({ luu: 0, boQua: 1 });
+    expect(MO_LAI).toHaveLength(0);
+  });
+
+  it('anh đã tự bỏ qua → chỉ HỎI anh + thông báo, không tự đổi', async () => {
+    BI_LOAI = [loai('T6', { anhQuyet: 'bo' })];
+    await S.nhanTin([moi('T6', 'm1', 'Anh ơi làm hợp đồng giúp em')]);
+    expect(MO_LAI).toEqual([{ id: 'T6', o: expect.objectContaining({ hoiAnh: true }) }]);
+    expect(BAO[0]).toMatchObject({ id: 'GD', n: { type: 'zalo_hoi' } });
+  });
+
+  it('nhóm chợ / nhóm đông bị loại theo luật → không bao giờ mở lại', async () => {
+    BI_LOAI = [loai('G1', { isGroup: true, name: 'Chợ đồ cũ Q7' }), loai('G2', { isGroup: true, name: 'Hội X', aiNote: 'Không liên quan (nhóm đông 300 thành viên)' })];
+    await S.nhanTin([moi('G1', 'm1', 'Nhận thiết kế logo giá rẻ'), moi('G2', 'm2', 'Ai cần chạy ads inbox')]);
+    expect(MO_LAI).toHaveLength(0);
+  });
+
+  it('nhóm AI tự loại → mở lại, ghi chú "Chưa rõ theo tên nhóm" để AI đọc tin chứ không loại lại theo tên', async () => {
+    BI_LOAI = [loai('G3', { isGroup: true, name: 'Nhóm anh em' })];
+    await S.nhanTin([moi('G3', 'm1', 'Bên mình nhận dự án mới rồi')]);
+    expect(String(MO_LAI[0]!.o.aiNote)).toMatch(/^Chưa rõ theo tên nhóm/);
+  });
+
+  it('mới mở lại trong 14 ngày → không mở nữa', async () => {
+    BI_LOAI = [loai('T7', { moLaiAt: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString() })];
+    await S.nhanTin([moi('T7', 'm1', 'Gửi em báo giá nhé')]);
+    expect(MO_LAI).toHaveLength(0);
   });
 });
 

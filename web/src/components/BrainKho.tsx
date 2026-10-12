@@ -683,42 +683,6 @@ export function TabDanhSach({ status, category, nhomList, rong, onChanged }: { s
     }
   }
 
-  /**
-   * Cho AI xét lại (anh Tâm 10/10/2026: "AI tự ... học những thứ liên quan đến công việc luôn, không cần
-   * anh phải duyệt, cái nào phân vân mới tới lượt anh"). Không truyền ids = mọi mục chờ chỉ vì AI lỗi.
-   */
-  async function aiXetLai(ids?: string[]) {
-    let con = ids;
-    const tong = { xong: 0, banHanh: 0, conCho: 0, bo: 0 };
-    try {
-      for (let lan = 0; lan < 10; lan++) {
-        setDangLam(`AI đang xét lại… (${tong.xong} mục xong)`);
-        const r = await api<{ xong: number; banHanh: number; conCho: number; bo: number; conLai: string[]; aiLoiConLai: number }>(
-          '/brain/items/recheck',
-          { body: con ? { ids: con } : {} },
-        );
-        tong.xong += r.xong;
-        tong.banHanh += r.banHanh;
-        tong.conCho += r.conCho;
-        tong.bo += r.bo;
-        if (r.xong === 0) {
-          if (r.conLai.length) toast.error('AI vẫn đang hết lượt — đổi model ở Quản trị → AI cho Kho tri thức, hoặc để đêm nay app tự thử lại.');
-          break;
-        }
-        if (con) con = r.conLai.length ? r.conLai : undefined;
-        if (con === undefined && (ids || !r.aiLoiConLai)) break;
-      }
-      if (tong.xong) toast.success(`AI đã xét ${tong.xong} mục: ban hành ${tong.banHanh}, còn chờ anh ${tong.conCho}, bỏ ${tong.bo}`);
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setDangLam('');
-      setChon(new Set());
-      await tai().catch(() => undefined);
-      onChanged();
-    }
-  }
-
   /** Ban hành / bỏ các mục đã tích. Máy chủ làm ~40 giây mỗi lượt; còn thì gọi tiếp. */
   async function hangLoat(st: 'published' | 'rejected' | 'archived') {
     let ids = [...chon];
@@ -760,15 +724,9 @@ export function TabDanhSach({ status, category, nhomList, rong, onChanged }: { s
 
   return (
     <div className="card">
-      {duyet && soAiLoi > 0 && !dangLam && (
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          <span>
-            <b>{soAiLoi} mục</b> đang chờ chỉ vì lúc gửi AI bị lỗi / hết lượt. Cho AI xét lại: việc rõ ràng thì tự ban hành, phân vân mới để
-            anh duyệt. (Ban đêm app cũng tự làm.)
-          </span>
-          <button className="btn-primary px-3 py-1 text-sm" onClick={() => aiXetLai()}>
-            🤖 Cho AI xét lại {soAiLoi} mục
-          </button>
+      {duyet && soAiLoi > 0 && (
+        <div className="mb-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <b>{soAiLoi} mục</b> chờ vì lúc gửi AI bị lỗi / hết lượt — app tự cho AI xét lại ở lượt sau, anh không cần làm gì.
         </div>
       )}
       {duyet && dangLam && !chon.size && <div className="mb-2 rounded-xl bg-brand-50 px-3 py-2 text-sm text-ink-soft">{dangLam}</div>}
@@ -804,9 +762,6 @@ export function TabDanhSach({ status, category, nhomList, rong, onChanged }: { s
                   <>
                     <button className="btn-primary px-3 py-1 text-sm" onClick={() => hangLoat('published')}>
                       ✓ Ban hành {chon.size} mục
-                    </button>
-                    <button className="btn-ghost px-3 py-1 text-sm" onClick={() => aiXetLai([...chon])}>
-                      🤖 AI xét lại {chon.size} mục
                     </button>
                     <button className="btn-ghost px-3 py-1 text-sm text-rose-600" onClick={() => hangLoat('rejected')}>
                       Không lưu {chon.size} mục

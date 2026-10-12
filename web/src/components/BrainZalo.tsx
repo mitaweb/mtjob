@@ -76,10 +76,9 @@ export default function BrainZalo() {
   const [tim, setTim] = useState('');
   const [trang, setTrangState] = useState(1);
   const [st, setSt] = useState<TrangThai | null>(null);
-  const [khach, setKhach] = useState<Record<string, string>>({});
   const [choQR, setChoQR] = useState(0); // mốc ms bắt đầu chờ QR (0 = không chờ)
   const hen = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // "⚡ Đọc & phân loại ngay": dòng tiến trình + cờ dừng.
+  // "⚡ Cập nhật ngay": dòng tiến trình + cờ dừng.
   const [tienTrinh, setTienTrinh] = useState<string[]>([]);
   const [dangXuLy, setDangXuLy] = useState(false);
   // Tin gần đây đang mở xem, theo từng cuộc.
@@ -98,11 +97,6 @@ export default function BrainZalo() {
     if (t.trim()) qs.set('q', t.trim());
     const r = await api<TrangThai>(`/zalo/status?${qs}`);
     setSt(r);
-    setKhach((cu) => {
-      const moi = { ...cu };
-      for (const c of r.threads) if (moi[c.threadId] === undefined) moi[c.threadId] = c.customer;
-      return moi;
-    });
     return r;
   }
 
@@ -156,78 +150,10 @@ export default function BrainZalo() {
     }
   }
 
-  async function dongBo() {
-    try {
-      const r = await api<{ ok: boolean; tin: number; note: string }>('/zalo/sync', { body: {} });
-      if (r.ok) toast.success(r.note);
-      else toast.error(r.note);
-      await tai();
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  }
-
-  /** Quét nhóm khách — mỗi lần máy chủ làm ~45 giây; còn việc thì gọi tiếp (tối đa 8 lần). */
-  async function quetNhom() {
-    try {
-      for (let lan = 0; lan < 8; lan++) {
-        const r = await api<{ ok: boolean; note: string; conLai: number }>('/zalo/groups', { body: {} });
-        await tai();
-        if (!r.ok) {
-          toast.error(r.note);
-          return;
-        }
-        if (!r.conLai) {
-          toast.success(r.note);
-          setLoc('nhom');
-          return;
-        }
-        toast.info(r.note);
-      }
-      toast.info('Còn nhóm chưa xét xong — app tự làm tiếp ở lượt sau, hoặc bấm lại.');
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  }
-
   /**
    * Đọc & phân loại ngay (anh Tâm 10/10/2026: "không cần chờ đến tối"): đồng bộ tin mới một lượt, rồi
    * gọi lặp từng bước ~40 giây — xét nhóm → AI đọc cuộc → AI xét lại mục chờ — tới khi xong.
    */
-  /**
-   * 🧹 Lọc lại nhóm (anh Tâm 12/10/2026: "lọc bỏ các nhóm không liên quan sẽ tiết kiệm được rất nhiều"): xét lại
-   * nhóm AI đã tự cho học theo tiêu chí chặt, gọi lặp tới khi hết. Nhóm bị bỏ anh vẫn tích "Học" lại được.
-   */
-  async function locLai() {
-    if (!window.confirm('Lọc lại các nhóm AI đã tự cho học theo tiêu chí chặt hơn? Nhóm không liên quan sẽ thôi học (anh tích "Học" lại được).')) return;
-    dung.current = false;
-    setDangXuLy(true);
-    const ghi = (d: string) => setTienTrinh((cu) => [...cu, `${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} · ${d}`]);
-    setTienTrinh([]);
-    const tong = { xet: 0, giu: 0, bo: 0 };
-    try {
-      for (let lan = 0; lan < 30 && !dung.current; lan++) {
-        const r = await api<{ ok: boolean; note?: string; xet: number; giu: number; bo: number; conLai: number }>('/zalo/loc-lai', { body: {} });
-        if (!r.ok) {
-          ghi(`Lỗi: ${r.note}`);
-          toast.error((r.note || '').slice(0, 200));
-          break;
-        }
-        tong.xet += r.xet;
-        tong.giu += r.giu;
-        tong.bo += r.bo;
-        ghi(`Đã xét ${tong.xet} nhóm: giữ ${tong.giu}, bỏ ${tong.bo} — còn ${r.conLai}`);
-        await tai();
-        if (!r.conLai || !r.xet) break;
-      }
-      toast.success(`Lọc xong: giữ ${tong.giu} nhóm, bỏ ${tong.bo} nhóm không liên quan`);
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setDangXuLy(false);
-    }
-  }
-
   async function xuLyNgay() {
     dung.current = false;
     setDangXuLy(true);
@@ -268,20 +194,6 @@ export default function BrainZalo() {
       toast.error((e as Error).message);
     } finally {
       setDangXuLy(false);
-    }
-  }
-
-  async function rut(threadId?: string) {
-    try {
-      const r = await api<{ cuoc: number; y: number; nhac?: number; caNhan?: number }>('/zalo/digest', { body: threadId ? { threadId } : {} });
-      toast.success(
-        r.cuoc
-          ? `AI đã đọc ${r.cuoc} cuộc: ${r.y} ý vào kho${r.nhac ? `, ${r.nhac} nhắc việc cho anh` : ''}${r.caNhan ? `, ${r.caNhan} cuộc cá nhân bỏ qua` : ''}`
-          : 'Không có tin mới để đọc',
-      );
-      await tai();
-    } catch (e) {
-      toast.error((e as Error).message);
     }
   }
 
@@ -371,28 +283,25 @@ export default function BrainZalo() {
               {st.account && <span className="text-sm text-ink-soft">{st.account}</span>}
             </div>
             {st.note && <p className="mt-0.5 text-xs text-ink-muted">{st.note}</p>}
-            {st.lastSync && <p className="text-xs text-ink-faint">Đồng bộ gần nhất: {ngayGio(st.lastSync)}</p>}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {(!st.coPhien || st.status === 'expired') && (
-              <AsyncButton className="btn-primary" onClick={dangNhap} busyLabel="…" disabled={!st.configured || !!choQR}>
-                Đăng nhập Zalo
-              </AsyncButton>
-            )}
-            {st.coPhien && (
-              <>
-                <AsyncButton className="btn-ghost" onClick={dongBo} busyLabel="Đang đồng bộ…">
-                  🔄 Đồng bộ ngay
-                </AsyncButton>
-                <AsyncButton className="btn-ghost" onClick={quetNhom} busyLabel="AI đang xét nhóm…">
-                  🔎 Quét nhóm khách
-                </AsyncButton>
-                <button className="btn-ghost text-rose-600" onClick={dangXuat}>
-                  Đăng xuất
-                </button>
-              </>
+            {st.lastSync && (
+              <p className="text-xs text-ink-faint">
+                Đồng bộ gần nhất: {ngayGio(st.lastSync)}
+                {st.coPhien && (
+                  <>
+                    {' · '}
+                    <button className="underline hover:text-rose-600" onClick={dangXuat}>
+                      đăng xuất Zalo
+                    </button>
+                  </>
+                )}
+              </p>
             )}
           </div>
+          {(!st.coPhien || st.status === 'expired') && (
+            <AsyncButton className="btn-primary" onClick={dangNhap} busyLabel="…" disabled={!st.configured || !!choQR}>
+              Đăng nhập Zalo
+            </AsyncButton>
+          )}
         </div>
 
         {(st.status === 'waiting_qr' || st.status === 'scanned') && anhQR && (
@@ -405,26 +314,8 @@ export default function BrainZalo() {
         )}
 
         <p className="text-xs text-ink-muted">
-          App <b>tự đồng bộ 3 tiếng/lần</b> ban ngày (6h–22h), ban đêm chỉ một lượt lúc <b>5h sáng</b>; rồi AI <b>đọc tin MỚI</b> của mọi cuộc (tin đã đọc không đọc lại; tin chỉ "ok", "dạ", "cảm ơn" bỏ qua không tốn AI; cuộc đang nói dở đợi 30 phút cho trọn câu chuyện) — anh không cần bật gì:
-        </p>
-        <ul className="ml-4 list-disc text-xs text-ink-muted">
-          <li>
-            <b>Công việc</b> → tự học vào kho (yêu cầu, lưu ý, điều đã chốt của khách…); điều <b>phân vân</b> mới vào tab Chờ duyệt cho anh.
-          </li>
-          <li>
-            <b>Cập nhật khách</b>: khớp khách trong CRM (khách mới thì tạo), thêm điều mới vào “Thông tin khách” — không xoá điều anh đã ghi.
-          </li>
-          <li>
-            <b>Nhắc anh</b> khi có việc chưa làm — vd khách hỏi báo giá chưa trả lời, hứa gửi tài liệu, hẹn gọi lại (xem ở Nhắc hẹn).
-          </li>
-          <li>
-            <b>Cá nhân</b> (gia đình, bạn bè, hội nhóm) → AI thôi đọc và xoá nội dung đã lưu.
-          </li>
-        </ul>
-        <p className="text-xs text-ink-muted">
-          <b>Nhóm khách</b>: AI tự nhận ra nhóm làm việc với khách (tên kiểu “TÊN KH - MT DIGITAL”, tên khác AI tự phán đoán), khớp với khách
-          trong CRM — chưa có thì tạo mới — rồi bật học và <b>kéo lịch sử cũ</b> (~200 tin gần nhất mỗi nhóm). <b>Chat 1-1</b>: Zalo không cho
-          lấy tin cũ trước lúc đăng nhập, chỉ có tin từ lúc kết nối trở đi.
+          <b>Mọi thứ tự chạy</b> — đồng bộ 3 tiếng/lần (đêm chỉ 5h sáng), tự lọc bỏ nhóm không liên quan, AI đọc tin mới, học việc công ty
+          vào kho, cập nhật khách trong CRM, nhắc anh việc chưa làm. Anh chỉ cần quyết các cuộc <b>❓ AI hỏi</b>.
         </p>
       </div>
 
@@ -433,25 +324,19 @@ export default function BrainZalo() {
           <div>
             <h3 className="font-medium">Cuộc trò chuyện ({dem.tat_ca})</h3>
             <p className="text-xs text-ink-muted">
-              AI <b>tự quyết</b>: liên quan công việc thì học, nhóm chợ / không liên quan thì bỏ qua không đọc. Chỉ cuộc AI phân vân
-              (50:50) mới vào <b>❓ Cần anh quyết</b> — anh chọn Học / Bỏ qua, AI ghi nhớ để lần sau tự quyết giống anh. Ô <b>Học</b> để anh sửa
-              khi AI xếp sai.
+              AI tự quyết học / bỏ qua. Ô <b>Học</b> chỉ để anh sửa khi AI xếp sai — AI ghi nhớ để lần sau tự quyết giống anh. Cuộc đang
+              bỏ qua mà có tin công việc mới (báo giá, hợp đồng, dự án…) thì app tự mở lại cho AI đọc; cuộc anh đã tự bỏ qua thì AI hỏi anh.
             </p>
           </div>
           {dangXuLy ? (
-              <button className="btn-ghost text-sm text-rose-600" onClick={() => (dung.current = true)}>
-                ⏹ Dừng
-              </button>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                <button className="btn-ghost text-sm" onClick={locLai} title="Xét lại các nhóm AI đã cho học theo tiêu chí chặt — bỏ nhóm thừa cho đỡ tốn">
-                  🧹 Lọc lại nhóm
-                </button>
-                <button className="btn-primary text-sm" onClick={xuLyNgay}>
-                  ⚡ Đọc & phân loại ngay
-                </button>
-              </div>
-            )}
+            <button className="btn-ghost text-sm text-rose-600" onClick={() => (dung.current = true)}>
+              ⏹ Dừng
+            </button>
+          ) : (
+            <button className="btn-ghost text-sm" onClick={xuLyNgay} title="Không cần bấm — app tự chạy. Bấm khi muốn cập nhật ngay.">
+              ⚡ Cập nhật ngay
+            </button>
+          )}
         </div>
         {tienTrinh.length > 0 && (
           <div className="mb-3 max-h-48 overflow-y-auto rounded-xl bg-brand-50 p-3 text-xs text-ink-soft">
@@ -598,22 +483,7 @@ export default function BrainZalo() {
                     )}
                   </div>
                 )}
-                {c.enabled && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      className="input max-w-xs py-1 text-sm"
-                      placeholder="Khách hàng trong CRM (vd: Savax Door)"
-                      value={khach[c.threadId] ?? ''}
-                      onChange={(e) => setKhach({ ...khach, [c.threadId]: e.target.value })}
-                      onBlur={() => (khach[c.threadId] ?? '') !== c.customer && suaCuoc(c, { customer: khach[c.threadId] ?? '' })}
-                    />
-                    {c.chuaRut > 0 && (
-                      <AsyncButton className="btn-ghost px-2 py-1 text-xs" onClick={() => rut(c.threadId)} busyLabel="…">
-                        Đọc ngay
-                      </AsyncButton>
-                    )}
-                  </div>
-                )}
+                {c.enabled && c.customer && <div className="text-xs text-ink-muted">Khách: {c.customer}</div>}
               </li>
             ))}
           </ul>

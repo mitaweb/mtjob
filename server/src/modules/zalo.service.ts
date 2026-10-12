@@ -8,7 +8,7 @@
 //   3. Cập nhật khách: khớp/tạo khách trong CRM, thêm điều mới vào "Thông tin khách".
 //   4. Việc giám đốc cần làm (khách hỏi báo giá chưa trả lời…) → đặt nhắc hẹn cho giám đốc.
 import { aiKhoJson } from '../ai/brainAi.js';
-import { dungDoanChat, denLucRut, noiDungTin, goiYTenKhachTuNhom, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, dangDoc, nhomKhongLienQuan, type TinZalo } from '../lib/zalo.js';
+import { dungDoanChat, denLucRut, noiDungTin, goiYTenKhachTuNhom, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, dangDoc, nhomKhongLienQuan, coDauHieuCongViec, type TinZalo } from '../lib/zalo.js';
 import { khopKhach, xoaLienHe, chuanTen } from '../lib/brainGate.js';
 import {
   ghiNhieuCuoc,
@@ -31,6 +31,8 @@ import {
   demNhomAiDaChoHoc,
   DA_LOC_LAI,
   CHUA_RO_THEO_TEN,
+  cuocBiLoai,
+  moLaiCuoc,
   type ZaloThread,
 } from './zalo.repo.js';
 import { xetDuaVaoKho, suaMuc, type NguoiGui } from './brainItems.service.js';
@@ -79,6 +81,8 @@ export async function nhanTin(lo: TinTuWorker[]): Promise<{ luu: number; boQua: 
     };
   });
   const luuCuoc = cuoc.length ? await ghiNhieuCuoc(cuoc, now) : new Map<string, boolean>();
+  // Cuộc đang bị loại mà có tin công việc mới → mở lại (lỗi thì bỏ qua, không làm hỏng việc lưu tin).
+  for (const id of await moLaiKhiCoViec(theoCuoc, luuCuoc, now).catch(() => [] as string[])) luuCuoc.set(id, true);
   let boQua = 0;
   const tinGhi: TinZalo[] = [];
   for (const [threadId, ds] of theoCuoc) {
@@ -101,6 +105,56 @@ export async function nhanTin(lo: TinTuWorker[]): Promise<{ luu: number; boQua: 
   }
   if (tinGhi.length) await ghiNhieuTin(tinGhi);
   return { luu: tinGhi.length, boQua };
+}
+
+/** Mỗi cuộc mở lại nhiều nhất một lần trong khoảng này — tránh tốn AI vì nhóm hay nhắc chữ "thiết kế", "giá"… */
+const MO_LAI_CACH_MS = 14 * 24 * 3600 * 1000;
+
+/**
+ * Cuộc đang KHÔNG học mà người đó phát sinh công việc (anh Tâm 12/10/2026: "nếu hiện đang không học, người đó sau
+ * này phát sinh công việc thì sao"). Tin mới (7 ngày) có dấu hiệu công việc — xét bằng luật, không tốn AI:
+ * - AI tự loại → mở lại, AI đọc tin đó và quyết lại (vẫn cá nhân thì AI loại lại, xoá tin);
+ * - anh đã tự tắt → không tự đổi, chỉ đưa vào "❓ AI hỏi" kèm thông báo — quyết định của anh thắng AI;
+ * - nhóm bị loại theo luật (chợ, chung cư, nhóm đông…) → không bao giờ mở lại.
+ * Trả mã các cuộc được lưu tin lần này.
+ */
+async function moLaiKhiCoViec(theoCuoc: Map<string, TinTuWorker[]>, luuCuoc: Map<string, boolean>, now: string): Promise<string[]> {
+  const nowMs = Date.parse(now) || Date.now();
+  const nghi = new Map<string, string>();
+  for (const [id, ds] of theoCuoc) {
+    if (luuCuoc.get(id)) continue;
+    const t = ds.find((x) => Number(x.ts) > nowMs - 7 * 24 * 3600 * 1000 && coDauHieuCongViec(noiDungTin(x.content)));
+    if (t) nghi.set(id, noiDungTin(t.content).slice(0, 120));
+  }
+  if (!nghi.size) return [];
+  const moi: string[] = [];
+  let hoi = 0;
+  for (const c of await cuocBiLoai([...nghi.keys()])) {
+    if (c.moLaiAt && Date.parse(c.moLaiAt) > nowMs - MO_LAI_CACH_MS) continue;
+    if (c.isGroup && (nhomKhongLienQuan(c.name) || /tên nhóm kiểu|nhóm đông/.test(c.aiNote))) continue;
+    const trich = nghi.get(c.threadId)!;
+    if (c.anhQuyet === 'bo') {
+      if (c.aiHoi) continue;
+      await moLaiCuoc(c.threadId, { hoiAnh: true, aiNote: `Hỏi anh: anh đã cho bỏ qua, nay có tin công việc mới — "${trich}"`, now });
+      hoi++;
+    } else {
+      const ghiChu = `Mở lại vì có tin công việc mới — "${trich}"`;
+      await moLaiCuoc(c.threadId, { hoiAnh: false, aiNote: c.isGroup ? `${CHUA_RO_THEO_TEN} · ${ghiChu}` : ghiChu, now });
+    }
+    moi.push(c.threadId);
+  }
+  if (hoi > 0) {
+    const chu = (await getDirectors())[0];
+    if (chu?.id) {
+      await notify(chu.id, {
+        type: 'zalo_hoi',
+        title: `❓ ${hoi} cuộc Zalo anh đã bỏ qua nay có tin công việc`,
+        body: 'Anh xem tin rồi chọn Học hoặc Bỏ qua.',
+        url: '/brain?tab=zalo',
+      }).catch(() => undefined);
+    }
+  }
+  return moi;
 }
 
 const SCHEMA_DOC = {
