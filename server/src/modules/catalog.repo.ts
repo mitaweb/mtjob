@@ -1,4 +1,8 @@
 import { q } from '../db/client.js';
+import { nhoTam, xoaNhoTam } from '../util/cache.js';
+
+// Danh mục việc ít đổi (chỉ đổi khi đồng bộ bảng điểm) — nhớ 5 phút, ghi thì xoá ngay.
+const DM_TTL = 5 * 60_000;
 import type { TaskCatalogItem } from '../types.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -13,13 +17,13 @@ function rowToItem(r: any): TaskCatalogItem {
 }
 
 export async function getCatalog(): Promise<TaskCatalogItem[]> {
-  const rows = await q('SELECT * FROM task_catalog ORDER BY task_code');
-  return rows.map(rowToItem);
+  return nhoTam('dm:all', DM_TTL, async () => (await q('SELECT * FROM task_catalog ORDER BY task_code')).map(rowToItem));
 }
 
 export async function getActiveCatalog(): Promise<TaskCatalogItem[]> {
-  const rows = await q('SELECT * FROM task_catalog WHERE active = true ORDER BY task_code');
-  return rows.map(rowToItem);
+  return nhoTam('dm:active', DM_TTL, async () =>
+    (await q('SELECT * FROM task_catalog WHERE active = true ORDER BY task_code')).map(rowToItem),
+  );
 }
 
 export async function findCatalogItem(code: string): Promise<TaskCatalogItem | undefined> {
@@ -81,6 +85,7 @@ export async function deactivateCatalogExcept(codes: string[]): Promise<string[]
      RETURNING task_name`,
     [codes.map((c) => c.trim().toUpperCase())],
   );
+  xoaNhoTam('dm:');
   return rows.map((r) => String(r.task_name || '').trim()).filter(Boolean);
 }
 
@@ -93,4 +98,5 @@ export async function upsertCatalogItem(i: TaskCatalogItem): Promise<void> {
        active = EXCLUDED.active, note = EXCLUDED.note`,
     [i.code.toUpperCase(), i.name, i.points, i.active, i.note || ''],
   );
+  xoaNhoTam('dm:');
 }

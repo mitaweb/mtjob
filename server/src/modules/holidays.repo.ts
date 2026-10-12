@@ -1,10 +1,14 @@
 import { q } from '../db/client.js';
+import { nhoTam, xoaNhoTam } from '../util/cache.js';
 import type { HolidaySet } from '../lib/workdays.js';
 
 /** Set of holiday dates ('YYYY-MM-DD') from the holidays table. */
 export async function getHolidaySet(): Promise<HolidaySet> {
-  const rows = await q('SELECT date FROM holidays');
-  return new Set(rows.map((r) => String(r.date || '').trim()).filter(Boolean));
+  // Ngày lễ ít đổi mà mọi phép tính công/lương đều cần — nhớ 5 phút, ghi thì xoá ngay.
+  return nhoTam('le:set', 5 * 60_000, async () => {
+    const rows = await q('SELECT date FROM holidays');
+    return new Set(rows.map((r) => String(r.date || '').trim()).filter(Boolean));
+  });
 }
 
 export interface Holiday {
@@ -27,6 +31,7 @@ export async function upsertHoliday(date: string, name: string): Promise<void> {
      ON CONFLICT (date) DO UPDATE SET name = EXCLUDED.name, year = EXCLUDED.year`,
     [date, name, Number(date.slice(0, 4)) || null],
   );
+  xoaNhoTam('le:');
 }
 
 /** Ngày lễ của một năm, theo thứ tự — cho trang Quản trị. */
@@ -36,4 +41,5 @@ export async function getHolidaysOfYear(year: number): Promise<Holiday[]> {
 
 export async function deleteHoliday(date: string): Promise<void> {
   await q('DELETE FROM holidays WHERE date = $1', [date]);
+  xoaNhoTam('le:');
 }

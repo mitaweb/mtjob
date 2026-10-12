@@ -47,8 +47,20 @@ export async function layLich(opts: {
   const theoNgay = new Map<string, MucLich[]>(ngays.map((d) => [d, []]));
   const them = (ngay: string, m: MucLich) => theoNgay.get(ngay)?.push(m);
 
+  // Năm nguồn độc lập → hỏi cùng lúc, rồi xử lý ĐÚNG thứ tự cũ (kết quả y như trước — 12/10/2026: tăng tốc).
+  const xemCrm = XEM_DUOC_CRM.has(opts.role);
+  const tuIso = dayjs.tz(opts.from, 'YYYY-MM-DD', TZ).startOf('day').toISOString();
+  const denIso = dayjs.tz(den, 'YYYY-MM-DD', TZ).endOf('day').toISOString();
+  const [nhacHen, tatCaDon, ngayLe, lichHen, khach] = await Promise.all([
+    getReminders(opts.memberId),
+    getAllRequests(),
+    getHolidaysBetween(opts.from, den),
+    xemCrm ? getUpcoming(tuIso, denIso) : Promise.resolve([]),
+    xemCrm ? getCustomers() : Promise.resolve([]),
+  ]);
+
   // 1. Nhắc hẹn của chính mình. Hẹn đã tắt thì không nhắc nữa nên cũng không vẽ.
-  for (const r of await getReminders(opts.memberId)) {
+  for (const r of nhacHen) {
     if (!r.active) continue;
     for (const ngay of ngays) {
       if (roiVaoNgay(r, ngay)) them(ngay, { loai: 'reminder', gio: r.atTime, ten: r.title });
@@ -56,7 +68,7 @@ export async function layLich(opts: {
   }
 
   // 2. Đơn của chính mình đã duyệt — nghỉ phép, làm online, giải trình chấm công.
-  const donCuaToi = (await getAllRequests()).filter(
+  const donCuaToi = tatCaDon.filter(
     (r) => r.memberId === opts.memberId && r.finalStatus === 'approved',
   );
   for (const don of donCuaToi) {
@@ -71,15 +83,13 @@ export async function layLich(opts: {
   }
 
   // 3. Ngày lễ — ai cũng thấy.
-  for (const l of await getHolidaysBetween(opts.from, den)) {
+  for (const l of ngayLe) {
     them(l.date, { loai: 'holiday', gio: '', ten: l.name });
   }
 
   // 4-5. Lịch hẹn và sinh nhật khách: dữ liệu CRM, chỉ mở cho vai được xem CRM.
-  if (XEM_DUOC_CRM.has(opts.role)) {
-    const tuIso = dayjs.tz(opts.from, 'YYYY-MM-DD', TZ).startOf('day').toISOString();
-    const denIso = dayjs.tz(den, 'YYYY-MM-DD', TZ).endOf('day').toISOString();
-    for (const a of await getUpcoming(tuIso, denIso)) {
+  if (xemCrm) {
+    for (const a of lichHen) {
       them(ngayVn(a.at), {
         loai: 'appointment',
         gio: fmtHm(a.at),
@@ -87,7 +97,7 @@ export async function layLich(opts: {
         ghiChu: a.note,
       });
     }
-    for (const c of await getCustomers()) {
+    for (const c of khach) {
       if (!c.dob) continue;
       for (const ngay of ngays) {
         if (laSinhNhat(c.dob, ngay)) them(ngay, { loai: 'birthday', gio: '', ten: c.name });

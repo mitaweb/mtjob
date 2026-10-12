@@ -16,11 +16,15 @@ export function isMissingTable(e: unknown): boolean {
  * Kho đã sẵn sàng chưa. Kiểm tra CẢ BA bảng: bản deploy sau thêm bảng mới nên
  * chỉ kiểm brain_chunks là chưa đủ — brain_documents/brain_profiles vẫn có thể thiếu.
  */
+let khoDaSan = false;
 export async function brainTableReady(): Promise<boolean> {
+  // Đã thấy đủ bảng thì nhớ luôn cho instance này — trước đây mỗi lần gọi 3 truy vấn dò (12/10/2026).
+  if (khoDaSan) return true;
   try {
     await q('SELECT 1 FROM brain_chunks LIMIT 1');
     await q('SELECT 1 FROM brain_profiles LIMIT 1');
     await q('SELECT 1 FROM brain_documents LIMIT 1');
+    khoDaSan = true;
     return true;
   } catch (e) {
     if (isMissingTable(e)) return false;

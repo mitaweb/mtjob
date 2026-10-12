@@ -56,13 +56,16 @@ attendanceRouter.get(
     const ym = String(req.query.month || '');
     const [y, m] = ym.match(/^\d{4}-\d{2}$/) ? ym.split('-').map(Number) : [now.year(), now.month() + 1];
     const { start, end } = monthRange(y!, m!);
-    const records = await getForMemberRange(req.user!.sub, start, end);
+    // Ba thứ độc lập → hỏi cùng lúc (12/10/2026: tăng tốc).
+    const [records, me, holidays] = await Promise.all([
+      getForMemberRange(req.user!.sub, start, end),
+      findById(req.user!.sub),
+      getHolidaySet(),
+    ]);
     const totalDays = records.reduce((s, r) => s + (Number(r.dayFraction) || 0), 0);
 
     // Ngày làm việc KHÔNG có công — tức quên chấm hoặc quên làm đơn. Anh Tâm 2/8/2026:
     // nhân sự phải tự soi được, đừng để tới lúc tính lương mới phát hiện.
-    const me = await findById(req.user!.sub);
-    const holidays = await getHolidaySet();
     const coCong = new Set(records.filter((r) => (Number(r.dayFraction) || 0) > 0).map((r) => r.date));
     const missing = missingWorkdays(workdaysInMonth(y!, m!, holidays), coCong, {
       today: todayIso(),

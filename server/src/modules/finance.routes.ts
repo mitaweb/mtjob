@@ -211,12 +211,13 @@ financeRouter.get(
   canView,
   asyncHandler(async (req, res) => {
     const month = ym(req);
-    const [entriesGoc, allParties, customers, rates, theoThang] = await Promise.all([
+    const [entriesGoc, allParties, customers, rates, theoThang, paid] = await Promise.all([
       getEntries(month),
       getParties(),
       getCustomers(),
       getPartyRates(),
       tongTheoThang(month),
+      paidByPartyMonth(DEBT_TRACK_FROM), // trước đây chờ riêng sau 5 truy vấn kia (12/10/2026: tăng tốc)
     ]);
     // Khoản thu tạo trước khi bên được chọn nguồn thì đọc theo nguồn hiện tại của bên.
     const entries = boSungNguon(
@@ -227,7 +228,6 @@ financeRouter.get(
     const income = entries.filter((e) => e.kind === 'thu').reduce((s, e) => s + e.amount, 0);
     const expense = entries.filter((e) => e.kind === 'chi').reduce((s, e) => s + e.amount, 0);
     const parties = allParties.filter((p) => p.active);
-    const paid = await paidByPartyMonth(DEBT_TRACK_FROM);
     // Cùng một hàm với bảng các bên — thẻ tổng và bảng không thể lệch nhau. Bên đã ngưng không
     // phát sinh kỳ mới; còn nợ thì vẫn nằm trong nợ cũ.
     let receivableTotal = 0;
@@ -301,8 +301,8 @@ financeRouter.get(
     const now = nowTz();
     const year = Number(req.query.year) || now.year();
     const month = Number(req.query.month) || now.month() + 1;
-    const lines = await payrollForMonth(year, month);
-    const byId = new Map((await getActiveMembers()).map((m) => [m.id, m]));
+    const [lines, thanhVien] = await Promise.all([payrollForMonth(year, month), getActiveMembers()]);
+    const byId = new Map(thanhVien.map((m) => [m.id, m]));
     res.json({
       year,
       month,

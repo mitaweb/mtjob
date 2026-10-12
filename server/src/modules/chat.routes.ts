@@ -223,8 +223,7 @@ async function runChat(
     }
 
     // Ưu tiên task thuộc team của nhân sự (Ads/Content/SEO) khi gợi ý.
-    const me = await findById(memberId);
-    const fullCatalog = await getActiveCatalog();
+    const [me, fullCatalog] = await Promise.all([findById(memberId), getActiveCatalog()]);
     // Bộ nhận diện chỉ được thấy việc của team người nhắn: gõ "edit video" thì không còn
     // khớp sang đầu việc của tab team khác nữa.
     const catalog = locCatalogTheoTeam(fullCatalog, me?.teamId || '');

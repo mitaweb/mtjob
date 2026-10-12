@@ -1,4 +1,5 @@
 import { q } from '../db/client.js';
+import { xoaTrongRequest } from '../util/cache.js';
 import type { KpiPeriod, KpiInputMode } from '../lib/kpi.js';
 
 export interface Project {
@@ -102,6 +103,7 @@ export async function findProject(id: string): Promise<Project | undefined> {
 }
 
 export async function upsertProject(p: Project): Promise<void> {
+  xoaTrongRequest('chi-so:'); // số KPI đổi → bỏ % đạt đã nhớ trong request này
   await q(
     `INSERT INTO projects
        (project_id, name, customer_id, customer_name, status, start_date, end_date, note, created_by, created_at)
@@ -124,6 +126,7 @@ export async function upsertProject(p: Project): Promise<void> {
  * không được phép làm đổi tiền đã trả.
  */
 export async function deleteProject(id: string): Promise<void> {
+  xoaTrongRequest('chi-so:'); // số KPI đổi → bỏ % đạt đã nhớ trong request này
   const kpis = await q('SELECT kpi_id FROM project_kpis WHERE project_id = $1', [id]);
   const ids = kpis.map((r: { kpi_id: string }) => r.kpi_id);
   if (ids.length) await q('DELETE FROM kpi_entries WHERE kpi_id = ANY($1)', [ids]);
@@ -148,6 +151,7 @@ export async function findKpi(id: string): Promise<ProjectKpi | undefined> {
 }
 
 export async function upsertKpi(k: ProjectKpi): Promise<void> {
+  xoaTrongRequest('chi-so:'); // số KPI đổi → bỏ % đạt đã nhớ trong request này
   await q(
     `INSERT INTO project_kpis
        (kpi_id, project_id, team_id, name, unit, period, target, active, sort_order, created_at, input_mode, start_date, end_date)
@@ -162,6 +166,7 @@ export async function upsertKpi(k: ProjectKpi): Promise<void> {
 }
 
 export async function deleteKpi(id: string): Promise<void> {
+  xoaTrongRequest('chi-so:'); // số KPI đổi → bỏ % đạt đã nhớ trong request này
   await q('DELETE FROM kpi_entries WHERE kpi_id = $1', [id]);
   await q('DELETE FROM project_kpis WHERE kpi_id = $1', [id]);
 }
@@ -184,6 +189,7 @@ export async function getEntriesForDates(kpiIds: string[], dates: string[]): Pro
 
 /** Ghi đè số của (KPI, ngày) — mỗi ngày đúng một dòng, không cộng dồn. */
 export async function saveEntry(e: KpiEntry): Promise<void> {
+  xoaTrongRequest('chi-so:'); // số KPI đổi → bỏ % đạt đã nhớ trong request này
   await q(
     `INSERT INTO kpi_entries (kpi_id, date, value, member_id, member_name, late, updated_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7)

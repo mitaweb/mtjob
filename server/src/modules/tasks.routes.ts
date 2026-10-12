@@ -25,10 +25,9 @@ tasksRouter.use(requireAuth);
 tasksRouter.get(
   '/catalog',
   asyncHandler(async (req, res) => {
-    const cfg = await getConfig();
-    const me = await findById(req.user!.sub);
+    const [cfg, me, tatCa] = await Promise.all([getConfig(), findById(req.user!.sub), getActiveCatalog()]);
     // Chỉ việc của team mình (+ mã dùng chung). Máy chủ cũng từ chối mã team khác ở tasks.service.
-    const catalog = locCatalogTheoTeam(await getActiveCatalog(), me?.teamId || '');
+    const catalog = locCatalogTheoTeam(tatCa, me?.teamId || '');
     res.json({ catalog, sheetUrl: cfg.taskSheetUrl });
   }),
 );

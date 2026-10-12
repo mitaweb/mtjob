@@ -9,6 +9,7 @@
 // Luật tiền nằm ở lib/money.ts, luật quy tỉ lệ về tháng nằm ở lib/kpi.ts — file này chỉ đọc
 // DB và ghép.
 import { q } from '../db/client.js';
+import { nhoTrongRequest } from '../util/cache.js';
 import { getProjects, getKpis, getEntries, getAssignees, getBonusLines } from './projects.repo.js';
 import { getActiveMembers } from './members.repo.js';
 import { getTeams } from './teams.repo.js';
@@ -57,6 +58,11 @@ export interface ProjectBonusLine {
  * kéo cả phòng trượt vì một việc không ai được làm.
  */
 export async function chiSoTheoThang(year: number, month: number): Promise<ChiSoThang[]> {
+  // Trang Bảng điểm gọi hàm này 4 lần trong một request — nhớ trong request, không đổi kết quả (12/10/2026).
+  return nhoTrongRequest(`chi-so:${year}-${month}`, () => tinhChiSoTheoThang(year, month));
+}
+
+async function tinhChiSoTheoThang(year: number, month: number): Promise<ChiSoThang[]> {
   const thang = `${year}-${String(month).padStart(2, '0')}`;
   const [projects, kpis, holidays] = await Promise.all([getProjects(), getKpis(), getHolidaySet()]);
   const entries = await getEntries(kpis.map((k) => k.id));

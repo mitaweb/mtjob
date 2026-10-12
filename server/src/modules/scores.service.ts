@@ -51,16 +51,21 @@ export async function memberScore(memberId: string, year?: number, month?: numbe
   const m = month ?? now.month() + 1;
   const { start, end } = monthRange(y, m);
   const today = todayIso();
-  const tasks = await getScoringTasks(start, end, today);
+  // Bốn thứ độc lập → hỏi DB cùng lúc (trước đây chờ lần lượt — anh Tâm 12/10/2026: tăng tốc). Công thức giữ nguyên.
+  const [tasks, member, cfg, heSo] = await Promise.all([
+    getScoringTasks(start, end, today),
+    findById(memberId),
+    bonusCfg(),
+    heSoDiemChiTiet(y, m),
+  ]);
   // Điểm chỉ tính task đã hoàn thành; giờ làm tính cả task đang chạy.
   const doneTasks = tasks.filter((t) => t.status === 'done');
-  const member = await findById(memberId);
   const monthPoints = sumPointsForMember(doneTasks, memberId, start, end);
   const todayPoints = sumPointsForMember(doneTasks, memberId, today, today);
-  const bonusGoc = computeBonus(monthPoints, await bonusCfg());
+  const bonusGoc = computeBonus(monthPoints, cfg);
   // Kết quả dự án cắt vào thưởng điểm — trả số THỰC NHẬN, không trả số gốc rồi để người
   // ta trông chờ vào con số không có thật.
-  const chiTiet = (await heSoDiemChiTiet(y, m)).get(memberId);
+  const chiTiet = heSo.get(memberId);
   const heSoKpi = chiTiet?.heSo ?? 1;
   return {
     memberId,

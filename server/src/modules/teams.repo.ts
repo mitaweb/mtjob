@@ -1,4 +1,8 @@
 import { q } from '../db/client.js';
+import { nhoTam, xoaNhoTam } from '../util/cache.js';
+
+// Team ít đổi — nhớ 5 phút, ghi thì xoá ngay (anh Tâm 12/10/2026: tăng tốc).
+const TEAM_TTL = 5 * 60_000;
 
 export interface TeamRow {
   id: string;
@@ -19,13 +23,14 @@ function rowToTeam(r: any): TeamRow {
 }
 
 export async function getTeams(): Promise<TeamRow[]> {
-  const rows = await q('SELECT * FROM teams ORDER BY team_id');
-  return rows.map(rowToTeam);
+  return nhoTam('team:all', TEAM_TTL, async () => (await q('SELECT * FROM teams ORDER BY team_id')).map(rowToTeam));
 }
 
 export async function findTeam(id: string): Promise<TeamRow | undefined> {
-  const rows = await q('SELECT * FROM teams WHERE team_id = $1 LIMIT 1', [id]);
-  return rows.length ? rowToTeam(rows[0]) : undefined;
+  return nhoTam(`team:id:${id}`, TEAM_TTL, async () => {
+    const rows = await q('SELECT * FROM teams WHERE team_id = $1 LIMIT 1', [id]);
+    return rows.length ? rowToTeam(rows[0]) : undefined;
+  });
 }
 
 export async function teamLeaderId(teamId: string): Promise<string> {
@@ -43,6 +48,7 @@ export async function upsertTeam(t: TeamRow): Promise<void> {
        team_name = EXCLUDED.team_name, leader_member_id = EXCLUDED.leader_member_id`,
     [t.id, t.name || t.id, t.leaderMemberId || ''],
   );
+  xoaNhoTam('team:');
 }
 
 export const SQL_DAT_THUONG_LEADER = 'UPDATE teams SET leader_kpi_bonus = $2 WHERE team_id = $1 RETURNING team_id';
@@ -50,5 +56,6 @@ export const SQL_DAT_THUONG_LEADER = 'UPDATE teams SET leader_kpi_bonus = $2 WHE
 /** Đặt mức thưởng KPI tháng cho leader của một team. Trả false nếu không có team đó. */
 export async function setLeaderKpiBonus(teamId: string, amount: number): Promise<boolean> {
   const rows = await q(SQL_DAT_THUONG_LEADER, [teamId, Math.max(0, Math.round(amount) || 0)]);
+  xoaNhoTam('team:');
   return rows.length > 0;
 }

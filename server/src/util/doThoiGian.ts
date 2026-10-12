@@ -6,9 +6,16 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 export interface SoDo {
   soTruyVan: number;
   msDb: number;
+  /** Kết quả đã tính trong CHÍNH request này (util/cache.ts nhoTrongRequest). */
+  nho?: Map<string, Promise<unknown>>;
 }
 
 const kho = new AsyncLocalStorage<SoDo>();
+
+/** Sổ của request đang chạy (undefined ngoài request: script, test, cron nền ngoài request). */
+export function soHienTai(): SoDo | undefined {
+  return kho.getStore();
+}
 
 /** Chạy `fn` với một sổ đo mới — mọi truy vấn bên trong (kể cả qua await) được ghi vào sổ này. */
 export function voiSoDo<T>(so: SoDo, fn: () => T): T {

@@ -4,6 +4,7 @@
 // luôn" và "thưởng và lương chốt khác nhau". Chốt thì đóng băng CẢ HAI loại thưởng (điểm +
 // KPI dự án) và ghi MỘT khoản chi vào tháng sau — giống lương tháng M chi ở tháng M+1.
 import { q } from '../db/client.js';
+import { xoaTrongRequest } from '../util/cache.js';
 import { ApiError } from '../util/errors.js';
 import { getActiveMembers } from './members.repo.js';
 import { scoresFor } from './scores.service.js';
@@ -153,6 +154,7 @@ export async function chotThuong(year: number, month: number, byName: string, at
   );
 
   await q(SQL_GHI_KHOA_THUONG, [year, month, atIso, byName]);
+  xoaTrongRequest('khoa-thuong:');
 
   const nxt = thangSau(year, month);
   if (bang.tong > 0) {
@@ -179,5 +181,6 @@ export async function chotThuong(year: number, month: number, byName: string, at
 /** Mở lại tháng đã chốt thưởng: gỡ khoá và gỡ khoản chi tự ghi. Bản chụp để nguyên, chốt lại sẽ ghi đè. */
 export async function moThuong(year: number, month: number): Promise<void> {
   await q(SQL_XOA_KHOA_THUONG, [year, month]);
+  xoaTrongRequest('khoa-thuong:');
   await deleteEntry(thuongEntryId(year, month));
 }

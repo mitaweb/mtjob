@@ -22,11 +22,14 @@ payrollRouter.get(
   asyncHandler(async (req, res) => {
     const { year, month } = ym(req);
     // Đi trễ/về sớm của CHÍNH mình — kể cả giám đốc (không có dòng lương nhưng vẫn chấm công).
-    const kyLuat = await kyLuatCuaThanhVien(req.user!.sub, year, month);
+    const [kyLuat, line] = await Promise.all([
+      kyLuatCuaThanhVien(req.user!.sub, year, month),
+      payrollForMember(req.user!.sub, year, month),
+    ]);
     res.json({
       year,
       month,
-      line: await payrollForMember(req.user!.sub, year, month),
+      line,
       kyLuat,
       canhBao: cauCanhBao(kyLuat, `${month}/${year}`),
     });

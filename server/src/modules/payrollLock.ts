@@ -1,4 +1,5 @@
 import { q } from '../db/client.js';
+import { nhoTrongRequest } from '../util/cache.js';
 
 /**
  * Tháng đã chốt lương chưa.
@@ -12,6 +13,9 @@ import { q } from '../db/client.js';
  * './payroll.service.js'` vẫn chạy nguyên.
  */
 export async function isMonthLocked(year: number, month: number): Promise<boolean> {
-  const rows = await q('SELECT 1 FROM payroll_locks WHERE year = $1 AND month = $2 LIMIT 1', [year, month]);
-  return rows.length > 0;
+  // Nhớ trong MỘT request — không cache qua request: khoá là chốt chặn sửa số liệu.
+  return nhoTrongRequest(`khoa-luong:${year}-${month}`, async () => {
+    const rows = await q('SELECT 1 FROM payroll_locks WHERE year = $1 AND month = $2 LIMIT 1', [year, month]);
+    return rows.length > 0;
+  });
 }

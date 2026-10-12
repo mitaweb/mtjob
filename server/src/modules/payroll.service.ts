@@ -3,6 +3,7 @@ import { getAttendanceBetween } from './attendance.repo.js';
 import { getHolidaySet } from './holidays.repo.js';
 import { getConfig } from '../config.js';
 import { q } from '../db/client.js';
+import { xoaTrongRequest } from '../util/cache.js';
 import { standardWorkingDays } from '../lib/workdays.js';
 import { computeNetSalary } from '../lib/money.js';
 import { inRange } from '../lib/scores.js';
@@ -87,7 +88,7 @@ export async function payrollForMember(
   year: number,
   month: number,
 ): Promise<PayrollLine | null> {
-  const m = await findById(memberId);
+  const m = await findById(memberId); // đã cache — gần như không tốn gì; tránh tính lương cả tháng cho giám đốc
   if (!m || m.role === 'director') return null;
   const lines = await payrollForMonth(year, month);
   return lines.find((l) => l.memberId === memberId) ?? null;
@@ -178,6 +179,7 @@ export async function lockPayrollMonth(year: number, month: number, byName: stri
      ON CONFLICT (year, month) DO UPDATE SET locked_at = EXCLUDED.locked_at, locked_by = EXCLUDED.locked_by`,
     [year, month, atIso, byName],
   );
+  xoaTrongRequest('khoa-luong:');
 
   // Lương tháng M trả vào tháng M+1 → tự ghi 1 khoản CHI ở tháng sau (tổng thực lãnh).
   const total = lines.reduce((s, l) => s + (Number(l.netSalary) || 0), 0);
@@ -202,5 +204,6 @@ export async function lockPayrollMonth(year: number, month: number, byName: stri
 /** Mở lại tháng đã chốt (cho phép sửa + tính lại) + gỡ khoản chi lương tự sinh. */
 export async function unlockPayrollMonth(year: number, month: number): Promise<void> {
   await q('DELETE FROM payroll_locks WHERE year = $1 AND month = $2', [year, month]);
+  xoaTrongRequest('khoa-luong:');
   await deleteEntry(payrollEntryId(year, month));
 }

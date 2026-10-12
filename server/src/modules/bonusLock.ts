@@ -1,4 +1,5 @@
 import { q } from '../db/client.js';
+import { nhoTrongRequest } from '../util/cache.js';
 
 // Khoá THƯỞNG của một tháng — tách khỏi khoá lương (payrollLock.ts).
 //
@@ -15,8 +16,11 @@ import { q } from '../db/client.js';
 
 /** Tháng đã chốt thưởng chưa. */
 export async function isBonusLocked(year: number, month: number): Promise<boolean> {
-  const rows = await q('SELECT 1 FROM bonus_locks WHERE year = $1 AND month = $2 LIMIT 1', [year, month]);
-  return rows.length > 0;
+  // Nhớ trong MỘT request (trang Bảng điểm hỏi 4 lần) — không cache qua request: khoá là chốt chặn sửa số liệu.
+  return nhoTrongRequest(`khoa-thuong:${year}-${month}`, async () => {
+    const rows = await q('SELECT 1 FROM bonus_locks WHERE year = $1 AND month = $2 LIMIT 1', [year, month]);
+    return rows.length > 0;
+  });
 }
 
 /** Điểm của tháng này còn sửa được không. Trả câu lý do, hoặc '' nếu sửa được. */

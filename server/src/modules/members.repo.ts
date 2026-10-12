@@ -1,5 +1,9 @@
 // Data access for members (Postgres).
 import { q } from '../db/client.js';
+import { nhoTam, xoaNhoTam } from '../util/cache.js';
+
+// Danh sách thành viên ít đổi mà gần như route nào cũng hỏi — nhớ 60s, ghi thì xoá ngay (anh Tâm 12/10/2026).
+const TV_TTL = 60_000;
 import type { Member, Role, Team } from '../types.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -29,13 +33,13 @@ export function publicMember(m: Member): PublicMember {
 }
 
 export async function getAllMembers(): Promise<Member[]> {
-  const rows = await q('SELECT * FROM members ORDER BY full_name');
-  return rows.map(rowToMember);
+  return nhoTam('tv:all', TV_TTL, async () => (await q('SELECT * FROM members ORDER BY full_name')).map(rowToMember));
 }
 
 export async function getActiveMembers(): Promise<Member[]> {
-  const rows = await q('SELECT * FROM members WHERE active = true ORDER BY full_name');
-  return rows.map(rowToMember);
+  return nhoTam('tv:active', TV_TTL, async () =>
+    (await q('SELECT * FROM members WHERE active = true ORDER BY full_name')).map(rowToMember),
+  );
 }
 
 export async function findByEmail(email: string): Promise<Member | undefined> {
@@ -50,8 +54,10 @@ export async function findByLogin(login: string): Promise<Member | undefined> {
 }
 
 export async function findById(id: string): Promise<Member | undefined> {
-  const rows = await q('SELECT * FROM members WHERE member_id = $1 LIMIT 1', [id]);
-  return rows.length ? rowToMember(rows[0]) : undefined;
+  return nhoTam(`tv:id:${id}`, TV_TTL, async () => {
+    const rows = await q('SELECT * FROM members WHERE member_id = $1 LIMIT 1', [id]);
+    return rows.length ? rowToMember(rows[0]) : undefined;
+  });
 }
 
 export async function membersInTeam(teamId: string): Promise<Member[]> {
@@ -60,12 +66,14 @@ export async function membersInTeam(teamId: string): Promise<Member[]> {
 }
 
 export async function getDirectors(): Promise<Member[]> {
-  const rows = await q("SELECT * FROM members WHERE active = true AND role = 'director'");
-  return rows.map(rowToMember);
+  return nhoTam('tv:gd', TV_TTL, async () =>
+    (await q("SELECT * FROM members WHERE active = true AND role = 'director'")).map(rowToMember),
+  );
 }
 
 export async function deleteMember(id: string): Promise<void> {
   await q('DELETE FROM members WHERE member_id = $1', [id]);
+  xoaNhoTam('tv:');
 }
 
 export async function upsertMember(m: Member): Promise<void> {
@@ -90,6 +98,7 @@ export async function upsertMember(m: Member): Promise<void> {
       m.salary, m.bhxh, m.joinDate || '', m.username || '', m.email, m.passwordHash, m.active,
     ],
   );
+  xoaNhoTam('tv:');
 }
 
 export interface MemberFootprint {
@@ -129,4 +138,6 @@ export async function purgeMember(id: string): Promise<void> {
   // Đang là leader của phòng nào thì gỡ ra, đừng để trỏ vào dòng vừa mất.
   await q("UPDATE teams SET leader_member_id = '' WHERE leader_member_id = $1", [id]);
   await q('DELETE FROM members WHERE member_id = $1', [id]);
+  xoaNhoTam('tv:');
+  xoaNhoTam('team:');
 }
