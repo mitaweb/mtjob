@@ -4,6 +4,7 @@
 import 'dotenv/config';
 import pg from 'pg';
 import { neon } from '@neondatabase/serverless';
+import { ghiTruyVan } from '../util/doThoiGian.js';
 
 let _pool: pg.Pool | undefined;
 let _neonSql: ReturnType<typeof neon> | undefined;
@@ -55,15 +56,21 @@ export function pool(): pg.Pool {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function q(text: string, params: unknown[] = []): Promise<any[]> {
   const url = dbUrl();
-  if (useNeonHttp(url)) {
+  const batDau = performance.now();
+  try {
+    if (useNeonHttp(url)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rows = await neonSql().query(text, params as any[]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return rows as any[];
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows = await neonSql().query(text, params as any[]);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return rows as any[];
+    const r = await pool().query(text, params as any[]);
+    return r.rows;
+  } finally {
+    // Đếm truy vấn + thời gian cho request đang chạy (util/doThoiGian.ts) — để biết trang nào chậm vì đâu.
+    ghiTruyVan(performance.now() - batDau);
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const r = await pool().query(text, params as any[]);
-  return r.rows;
 }
 
 export async function closePool(): Promise<void> {

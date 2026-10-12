@@ -23,9 +23,28 @@ import { calendarRouter } from '../modules/calendar.routes.js';
 import { projectsRouter } from '../modules/projects.routes.js';
 import { teamMembersRouter } from '../modules/team.members.routes.js';
 import { sweepRemindersOpportunistic } from '../modules/reminders.service.js';
+import { voiSoDo, headerServerTiming, type SoDo } from '../util/doThoiGian.js';
 
 export function createApp() {
   const app = express();
+  // Đo từng request (anh Tâm 12/10/2026: app chậm): số truy vấn + ms DB + tổng → header Server-Timing
+  // (tab Network của trình duyệt) và log request chậm ra Vercel logs. Đặt ĐẦU TIÊN để đo trọn request.
+  app.use((req, res, next) => {
+    const so: SoDo = { soTruyVan: 0, msDb: 0 };
+    const batDau = performance.now();
+    const goc = res.writeHead;
+    res.writeHead = function (this: typeof res, ...args: Parameters<typeof res.writeHead>) {
+      if (!res.headersSent) res.setHeader('Server-Timing', headerServerTiming(so, performance.now() - batDau));
+      return goc.apply(this, args);
+    } as typeof res.writeHead;
+    res.on('finish', () => {
+      const tong = performance.now() - batDau;
+      if (tong > 800 && req.path.startsWith('/api')) {
+        console.warn(`[chậm] ${req.method} ${req.path} ${tong.toFixed(0)}ms · ${so.soTruyVan} truy vấn ${so.msDb.toFixed(0)}ms DB`);
+      }
+    });
+    voiSoDo(so, next);
+  });
   app.use(cors());
   app.use(express.json({ limit: '5mb' }));
 
