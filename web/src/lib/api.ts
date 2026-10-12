@@ -47,12 +47,21 @@ export function onLoading(l: LoadingListener): () => void {
 
 // ── Cache trong phiên cho dữ liệu gần như tĩnh (vd /tasks/catalog) ──
 const getCache = new Map<string, { at: number; data: unknown }>();
+// Gộp lời gọi trùng đang bay (vd hai trang con cùng hỏi danh mục lúc mở) — chỉ một lượt mạng (12/10/2026).
+const dangGet = new Map<string, Promise<unknown>>();
 export async function cachedGet<T = unknown>(path: string, ttlMs = 5 * 60_000): Promise<T> {
   const hit = getCache.get(path);
   if (hit && Date.now() - hit.at < ttlMs) return hit.data as T;
-  const data = await api<T>(path);
-  getCache.set(path, { at: Date.now(), data });
-  return data;
+  const cho = dangGet.get(path);
+  if (cho) return cho as Promise<T>;
+  const p = api<T>(path)
+    .then((data) => {
+      getCache.set(path, { at: Date.now(), data });
+      return data;
+    })
+    .finally(() => dangGet.delete(path));
+  dangGet.set(path, p);
+  return p;
 }
 
 /** Sự kiện máy chủ đẩy về trong lúc trợ lý làm việc. */

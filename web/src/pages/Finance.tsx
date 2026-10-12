@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
 import { useToast } from '../components/Toaster';
@@ -103,9 +103,24 @@ export default function Finance() {
     setPay(py.rows);
     setCustomers(kh.customers);
   }
+  /** Chỉ phần phụ thuộc tháng — đổi tháng không cần tải lại danh sách nhân sự / khách (12/10/2026: tăng tốc). */
+  async function loadThang() {
+    const [s, p, py] = await Promise.all([
+      api<Summary>(`/finance/summary?month=${ym}`),
+      api<{ parties: Party[] }>(`/finance/parties?month=${ym}`),
+      api<{ rows: PayRow[] }>(`/finance/payroll?${ymQuery()}`),
+    ]);
+    setSum(s);
+    setParties(p.parties);
+    setPay(py.rows);
+  }
+  const daTaiLanDau = useRef(false);
   useEffect(() => {
     setLoading(true);
-    loadAll()
+    (daTaiLanDau.current ? loadThang() : loadAll())
+      .then(() => {
+        daTaiLanDau.current = true;
+      })
       .catch((e) => toast.error((e as Error).message))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps

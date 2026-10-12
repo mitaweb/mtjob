@@ -87,8 +87,18 @@ export default function Layout() {
         .then((r) => setUnread(r.total || 0))
         .catch(() => undefined);
     load();
-    const timer = setInterval(load, 60_000);
-    return () => clearInterval(timer);
+    // Tab đang ẩn (chuyển sang app khác) thì thôi hỏi; quay lại thì hỏi ngay một lần (12/10/2026: tăng tốc).
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') load();
+    }, 60_000);
+    const khiHien = () => {
+      if (document.visibilityState === 'visible') load();
+    };
+    document.addEventListener('visibilitychange', khiHien);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', khiHien);
+    };
   }, [user, onInbox]);
 
   const sidebar = (

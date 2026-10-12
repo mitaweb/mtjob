@@ -140,6 +140,13 @@ export default function Inbox() {
 
   // Lần đầu: đếm trước để biết mở tab nào, rồi mới tải danh sách của tab đó.
   useEffect(() => {
+    // Mở từ thông báo (?tab=) → đã biết tab: tải danh sách CÙNG LÚC với số đếm, không phải chờ (12/10/2026).
+    if (tabUrl && GROUPS.some((g) => g.key === tabUrl)) {
+      Promise.all([loadCounts(), loadGroup(tabUrl as Group)])
+        .catch((e) => toast.error((e as Error).message))
+        .finally(() => setLoading(false));
+      return;
+    }
     loadCounts()
       .then((counts) => {
         // Có ?tab= (bấm từ thông báo đẩy) thì mở đúng tab đó; không thì tab đầu tiên còn tin chưa đọc.
