@@ -122,6 +122,7 @@ export default function CRM() {
   async function loadCustomers() {
     const c = await api<{ customers: Customer[] }>('/crm/customers');
     setCustomers(c.customers);
+    return c.customers;
   }
   async function loadUpcoming() {
     const u = await api<{ appointments: Appointment[] }>('/crm/appointments/upcoming');
@@ -130,7 +131,12 @@ export default function CRM() {
   useEffect(() => {
     // Danh sách thành viên gần như tĩnh → chỉ tải 1 lần lúc mở trang.
     Promise.all([
-      loadCustomers(),
+      // ?kh=<mã khách> (bấm từ thông báo nhắc việc của khách) → mở thẳng khách đó.
+      loadCustomers().then((ds) => {
+        const kh = new URLSearchParams(window.location.search).get('kh');
+        const c = kh ? ds.find((x) => x.id === kh) : undefined;
+        if (c) openCustomer(c);
+      }),
       loadUpcoming(),
       api<{ members: Mem[] }>('/crm/members').then((m) => setMembers(m.members)),
     ]).catch((e) => toast.error((e as Error).message));

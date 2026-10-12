@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
+  coTienBac,
+  anTienBac,
   timBiMat,
   xoaLienHe,
   xepTrangThai,
@@ -137,5 +139,41 @@ describe('tuKhoaTimKiem / chuanTen', () => {
   it('bỏ dấu, bỏ từ rỗng', () => {
     expect(chuanTen('  Đặng  Hà ')).toBe('dang ha');
     expect(tuKhoaTimKiem('Quy trình bàn giao khách hàng là gì?')).toEqual(['quy', 'trinh', 'giao', 'khach', 'hang']); // 'bàn' bỏ dấu trùng 'bạn' (từ rỗng) — chấp nhận
+  });
+});
+
+// Anh Tâm 12/10/2026: "các thông tin về chi phí thì chỉ giám đốc hỏi mới được, nhân sự hỏi không trả lời".
+describe('coTienBac / anTienBac', () => {
+  it('nhận ra thông tin chi phí', () => {
+    for (const s of [
+      'Gói clone giọng ~50 USD/tháng',
+      'Ngân sách quảng cáo 500k/ngày',
+      'Báo giá 3 gói 15/28/45tr',
+      'Khách đã thanh toán đợt 1',
+      'Giá trị hợp đồng 120.000.000đ',
+      'Chi phí in catalogue',
+      'Hoá đơn đợt trước chưa xác nhận',
+      '$30 mỗi tháng',
+      'Đặt cọc 30%',
+    ])
+      expect(coTienBac(s), s).toBe(true);
+  });
+  it('không bắt nhầm', () => {
+    for (const s of [
+      'Check 1 content là SEO04 được 15 điểm',
+      'Đánh giá chất lượng video',
+      'Giá trị thương hiệu là sự tin cậy',
+      'Mã khuyến mãi CON05',
+      'Họp lúc 10h ngày 12/10',
+      'Đăng 3 bài/tuần, mỗi bài 2 ảnh',
+      'Màu chính #0B5FD9',
+    ])
+      expect(coTienBac(s), s).toBe(false);
+  });
+  it('ẩn đúng câu có tiền, giữ phần còn lại', () => {
+    const r = anTienBac('Khách bán nội thất gỗ. Ngân sách 20tr/tháng. Thích tông nâu.\nĐã thanh toán đợt 1.\nNgười liên hệ: chị Hà');
+    expect(r.daAn).toBe(true);
+    expect(r.text).toBe('Khách bán nội thất gỗ. Thích tông nâu.\n\nNgười liên hệ: chị Hà');
+    expect(anTienBac('Không có tiền gì cả')).toEqual({ text: 'Không có tiền gì cả', daAn: false });
   });
 });

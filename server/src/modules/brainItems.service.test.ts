@@ -293,3 +293,47 @@ describe('xetLaiMucCho — AI xét lại mục đang chờ', () => {
     expect(await S.xetLaiMucCho({ ids: [id], han: Date.now() + 10_000 })).toMatchObject({ xong: 0 });
   });
 });
+
+// Anh Tâm 12/10/2026: "các thông tin về chi phí thì chỉ giám đốc hỏi mới được, nhân sự hỏi không trả lời".
+describe('thông tin chi phí — chỉ giám đốc', () => {
+  const muc = (id: string, x: Record<string, unknown> = {}) =>
+    MUC.set(id, { id, title: `Mục ${id}`, body: `Nội dung ${id}`, summary: '', category: 'khach_hang', customer: '', customerId: '', status: 'published', scope: 'all', updatedAt: '2026-10-12T00:00:00Z', ...x });
+
+  it('nhân sự gửi nội dung có giá / chi phí → vào kho nhưng CHỈ giám đốc xem', async () => {
+    phanLoai({ quyetDinh: 'cong_viec', category: 'dich_vu' });
+    const r = await S.xetDuaVaoKho({ title: 'Gói lồng tiếng', body: 'Gói clone giọng khoảng 50 USD/tháng, dồn nhiều video.', source: 'manual' }, NV);
+    expect(r.item).toMatchObject({ status: 'published', scope: 'director' });
+    expect(r.item!.aiReason).toContain('chi phí');
+    expect(NAP[NAP.length - 1]).toMatchObject({ visibility: 'director' });
+  });
+
+  it('nội dung không có tiền → vẫn cho cả công ty như cũ', async () => {
+    phanLoai({ quyetDinh: 'cong_viec', category: 'tieu_chuan' });
+    const r = await S.xetDuaVaoKho({ title: 'Màu thương hiệu', body: 'Màu chính xanh #0B5FD9, phụ cam.', source: 'manual' }, NV);
+    expect(r.item).toMatchObject({ scope: 'all' });
+  });
+
+  it('nhân sự tra kho: câu có tiền bị ẩn, phần còn lại vẫn trả', async () => {
+    muc('BI-tin', { title: 'Lưu ý Tín Đạt', body: 'Khách thích video ngắn. Đã chốt gói 50 USD/tháng. Duyệt bài sáng thứ Hai.' });
+    HITS = [{ sourceType: 'item', sourceId: 'BI-tin', score: 0.8, content: '[x]\nKhách thích video ngắn. Đã chốt gói 50 USD/tháng. Duyệt bài sáng thứ Hai.', customer: '', createdAt: '' }];
+    const nv = await S.timTriThuc('lưu ý Tín Đạt', { directorScope: false, memberId: 'M1', teamId: 'Ads' });
+    expect(nv).toContain('Khách thích video ngắn.');
+    expect(nv).toContain('Duyệt bài sáng thứ Hai.');
+    expect(nv).not.toContain('50 USD');
+    expect(nv).toContain('Đã ẩn thông tin chi phí');
+    const gd = await S.timTriThuc('lưu ý Tín Đạt', { directorScope: true });
+    expect(gd).toContain('50 USD');
+  });
+
+  it('nhân sự hỏi đúng chuyện tiền → "chỉ giám đốc", KHÔNG phải "kho chưa có"', async () => {
+    muc('BI-gia', { title: 'Báo giá gói SEO', body: 'Gói SEO 15 triệu/tháng.' });
+    HITS = [
+      { sourceType: 'item', sourceId: 'BI-gia', score: 0.9, content: '[x]\nGói SEO 15 triệu/tháng.', customer: '', createdAt: '' },
+      { sourceType: 'document', sourceId: 'D1', score: 0.8, content: '[x]\nBảng giá 2026: website 20tr.', customer: '', createdAt: '' },
+    ];
+    const kq = await S.timTriThuc('giá gói SEO bao nhiêu', { directorScope: false, memberId: 'M1' });
+    expect(kq.startsWith(S.CHI_GIAM_DOC_CHI_PHI)).toBe(true);
+    expect(kq).not.toContain('15 triệu');
+    expect(kq).not.toContain('20tr');
+  });
+});

@@ -155,6 +155,12 @@ export function memberPrompt({ today, fullName, teamId, isSale }: MemberPromptVa
     'LUÔN ĐỀ XUẤT, ĐỪNG HỎI NGƯỢC RỒI DỪNG: thiếu dữ liệu thì vẫn đưa phương án cụ thể dựa trên',
     'những gì đang có, ghi rõ chỗ nào là giả định. Không kết thúc bằng "bạn có muốn mình… không?".',
     '',
+    'THÔNG TIN CHI PHÍ — CHỈ GIÁM ĐỐC (anh Tâm 12/10/2026): giá dịch vụ / báo giá của công ty, chi phí, ngân sách',
+    'của khách, hợp đồng, thanh toán, công nợ, hoá đơn, doanh thu, lương thưởng người khác → KHÔNG trả lời, KHÔNG',
+    'ước đoán, KHÔNG tự đưa con số. Nói ngắn: "Thông tin chi phí chỉ giám đốc nắm, bạn hỏi trực tiếp anh Tâm nhé."',
+    'Hàm trả "THÔNG TIN CHI PHÍ — CHỈ GIÁM ĐỐC" thì cũng nói như vậy (KHÔNG chuyển câu hỏi cho giám đốc). Kiến thức',
+    'marketing chung không gắn với công ty / khách (vd cách phân bổ ngân sách quảng cáo) thì vẫn trả lời được.',
+    '',
     ...(me.role === 'sale'
       ? [
           'GHI NHẬN KHÁCH HÀNG (bạn làm sale nên có quyền này): khách mới, đổi tình trạng, ghi chú,',

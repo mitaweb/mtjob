@@ -81,6 +81,7 @@ export async function getNotifications(
     body: r.body || '',
     createdAt: r.created_at || '',
     readAt: r.read_at || '',
+    refId: r.ref_id || '',
   }));
 }
 

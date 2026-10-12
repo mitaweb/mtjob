@@ -14,6 +14,8 @@ import {
   QUY_TAC_KHO,
   laNhom,
   timBiMat,
+  coTienBac,
+  anTienBac,
   xoaLienHe,
   xepTrangThai,
   cauBaoNguoiGui,
@@ -269,10 +271,15 @@ export async function xetDuaVaoKho(input: DuaVaoInput, nguoi: NguoiGui): Promise
     }
   }
 
+  // Thông tin chi phí / giá / tiền → chỉ giám đốc xem (anh Tâm 12/10/2026).
+  const coTien = coTienBac(`${title}\n${body}`);
   const xep = xepTrangThai(
     { quyetDinh: pl.quyetDinh, category: pl.category, teamId: pl.teamId },
-    { laGiamDoc: laGiamDoc(nguoi.role), nguon: input.source },
+    { laGiamDoc: laGiamDoc(nguoi.role), nguon: input.source, coTien },
   );
+  if (coTien && xep.scope === 'director' && xep.status !== 'rejected' && xep.category !== 'rieng') {
+    lyDo = `${lyDo ? `${lyDo} ` : ''}Có thông tin chi phí / giá — chỉ giám đốc xem.`;
+  }
 
   const item: BrainItem = {
     ...goc,
@@ -385,6 +392,8 @@ const NGUON_VI: Record<string, string> = {
 
 /** Câu đánh dấu "kho chưa có" — trợ lý nhân viên đọc thấy thì chuyển câu hỏi cho giám đốc. */
 export const CHUA_CO = 'CHƯA CÓ TRONG KHO';
+/** Câu đánh dấu "chỉ giám đốc" — thông tin chi phí, nhân sự hỏi thì không trả lời (anh Tâm 12/10/2026). */
+export const CHI_GIAM_DOC_CHI_PHI = 'THÔNG TIN CHI PHÍ — CHỈ GIÁM ĐỐC';
 
 export async function timTriThuc(query: string, opts: TimOpts): Promise<string> {
   const text = String(query || '').trim();
@@ -445,21 +454,47 @@ export async function timTriThuc(query: string, opts: TimOpts): Promise<string> 
   }
 
   const NGUONG = 0.5;
-  const muc = (await itemsByIds([...theoMuc.keys()]))
+  let muc = (await itemsByIds([...theoMuc.keys()]))
     .filter((i) => i.status === 'published')
     .map((i) => ({ i, ...theoMuc.get(i.id)! }))
     .filter((x) => x.score >= NGUONG)
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
-  const le = khac.filter((h) => h.score >= NGUONG).slice(0, 4);
+  let le = khac.filter((h) => h.score >= NGUONG).slice(0, 4);
+
+  // Nhân sự: bỏ mọi câu có chi phí / giá / tiền (anh Tâm 12/10/2026: "các thông tin về chi phí thì chỉ giám
+  // đốc hỏi mới được, nhân sự hỏi không trả lời"). Lọc cả mục kho lẫn đoạn rời (tài liệu, hồ sơ, sheet).
+  let anChiPhi = 0;
+  let coAn = false;
+  if (!opts.directorScope) {
+    coAn =
+      muc.some((m) => coTienBac(`${m.i.title}
+${m.i.summary}
+${m.doan || m.i.body}`)) || le.some((h) => coTienBac(h.content));
+    const truoc = muc.length + le.length;
+    muc = muc
+      .filter((m) => !coTienBac(m.i.title))
+      .map((m) => ({
+        ...m,
+        i: { ...m.i, summary: anTienBac(m.i.summary).text, body: anTienBac(m.i.body).text },
+        doan: anTienBac(m.doan).text,
+      }))
+      .filter((m) => (m.doan || m.i.body).trim().length >= 10);
+    le = le.map((h) => ({ ...h, content: anTienBac(h.content).text })).filter((h) => bo1Dong(h.content).trim().length >= 10);
+    anChiPhi = truoc - muc.length - le.length;
+  }
 
   if (muc.length === 0 && le.length === 0) {
+    if (anChiPhi > 0) {
+      return `${CHI_GIAM_DOC_CHI_PHI}: điều được hỏi là thông tin chi phí / giá — chỉ giám đốc xem. KHÔNG trả lời, KHÔNG ước đoán; nói bạn ấy hỏi trực tiếp giám đốc.`;
+    }
     return `${CHUA_CO}: không có mục nào nói về "${text}"${customerName ? ` của khách ${customerName}` : ''}.`;
   }
 
   const tot = Math.max(...muc.map((m) => m.score), ...le.map((h) => h.score));
   const parts: string[] = [];
   if (tot < 0.62) parts.push('(Độ khớp thấp — có thể kho chưa có đúng điều được hỏi; đừng suy diễn thành quy định.)');
+  if (coAn) parts.push('(Đã ẩn thông tin chi phí / giá — chỉ giám đốc xem. Bạn ấy hỏi về tiền thì nói hỏi giám đốc.)');
   const MAX = 5000;
   let tong = 0;
   for (const m of muc) {

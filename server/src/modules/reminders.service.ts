@@ -73,6 +73,8 @@ export async function runDueReminders(): Promise<number> {
       body: `Nhắc hẹn ${describeRule(rule)}.`,
       // Bấm thông báo → mở thẳng tab Nhắc hẹn (trước mở trang Chat).
       url: '/inbox?tab=remind',
+      // Mã nhắc — nhắc gộp của khách (ZR-K-<khách>) thì nút "Mở trang liên quan" mở đúng khách trong CRM.
+      refId: r.id,
     });
     sent++;
     // Nhắc 1 lần đã gửi xong thì tắt luôn.

@@ -316,12 +316,6 @@ export default function BrainZalo() {
 
   return (
     <div className="space-y-3">
-      <div className="card border-amber-200 bg-amber-50 text-sm text-amber-900">
-        ⚠️ Đây là kết nối <b>không chính thức</b> (giả lập Zalo Web). Zalo có thể khoá tài khoản nếu phát hiện. App chỉ <b>đọc</b> tin, không
-        gửi tin hay làm gì thay anh. Đang mở Zalo trên trình duyệt (chat.zalo.me) thì lượt đồng bộ đó bị đẩy ra — Zalo điện thoại / PC không ảnh
-        hưởng.
-      </div>
-
       {!st.configured && (
         <div className="card border-rose-200 bg-rose-50 text-sm text-rose-800">
           Chưa cấu hình khoá mã hoá phiên. Vào Vercel → Settings → Environment Variables, thêm <b>ZALO_SESSION_KEY</b> = một chuỗi ngẫu nhiên dài

@@ -66,6 +66,38 @@ const fmtWhen = (iso: string) => {
     : d.toLocaleString('vi-VN', NGAY_GIO_VN);
 };
 
+/**
+ * Trang liên quan của TỪNG thông báo (anh Tâm 12/10/2026: "bấm vào mở trang liên quan thì ra ô chat, không
+ * đúng chỗ") — trước đây mọi thông báo trong nhóm đều mở chung một trang.
+ */
+function noiDen(n: NotificationItem, macDinh: string): string {
+  const ref = n.refId || '';
+  if (ref.startsWith('ZR-K-')) return `/crm?kh=${encodeURIComponent(ref.slice(5))}`; // nhắc việc của một khách
+  switch (n.type) {
+    case 'reminder':
+      return '/chat?nhac=1'; // nhắc hẹn cá nhân → mở danh sách nhắc hẹn
+    case 'appointment':
+    case 'customer_birthday':
+      return '/crm';
+    case 'finance_due':
+      return '/finance';
+    case 'attendance':
+      return '/attendance';
+    case 'kyluat':
+      return '/scores';
+    case 'zalo_hoi':
+      return '/brain?tab=zalo';
+    case 'brain_question':
+      return '/brain?tab=hoi';
+    case 'brain_pending':
+      return '/brain?tab=duyet';
+    case 'brain_answer':
+      return '/brain';
+    default:
+      return macDinh;
+  }
+}
+
 export default function Inbox() {
   const toast = useToast();
   const navigate = useNavigate();
@@ -238,7 +270,7 @@ export default function Inbox() {
             onClick={(e) => {
               e.stopPropagation();
               if (!n.readAt) markRead(n.id);
-              navigate(current.to);
+              navigate(noiDen(n, current.to));
             }}
           >
             Mở {current.key === 'request' ? 'trang duyệt đơn' : 'trang liên quan'} →

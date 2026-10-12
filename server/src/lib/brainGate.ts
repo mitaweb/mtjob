@@ -123,10 +123,15 @@ const NGUON_TU_DONG = new Set(['auto', 'zalo']);
 
 export function xepTrangThai(
   q: { quyetDinh: QuyetDinh; category: string; teamId?: string },
-  ctx: { laGiamDoc: boolean; nguon: string },
+  ctx: { laGiamDoc: boolean; nguon: string; coTien?: boolean },
 ): KetQuaXep {
   const nhom: NhomKey = laNhom(q.category) ? q.category : 'quy_trinh';
-  const phamViCongViec = q.teamId && /^(Ads|Content|SEO)$/.test(q.teamId) && nhom !== 'khach_hang' ? `team:${q.teamId}` : 'all';
+  // Có thông tin chi phí / giá / tiền → CHỈ giám đốc xem (anh Tâm 12/10/2026), dù là việc chung.
+  const phamViCongViec = ctx.coTien
+    ? 'director'
+    : q.teamId && /^(Ads|Content|SEO)$/.test(q.teamId) && nhom !== 'khach_hang'
+      ? `team:${q.teamId}`
+      : 'all';
 
   if (q.quyetDinh === 'khong_luu') return { status: 'rejected', scope: 'director', category: nhom };
   if (q.quyetDinh === 'rieng_giam_doc' || nhom === 'rieng') {
@@ -208,4 +213,37 @@ export function cauHoiGiong(a: string, b: string): boolean {
 /** Từ khoá để tìm bằng chữ trong tiêu đề/thẻ/tóm tắt (bỏ từ rỗng, tối đa 6 từ). */
 export function tuKhoaTimKiem(s: string): string[] {
   return [...tuKhoa(s)].filter((w) => w.length >= 3).slice(0, 6);
+}
+
+// ── Thông tin chi phí: CHỈ giám đốc (anh Tâm 12/10/2026: "các thông tin về chi phí thì chỉ giám đốc hỏi mới
+// được, nhân sự hỏi không trả lời") ──
+
+/** Số tiền: "500k", "2,5 triệu", "15tr", "20.000.000đ", "50 USD", "$50", "50 đô". */
+const SO_TIEN =
+  /(\$\s?\d)|(\d[\d.,]*\s?(k|nghìn|ngàn|tr|triệu|tỷ|tỉ|đ|đồng|vnđ|vnd|usd|đô)(?![\p{L}\d]))/iu;
+/** Từ khoá chi phí / giá / tiền bạc (không bắt "đánh giá", "giá trị thương hiệu"). */
+const TU_TIEN =
+  /(^|[^\p{L}])(chi phí|báo giá|bảng giá|giá gói|giá dịch vụ|giá bán|giá tiền|đơn giá|mức giá|giá niêm yết|ngân sách|thanh toán|công nợ|hoá đơn|hóa đơn|chuyển khoản|đặt cọc|tiền cọc|doanh thu|lợi nhuận|phí dịch vụ|học phí|hoa hồng|lương|tiền thưởng|giá hợp đồng|giá trị hợp đồng)(?![\p{L}])/iu;
+
+/** Nội dung có thông tin chi phí / giá / tiền bạc không. */
+export function coTienBac(text: string): boolean {
+  const s = String(text || '');
+  return SO_TIEN.test(s) || TU_TIEN.test(s);
+}
+
+/** Bỏ các câu / dòng có thông tin chi phí (cho nhân sự đọc). Trả về văn bản còn lại + đã bỏ gì không. */
+export function anTienBac(text: string): { text: string; daAn: boolean } {
+  let daAn = false;
+  const dong = String(text || '')
+    .split('\n')
+    .map((d) => {
+      if (!coTienBac(d)) return d;
+      // Bỏ từng câu có tiền trong dòng, giữ câu khác.
+      const cau = d.split(/(?<=[.;!?])\s+/);
+      const giu = cau.filter((c) => !coTienBac(c));
+      daAn = true;
+      return giu.join(' ');
+    })
+    .filter((d, i, a) => d.trim() || (i > 0 && a[i - 1]!.trim()));
+  return { text: dong.join('\n').trim(), daAn };
 }

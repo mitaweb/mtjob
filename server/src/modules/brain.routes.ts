@@ -48,13 +48,24 @@ import {
   listQuestions,
   countOpenQuestions,
 } from './brainItems.repo.js';
-import { NHOM, chuanTen } from '../lib/brainGate.js';
+import { NHOM, chuanTen, coTienBac, anTienBac } from '../lib/brainGate.js';
 import { findById } from './members.repo.js';
 import { getCustomers } from './crm.repo.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
 
 export const brainRouter = Router();
+
+/**
+ * Mục kho cho NHÂN SỰ xem: ẩn câu có chi phí / giá / tiền (anh Tâm 12/10/2026: "các thông tin về chi phí thì
+ * chỉ giám đốc hỏi mới được"). Tiêu đề có tiền, hoặc ẩn xong không còn gì → không cho xem (null).
+ */
+function anMucChoNhanSu<T extends { title: string; summary: string; body: string }>(i: T): T | null {
+  if (coTienBac(i.title)) return null;
+  const body = anTienBac(i.body).text;
+  if (body.trim().length < 10) return null;
+  return { ...i, summary: anTienBac(i.summary).text, body };
+}
 
 // Tệp cho phép tải lên kho. Ảnh cũng nhận vì Gemini đọc được chữ trong ảnh
 // (chụp hợp đồng, báo giá giấy…). Ghi âm để sẵn cho lần sau, hiện chưa bật.
@@ -153,12 +164,16 @@ brainRouter.get(
 /** Hồ sơ 360° các khách hàng đã tổng hợp — cho trang Kho tri thức. */
 brainRouter.get(
   '/profiles',
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
     if (!(await brainTableReady())) {
       res.json({ profiles: [] });
       return;
     }
-    res.json({ profiles: await listProfiles(100) });
+    const ds = await listProfiles(100);
+    // Nhân sự: ẩn câu có chi phí / giá / tiền trong hồ sơ khách (anh Tâm 12/10/2026).
+    res.json({
+      profiles: DIRECTOR_ROLES.has(req.user!.role) ? ds : ds.map((p) => ({ ...p, summary: anTienBac(p.summary).text })),
+    });
   }),
 );
 
@@ -179,7 +194,13 @@ brainRouter.get(
       teamId: directorScope ? undefined : (await nguoiDangNhap(req)).teamId,
       limit: 60,
     });
-    res.json({ chunks, canDelete: directorScope });
+    res.json({
+      // Nhân sự: ẩn câu có chi phí / giá / tiền; đoạn chỉ toàn tiền thì bỏ hẳn.
+      chunks: directorScope
+        ? chunks
+        : chunks.map((c) => ({ ...c, content: anTienBac(c.content).text })).filter((c) => c.content.trim().length >= 10),
+      canDelete: directorScope,
+    });
   }),
 );
 
@@ -275,7 +296,8 @@ brainRouter.get(
         submittedBy: mine ? nguoi.id : undefined,
         limit: gd ? 500 : 200,
       });
-      res.json({ items });
+      // Nhân sự: ẩn thông tin chi phí (trừ mục của chính mình gửi).
+      res.json({ items: gd ? items : items.map((i) => (i.submittedBy === nguoi.id ? i : anMucChoNhanSu(i))).filter(Boolean) });
     } catch (e) {
       if (isMissingTable(e)) {
         res.json({ items: [], needsMigrate: true });
@@ -388,7 +410,9 @@ brainRouter.get(
         item.submittedBy === nguoi.id ||
         (item.status === 'published' && (item.scope === 'all' || item.scope === `team:${nguoi.teamId}`)));
     if (!xemDuoc) throw new ApiError(404, 'Không tìm thấy mục');
-    res.json({ item });
+    const hien = gd || item!.submittedBy === nguoi.id ? item : anMucChoNhanSu(item!);
+    if (!hien) throw new ApiError(403, 'Mục này có thông tin chi phí — chỉ giám đốc xem được.');
+    res.json({ item: hien });
   }),
 );
 

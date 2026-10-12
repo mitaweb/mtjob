@@ -226,7 +226,8 @@ export default function Chat() {
   const [startingTodo, setStartingTodo] = useState<TodoTask | null>(null);
   const [pickQuery, setPickQuery] = useState('');
   const [stage, setStage] = useState(''); // việc trợ lý đang làm, hiện lúc chờ
-  const [showReminders, setShowReminders] = useState(false);
+  // ?nhac=1 (bấm "Mở trang liên quan" ở thông báo nhắc hẹn) → mở sẵn danh sách nhắc hẹn.
+  const [showReminders, setShowReminders] = useState(() => new URLSearchParams(window.location.search).get('nhac') === '1');
   const [showCalendar, setShowCalendar] = useState(false);
   const [savingIdx, setSavingIdx] = useState<number | null>(null); // đang mở ô lưu vào kho
   const [saveTitle, setSaveTitle] = useState('');

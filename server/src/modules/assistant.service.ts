@@ -22,7 +22,7 @@ import {
   type NguoiGui,
 } from './brainItems.service.js';
 import { listQuestions } from './brainItems.repo.js';
-import { NHOM, NHOM_KEYS } from '../lib/brainGate.js';
+import { NHOM, NHOM_KEYS, anTienBac } from '../lib/brainGate.js';
 import { getCustomers } from './crm.repo.js';
 import { addReminder } from './reminders.repo.js';
 import { previewDirectorReport } from '../jobs/dailyReport.js';
@@ -84,6 +84,16 @@ const PROFILE_TOOL: ToolDef = {
     },
   },
   run: (a) => customerProfileText(String(a.name || '')),
+};
+
+/** Hồ sơ khách cho NHÂN SỰ: ẩn mọi câu có chi phí / giá / tiền (anh Tâm 12/10/2026: chỉ giám đốc được hỏi). */
+const PROFILE_TOOL_NHAN_SU: ToolDef = {
+  declaration: PROFILE_TOOL.declaration,
+  run: async (a) => {
+    const r = anTienBac(await customerProfileText(String(a.name || '')));
+    return r.daAn ? `${r.text}
+(Đã ẩn thông tin chi phí / giá — chỉ giám đốc xem.)` : r.text;
+  },
 };
 
 /**
@@ -963,7 +973,7 @@ export async function answerMemberQuestion(
       declaration: { name: 'get_task_catalog', description: 'Danh mục loại việc và điểm tương ứng.' },
       run: () => catalogText(me.teamId || ''),
     },
-    PROFILE_TOOL,
+    PROFILE_TOOL_NHAN_SU,
     // Quyền xem chặn cứng ở tầng SQL: chỉ thấy mục 'all' + mục của phòng mình + đoạn riêng của mình.
     knowledgeTool({ directorScope: false, memberId, teamId: me.teamId || '' }),
     reminderTool(memberId, me.role),

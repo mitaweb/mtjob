@@ -152,4 +152,6 @@ export interface NotificationItem {
   body: string;
   createdAt: string;
   readAt: string;
+  /** Mã thứ được nhắc tới (vd mã nhắc hẹn ZR-K-<khách>). */
+  refId?: string;
 }
