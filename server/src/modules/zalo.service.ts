@@ -8,7 +8,7 @@
 //   3. Cập nhật khách: khớp/tạo khách trong CRM, thêm điều mới vào "Thông tin khách".
 //   4. Việc giám đốc cần làm (khách hỏi báo giá chưa trả lời…) → đặt nhắc hẹn cho giám đốc.
 import { aiKhoJson } from '../ai/brainAi.js';
-import { dungDoanChat, denLucRut, noiDungTin, goiYTenKhachTuNhom, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, dangDoc, type TinZalo } from '../lib/zalo.js';
+import { dungDoanChat, denLucRut, noiDungTin, goiYTenKhachTuNhom, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, dangDoc, nhomKhongLienQuan, type TinZalo } from '../lib/zalo.js';
 import { khopKhach, xoaLienHe, chuanTen } from '../lib/brainGate.js';
 import {
   ghiNhieuCuoc,
@@ -27,6 +27,9 @@ import {
   donTinCu,
   nhomChuaXet,
   ghiKetQuaXet,
+  nhomAiDaChoHoc,
+  demNhomAiDaChoHoc,
+  DA_LOC_LAI,
   CHUA_RO_THEO_TEN,
   type ZaloThread,
 } from './zalo.repo.js';
@@ -631,8 +634,17 @@ export interface KetLuanNhom {
 }
 
 /** Nhờ AI xét một lô nhóm: nhóm nào là nhóm làm việc với KHÁCH HÀNG, tên khách là gì. */
-export async function xetNhom(ds: NhomCanXet[], tenKhachCRM: string[], viDu: ViDuQuyet = []): Promise<Map<string, KetLuanNhom>> {
+export async function xetNhom(dsVao: NhomCanXet[], tenKhachCRM: string[], viDu: ViDuQuyet = []): Promise<Map<string, KetLuanNhom>> {
+  let ds = dsVao;
   const kq = new Map<string, KetLuanNhom>();
+  // Lọc RẺ trước (luật theo tên / số thành viên — không tốn lượt AI); chỉ nhóm còn lại mới gửi AI (12/10/2026).
+  const conLai: NhomCanXet[] = [];
+  for (const n of ds) {
+    const lyDo = nhomKhongLienQuan(n.name, n.moTa || '');
+    if (lyDo) kq.set(n.threadId, { loai: 'khac', laNhomKhach: false, tenKhach: '', lyDo });
+    else conLai.push(n);
+  }
+  ds = conLai;
   if (ds.length === 0) return kq;
   const dong = ds.map((n) => {
     const g = goiYTenKhachTuNhom(n.name);
@@ -648,12 +660,15 @@ export async function xetNhom(ds: NhomCanXet[], tenKhachCRM: string[], viDu: ViD
     'Với mỗi nhóm dưới đây, xếp loai:',
     '- "khach": NHÓM LÀM VIỆC VỚI MỘT KHÁCH HÀNG. Quy ước đặt tên "TÊN KH - MT DIGITAL" (khi đúng quy ước có',
     '  sẵn "goiYTenKhach"); một số nhóm khách đặt tên khác (vd "Dự án web ABC", "Savax x MT", "Ads Quốc Phong").',
-    '- "cong_viec": nhóm công việc nhưng không phải của một khách — nội bộ nhân viên MT Digital, đối tác, nhà',
-    '  cung cấp, dự án chung.',
-    '- "khac": không liên quan công việc — gia đình, bạn bè, lớp học; nhóm CHỢ / mua bán / rao vặt / sỉ lẻ /',
-    '  thanh lý / săn sale / bất động sản / việc làm / tuyển dụng; hội nhóm cộng đồng đông người, chia sẻ chung',
-    '  chung. Những nhóm này AI KHÔNG đọc tin luôn.',
-    '- "chua_ro": tên và mô tả không đủ để biết (AI sẽ đọc tin nhắn rồi xét sau).',
+    '- "cong_viec": CHỈ nhóm mà công ty học được cách làm việc — nội bộ triển khai dự án / phòng ban của MT Digital',
+    '  (Ads, SEO, Content, thiết kế, video), hoặc đối tác / nhà cung cấp đang làm CHUNG dự án cho khách.',
+    '- "khac": mọi nhóm còn lại — giám đốc muốn TIẾT KIỆM, không cho AI đọc nhóm thừa. Gồm: gia đình, bạn bè, lớp',
+    '  học, khoá học; nhóm CHỢ / mua bán / rao vặt / sỉ lẻ / thanh lý / săn sale / bất động sản / việc làm / tuyển',
+    '  dụng; hội nhóm cộng đồng, nhóm KẾT NỐI / liên minh / networking (kể cả BNI), CLB; sự kiện một lần (team',
+    '  building, tiệc, chung kết, YEP); việc hành chính vặt (BHXH, mở tài khoản ngân hàng, sửa máy tính, tài khoản',
+    '  phần mềm); chung cư, ban quản trị, cư dân; nhóm chỉ vài người nói chuyện riêng.',
+    '- "chua_ro": tên và mô tả thật sự không đủ để biết (AI sẽ đọc tin nhắn rồi xét sau). Nghiêng về "khac" nếu',
+    '  không có dấu hiệu làm việc với khách / dự án.',
     '- tenKhach (chỉ khi "khach"): tên doanh nghiệp/thương hiệu của khách, viết gọn như khách hay dùng. Trùng',
     '  với một khách đã có trong CRM (danh sách dưới) thì ghi ĐÚNG tên trong CRM.',
     '- lyDo: một câu ngắn tiếng Việt.',
@@ -867,4 +882,44 @@ export async function xetLaiNhacZalo(r: { id: string; title: string; memberId: s
     return { ket: 'doi' };
   }
   return { ket: 'moi', title: moi.title };
+}
+
+/**
+ * "🧹 Lọc lại nhóm" (anh Tâm 12/10/2026: "lọc bỏ các nhóm không liên quan sẽ tiết kiệm được rất nhiều"): xét lại
+ * các nhóm AI đã TỰ cho học theo tiêu chí chặt (luật rẻ trước, rồi AI theo tên). Không liên quan / không rõ → thôi
+ * học, xoá tin đã lưu. Nhóm anh đã tự quyết thì không đụng. Mỗi lượt vài lô tới `han` (ms).
+ */
+export async function locLaiNhom(han: number): Promise<{ xet: number; giu: number; bo: number; conLai: number }> {
+  const kq = { xet: 0, giu: 0, bo: 0, conLai: 0 };
+  const khach: Customer[] = await getCustomers().catch(() => []);
+  const viDu = await viDuAnhQuyet(40).catch(() => []);
+  while (Date.now() < han) {
+    const ds = await nhomAiDaChoHoc(40);
+    if (!ds.length) break;
+    const kl = await xetNhom(
+      ds.map((n) => ({ threadId: n.threadId, name: n.name, moTa: n.tomTat })),
+      khach.map((c) => c.name),
+      viDu,
+    );
+    if (!kl.size) break; // AI không trả gì (hết lượt?) — dừng, lượt sau thử lại
+    for (const n of ds) {
+      const k = kl.get(n.threadId);
+      if (!k) continue;
+      kq.xet++;
+      if (k.loai === 'khach' || k.loai === 'cong_viec') {
+        await ghiGhiChuAi(n.threadId, `${n.aiNote} ${DA_LOC_LAI}`.trim());
+        kq.giu++;
+      } else {
+        await ghiKetQuaXet(n.threadId, {
+          aiNote: `Không liên quan công việc — AI thôi đọc${k.lyDo ? ` (${k.lyDo})` : ''} ${DA_LOC_LAI}`,
+          laNhomKhach: false,
+          customerId: '',
+          customer: '',
+        });
+        kq.bo++;
+      }
+    }
+  }
+  kq.conLai = await demNhomAiDaChoHoc();
+  return kq;
 }

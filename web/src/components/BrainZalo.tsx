@@ -194,6 +194,40 @@ export default function BrainZalo() {
    * Đọc & phân loại ngay (anh Tâm 10/10/2026: "không cần chờ đến tối"): đồng bộ tin mới một lượt, rồi
    * gọi lặp từng bước ~40 giây — xét nhóm → AI đọc cuộc → AI xét lại mục chờ — tới khi xong.
    */
+  /**
+   * 🧹 Lọc lại nhóm (anh Tâm 12/10/2026: "lọc bỏ các nhóm không liên quan sẽ tiết kiệm được rất nhiều"): xét lại
+   * nhóm AI đã tự cho học theo tiêu chí chặt, gọi lặp tới khi hết. Nhóm bị bỏ anh vẫn tích "Học" lại được.
+   */
+  async function locLai() {
+    if (!window.confirm('Lọc lại các nhóm AI đã tự cho học theo tiêu chí chặt hơn? Nhóm không liên quan sẽ thôi học (anh tích "Học" lại được).')) return;
+    dung.current = false;
+    setDangXuLy(true);
+    const ghi = (d: string) => setTienTrinh((cu) => [...cu, `${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} · ${d}`]);
+    setTienTrinh([]);
+    const tong = { xet: 0, giu: 0, bo: 0 };
+    try {
+      for (let lan = 0; lan < 30 && !dung.current; lan++) {
+        const r = await api<{ ok: boolean; note?: string; xet: number; giu: number; bo: number; conLai: number }>('/zalo/loc-lai', { body: {} });
+        if (!r.ok) {
+          ghi(`Lỗi: ${r.note}`);
+          toast.error((r.note || '').slice(0, 200));
+          break;
+        }
+        tong.xet += r.xet;
+        tong.giu += r.giu;
+        tong.bo += r.bo;
+        ghi(`Đã xét ${tong.xet} nhóm: giữ ${tong.giu}, bỏ ${tong.bo} — còn ${r.conLai}`);
+        await tai();
+        if (!r.conLai || !r.xet) break;
+      }
+      toast.success(`Lọc xong: giữ ${tong.giu} nhóm, bỏ ${tong.bo} nhóm không liên quan`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDangXuLy(false);
+    }
+  }
+
   async function xuLyNgay() {
     dung.current = false;
     setDangXuLy(true);
@@ -409,9 +443,14 @@ export default function BrainZalo() {
                 ⏹ Dừng
               </button>
             ) : (
-              <button className="btn-primary text-sm" onClick={xuLyNgay}>
-                ⚡ Đọc & phân loại ngay
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button className="btn-ghost text-sm" onClick={locLai} title="Xét lại các nhóm AI đã cho học theo tiêu chí chặt — bỏ nhóm thừa cho đỡ tốn">
+                  🧹 Lọc lại nhóm
+                </button>
+                <button className="btn-primary text-sm" onClick={xuLyNgay}>
+                  ⚡ Đọc & phân loại ngay
+                </button>
+              </div>
             )}
         </div>
         {tienTrinh.length > 0 && (

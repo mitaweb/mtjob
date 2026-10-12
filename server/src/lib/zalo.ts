@@ -229,3 +229,26 @@ export function gopThemViec(
   const ds = [...cu, ...moi.filter((v) => v.viec.trim() && !da.has(chuan(v.viec)))].slice(-8);
   return nhacGop(ten, ds, bayGio);
 }
+
+/** Số thành viên trong phần mô tả nhóm ("152 thành viên · …"), 0 nếu không rõ. */
+export function soThanhVien(moTa: string): number {
+  const m = /(\d+)\s*thành viên/i.exec(String(moTa || ''));
+  return m ? Number(m[1]) : 0;
+}
+
+const TEN_NHOM_KHONG_LIEN_QUAN =
+  /(^|[^\p{L}])(chợ|rao vặt|mua bán|mua và bán|bán sỉ|hàng sỉ|thanh lý|săn sale|pass đồ|bất động sản|bđs|nhà đất|việc làm|tuyển dụng|cộng đồng|chung cư|cư dân|bqt|bql|ban quản trị|ban quản lý|cựu học sinh|cựu sinh viên|đồng hương|họ hàng|gia đình|phụ huynh|lớp \d|bóng đá|cầu lông|pickleball|chạy bộ|tennis|golf|du lịch|phượt|ăn uống|hội ăn|trà sữa)(?![\p{L}])/iu;
+
+/**
+ * Nhóm CHẮC CHẮN không liên quan công việc, xét bằng luật (không tốn lượt AI — anh Tâm 12/10/2026: "lọc bỏ các
+ * nhóm không liên quan sẽ tiết kiệm được rất nhiều"). Tên đúng quy ước "… - MT DIGITAL" thì không bao giờ loại.
+ * Trả lý do, hoặc '' nếu không chắc (để AI xét).
+ */
+export function nhomKhongLienQuan(ten: string, moTa = ''): string {
+  if (goiYTenKhachTuNhom(ten).theoMau) return '';
+  const m = TEN_NHOM_KHONG_LIEN_QUAN.exec(String(ten || ''));
+  if (m) return `tên nhóm kiểu "${m[2]!.toLowerCase()}"`;
+  const n = soThanhVien(moTa);
+  if (n > 150) return `nhóm đông ${n} thành viên — hội nhóm cộng đồng`;
+  return '';
+}

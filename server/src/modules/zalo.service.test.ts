@@ -19,6 +19,7 @@ const BAO: Array<{ id: string; n: Record<string, unknown> }> = [];
 let VI_DU: Array<Record<string, unknown>> = [];
 
 let AI_NHOM: Array<Record<string, unknown>> = [];
+let NHOM_LOC_LAI: Array<Record<string, unknown>> = [];
 let NHOM_CHUA_XET: Array<Record<string, unknown>> = [];
 const KET_QUA_XET: Array<{ id: string; kq: Record<string, unknown> }> = [];
 const CRM_GHI: Array<Record<string, unknown>> = [];
@@ -67,6 +68,13 @@ vi.mock('./zalo.repo.js', () => ({
   }),
   viDuAnhQuyet: vi.fn(async () => VI_DU),
   nhomChuaXet: vi.fn(async () => NHOM_CHUA_XET),
+  DA_LOC_LAI: '[đã lọc lại]',
+  nhomAiDaChoHoc: vi.fn(async () => {
+    const ds = NHOM_LOC_LAI;
+    NHOM_LOC_LAI = [];
+    return ds;
+  }),
+  demNhomAiDaChoHoc: vi.fn(async () => NHOM_LOC_LAI.length),
   ghiKetQuaXet: vi.fn(async (id: string, kq: Record<string, unknown>) => {
     KET_QUA_XET.push({ id, kq });
   }),
@@ -166,7 +174,9 @@ describe('xacDinhNhomKhach', () => {
     expect(theo.G2).toMatchObject({ laNhomKhach: true, customerId: '', customer: 'Topaz Spa' });
     expect(String(theo.G2!.aiNote)).toContain('chờ có tương tác gần đây');
     expect(theo.G3).toMatchObject({ laNhomKhach: false, customerId: '' });
-    expect(String(theo.G3!.aiNote)).toContain('nhóm gia đình');
+    // 'Gia đình' bị luật rẻ loại luôn, không tốn lượt AI (12/10/2026)
+    expect(String(theo.G3!.aiNote)).toContain('gia đình');
+    expect(PROMPT).not.toContain('"Gia đình"');
   });
 
   it('nhóm công việc không phải của khách (nội bộ, đối tác) → vẫn học; tên chưa rõ → để AI đọc tin', async () => {
@@ -401,8 +411,8 @@ describe('50:50 thì hỏi anh, rồi học theo anh', () => {
     expect(PROMPT).toContain('- BỎ QUA: nhóm «Chợ sỉ Quảng Châu» — Mua bán hàng sỉ');
     expect(PROMPT).toContain('- HỌC: chat «Anh Bình» — Đối tác in ấn');
 
-    NHOM_CHUA_XET = [{ threadId: 'G7', name: 'Chợ sỉ Hà Nội', isGroup: true, enabled: false }];
-    AI_NHOM = [{ id: 'G7', loai: 'khac', lyDo: 'nhóm chợ' }];
+    NHOM_CHUA_XET = [{ threadId: 'G7', name: 'Nhóm Hà Nội 2024', isGroup: true, enabled: false }];
+    AI_NHOM = [{ id: 'G7', loai: 'khac', lyDo: 'không rõ việc' }];
     await S.xacDinhNhomKhach();
     expect(PROMPT).toContain('- BỎ QUA: nhóm «Chợ sỉ Quảng Châu»');
     expect(PROMPT).not.toContain('Anh Bình'); // lúc xét nhóm chỉ đưa ví dụ là nhóm
@@ -579,5 +589,37 @@ describe('xét lại nhắc gộp trước khi bắn', () => {
     CUOC_CAN_RUT = [];
     expect(await S.xetLaiNhacZalo(nhac)).toEqual({ ket: 'giu' });
     expect(await S.xetLaiNhacZalo({ ...nhac, id: 'R-123' })).toEqual({ ket: 'giu' });
+  });
+});
+
+// Anh Tâm 12/10/2026: "lọc bỏ các nhóm không liên quan sẽ tiết kiệm được rất nhiều".
+describe('lọc nhóm không liên quan', () => {
+  const nhom = (threadId: string, name: string, x: Record<string, unknown> = {}) => ({ threadId, name, isGroup: true, enabled: true, aiNote: 'Nhóm công việc — x', tomTat: '', ...x });
+
+  it('nhóm chợ / chung cư bị loại bằng luật, KHÔNG gửi AI', async () => {
+    PROMPT = '';
+    const kq = await S.xetNhom(
+      [{ threadId: 'C1', name: 'Chợ sỉ Quảng Châu' }, { threadId: 'C2', name: 'RICCA - BQT & Tổ tư vấn' }],
+      [],
+    );
+    expect(PROMPT).toBe(''); // không gọi AI
+    expect(kq.get('C1')).toMatchObject({ loai: 'khac' });
+    expect(kq.get('C2')).toMatchObject({ loai: 'khac' });
+  });
+
+  it('lọc lại: giữ nhóm làm việc (đánh dấu đã lọc), bỏ nhóm thừa + xoá tin', async () => {
+    NHOM_LOC_LAI = [nhom('L1', 'MT DIGITAL - SEO'), nhom('L2', 'Fix computer'), nhom('L3', 'Cư dân Lakeview')];
+    AI_NHOM = [
+      { id: 'L1', loai: 'cong_viec', lyDo: 'phòng SEO nội bộ' },
+      { id: 'L2', loai: 'khac', lyDo: 'việc hành chính vặt' },
+    ];
+    const r = await S.locLaiNhom(Date.now() + 10_000);
+    expect(r).toEqual({ xet: 3, giu: 1, bo: 2, conLai: 0 });
+    expect(TRANG_THAI).toEqual([{ loai: 'ghi_chu', id: 'L1', o: 'Nhóm công việc — x [đã lọc lại]' }]);
+    const bo = Object.fromEntries(KET_QUA_XET.map((x) => [x.id, x.kq]));
+    expect(bo.L2).toMatchObject({ laNhomKhach: false });
+    expect(String(bo.L2!.aiNote)).toContain('[đã lọc lại]');
+    expect(String(bo.L3!.aiNote)).toContain('cư dân');
+    expect(PROMPT).not.toContain('Cư dân Lakeview'); // L3 bị luật loại, không gửi AI
   });
 });

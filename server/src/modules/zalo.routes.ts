@@ -7,7 +7,7 @@ import { asyncHandler, ApiError } from '../util/errors.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
 import { runInBackground } from '../util/background.js';
 import { docTrangThai, suaCuoc, timCuoc, trangCuoc, tinGanDay } from './zalo.repo.js';
-import { rutTriThucZalo, khopKhachCuoc } from './zalo.service.js';
+import { rutTriThucZalo, khopKhachCuoc, locLaiNhom } from './zalo.service.js';
 import { dangNhapQR, dangXuat, dongBoZalo, quetNhomKhach, xuLyNgay, khoaPhien } from './zalo.client.js';
 import { isMissingTable } from './brain.repo.js';
 
@@ -126,5 +126,17 @@ zaloRouter.get(
   asyncHandler(async (req, res) => {
     const tin = await tinGanDay(String(req.params.id), 20);
     res.json({ messages: tin.reverse() });
+  }),
+);
+
+/** "🧹 Lọc lại nhóm" — xét lại nhóm AI đã tự cho học theo tiêu chí chặt; mỗi lần ~40 giây, trang gọi lặp. */
+zaloRouter.post(
+  '/loc-lai',
+  asyncHandler(async (_req, res) => {
+    try {
+      res.json({ ok: true, ...(await locLaiNhom(Date.now() + 40_000)) });
+    } catch (e) {
+      res.json({ ok: false, note: (e as Error).message.slice(0, 300), xet: 0, giu: 0, bo: 0, conLai: 0 });
+    }
   }),
 );

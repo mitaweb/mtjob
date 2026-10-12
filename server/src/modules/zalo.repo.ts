@@ -54,6 +54,9 @@ function rowToThread(r: any): ZaloThread {
 }
 
 /**
+ * Luật LƯU (12/10/2026 — tiết kiệm): chat 1-1 chưa xếp loại vẫn lưu để AI đọc; NHÓM chưa xếp loại thì chỉ đếm
+ * (xét theo tên trước, rẻ hơn nhiều), trừ nhóm "chưa rõ theo tên" cần đọc tin mới biết.
+ *
  * Ghi nhận có tin ở một cuộc: tạo cuộc nếu mới, cộng số tin, cập nhật tên + giờ. Trả về có LƯU NỘI DUNG
  * không (anh Tâm 10/10/2026: "AI tự đọc sau đó tự học"): lưu mọi cuộc, trừ cuộc đã bị loại (AI thấy
  * là chuyện cá nhân, hoặc anh tự tắt) — tức `ai_checked` mà không `enabled`.
@@ -65,7 +68,7 @@ export const SQL_GHI_CUOC = `INSERT INTO zalo_threads (thread_id, name, is_group
     is_group = zalo_threads.is_group OR EXCLUDED.is_group,
     msg_count = zalo_threads.msg_count + EXCLUDED.msg_count,
     last_msg_at = GREATEST(zalo_threads.last_msg_at, EXCLUDED.last_msg_at)
-  RETURNING (enabled OR NOT COALESCE(ai_checked, false)) AS luu`;
+  RETURNING (enabled OR (NOT COALESCE(ai_checked, false) AND (NOT is_group OR COALESCE(ai_note, '') LIKE 'Chưa rõ theo tên%'))) AS luu`;
 
 /** Lưu nội dung tin (chỉ gọi cho cuộc đang bật). Gửi trùng (worker gửi lại khi mạng chập) thì bỏ qua. */
 export const SQL_GHI_TIN = `INSERT INTO zalo_messages (msg_id, thread_id, from_self, sender, content, ts, digested)
@@ -105,7 +108,7 @@ export async function ghiNhieuCuoc(
          is_group = zalo_threads.is_group OR EXCLUDED.is_group,
          msg_count = zalo_threads.msg_count + EXCLUDED.msg_count,
          last_msg_at = GREATEST(zalo_threads.last_msg_at, EXCLUDED.last_msg_at)
-       RETURNING thread_id, (enabled OR NOT COALESCE(ai_checked, false)) AS luu`,
+       RETURNING thread_id, (enabled OR (NOT COALESCE(ai_checked, false) AND (NOT is_group OR COALESCE(ai_note, '') LIKE 'Chưa rõ theo tên%'))) AS luu`,
       params,
     );
     for (const r of rows) luu.set(String(r.thread_id), !!r.luu);
@@ -374,7 +377,13 @@ export async function nhomDaBiet(): Promise<Set<string>> {
 
 /** Ghi chú cho nhóm mà tên không đủ để AI xếp loại — không xét lại theo tên, để AI đọc tin rồi xếp. */
 export const CHUA_RO_THEO_TEN = 'Chưa rõ theo tên nhóm';
-const DK_CHUA_XET = `NOT COALESCE(ai_checked, false) AND COALESCE(ai_note, '') NOT LIKE '${CHUA_RO_THEO_TEN}%'`;
+/**
+ * Nhóm còn HOẠT ĐỘNG: có tin trong 60 ngày (anh Tâm 12/10/2026: "lọc bỏ các nhóm không liên quan sẽ tiết kiệm
+ * được rất nhiều"). Nhóm im lặng không xét, không kéo lịch sử, không cho AI đọc — có tin mới mới bắt đầu.
+ */
+const DK_HOAT_DONG = `COALESCE(last_msg_at, '') >= to_char((now() AT TIME ZONE 'UTC') - interval '60 days', 'YYYY-MM-DD"T"HH24:MI:SS')`;
+
+const DK_CHUA_XET = `NOT COALESCE(ai_checked, false) AND COALESCE(ai_note, '') NOT LIKE '${CHUA_RO_THEO_TEN}%' AND ${DK_HOAT_DONG}`;
 
 export const SQL_NHOM_CHUA_XET = `SELECT t.*, 0 AS chua_rut FROM zalo_threads t
   WHERE t.is_group AND ${DK_CHUA_XET} ORDER BY t.last_msg_at DESC LIMIT $1`;
@@ -395,15 +404,44 @@ export async function ghiKetQuaXet(
       [threadId, kq.aiNote, kq.customerId, kq.customer],
     );
   } else {
-    await q('UPDATE zalo_threads SET ai_checked = true, ai_note = $2 WHERE thread_id = $1', [threadId, kq.aiNote]);
+    // Không liên quan → thôi học + xoá tin đã lưu (đỡ chỗ, AI không đọc nữa). Anh tích "Học" lại được.
+    await q('UPDATE zalo_threads SET ai_checked = true, enabled = false, ai_note = $2 WHERE thread_id = $1', [threadId, kq.aiNote]);
+    await q('DELETE FROM zalo_messages WHERE thread_id = $1', [threadId]);
   }
+}
+
+/** Dấu cho nhóm đã qua đợt "lọc lại" (12/10/2026) — không xét lại lần nữa. */
+export const DA_LOC_LAI = '[đã lọc lại]';
+
+/**
+ * Nhóm AI đã TỰ cho học (anh chưa tự quyết) — để lọc lại theo tiêu chí chặt hơn. Gồm nhóm "công việc" và nhóm
+ * "khách"; nhóm đã lọc lại rồi thì bỏ qua.
+ */
+export async function nhomAiDaChoHoc(limit: number): Promise<ZaloThread[]> {
+  const r = await q(
+    `SELECT t.*, 0 AS chua_rut FROM zalo_threads t
+     WHERE t.is_group AND t.enabled AND COALESCE(t.anh_quyet, '') = ''
+       AND COALESCE(t.ai_note, '') NOT LIKE $2
+     ORDER BY t.last_msg_at DESC LIMIT $1`,
+    [limit, `%${DA_LOC_LAI}%`],
+  );
+  return r.map(rowToThread);
+}
+
+export async function demNhomAiDaChoHoc(): Promise<number> {
+  const r = await q(
+    `SELECT COUNT(*)::int AS n FROM zalo_threads
+     WHERE is_group AND enabled AND COALESCE(anh_quyet, '') = '' AND COALESCE(ai_note, '') NOT LIKE $1`,
+    [`%${DA_LOC_LAI}%`],
+  );
+  return Number(r[0]?.n) || 0;
 }
 
 /**
  * Nhóm cần kéo lịch sử: nhóm đang học, và nhóm mà tên không đủ để xếp loại (kéo tin về cho AI đọc rồi
  * xếp — anh Tâm 10/10/2026: "chủ động đọc và phân loại").
  */
-const DK_CAN_KEO = `(enabled OR COALESCE(ai_note, '') LIKE '${CHUA_RO_THEO_TEN}%') AND NOT COALESCE(history_done, false)`;
+const DK_CAN_KEO = `(enabled OR COALESCE(ai_note, '') LIKE '${CHUA_RO_THEO_TEN}%') AND NOT COALESCE(history_done, false) AND ${DK_HOAT_DONG}`;
 
 export const SQL_NHOM_CAN_KEO = `SELECT t.*, 0 AS chua_rut FROM zalo_threads t
   WHERE t.is_group AND ${DK_CAN_KEO} ORDER BY t.last_msg_at DESC LIMIT $1`;

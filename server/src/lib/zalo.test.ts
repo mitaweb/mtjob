@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { noiDungTin, gioTin, dungDoanChat, denLucRut, maTinLonNhat, viecBanDem, goiYTenKhachTuNhom, gioNhac, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, dangDoc, type TinZalo } from './zalo.js';
+import { noiDungTin, gioTin, dungDoanChat, denLucRut, maTinLonNhat, viecBanDem, goiYTenKhachTuNhom, gioNhac, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, dangDoc, nhomKhongLienQuan, type TinZalo } from './zalo.js';
 
 // Anh Tâm 5/10/2026: đọc tin nhắn Zalo giữa anh và khách để đưa vào kho có chọn lọc.
 
@@ -190,5 +190,24 @@ describe('tachViec / gopThemViec', () => {
       ], luc),
     ).toEqual({ title: 'Tín Đạt: 1) Xin kho tư liệu; 2) Gửi bản dựng thử', onDate: '2026-10-12', atTime: '08:30' });
     expect(gopThemViec('', 'Welllife', [{ viec: 'Nhắc cấp quyền Google Map', han: '' }], luc)!.title).toBe('Welllife: Nhắc cấp quyền Google Map');
+  });
+});
+
+// Anh Tâm 12/10/2026: "lọc bỏ các nhóm không liên quan sẽ tiết kiệm được rất nhiều".
+describe('nhomKhongLienQuan — lọc rẻ trước khi gọi AI', () => {
+  it('loại nhóm chợ / chung cư / hội nhóm / nhóm đông người', () => {
+    expect(nhomKhongLienQuan('Chợ sỉ Quảng Châu')).toContain('chợ');
+    expect(nhomKhongLienQuan('RICCA - BQT & Tổ tư vấn')).toContain('bqt');
+    expect(nhomKhongLienQuan('Cư dân Lakeview City')).toContain('cư dân');
+    expect(nhomKhongLienQuan('Pickleball Q7 sáng CN')).toContain('pickleball');
+    expect(nhomKhongLienQuan('Kết nối doanh nhân', '320 thành viên · giao lưu')).toContain('320 thành viên');
+  });
+  it('không loại nhầm nhóm làm việc', () => {
+    expect(nhomKhongLienQuan('TÍN ĐẠT - MT DIGITAL MARKETING')).toBe('');
+    expect(nhomKhongLienQuan('Chợ Tốt - MT DIGITAL')).toBe(''); // khách đúng quy ước
+    expect(nhomKhongLienQuan('MT DIGITAL - SEO', '8 thành viên')).toBe('');
+    expect(nhomKhongLienQuan('WEB TOPAZ')).toBe('');
+    expect(nhomKhongLienQuan('Ads Nam Long')).toBe('');
+    expect(nhomKhongLienQuan('Kịch bản Luxury', '12 thành viên')).toBe('');
   });
 });
