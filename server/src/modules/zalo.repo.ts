@@ -80,6 +80,57 @@ export async function ghiTin(t: TinZalo): Promise<void> {
   await q(SQL_GHI_TIN, [t.msgId, t.threadId, t.fromSelf, t.sender, t.content, t.ts]);
 }
 
+// ── Ghi HÀNG LOẠT (anh Tâm 12/10/2026: tăng tốc — trước đây mỗi cuộc / mỗi tin một lượt xuống DB, kéo lịch sử
+// nhóm tới ~2.000 lượt nối tiếp). Một câu nhiều dòng cho mỗi lô 200. ──
+
+/** Như ghiCuoc nhưng cho nhiều cuộc một lượt. Trả về cuộc nào được LƯU nội dung (luật như ghiCuoc). */
+export async function ghiNhieuCuoc(
+  ds: Array<{ threadId: string; name: string; isGroup: boolean; soTin: number; lastMsgAt: string }>,
+  now: string,
+): Promise<Map<string, boolean>> {
+  const luu = new Map<string, boolean>();
+  for (let i = 0; i < ds.length; i += 200) {
+    const lo = ds.slice(i, i + 200);
+    const params: unknown[] = [];
+    const dong = lo.map((c) => {
+      params.push(c.threadId, c.name, c.isGroup, c.soTin, c.lastMsgAt, now);
+      const n = params.length;
+      return `($${n - 5}, $${n - 4}, $${n - 3}, false, $${n - 2}, $${n - 1}, $${n})`;
+    });
+    const rows = await q(
+      `INSERT INTO zalo_threads (thread_id, name, is_group, enabled, msg_count, last_msg_at, created_at)
+       VALUES ${dong.join(', ')}
+       ON CONFLICT (thread_id) DO UPDATE SET
+         name = CASE WHEN EXCLUDED.name <> '' THEN EXCLUDED.name ELSE zalo_threads.name END,
+         is_group = zalo_threads.is_group OR EXCLUDED.is_group,
+         msg_count = zalo_threads.msg_count + EXCLUDED.msg_count,
+         last_msg_at = GREATEST(zalo_threads.last_msg_at, EXCLUDED.last_msg_at)
+       RETURNING thread_id, (enabled OR NOT COALESCE(ai_checked, false)) AS luu`,
+      params,
+    );
+    for (const r of rows) luu.set(String(r.thread_id), !!r.luu);
+  }
+  return luu;
+}
+
+/** Như ghiTin nhưng nhiều tin một lượt. Tin trùng mã thì bỏ qua (ON CONFLICT DO NOTHING). */
+export async function ghiNhieuTin(ds: TinZalo[]): Promise<void> {
+  for (let i = 0; i < ds.length; i += 200) {
+    const lo = ds.slice(i, i + 200);
+    const params: unknown[] = [];
+    const dong = lo.map((t) => {
+      params.push(t.msgId, t.threadId, t.fromSelf, t.sender, t.content, t.ts);
+      const n = params.length;
+      return `($${n - 5}, $${n - 4}, $${n - 3}, $${n - 2}, $${n - 1}, $${n}, false)`;
+    });
+    await q(
+      `INSERT INTO zalo_messages (msg_id, thread_id, from_self, sender, content, ts, digested)
+       VALUES ${dong.join(', ')} ON CONFLICT (msg_id) DO NOTHING`,
+      params,
+    );
+  }
+}
+
 export const SQL_DS_CUOC = `SELECT t.*, (SELECT COUNT(*) FROM zalo_messages m WHERE m.thread_id = t.thread_id AND NOT m.digested)::int AS chua_rut
   FROM zalo_threads t ORDER BY t.enabled DESC, t.last_msg_at DESC LIMIT $1`;
 
@@ -102,9 +153,10 @@ const DK_LOC: Record<LocCuoc, string> = {
  * Một trang cuộc trò chuyện cho tab Zalo (anh Tâm 10/10/2026: "phân trang trang này, hiện dài quá" —
  * gần 800 nhóm). Đếm theo từng bộ lọc để hiện trên nút lọc; tìm theo tên cuộc / tên khách.
  */
-export async function trangCuoc(o: { loc: LocCuoc; tim: string; trang: number; co: number }): Promise<{
+export async function trangCuoc(o: { loc: LocCuoc | 'tu_dong'; tim: string; trang: number; co: number }): Promise<{
   threads: ZaloThread[];
   dem: Record<LocCuoc, number>;
+  loc: LocCuoc;
 }> {
   const params: unknown[] = [];
   let dkTim = 'true';
@@ -129,15 +181,17 @@ export async function trangCuoc(o: { loc: LocCuoc; tim: string; trang: number; c
     rieng: Number(d.rieng) || 0,
     tat_ca: Number(d.tat_ca) || 0,
   };
+  // Chưa chọn lọc: có cuộc AI đang hỏi anh thì hiện trước; không thì cuộc đang học; không nữa thì tất cả.
+  const loc: LocCuoc = o.loc !== 'tu_dong' ? o.loc : dem.hoi > 0 ? 'hoi' : dem.hoc > 0 ? 'hoc' : 'tat_ca';
   const p2 = [...params, o.co, Math.max(0, o.trang - 1) * o.co];
   const rows = await q(
     `SELECT t.*, (SELECT COUNT(*) FROM zalo_messages m WHERE m.thread_id = t.thread_id AND NOT m.digested)::int AS chua_rut
-     FROM zalo_threads t WHERE ${DK_LOC[o.loc]} AND ${dkTim}
+     FROM zalo_threads t WHERE ${DK_LOC[loc]} AND ${dkTim}
      ORDER BY t.enabled DESC, t.last_msg_at DESC, t.name, t.thread_id
      LIMIT $${p2.length - 1} OFFSET $${p2.length}`,
     p2,
   );
-  return { threads: rows.map(rowToThread), dem };
+  return { threads: rows.map(rowToThread), dem, loc };
 }
 
 export async function timCuoc(threadId: string): Promise<ZaloThread | undefined> {
@@ -290,14 +344,24 @@ export async function ghiTrangThai(s: Partial<ZaloStatus> & { lastSeen: string }
  * Nhóm CHƯA xét: `moTa` (số thành viên + mô tả nhóm) tạm để ở ai_note cho AI đọc lúc xét.
  */
 export async function ghiDanhSachNhom(ds: Array<{ threadId: string; name: string; moTa?: string }>, now: string): Promise<void> {
-  for (const n of ds) {
+  // Một câu nhiều dòng cho cả lô (trước đây ~900 câu nối tiếp — 12/10/2026: tăng tốc). Bỏ mã trùng trong lô:
+  // ON CONFLICT DO UPDATE không cho đụng cùng một dòng hai lần trong một câu.
+  const khongTrung = [...new Map(ds.map((n) => [n.threadId, n])).values()];
+  for (let i = 0; i < khongTrung.length; i += 200) {
+    const lo = khongTrung.slice(i, i + 200);
+    const params: unknown[] = [now];
+    const dong = lo.map((n) => {
+      params.push(n.threadId, n.name, n.moTa || '');
+      const k = params.length;
+      return `($${k - 2}, $${k - 1}, true, false, 0, '', $1, $${k})`;
+    });
     await q(
       `INSERT INTO zalo_threads (thread_id, name, is_group, enabled, msg_count, last_msg_at, created_at, ai_note)
-       VALUES ($1, $2, true, false, 0, '', $3, $4)
+       VALUES ${dong.join(', ')}
        ON CONFLICT (thread_id) DO UPDATE SET is_group = true,
          name = CASE WHEN EXCLUDED.name <> '' THEN EXCLUDED.name ELSE zalo_threads.name END,
          ai_note = CASE WHEN COALESCE(zalo_threads.ai_checked, false) THEN zalo_threads.ai_note ELSE EXCLUDED.ai_note END`,
-      [n.threadId, n.name, now, n.moTa || ''],
+      params,
     );
   }
 }

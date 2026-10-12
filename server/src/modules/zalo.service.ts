@@ -11,8 +11,8 @@ import { aiKhoJson } from '../ai/brainAi.js';
 import { dungDoanChat, denLucRut, noiDungTin, goiYTenKhachTuNhom, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, dangDoc, type TinZalo } from '../lib/zalo.js';
 import { khopKhach, xoaLienHe, chuanTen } from '../lib/brainGate.js';
 import {
-  ghiCuoc,
-  ghiTin,
+  ghiNhieuCuoc,
+  ghiNhieuTin,
   cuocCanRut,
   tinGanDay,
   danhDauCaNhan,
@@ -63,27 +63,30 @@ export async function nhanTin(lo: TinTuWorker[]): Promise<{ luu: number; boQua: 
     if (arr) arr.push(t);
     else theoCuoc.set(t.threadId, [t]);
   }
-  let luu = 0;
-  let boQua = 0;
-  for (const [threadId, ds] of theoCuoc) {
+  // Một lượt ghi mọi cuộc + một lượt ghi mọi tin (trước đây mỗi cuộc / mỗi tin một lượt — 12/10/2026: tăng tốc).
+  const cuoc = [...theoCuoc].map(([threadId, ds]) => {
     const tsMax = Math.max(...ds.map((t) => Number(t.ts) || 0));
     const tenKhach = ds.find((t) => !t.fromSelf && t.threadName)?.threadName || ds.find((t) => t.threadName)?.threadName || '';
-    const batt = await ghiCuoc({
+    return {
       threadId,
       name: tenKhach,
       isGroup: !!ds[0]!.isGroup,
       soTin: ds.length,
       lastMsgAt: tsMax > 0 ? new Date(tsMax).toISOString() : now,
-      now,
-    });
-    if (!batt) {
+    };
+  });
+  const luuCuoc = cuoc.length ? await ghiNhieuCuoc(cuoc, now) : new Map<string, boolean>();
+  let boQua = 0;
+  const tinGhi: TinZalo[] = [];
+  for (const [threadId, ds] of theoCuoc) {
+    if (!luuCuoc.get(threadId)) {
       boQua += ds.length;
       continue;
     }
     for (const t of ds) {
       const content = noiDungTin(t.content);
       if (!content) continue;
-      await ghiTin({
+      tinGhi.push({
         msgId: String(t.msgId),
         threadId,
         fromSelf: !!t.fromSelf,
@@ -91,10 +94,10 @@ export async function nhanTin(lo: TinTuWorker[]): Promise<{ luu: number; boQua: 
         content,
         ts: String(Number(t.ts) || Date.now()),
       });
-      luu++;
     }
   }
-  return { luu, boQua };
+  if (tinGhi.length) await ghiNhieuTin(tinGhi);
+  return { luu: tinGhi.length, boQua };
 }
 
 const SCHEMA_DOC = {

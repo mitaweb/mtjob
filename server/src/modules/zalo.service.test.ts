@@ -37,12 +37,12 @@ vi.mock('../gemini/client.js', () => ({
 }));
 vi.mock('./zalo.repo.js', () => ({
   CHUA_RO_THEO_TEN: 'Chưa rõ theo tên nhóm',
-  ghiCuoc: vi.fn(async (c: Record<string, unknown>) => {
-    CUOC.push(c);
-    return LUU.has(String(c.threadId));
+  ghiNhieuCuoc: vi.fn(async (ds: Array<Record<string, unknown>>) => {
+    CUOC.push(...ds);
+    return new Map(ds.map((c) => [String(c.threadId), LUU.has(String(c.threadId))]));
   }),
-  ghiTin: vi.fn(async (t: Record<string, unknown>) => {
-    TIN.push(t);
+  ghiNhieuTin: vi.fn(async (ds: Array<Record<string, unknown>>) => {
+    TIN.push(...ds);
   }),
   cuocCanRut: vi.fn(async () => CUOC_CAN_RUT),
   cuocCuaKhach: vi.fn(async () => CUOC_CAN_RUT),

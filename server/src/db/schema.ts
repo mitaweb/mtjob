@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   note         text DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS tasks_member_idx ON tasks (member_id);
+-- Tăng tốc (anh Tâm 12/10/2026): index cho truy vấn hay chạy.
+CREATE INDEX IF NOT EXISTS tasks_member_done_idx ON tasks (member_id, completed_at);
 CREATE INDEX IF NOT EXISTS tasks_completed_idx ON tasks (completed_at DESC);
 -- getScoringTasks có nhánh lọc theo status = doing mà không index nào phục vụ, nên buộc
 -- quét cả bảng. Index một phần chỉ ghi mấy dòng đang làm dở nên rất nhẹ; getDoingTasks
@@ -140,6 +142,8 @@ CREATE TABLE IF NOT EXISTS notifications (
   read_at    text DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS notifications_member_idx ON notifications (member_id, created_at DESC);
+-- Tăng tốc (anh Tâm 12/10/2026): index cho truy vấn hay chạy. Đếm thông báo chưa đọc (chuông, mỗi trang).
+CREATE INDEX IF NOT EXISTS notifications_unread_idx ON notifications (member_id, type) WHERE read_at = '';
 -- Mã của thứ mà thông báo nói tới (hiện dùng cho đơn từ). Xử lý xong cái đó thì thông báo
 -- nhắc về nó tự thành đã đọc — anh Tâm chốt 2/8/2026.
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS ref_id text DEFAULT '';
@@ -321,6 +325,8 @@ CREATE TABLE IF NOT EXISTS reminders (
   created_at  text DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS reminders_member_idx ON reminders (member_id, active);
+-- Tăng tốc (anh Tâm 12/10/2026): index cho truy vấn hay chạy. Quét nhắc đang bật (cron 5 phút).
+CREATE INDEX IF NOT EXISTS reminders_active_idx ON reminders (rem_id) WHERE active;
 
 -- Dự án: theo dõi KẾT QUẢ cam kết với khách (bao nhiêu tin nhắn, bao nhiêu khách mới),
 -- khác với bảng tasks vốn đo công sức bỏ ra. Khách hàng là tuỳ chọn — có dự án nội bộ.
@@ -556,6 +562,8 @@ CREATE TABLE IF NOT EXISTS brain_items (
 CREATE INDEX IF NOT EXISTS brain_items_status_idx ON brain_items (status, category);
 CREATE INDEX IF NOT EXISTS brain_items_customer_idx ON brain_items (customer_id);
 CREATE INDEX IF NOT EXISTS brain_items_submitter_idx ON brain_items (submitted_by);
+-- Tăng tốc (anh Tâm 12/10/2026): index cho truy vấn hay chạy.
+CREATE INDEX IF NOT EXISTS brain_items_updated_idx ON brain_items (updated_at DESC);
 
 -- Câu hỏi nhân viên hỏi mà kho chưa có lời giải → giám đốc trả lời một lần là thành mục.
 CREATE TABLE IF NOT EXISTS brain_questions (
@@ -595,6 +603,8 @@ CREATE TABLE IF NOT EXISTS zalo_threads (
   created_at     text DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS zalo_threads_last_idx ON zalo_threads (last_msg_at DESC);
+-- Tăng tốc (anh Tâm 12/10/2026): index cho truy vấn hay chạy.
+CREATE INDEX IF NOT EXISTS zalo_threads_customer_idx ON zalo_threads (customer_id);
 -- Nhóm khách (anh Tâm 8/10/2026: "tin nhắn các nhóm khách hàng ... TÊN KH - MT DIGITAL, AI quyết định
 -- tên KH, so khớp, tạo ở CRM"): AI xét mỗi nhóm MỘT lần, ghi lý do; nhóm khách thì kéo lịch sử cũ một lần.
 ALTER TABLE zalo_threads ADD COLUMN IF NOT EXISTS ai_checked boolean DEFAULT false;
@@ -621,6 +631,8 @@ CREATE TABLE IF NOT EXISTS zalo_messages (
 );
 CREATE INDEX IF NOT EXISTS zalo_messages_thread_idx ON zalo_messages (thread_id, ts);
 CREATE INDEX IF NOT EXISTS zalo_messages_digest_idx ON zalo_messages (digested, ts);
+-- Tăng tốc (anh Tâm 12/10/2026): index cho truy vấn hay chạy. Tin AI chưa đọc theo cuộc (đếm ở danh sách Zalo, hàng đọc AI).
+CREATE INDEX IF NOT EXISTS zalo_messages_unread_idx ON zalo_messages (thread_id, ts) WHERE NOT digested;
 -- Trạng thái worker (một dòng): đang chờ quét QR / đang chạy / mất kết nối.
 CREATE TABLE IF NOT EXISTS zalo_status (
   id        text PRIMARY KEY,
