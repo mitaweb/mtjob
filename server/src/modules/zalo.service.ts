@@ -306,14 +306,21 @@ export async function docCuoc(
     '5) boSungKhach: điều MỚI về khách nên ghi vào hồ sơ CRM (lĩnh vực, sản phẩm, nhu cầu, dịch vụ đang dùng,',
     '   người liên hệ và vai trò) — một câu, KHÔNG số điện thoại/email; không có gì mới thì để trống.',
     o.thongTinKhach ? `   Hồ sơ CRM hiện có: "${o.thongTinKhach.slice(0, 600)}" — đừng lặp lại điều đã có.` : '',
-    '6) nhac: DANH SÁCH ĐẦY ĐỦ, MỚI NHẤT các việc giám đốc cần theo dõi với khách/cuộc này (gộp thành MỘT nhắc',
-    '   cho mỗi khách). Việc cần theo dõi: khách hỏi báo giá / thông tin mà tin cuối chưa thấy trả lời, hứa gửi',
-    '   tài liệu, hẹn gọi lại, chờ khách gửi tư liệu, hạn khách đặt ra.',
+    '6) nhac: DANH SÁCH ĐẦY ĐỦ, MỚI NHẤT các việc giám đốc cần được NHẮC với khách/cuộc này (gộp thành MỘT nhắc',
+    '   cho mỗi khách). ÍT mà ĐÚNG — nhắc thừa làm phiền giám đốc. CHỈ nhắc khi:',
+    '   a) có người hỏi / nhờ GIÁM ĐỐC mà sau đó CHƯA thấy giám đốc trả lời hay làm (vd khách hỏi báo giá chưa',
+    '      gửi, nhân viên nhờ nạp tiền / duyệt / cấp quyền mà giám đốc chưa đáp);',
+    '   b) giám đốc HỨA làm việc gì có hạn (gửi tài liệu, gọi lại, gửi báo giá…);',
+    '   c) bên kia hứa giao cho công ty một thứ CÓ HẠN CỤ THỂ, tới hạn cần hỏi lại.',
+    '   KHÔNG nhắc: việc đã thấy trả lời / đã làm / đã chốt trong chat (kể cả giám đốc chỉ đáp "ok", "a làm rồi",',
+    '   gửi ảnh chụp xác nhận); việc của NGƯỜI KHÁC tự làm không cần giám đốc (thành viên hội nhóm / BNI tự đăng',
+    '   ký, tự đi họp, nhân viên tự làm phần việc của mình); "theo dõi", "tìm cơ hội", "duy trì" chung chung không',
+    '   có hạn hay việc cụ thể.',
     o.dangTheoDoi
       ? `   ĐANG THEO DÕI: "${o.dangTheoDoi.slice(0, 600)}" — giữ việc chưa xong, BỎ việc chat cho thấy đã xong, thêm việc mới.`
       : '',
     '   Mỗi việc: viec (ngắn gọn, KHÔNG lặp tên khách), han = "YYYY-MM-DD HH:mm" lúc nên nhắc (theo hẹn trong',
-    '   chat; không rõ thì để trống). Tối đa 5 việc. Hết việc thì nhac = [].',
+    '   chat; không rõ thì để trống). Tối đa 3 việc. Hết việc thì nhac = [].',
     ...(o.viecMo?.length
       ? [
           '7) daXong: các LƯU Ý / VIỆC ĐANG MỞ dưới đây của khách này — chat cho thấy đã XỬ LÝ XONG (vd khách đã',
@@ -889,7 +896,9 @@ export async function xetLaiNhacZalo(r: { id: string; title: string; memberId: s
   const prompt = [
     `Giám đốc agency MT Digital đang theo dõi các việc sau với ${ten}: "${r.title}".`,
     `Bây giờ là ${now.format('HH:mm DD/MM/YYYY')} (giờ Việt Nam). Đọc đoạn chat gần nhất bên dưới và trả về con = các việc`,
-    'CÒN CẦN LÀM: BỎ việc đã xong / đã trả lời / đã chốt (vd khách đã đồng ý phương án, đã thanh toán, đã nhận file);',
+    'CÒN CẦN LÀM: BỎ việc đã xong / đã trả lời / đã chốt (vd khách đã đồng ý phương án, đã thanh toán, đã nhận file;',
+    'giám đốc đã đáp "ok", "a làm rồi", gửi ảnh xác nhận); BỎ việc của người khác tự làm không cần giám đốc và việc',
+    '"theo dõi" chung chung không có hạn — chỉ giữ việc giám đốc thật sự phải làm / hỏi lại;',
     'CẬP NHẬT việc theo tin mới (vd khách hẹn thứ Hai gửi clip → "Nhận / nhắc gửi clip" với han là thứ Hai đó).',
     'Mỗi việc: viec ngắn gọn (không lặp tên khách), han = "YYYY-MM-DD HH:mm" nếu có hẹn cụ thể, không thì để trống.',
     'Hết việc thì con = []. KHÔNG bịa việc không có trong chat hoặc danh sách.',

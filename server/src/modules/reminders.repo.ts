@@ -118,3 +118,17 @@ export async function nhacDangBatTheoTienTo(tienTo: string): Promise<Reminder[]>
   ]);
   return r.map(rowToReminder);
 }
+
+/**
+ * Số nhắc Zalo (ZR-…) một lần sẽ tới giờ trong (`tu`, `den`] hôm `ngay` (giờ VN "HH:mm") — để đồng bộ Zalo
+ * TRƯỚC khi nhắc, AI xét lại có tin mới nhất (anh Tâm 13/10/2026: "nhiều nhắc hẹn đã được xử lý trong đoạn chat
+ * rồi nhưng vẫn chưa được cập nhật").
+ */
+export async function demNhacZaloSapToi(ngay: string, tu: string, den: string): Promise<number> {
+  const r = await q(
+    `SELECT COUNT(*)::int AS n FROM reminders
+     WHERE active AND rem_id LIKE 'ZR-%' AND repeat_kind = 'once' AND on_date = $1 AND at_time > $2 AND at_time <= $3`,
+    [ngay, tu, den],
+  );
+  return Number(r[0]?.n) || 0;
+}

@@ -29,6 +29,7 @@ import {
   demViecNhom,
   demNhomAiDaChoHoc,
 } from './zalo.repo.js';
+import { demNhacZaloSapToi } from './reminders.repo.js';
 import { nhanTin, rutTriThucZalo, xacDinhNhomKhach, gopNhacCu, locLaiNhom, type TinTuWorker } from './zalo.service.js';
 
 const now = () => nowTz().toISOString();
@@ -43,7 +44,13 @@ export async function chayBanDem(): Promise<string> {
   const gioVN = nowTz().hour();
   if (!st.coPhien) return xetLaiKhoBanDem();
   const vn = await demViecNhom().catch(() => ({ chuaXet: 0, chuaKeo: 0 }));
-  const viec = viecBanDem({ gioVN, lastSync: st.lastSync, now: Date.now(), viecNhom: vn.chuaXet + vn.chuaKeo });
+  // Nhắc Zalo sắp tới giờ (25 phút tới) → đồng bộ trước cho AI xét lại với tin mới nhất.
+  const bayGio = nowTz();
+  const sau = bayGio.add(25, 'minute');
+  const sapNhac =
+    sau.format('YYYY-MM-DD') === bayGio.format('YYYY-MM-DD') &&
+    (await demNhacZaloSapToi(bayGio.format('YYYY-MM-DD'), bayGio.format('HH:mm'), sau.format('HH:mm')).catch(() => 0)) > 0;
+  const viec = viecBanDem({ gioVN, lastSync: st.lastSync, now: Date.now(), viecNhom: vn.chuaXet + vn.chuaKeo, sapNhac });
   if (viec === 'nghi') return 'ngoài giờ ban đêm';
   if (viec === 'dong_bo') return (await dongBoZalo()).note;
   if (viec === 'nhom') return (await quetNhomKhach()).note;

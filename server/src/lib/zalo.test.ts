@@ -81,6 +81,15 @@ describe('viecBanDem — 3 tiếng ban ngày, đêm chỉ 5h sáng', () => {
     expect(viecBanDem({ gioVN: 6, lastSync: new Date(luc('05:02')).toISOString(), now: luc('06:30') })).toBe('rut');
     expect(viecBanDem({ gioVN: 8, lastSync: new Date(luc('05:02')).toISOString(), now: luc('08:10') })).toBe('dong_bo');
   });
+  // Anh Tâm 13/10/2026: việc đã xử lý trong chat mà vẫn bị nhắc — tin lúc nhắc cũ tới 3 tiếng.
+  it('sắp tới giờ nhắc Zalo: tin cũ hơn 20 phút thì đồng bộ trước (chỉ ban ngày)', () => {
+    const luc8 = new Date(luc('08:00')).toISOString();
+    expect(viecBanDem({ gioVN: 8, lastSync: luc8, now: luc('08:10'), sapNhac: true })).toBe('rut');
+    expect(viecBanDem({ gioVN: 8, lastSync: luc8, now: luc('08:25'), sapNhac: true })).toBe('dong_bo');
+    expect(viecBanDem({ gioVN: 8, lastSync: luc8, now: luc('08:25'), sapNhac: false })).toBe('rut');
+    const toi = new Date(Date.parse('2026-10-10T21:30:00+07:00')).toISOString();
+    expect(viecBanDem({ gioVN: 23, lastSync: toi, now: Date.parse('2026-10-10T23:30:00+07:00'), sapNhac: true })).toBe('rut');
+  });
   it('xét nhóm / AI đọc chạy cả ngày lẫn đêm', () => {
     const vua = new Date(luc('09:30')).toISOString();
     expect(viecBanDem({ gioVN: 10, lastSync: vua, now: luc('10:00'), viecNhom: 3 })).toBe('nhom');
