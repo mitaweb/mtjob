@@ -54,6 +54,9 @@ export function dungDoanChat(tin: TinZalo[], tenChu: string, tenKhach: string, m
   return ra.join('\n');
 }
 
+/** Cuộc đang nói dở: tin cuối chưa quá chừng này phút thì đợi (14/10/2026: 30 → 10 phút cho đỡ trễ). */
+export const LANG_PHUT = 10;
+
 /**
  * Đã tới lúc rút tri thức cho một cuộc chưa: có tin chưa xử lý, và cuộc đã LẮNG (tin cuối cách
  * đây ≥ `lang` phút) — đang nói dở mà rút thì được nửa câu chuyện. `epNgay` = anh bấm tay.
@@ -63,7 +66,7 @@ export function denLucRut(o: { chuaRut: number; lastMsgAt: string; now: number; 
   if (o.epNgay) return true;
   const last = Date.parse(o.lastMsgAt);
   if (!Number.isFinite(last)) return true;
-  return o.now - last >= (o.langPhut ?? 30) * 60_000;
+  return o.now - last >= (o.langPhut ?? LANG_PHUT) * 60_000;
 }
 
 /** Mã tin lớn nhất (mã Zalo là số rất dài, so bằng BigInt — so chuỗi thì "9" > "10"). '' nếu không có. */

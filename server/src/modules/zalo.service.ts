@@ -596,11 +596,11 @@ let lanRutCuoi = 0;
  * máy chủ chỉ sống 60 giây; ban đêm cron gọi lặp tới khi hết.
  */
 export async function rutTriThucZalo(
-  opts: { epNgay?: boolean; threadId?: string; limit?: number; han?: number } = {},
+  opts: { epNgay?: boolean; threadId?: string; limit?: number; han?: number; boQuaNhip?: boolean } = {},
 ): Promise<{ cuoc: number; y: number; nhac: number; caNhan: number; hoi: number; loi: string }> {
   const rong = { cuoc: 0, y: 0, nhac: 0, caNhan: 0, hoi: 0, loi: '' };
   if (dangRut) return rong;
-  if (!opts.epNgay && Date.now() - lanRutCuoi < 4 * 60_000) return rong;
+  if (!opts.epNgay && !opts.boQuaNhip && Date.now() - lanRutCuoi < 4 * 60_000) return rong;
   dangRut = true;
   lanRutCuoi = Date.now();
   try {

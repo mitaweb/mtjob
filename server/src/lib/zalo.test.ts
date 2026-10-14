@@ -46,8 +46,8 @@ describe('denLucRut', () => {
   const now = Date.parse('2026-10-05T10:00:00Z');
   it('chỉ rút khi có tin mới VÀ cuộc đã lắng', () => {
     expect(denLucRut({ chuaRut: 0, lastMsgAt: '2026-10-05T08:00:00Z', now })).toBe(false);
-    expect(denLucRut({ chuaRut: 5, lastMsgAt: '2026-10-05T09:50:00Z', now })).toBe(false); // đang nói dở
-    expect(denLucRut({ chuaRut: 5, lastMsgAt: '2026-10-05T09:20:00Z', now })).toBe(true);
+    expect(denLucRut({ chuaRut: 5, lastMsgAt: '2026-10-05T09:55:00Z', now })).toBe(false); // đang nói dở
+    expect(denLucRut({ chuaRut: 5, lastMsgAt: '2026-10-05T09:50:00Z', now })).toBe(true); // lắng 10 phút là đọc
   });
   it('anh bấm tay thì rút luôn', () => {
     expect(denLucRut({ chuaRut: 1, lastMsgAt: '2026-10-05T09:59:00Z', now, epNgay: true })).toBe(true);

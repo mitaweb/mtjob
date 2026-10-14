@@ -43,13 +43,14 @@ jobsRouter.get(
   '/reminders',
   asyncHandler(async (req, res) => {
     checkCron(req.headers.authorization);
+    const batDau = Date.now();
     const sent = await runDueReminders();
     res.json({ ok: true, job: 'reminders', sent });
     // Zalo → kho tri thức ăn theo nhịp cron này (anh Tâm 8/10/2026: chạy trên Vercel, chỉ ban đêm).
     // Ban ngày / chưa đăng nhập Zalo thì không làm gì. Chạy nền sau khi đã trả lời cron.
     runInBackground(
       import('./zalo.client.js')
-        .then((z) => z.chayBanDem())
+        .then((z) => z.chayBanDem(batDau))
         .catch((e) => console.warn('[zalo] ban đêm:', (e as Error).message)),
     );
   }),

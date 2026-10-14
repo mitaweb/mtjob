@@ -39,7 +39,9 @@ const now = () => nowTz().toISOString();
  * đêm chỉ một lượt lúc 5h sáng (lib/zalo.viecBanDem); rồi xét nhóm và AI đọc tin MỚI dần (mỗi lượt vài cuộc — máy chủ chỉ sống 60 giây)
  * tới khi hết; hết tin mới thì không gọi AI.
  */
-export async function chayBanDem(): Promise<string> {
+export async function chayBanDem(batDau = Date.now()): Promise<string> {
+  // Máy chủ sống tối đa 60 giây kể từ lúc cron gọi (`batDau`) — một cuộc AI đọc mất tới ~12 giây, chừa đủ.
+  const han = batDau + 45_000;
   const st = await docTrangThai();
   const gioVN = nowTz().hour();
   if (!st.coPhien) return xetLaiKhoBanDem();
@@ -52,7 +54,14 @@ export async function chayBanDem(): Promise<string> {
     (await demNhacZaloSapToi(bayGio.format('YYYY-MM-DD'), bayGio.format('HH:mm'), sau.format('HH:mm')).catch(() => 0)) > 0;
   const viec = viecBanDem({ gioVN, lastSync: st.lastSync, now: Date.now(), viecNhom: vn.chuaXet + vn.chuaKeo, sapNhac });
   if (viec === 'nghi') return 'ngoài giờ ban đêm';
-  if (viec === 'dong_bo') return (await dongBoZalo()).note;
+  if (viec === 'dong_bo') {
+    // Lấy tin xong thì AI xử lý LUÔN trong lượt này, không đợi lượt sau (anh Tâm 14/10/2026: "khi lấy dữ liệu xong
+    // thì em hãy xử lý luôn, như vậy sẽ tránh việc bị delay tin nhắn").
+    const db = await dongBoZalo();
+    if (!db.ok || Date.now() > han - 8_000) return db.note;
+    const r = await rutTriThucZalo({ limit: 20, han, boQuaNhip: true });
+    return r.cuoc ? `${db.note} — rồi đọc luôn ${r.cuoc} cuộc: ${r.y} ý, ${r.nhac} nhắc việc` : db.note;
+  }
   if (viec === 'nhom') return (await quetNhomKhach()).note;
   // Tự lọc lại nhóm AI đã cho học theo tiêu chí chặt — không cần anh bấm nút (anh Tâm 12/10/2026: "giảm nút lại
   // ít nhất có thể, tự động nhiều nhất có thể"). Hết nhóm cần lọc thì bước này không tốn gì.
@@ -61,8 +70,8 @@ export async function chayBanDem(): Promise<string> {
     if (l.xet > 0) return `lọc lại ${l.xet} nhóm: giữ ${l.giu}, bỏ ${l.bo}, còn ${l.conLai}`;
   }
   await gopNhacCu().catch(() => undefined);
-  // Cả ngày: cuộc đang nói dở (tin cuối < 30 phút) để lượt sau, đọc trọn câu chuyện một lần cho đỡ tốn.
-  const r = await rutTriThucZalo({ limit: 3 });
+  // Cả ngày: đọc trong khoảng thời gian còn lại của lượt; cuộc đang nói dở (tin cuối < 10 phút) để lượt sau.
+  const r = await rutTriThucZalo({ limit: 20, han });
   if (r.cuoc) return `đọc ${r.cuoc} cuộc: ${r.y} ý, ${r.nhac} nhắc việc, ${r.caNhan} cuộc không liên quan bỏ qua, ${r.hoi} cuộc cần anh quyết`;
   return xetLaiKhoBanDem();
 }
