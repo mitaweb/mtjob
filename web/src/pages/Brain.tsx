@@ -4,7 +4,7 @@ import { upload } from '@vercel/blob/client';
 import { api, getToken } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
 import { useToast } from '../components/Toaster';
-import { Badge, EmptyState, PageHeader, SkeletonRows, type BadgeVariant } from '../components/ui';
+import { Badge, EmptyState, PageHeader, PhanTrang, SkeletonRows, type BadgeVariant } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import {
   QuyTacKho,
@@ -92,7 +92,16 @@ const STATUS_VI: Record<Doc['status'], { label: string; variant: BadgeVariant }>
 };
 
 const ACCEPT = '.pdf,.txt,.md,.csv,.jpg,.jpeg,.png,.webp';
-const ROWS_PER_GROUP = 12; // hiện gọn, còn lại bấm xem thêm
+// Phân trang (anh Tâm 16/10/2026: "phân trang kho tri thức").
+const CO_TAI_LIEU = 10;
+const CO_HO_SO = 15;
+const CO_DOAN = 15;
+
+/** Trang `trang` (từ 1) của danh sách — trang vượt quá (danh sách vừa ngắn đi) thì lùi về trang cuối. */
+function catTrang<T>(ds: T[], trang: number, co: number): { muc: T[]; trang: number } {
+  const t = Math.min(Math.max(1, trang), Math.max(1, Math.ceil(ds.length / co)));
+  return { muc: ds.slice((t - 1) * co, t * co), trang: t };
+}
 
 const fmtD = (iso: string) =>
   iso ? new Date(iso).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
@@ -121,7 +130,9 @@ function DuLieuKho() {
   const [openProfile, setOpenProfile] = useState<string | null>(null);
   const [openChunk, setOpenChunk] = useState<string | null>(null);
   const [openDoc, setOpenDoc] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [trangDoc, setTrangDoc] = useState(1);
+  const [trangHoSo, setTrangHoSo] = useState(1);
+  const [trangNhom, setTrangNhom] = useState<Record<string, number>>({});
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [docCustomer, setDocCustomer] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -142,6 +153,7 @@ function DuLieuKho() {
     if (keyword.trim()) params.set('q', keyword.trim());
     const r = await api<{ chunks: Chunk[]; canDelete: boolean }>(`/brain/chunks?${params}`);
     setChunks(r.chunks);
+    setTrangNhom({});
     setCanDelete(r.canDelete);
   }
 
@@ -336,7 +348,7 @@ function DuLieuKho() {
 
         {docs.length > 0 && (
           <ul className="mt-3 divide-y border-t border-brand-100 pt-1">
-            {docs.map((d) => (
+            {catTrang(docs, trangDoc, CO_TAI_LIEU).muc.map((d) => (
               <li key={d.id} className="py-2">
                 <div className="flex items-start justify-between gap-2">
                   <button
@@ -376,6 +388,7 @@ function DuLieuKho() {
             ))}
           </ul>
         )}
+        <PhanTrang trang={catTrang(docs, trangDoc, CO_TAI_LIEU).trang} tong={docs.length} co={CO_TAI_LIEU} onDoi={setTrangDoc} />
       </div>
 
       {/* Hồ sơ 360° */}
@@ -386,7 +399,7 @@ function DuLieuKho() {
             Bản tổng hợp tự động từ lưu ý khách hàng, CRM và lịch hẹn.
           </p>
           <ul className="divide-y">
-            {profiles.map((p) => (
+            {catTrang(profiles, trangHoSo, CO_HO_SO).muc.map((p) => (
               <li key={p.key} className="py-2">
                 <button
                   className="flex w-full items-center justify-between gap-2 text-left"
@@ -405,6 +418,7 @@ function DuLieuKho() {
               </li>
             ))}
           </ul>
+          <PhanTrang trang={catTrang(profiles, trangHoSo, CO_HO_SO).trang} tong={profiles.length} co={CO_HO_SO} onDoi={setTrangHoSo} />
         </div>
       )}
 
@@ -437,7 +451,7 @@ function DuLieuKho() {
       {/* Mỗi loại nguồn = 1 ô, danh sách gọn bên trong */}
       {groups.map(([type, items]) => {
         const isCollapsed = collapsed[type];
-        const shown = expanded[type] ? items : items.slice(0, ROWS_PER_GROUP);
+        const { muc: shown, trang: trangNay } = catTrang(items, trangNhom[type] || 1, CO_DOAN);
         return (
           <div key={type} className="card">
             <button
@@ -484,14 +498,12 @@ function DuLieuKho() {
                     </li>
                   ))}
                 </ul>
-                {items.length > ROWS_PER_GROUP && (
-                  <button
-                    className="mt-2 text-sm text-brand-600 underline"
-                    onClick={() => setExpanded((s) => ({ ...s, [type]: !s[type] }))}
-                  >
-                    {expanded[type] ? 'Thu gọn' : `Xem thêm ${items.length - ROWS_PER_GROUP} mục`}
-                  </button>
-                )}
+                <PhanTrang
+                  trang={trangNay}
+                  tong={items.length}
+                  co={CO_DOAN}
+                  onDoi={(t) => setTrangNhom((m) => ({ ...m, [type]: t }))}
+                />
               </>
             )}
           </div>
