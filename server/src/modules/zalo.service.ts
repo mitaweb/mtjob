@@ -9,6 +9,8 @@
 //   4. Việc giám đốc cần làm (khách hỏi báo giá chưa trả lời…) → đặt nhắc hẹn cho giám đốc.
 import { aiKhoJson, cauHinhAiKho } from '../ai/brainAi.js';
 import type { GeminiPart } from '../gemini/client.js';
+import { linkTrongTin, ganMoTaLink } from '../lib/trangWeb.js';
+import { xemLink } from './xemLink.js';
 import { dungDoanChat, denLucRut, noiDungTin, goiYTenKhachTuNhom, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, dangDoc, nhomKhongLienQuan, coDauHieuCongViec, tepTrongTin, laHostTepZalo, moTaThayTin, type TinZalo, type LoaiTep } from '../lib/zalo.js';
 import { khopKhach, xoaLienHe, chuanTen } from '../lib/brainGate.js';
 import {
@@ -183,6 +185,10 @@ const SCHEMA_DOC = {
       type: 'ARRAY',
       items: { type: 'OBJECT', properties: { so: { type: 'INTEGER' }, moTa: { type: 'STRING' } }, required: ['so', 'moTa'] },
     },
+    moTaLink: {
+      type: 'ARRAY',
+      items: { type: 'OBJECT', properties: { so: { type: 'INTEGER' }, moTa: { type: 'STRING' } }, required: ['so', 'moTa'] },
+    },
     nhac: {
       type: 'ARRAY',
       items: {
@@ -215,6 +221,8 @@ export interface KetQuaDoc {
   daXong: string[];
   /** Mô tả nội dung từng tệp gửi kèm (ảnh / PDF / ghi âm), theo số thứ tự tệp. */
   moTaTep: Array<{ so: number; moTa: string }>;
+  /** Mô tả từng link app đã mở giúp (trang web / Google Docs / PDF trên mạng), theo số thứ tự link. */
+  moTaLink: Array<{ so: number; moTa: string }>;
 }
 
 /**
@@ -260,6 +268,8 @@ export async function docCuoc(
     viecMo?: Array<{ id: string; tieuDe: string; tomTat: string }>;
     /** Ảnh / PDF / ghi âm trong đoạn chat, đã tải về — AI xem trực tiếp (anh Tâm 16/10/2026). */
     tep?: Array<{ so: number; loai: LoaiTep; part: GeminiPart }>;
+    /** Link trong đoạn chat app đã mở giúp: chữ của trang, hoặc tệp (PDF / ảnh) gửi kèm (anh Tâm 16/10/2026). */
+    link?: Array<{ so: number; url: string; tieuDe?: string; moTa?: string; noiDung?: string; part?: GeminiPart }>;
   },
 ): Promise<KetQuaDoc> {
   const rong: KetQuaDoc = {
@@ -275,9 +285,11 @@ export async function docCuoc(
     nhac: [],
     daXong: [],
     moTaTep: [],
+    moTaLink: [],
   };
   if (!doanChat.trim()) return rong;
   const tep = o.tep || [];
+  const link = o.link || [];
   const prompt = [
     o.nhom
       ? `Đây là đoạn chat trong nhóm Zalo «${o.ten}» mà ${o.chu} (giám đốc agency marketing MT Digital) là thành viên. Tên người nói ghi trước dấu hai chấm; "${o.chu}" là giám đốc.`
@@ -351,6 +363,21 @@ export async function docCuoc(
           '   moTa thật ngắn (vd "ảnh chụp đồ ăn"). KHÔNG ghi số tài khoản, mật khẩu, OTP, số điện thoại.',
         ]
       : []),
+    ...(link.length
+      ? [
+          '9) LINK TRONG ĐOẠN CHAT — app đã mở giúp (trang công khai; trang cần đăng nhập thì chỉ có tiêu đề hoặc trống):',
+          ...link.map(
+            (l) =>
+              `   [LINK ${l.so}] ${l.url}` +
+              (l.part
+                ? ` — nội dung là tệp gửi kèm nhãn "Link ${l.so}"`
+                : `\n     Tiêu đề: ${l.tieuDe || '(không có)'}${l.moTa ? `\n     Mô tả: ${l.moTa}` : ''}\n     Nội dung: ${(l.noiDung || '(không đọc được)').replace(/\n/g, ' ')}`),
+          ),
+          '   Dùng nội dung link như tin nhắn (link báo giá, bài viết, sản phẩm khách, tài liệu Google…).',
+          '   moTaLink: MỖI link một mục {so, moTa} — link đó là gì, nói gì chính (≤ 300 ký tự); không xem được thì',
+          '   ghi rõ (vd "bài Facebook, cần đăng nhập mới xem được"). KHÔNG ghi số tài khoản, mật khẩu, OTP, SĐT.',
+        ]
+      : []),
     'Nếu loai khác "cong_viec" thì y, boSungKhach, nhac đều để trống.',
     'BỎ QUA: chào hỏi, cảm ơn, "ok anh", OTP, mật khẩu, số tài khoản, số điện thoại. KHÔNG bịa điều không',
     'có trong đoạn chat. Viết tiếng Việt.',
@@ -360,7 +387,10 @@ export async function docCuoc(
   ]
     .filter((d) => d !== '')
     .join('\n');
-  const them: GeminiPart[] = tep.flatMap((t) => [{ text: `Tệp ${t.so}:` }, t.part]);
+  const them: GeminiPart[] = [
+    ...tep.flatMap((t) => [{ text: `Tệp ${t.so}:` }, t.part]),
+    ...link.filter((l) => l.part).flatMap((l) => [{ text: `Link ${l.so}:` }, l.part!]),
+  ];
   const r = await aiKhoJson(prompt, SCHEMA_DOC, them);
   const loai: KetQuaDoc['loai'] = ['cong_viec', 'ca_nhan', 'phan_van'].includes(r?.loai) ? r.loai : 'chua_ro';
   const chu = (x: unknown, n: number) => String(x ?? '').trim().slice(0, n);
@@ -384,6 +414,9 @@ export async function docCuoc(
     boSungKhach: hoc ? chu(r?.boSungKhach, 400) : '',
     daXong: (Array.isArray(r?.daXong) ? r.daXong : []).map((x: unknown) => String(x ?? '').trim()).filter(Boolean).slice(0, 20),
     moTaTep: (Array.isArray(r?.moTaTep) ? r.moTaTep : [])
+      .map((x: { so?: unknown; moTa?: unknown }) => ({ so: Number(x?.so), moTa: chu(x?.moTa, 600) }))
+      .filter((x: { so: number; moTa: string }) => Number.isInteger(x.so) && x.so > 0 && x.moTa),
+    moTaLink: (Array.isArray(r?.moTaLink) ? r.moTaLink : [])
       .map((x: { so?: unknown; moTa?: unknown }) => ({ so: Number(x?.so), moTa: chu(x?.moTa, 600) }))
       .filter((x: { so: number; moTa: string }) => Number.isInteger(x.so) && x.so > 0 && x.moTa),
     nhac: !hoc
@@ -475,6 +508,31 @@ export async function chuanBiTep(
 
 const TEN_LOAI_TEP: Record<LoaiTep, string> = { anh: 'ảnh', pdf: 'PDF', ghi_am: 'ghi âm' };
 
+/** Mỗi lần đọc một cuộc mở tối đa chừng này link (mới nhất trước). */
+const TOI_DA_LINK = 3;
+
+/** Mở các link trong đoạn tin cho AI xem (mới nhất trước, mỗi link một lần). Link lỗi / bị chặn thì bỏ. */
+export async function chuanBiLink(
+  tin: TinZalo[],
+): Promise<Array<{ msgId: string; so: number; url: string; tieuDe?: string; moTa?: string; noiDung?: string; part?: GeminiPart }>> {
+  const ung: Array<{ msgId: string; url: string }> = [];
+  for (const t of [...tin].sort((a, b) => Number(b.ts) - Number(a.ts))) {
+    for (const url of linkTrongTin(t.content)) {
+      if (ung.length < TOI_DA_LINK && !ung.some((x) => x.url === url)) ung.push({ msgId: t.msgId, url });
+    }
+  }
+  const mo = await Promise.all(ung.map((x) => xemLink(x.url).catch(() => null)));
+  const ra: Array<{ msgId: string; so: number; url: string; tieuDe?: string; moTa?: string; noiDung?: string; part?: GeminiPart }> = [];
+  ung.forEach((x, i) => {
+    const k = mo[i];
+    if (!k) return;
+    const so = ra.length + 1;
+    if (k.loai === 'tep') ra.push({ msgId: x.msgId, so, url: x.url, part: { inlineData: { mimeType: k.mimeType, data: k.data } } });
+    else ra.push({ msgId: x.msgId, so, url: x.url, tieuDe: k.tieuDe, moTa: k.moTa, noiDung: k.noiDung });
+  });
+  return ra;
+}
+
 /**
  * Đọc MỘT cuộc: AI xét công việc hay cá nhân → tri thức qua bộ phân loại kho (nguồn 'zalo': rõ ràng thì
  * vào kho luôn, phân vân thì chờ giám đốc) → bổ sung hồ sơ khách → đặt nhắc việc cho giám đốc.
@@ -497,7 +555,7 @@ export async function rutCuoc(c: ZaloThread, chu: NguoiGui, viDu: ViDuQuyet = []
   // Nhóm khách có cả lịch sử kéo về (vài trăm tin) → cho AI đọc dài hơn.
   // Ảnh / PDF / ghi âm: tải vào bộ nhớ cho AI xem cùng lúc, chỗ đó trong đoạn chat ghi [TỆP k — …].
   const coGhiAm = (await cauHinhAiKho().catch(() => null))?.provider !== 'claude';
-  const tep = await chuanBiTep(docTu, coGhiAm).catch(() => []);
+  const [tep, link] = await Promise.all([chuanBiTep(docTu, coGhiAm).catch(() => []), chuanBiLink(docTu).catch(() => [])]);
   const tepCuaTin = new Map(tep.map((x) => [x.msgId, x]));
   const docTuCoTep = tep.length
     ? docTu.map((t) => {
@@ -528,12 +586,19 @@ export async function rutCuoc(c: ZaloThread, chu: NguoiGui, viDu: ViDuQuyet = []
     viecMo: viecMo.map((i) => ({ id: i.id, tieuDe: i.title, tomTat: i.summary })),
     ghiChuAnh: c.anhGhiChu,
     tep: tep.map((x) => ({ so: x.so, loai: x.loai, part: x.part })),
+    link: link.map(({ msgId: _m, ...l }) => l),
   });
   // Giữ lại MÔ TẢ thay cho đường link (anh Tâm 16/10/2026: "đọc luôn lưu kho dữ liệu, không lưu file trên server")
   // — lần sau AI (xét lại nhắc, đọc tiếp) hiểu tệp đó nói gì mà không phải tải lại.
   for (const m of kq.moTaTep) {
     const x = tep.find((t) => t.so === m.so);
     if (x) await suaNoiDungTin(x.msgId, moTaThayTin(x, xoaLienHe(m.moTa).text)).catch(() => undefined);
+  }
+  // Link đã xem → ghi mô tả vào tin (lần sau không mở lại, AI xét lại nhắc vẫn hiểu link đó là gì).
+  for (const m of kq.moTaLink) {
+    const l = link.find((x) => x.so === m.so);
+    const t = l && docTu.find((x) => x.msgId === l.msgId);
+    if (l && t) await suaNoiDungTin(t.msgId, ganMoTaLink(t.content, l.url, xoaLienHe(m.moTa).text)).catch(() => undefined);
   }
   // Việc đã xử lý → chuyển sang "đã xong" (lưu trữ), không còn trong tab Riêng anh.
   const moIds = new Set(viecMo.map((i) => i.id));

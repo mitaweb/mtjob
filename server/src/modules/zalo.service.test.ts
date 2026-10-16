@@ -25,6 +25,7 @@ const KET_QUA_XET: Array<{ id: string; kq: Record<string, unknown> }> = [];
 const CRM_GHI: Array<Record<string, unknown>> = [];
 let PROMPT = '';
 let THEM: unknown[] = [];
+let LINK_MO: Record<string, unknown> = {};
 const SUA_TIN: Array<{ id: string; c: string }> = [];
 let BI_LOAI: Array<Record<string, unknown>> = [];
 const MO_LAI: Array<{ id: string; o: Record<string, unknown> }> = [];
@@ -96,6 +97,7 @@ vi.mock('./zalo.repo.js', () => ({
     MO_LAI.push({ id, o });
   }),
 }));
+vi.mock('./xemLink.js', () => ({ xemLink: vi.fn(async (u: string) => LINK_MO[u] ?? null) }));
 let VIEC_MO: Array<Record<string, unknown>> = [];
 const SUA_MUC: Array<{ id: string; patch: Record<string, unknown> }> = [];
 vi.mock('./brainItems.repo.js', () => ({ listItems: vi.fn(async () => VIEC_MO) }));
@@ -362,6 +364,46 @@ describe('AI xem ảnh / đọc file trong tin Zalo', () => {
         : new Response(new Uint8Array([37, 80, 68, 70]), { status: 200, headers: { 'content-type': 'application/pdf' } }),
     ) as unknown as typeof fetch;
     expect(await S.taiTepZalo('https://file-stal-13.dlfl.vn/gr/abc', 'pdf')).toEqual({ mimeType: 'application/pdf', data: 'JVBERg==' });
+  });
+});
+
+describe('AI xem link trong tin Zalo', () => {
+  const tinDb = (id: string, content: string) => ({ msgId: id, threadId: 'T1', fromSelf: false, sender: 'Chị Hà', content, ts: String(Date.now() - 60 * 60_000) });
+  const cuoc = { threadId: 'T1', name: 'Chị Hà', customer: '', customerId: '', enabled: true, aiChecked: true, isGroup: false, chuaRut: 2, lastMsgAt: '2026-10-05T01:00:00Z' };
+  beforeEach(() => {
+    THEM = [];
+    SUA_TIN.length = 0;
+    LINK_MO = {};
+  });
+
+  it('trang web: chữ trang đưa vào lời nhắn AI, mô tả nối vào tin (lần sau không mở lại)', async () => {
+    LINK_MO = { 'https://quancafe.vn/menu': { loai: 'trang', tieuDe: 'Menu quán', moTa: '', noiDung: 'Cà phê muối 35k' } };
+    CUOC_CAN_RUT = [cuoc];
+    CHUA_RUT = [tinDb('a', 'Anh xem menu bên em nhé https://quancafe.vn/menu')];
+    AI_DOC = { loai: 'cong_viec', y: [], moTaLink: [{ so: 1, moTa: 'Menu quán cafe: cà phê muối 35k' }] };
+    await S.rutTriThucZalo({ epNgay: true });
+    expect(PROMPT).toContain('[LINK 1] https://quancafe.vn/menu');
+    expect(PROMPT).toContain('Cà phê muối 35k');
+    expect(THEM).toEqual([]);
+    expect(SUA_TIN).toEqual([{ id: 'a', c: 'Anh xem menu bên em nhé https://quancafe.vn/menu [Link: Menu quán cafe: cà phê muối 35k]' }]);
+  });
+
+  it('link là PDF trên mạng → gửi kèm như tệp, nhãn "Link 1"', async () => {
+    LINK_MO = { 'https://a.vn/bg.pdf': { loai: 'tep', mimeType: 'application/pdf', data: 'JVBERg==' } };
+    CUOC_CAN_RUT = [cuoc];
+    CHUA_RUT = [tinDb('a', 'Báo giá đây anh https://a.vn/bg.pdf')];
+    AI_DOC = { loai: 'cong_viec', y: [] };
+    await S.rutTriThucZalo({ epNgay: true });
+    expect(THEM).toEqual([{ text: 'Link 1:' }, { inlineData: { mimeType: 'application/pdf', data: 'JVBERg==' } }]);
+  });
+
+  it('link không mở được → không đưa vào, AI chỉ đọc chữ', async () => {
+    CUOC_CAN_RUT = [cuoc];
+    CHUA_RUT = [tinDb('a', 'Xem https://khong-mo-duoc.vn/x')];
+    AI_DOC = { loai: 'cong_viec', y: [] };
+    await S.rutTriThucZalo({ epNgay: true });
+    expect(PROMPT).not.toContain('[LINK 1]');
+    expect(SUA_TIN).toEqual([]);
   });
 });
 
