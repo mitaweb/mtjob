@@ -69,14 +69,17 @@ export function docJson(text: string): any {
   }
 }
 
-/** Hỏi AI một đối tượng JSON theo `schema` (định dạng schema của Gemini). */
+/**
+ * Hỏi AI một đối tượng JSON theo `schema` (định dạng schema của Gemini). `them` = phần gửi kèm sau lời nhắn
+ * (ảnh / PDF / ghi âm dạng inlineData, xen nhãn chữ "Tệp 1:"…).
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function aiKhoJson(prompt: string, schema: unknown): Promise<any> {
+export async function aiKhoJson(prompt: string, schema: unknown, them: GeminiPart[] = []): Promise<any> {
   const { provider } = await cauHinhAiKho();
   const parts =
     provider === 'gemini'
       ? await aiKhoContent({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          contents: [{ role: 'user', parts: [{ text: prompt }, ...them] }],
           generationConfig: { responseMimeType: 'application/json', responseSchema: schema },
         })
       : await aiKhoContent({
@@ -89,6 +92,7 @@ export async function aiKhoJson(prompt: string, schema: unknown): Promise<any> {
                     `${prompt}\n\nCHỈ trả về MỘT đối tượng JSON hợp lệ đúng JSON Schema dưới đây, không kèm chữ nào khác:\n` +
                     JSON.stringify(toJsonSchema(schema)),
                 },
+                ...them,
               ],
             },
           ],

@@ -7,8 +7,9 @@
 //      nguồn 'zalo': rõ ràng → vào kho luôn; phân vân / trùng mục cũ → chờ giám đốc duyệt.
 //   3. Cập nhật khách: khớp/tạo khách trong CRM, thêm điều mới vào "Thông tin khách".
 //   4. Việc giám đốc cần làm (khách hỏi báo giá chưa trả lời…) → đặt nhắc hẹn cho giám đốc.
-import { aiKhoJson } from '../ai/brainAi.js';
-import { dungDoanChat, denLucRut, noiDungTin, goiYTenKhachTuNhom, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, dangDoc, nhomKhongLienQuan, coDauHieuCongViec, type TinZalo } from '../lib/zalo.js';
+import { aiKhoJson, cauHinhAiKho } from '../ai/brainAi.js';
+import type { GeminiPart } from '../gemini/client.js';
+import { dungDoanChat, denLucRut, noiDungTin, goiYTenKhachTuNhom, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, dangDoc, nhomKhongLienQuan, coDauHieuCongViec, tepTrongTin, laHostTepZalo, moTaThayTin, type TinZalo, type LoaiTep } from '../lib/zalo.js';
 import { khopKhach, xoaLienHe, chuanTen } from '../lib/brainGate.js';
 import {
   ghiNhieuCuoc,
@@ -33,6 +34,7 @@ import {
   CHUA_RO_THEO_TEN,
   cuocBiLoai,
   moLaiCuoc,
+  suaNoiDungTin,
   type ZaloThread,
 } from './zalo.repo.js';
 import { xetDuaVaoKho, suaMuc, type NguoiGui } from './brainItems.service.js';
@@ -177,6 +179,10 @@ const SCHEMA_DOC = {
     },
     boSungKhach: { type: 'STRING' },
     daXong: { type: 'ARRAY', items: { type: 'STRING' } },
+    moTaTep: {
+      type: 'ARRAY',
+      items: { type: 'OBJECT', properties: { so: { type: 'INTEGER' }, moTa: { type: 'STRING' } }, required: ['so', 'moTa'] },
+    },
     nhac: {
       type: 'ARRAY',
       items: {
@@ -207,6 +213,8 @@ export interface KetQuaDoc {
   nhac: Array<{ viec: string; han: string; khach: string }>;
   /** Mã các mục "riêng giám đốc" đang mở mà chat cho thấy ĐÃ XỬ LÝ (vd khách đã thanh toán). */
   daXong: string[];
+  /** Mô tả nội dung từng tệp gửi kèm (ảnh / PDF / ghi âm), theo số thứ tự tệp. */
+  moTaTep: Array<{ so: number; moTa: string }>;
 }
 
 /**
@@ -250,6 +258,8 @@ export async function docCuoc(
     ghiChuAnh?: string;
     /** Mục "riêng giám đốc" đang mở của khách này (hoá đơn, công nợ, lịch hẹn…) — AI báo cái nào đã xong. */
     viecMo?: Array<{ id: string; tieuDe: string; tomTat: string }>;
+    /** Ảnh / PDF / ghi âm trong đoạn chat, đã tải về — AI xem trực tiếp (anh Tâm 16/10/2026). */
+    tep?: Array<{ so: number; loai: LoaiTep; part: GeminiPart }>;
   },
 ): Promise<KetQuaDoc> {
   const rong: KetQuaDoc = {
@@ -264,8 +274,10 @@ export async function docCuoc(
     boSungKhach: '',
     nhac: [],
     daXong: [],
+    moTaTep: [],
   };
   if (!doanChat.trim()) return rong;
+  const tep = o.tep || [];
   const prompt = [
     o.nhom
       ? `Đây là đoạn chat trong nhóm Zalo «${o.ten}» mà ${o.chu} (giám đốc agency marketing MT Digital) là thành viên. Tên người nói ghi trước dấu hai chấm; "${o.chu}" là giám đốc.`
@@ -329,6 +341,16 @@ export async function docCuoc(
           ...o.viecMo.map((v) => `   [${v.id}] ${v.tieuDe}${v.tomTat ? ` — ${v.tomTat}` : ''}`),
         ]
       : []),
+    ...(tep.length
+      ? [
+          `8) TỆP GỬI KÈM: có ${tep.length} tệp (ảnh / PDF / ghi âm) gửi ngay sau lời nhắn này, ghi nhãn "Tệp 1", "Tệp 2"…;`,
+          '   trong đoạn chat chỗ đó ghi [TỆP k — …]. Xem / đọc / nghe và dùng nội dung như tin nhắn để xếp loại, rút ý,',
+          '   đặt / bỏ nhắc (vd ảnh chuyển khoản → đã thanh toán; PDF báo giá → gói, giá đã gửi; ghi âm → lời dặn).',
+          '   moTaTep: MỖI tệp một mục {so, moTa} — mô tả ngắn (≤ 300 ký tự) nội dung chính: số tiền, ngày, bên gửi /',
+          '   nhận, nội dung chuyển khoản, hạng mục báo giá, lời nói trong ghi âm…; ảnh đời thường / không liên quan thì',
+          '   moTa thật ngắn (vd "ảnh chụp đồ ăn"). KHÔNG ghi số tài khoản, mật khẩu, OTP, số điện thoại.',
+        ]
+      : []),
     'Nếu loai khác "cong_viec" thì y, boSungKhach, nhac đều để trống.',
     'BỎ QUA: chào hỏi, cảm ơn, "ok anh", OTP, mật khẩu, số tài khoản, số điện thoại. KHÔNG bịa điều không',
     'có trong đoạn chat. Viết tiếng Việt.',
@@ -338,7 +360,8 @@ export async function docCuoc(
   ]
     .filter((d) => d !== '')
     .join('\n');
-  const r = await aiKhoJson(prompt, SCHEMA_DOC);
+  const them: GeminiPart[] = tep.flatMap((t) => [{ text: `Tệp ${t.so}:` }, t.part]);
+  const r = await aiKhoJson(prompt, SCHEMA_DOC, them);
   const loai: KetQuaDoc['loai'] = ['cong_viec', 'ca_nhan', 'phan_van'].includes(r?.loai) ? r.loai : 'chua_ro';
   const chu = (x: unknown, n: number) => String(x ?? '').trim().slice(0, n);
   const hoc = loai === 'cong_viec';
@@ -360,6 +383,9 @@ export async function docCuoc(
       .slice(0, 8),
     boSungKhach: hoc ? chu(r?.boSungKhach, 400) : '',
     daXong: (Array.isArray(r?.daXong) ? r.daXong : []).map((x: unknown) => String(x ?? '').trim()).filter(Boolean).slice(0, 20),
+    moTaTep: (Array.isArray(r?.moTaTep) ? r.moTaTep : [])
+      .map((x: { so?: unknown; moTa?: unknown }) => ({ so: Number(x?.so), moTa: chu(x?.moTa, 600) }))
+      .filter((x: { so: number; moTa: string }) => Number.isInteger(x.so) && x.so > 0 && x.moTa),
     nhac: !hoc
       ? []
       : (Array.isArray(r?.nhac) ? r.nhac : [])
@@ -387,6 +413,68 @@ export interface KetQuaRut {
   nhac: number;
 }
 
+/** Mỗi lần đọc một cuộc xem tối đa chừng này tệp (mới nhất trước) — giữ chi phí AI thấp. */
+const TOI_DA_TEP = 5;
+const MIME_TEP: Record<LoaiTep, RegExp> = {
+  anh: /^image\/(jpe?g|png|webp|heic|heif)$/,
+  pdf: /^application\/pdf$/,
+  ghi_am: /^audio\//,
+};
+
+/**
+ * Tải MỘT tệp từ máy chủ Zalo vào bộ nhớ (không ghi đĩa, không lưu đâu cả). Mỗi bước chuyển hướng đều phải còn ở
+ * máy chủ tệp Zalo; sai loại / quá cỡ / lỗi → null.
+ */
+export async function taiTepZalo(url: string, loai: LoaiTep): Promise<{ mimeType: string; data: string } | null> {
+  const toiDa = loai === 'pdf' ? 10 * 1024 * 1024 : 5 * 1024 * 1024;
+  let u = url;
+  for (let buoc = 0; buoc < 4; buoc++) {
+    if (!laHostTepZalo(u)) return null;
+    const r = await fetch(u, { redirect: 'manual', signal: AbortSignal.timeout(10_000) });
+    if (r.status >= 300 && r.status < 400) {
+      const toi = r.headers.get('location');
+      if (!toi) return null;
+      u = new URL(toi, u).toString();
+      continue;
+    }
+    if (!r.ok) return null;
+    let mime = (r.headers.get('content-type') || '').split(';')[0]!.trim().toLowerCase();
+    if (mime === 'image/jpg') mime = 'image/jpeg';
+    if (loai === 'ghi_am' && !mime.startsWith('audio/')) mime = 'audio/aac';
+    if (!MIME_TEP[loai].test(mime)) return null;
+    if (Number(r.headers.get('content-length')) > toiDa) return null;
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (!buf.length || buf.length > toiDa) return null;
+    return { mimeType: mime, data: buf.toString('base64') };
+  }
+  return null;
+}
+
+/** Chọn và tải các tệp AI đọc được trong đoạn tin (mới nhất trước). Ghi âm chỉ khi dùng Gemini. */
+export async function chuanBiTep(
+  tin: TinZalo[],
+  coGhiAm: boolean,
+): Promise<Array<{ msgId: string; so: number; loai: LoaiTep; ten: string; part: GeminiPart }>> {
+  const ung = [...tin]
+    .sort((a, b) => Number(b.ts) - Number(a.ts))
+    .map((t) => ({ t, tep: tepTrongTin(t.content) }))
+    .filter((x): x is { t: TinZalo; tep: NonNullable<ReturnType<typeof tepTrongTin>> } => !!x.tep && (coGhiAm || x.tep.loai !== 'ghi_am'))
+    .slice(0, TOI_DA_TEP);
+  const tai = await Promise.all(ung.map((x) => taiTepZalo(x.tep.url, x.tep.loai).catch(() => null)));
+  const ra: Array<{ msgId: string; so: number; loai: LoaiTep; ten: string; part: GeminiPart }> = [];
+  // Một lần gọi AI nhận tối đa ~20 MB → cộng dồn (base64) tới ~14 MB, tệp vượt thì để lần sau.
+  let tong = 0;
+  ung.forEach((x, i) => {
+    const d = tai[i];
+    if (!d || tong + d.data.length > 14 * 1024 * 1024) return;
+    tong += d.data.length;
+    ra.push({ msgId: x.t.msgId, so: ra.length + 1, loai: x.tep.loai, ten: x.tep.ten, part: { inlineData: d } });
+  });
+  return ra;
+}
+
+const TEN_LOAI_TEP: Record<LoaiTep, string> = { anh: 'ảnh', pdf: 'PDF', ghi_am: 'ghi âm' };
+
 /**
  * Đọc MỘT cuộc: AI xét công việc hay cá nhân → tri thức qua bộ phân loại kho (nguồn 'zalo': rõ ràng thì
  * vào kho luôn, phân vân thì chờ giám đốc) → bổ sung hồ sơ khách → đặt nhắc việc cho giám đốc.
@@ -407,7 +495,17 @@ export async function rutCuoc(c: ZaloThread, chu: NguoiGui, viDu: ViDuQuyet = []
   // Chỉ lấy 60 tin gần nhất làm ngữ cảnh — đủ để xếp loại, khỏi tốn token đọc lại cả lịch sử.
   const docTu = c.aiChecked ? tin : await tinGanDay(c.threadId, 60);
   // Nhóm khách có cả lịch sử kéo về (vài trăm tin) → cho AI đọc dài hơn.
-  const doan = dungDoanChat(docTu, chu.name || 'Giám đốc', c.customer || c.name, c.isGroup ? 40000 : 15000);
+  // Ảnh / PDF / ghi âm: tải vào bộ nhớ cho AI xem cùng lúc, chỗ đó trong đoạn chat ghi [TỆP k — …].
+  const coGhiAm = (await cauHinhAiKho().catch(() => null))?.provider !== 'claude';
+  const tep = await chuanBiTep(docTu, coGhiAm).catch(() => []);
+  const tepCuaTin = new Map(tep.map((x) => [x.msgId, x]));
+  const docTuCoTep = tep.length
+    ? docTu.map((t) => {
+        const x = tepCuaTin.get(t.msgId);
+        return x ? { ...t, content: `[TỆP ${x.so} — ${TEN_LOAI_TEP[x.loai]}${x.ten ? ` ${x.ten}` : ''}]` } : t;
+      })
+    : docTu;
+  const doan = dungDoanChat(docTuCoTep, chu.name || 'Giám đốc', c.customer || c.name, c.isGroup ? 40000 : 15000);
   const nhanSu = (await getActiveMembers().catch(() => [])).map((m) => m.fullName).filter(Boolean);
   // Nhắc gộp: mỗi khách MỘT nhắc (mã theo khách); chưa gắn khách thì theo cuộc.
   const maNhacTruoc = khoaNhac(daGan?.id, c.threadId);
@@ -429,7 +527,14 @@ export async function rutCuoc(c: ZaloThread, chu: NguoiGui, viDu: ViDuQuyet = []
     dangTheoDoi: nhacCu?.active ? nhacCu.title : '',
     viecMo: viecMo.map((i) => ({ id: i.id, tieuDe: i.title, tomTat: i.summary })),
     ghiChuAnh: c.anhGhiChu,
+    tep: tep.map((x) => ({ so: x.so, loai: x.loai, part: x.part })),
   });
+  // Giữ lại MÔ TẢ thay cho đường link (anh Tâm 16/10/2026: "đọc luôn lưu kho dữ liệu, không lưu file trên server")
+  // — lần sau AI (xét lại nhắc, đọc tiếp) hiểu tệp đó nói gì mà không phải tải lại.
+  for (const m of kq.moTaTep) {
+    const x = tep.find((t) => t.so === m.so);
+    if (x) await suaNoiDungTin(x.msgId, moTaThayTin(x, xoaLienHe(m.moTa).text)).catch(() => undefined);
+  }
   // Việc đã xử lý → chuyển sang "đã xong" (lưu trữ), không còn trong tab Riêng anh.
   const moIds = new Set(viecMo.map((i) => i.id));
   for (const id of kq.daXong.filter((x) => moIds.has(x))) {

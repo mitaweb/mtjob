@@ -271,3 +271,47 @@ const DAU_HIEU_CONG_VIEC =
 export function coDauHieuCongViec(noiDung: string): boolean {
   return DAU_HIEU_CONG_VIEC.test(String(noiDung || ''));
 }
+
+// ── Ảnh / file / ghi âm trong tin Zalo (anh Tâm 16/10/2026: "làm nhé, em đọc luôn lưu kho dữ liệu, không lưu
+// file trên server") — AI xem nội dung lúc đọc cuộc, chỉ giữ lại MÔ TẢ bằng chữ thay cho đường link. ──
+
+/** Chỉ tải tệp từ máy chủ tệp của Zalo — link do người khác gửi, không bao giờ tải địa chỉ lạ. */
+const HOST_TEP_ZALO = /(^|\.)(zdn\.vn|zadn\.vn|dlfl\.vn|flchat\.vn)$/i;
+
+export function laHostTepZalo(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && HOST_TEP_ZALO.test(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+export type LoaiTep = 'anh' | 'pdf' | 'ghi_am';
+
+/** Tin là một tệp AI đọc được (ảnh, PDF, ghi âm) trên máy chủ Zalo → loại + link + tên; không thì null. */
+export function tepTrongTin(content: string): { loai: LoaiTep; url: string; ten: string } | null {
+  const m = /^\[Tệp\/link: ([\s\S]*)\]$/.exec(String(content || '').trim());
+  if (!m) return null;
+  const phan = m[1]!.split(' — ').map((x) => x.trim());
+  const url = phan.find((p) => /^https:\/\/\S+$/.test(p)) || '';
+  if (!laHostTepZalo(url)) return null;
+  const ten = phan[0] !== url ? phan[0]! : '';
+  const host = new URL(url).hostname;
+  if (/\.pdf$/i.test(ten)) return { loai: 'pdf', url, ten };
+  if (/voice|aac/i.test(host)) return { loai: 'ghi_am', url, ten };
+  if (/^photo/i.test(host) || /\.(jpe?g|png|webp)$/i.test(new URL(url).pathname)) return { loai: 'anh', url, ten };
+  return null;
+}
+
+/** Nội dung thay cho đường link sau khi AI đã xem tệp — che số tài khoản (chuỗi ≥ 10 chữ số liền). */
+export function moTaThayTin(t: { loai: LoaiTep; ten: string }, moTa: string): string {
+  const sach = String(moTa || '')
+    .replace(/\d{10,}/g, '[đã ẩn số]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 600);
+  if (t.loai === 'anh') return `[Ảnh: ${sach}]`;
+  if (t.loai === 'ghi_am') return `[Ghi âm: ${sach}]`;
+  return `[Tệp ${t.ten || 'PDF'}: ${sach}]`;
+}

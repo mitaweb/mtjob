@@ -599,3 +599,8 @@ export async function cuocCuaKhach(customerId: string): Promise<ZaloThread[]> {
   ]);
   return r.map(rowToThread);
 }
+
+/** Thay đường link ảnh / file bằng mô tả AI đã đọc — không lưu tệp, chỉ giữ chữ. */
+export async function suaNoiDungTin(msgId: string, content: string): Promise<void> {
+  await q('UPDATE zalo_messages SET content = $2 WHERE msg_id = $1', [msgId, content]);
+}

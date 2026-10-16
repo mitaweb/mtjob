@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { noiDungTin, gioTin, dungDoanChat, denLucRut, maTinLonNhat, viecBanDem, goiYTenKhachTuNhom, gioNhac, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, dangDoc, nhomKhongLienQuan, type TinZalo } from './zalo.js';
+import { noiDungTin, gioTin, dungDoanChat, denLucRut, maTinLonNhat, viecBanDem, goiYTenKhachTuNhom, gioNhac, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, dangDoc, nhomKhongLienQuan, tepTrongTin, laHostTepZalo, moTaThayTin, type TinZalo } from './zalo.js';
 
 // Anh Tâm 5/10/2026: đọc tin nhắn Zalo giữa anh và khách để đưa vào kho có chọn lọc.
 
@@ -218,5 +218,29 @@ describe('nhomKhongLienQuan — lọc rẻ trước khi gọi AI', () => {
     expect(nhomKhongLienQuan('WEB TOPAZ')).toBe('');
     expect(nhomKhongLienQuan('Ads Nam Long')).toBe('');
     expect(nhomKhongLienQuan('Kịch bản Luxury', '12 thành viên')).toBe('');
+  });
+});
+
+describe('tệp trong tin Zalo — chỉ máy chủ tệp Zalo, chỉ loại AI đọc được', () => {
+  it('nhận ảnh, PDF, ghi âm', () => {
+    expect(tepTrongTin('[Tệp/link: https://photo-stal-24.zdn.vn/gr/jpg/a/b.jpg]')).toMatchObject({ loai: 'anh' });
+    expect(tepTrongTin('[Tệp/link: Bao_gia_9tr.pdf — https://file-stal-14.dlfl.vn/no/abc/xyz]')).toEqual({
+      loai: 'pdf',
+      url: 'https://file-stal-14.dlfl.vn/no/abc/xyz',
+      ten: 'Bao_gia_9tr.pdf',
+    });
+    expect(tepTrongTin('[Tệp/link: https://voice-aac-dl.zdn.vn/abc/x]')).toMatchObject({ loai: 'ghi_am' });
+  });
+  it('bỏ: docx, link web, máy chủ giả mạo, tin chữ', () => {
+    expect(tepTrongTin('[Tệp/link: Tieu_luan.docx — https://file-stal-1.dlfl.vn/abc]')).toBeNull();
+    expect(tepTrongTin('[Tệp/link: https://www.facebook.com/x.jpg]')).toBeNull();
+    expect(tepTrongTin('[Tệp/link: https://photo.zdn.vn.evil.com/a.jpg]')).toBeNull();
+    expect(tepTrongTin('Em gửi anh ảnh nhé')).toBeNull();
+    expect(laHostTepZalo('http://photo-stal-1.zdn.vn/a.jpg')).toBe(false);
+    expect(laHostTepZalo('https://file-stal-13-te-vnso-pt-64.flchat.vn/x')).toBe(true);
+  });
+  it('mô tả thay link: che chuỗi số dài (số tài khoản)', () => {
+    expect(moTaThayTin({ loai: 'pdf', ten: 'bg.pdf' }, 'Báo giá 9.000.000đ, STK 0071001234567')).toBe('[Tệp bg.pdf: Báo giá 9.000.000đ, STK [đã ẩn số]]');
+    expect(moTaThayTin({ loai: 'ghi_am', ten: '' }, 'Anh dặn gửi file trước 5h')).toBe('[Ghi âm: Anh dặn gửi file trước 5h]');
   });
 });

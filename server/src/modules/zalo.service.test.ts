@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Zalo cá nhân → kho tri thức (anh Tâm 5/10/2026). Từ 10/10/2026: "AI tự đọc sau đó tự học những thứ
 // liên quan đến công việc luôn, không cần anh phải duyệt, cái nào phân vân mới tới lượt anh" + "Đọc và
@@ -24,13 +24,21 @@ let NHOM_CHUA_XET: Array<Record<string, unknown>> = [];
 const KET_QUA_XET: Array<{ id: string; kq: Record<string, unknown> }> = [];
 const CRM_GHI: Array<Record<string, unknown>> = [];
 let PROMPT = '';
+let THEM: unknown[] = [];
+const SUA_TIN: Array<{ id: string; c: string }> = [];
 let BI_LOAI: Array<Record<string, unknown>> = [];
 const MO_LAI: Array<{ id: string; o: Record<string, unknown> }> = [];
 
 // AI của kho đi qua ai/brainAi.ts — chuyển thẳng về generateJson giả lập ở dưới.
 vi.mock('../ai/brainAi.js', async () => {
   const g = await import('../gemini/client.js');
-  return { aiKhoJson: (p: string, s: unknown) => (g.generateJson as (p: string, s: unknown) => Promise<unknown>)(p, s) };
+  return {
+    cauHinhAiKho: async () => ({ provider: 'gemini', model: '', fallback: '' }),
+    aiKhoJson: (p: string, s: unknown, them: unknown[] = []) => {
+      THEM = them;
+      return (g.generateJson as (p: string, s: unknown) => Promise<unknown>)(p, s);
+    },
+  };
 });
 vi.mock('../gemini/client.js', () => ({
   generateJson: vi.fn(async (prompt: string) => {
@@ -79,6 +87,9 @@ vi.mock('./zalo.repo.js', () => ({
   demNhomAiDaChoHoc: vi.fn(async () => NHOM_LOC_LAI.length),
   ghiKetQuaXet: vi.fn(async (id: string, kq: Record<string, unknown>) => {
     KET_QUA_XET.push({ id, kq });
+  }),
+  suaNoiDungTin: vi.fn(async (id: string, c: string) => {
+    SUA_TIN.push({ id, c });
   }),
   cuocBiLoai: vi.fn(async (ids: string[]) => BI_LOAI.filter((c) => ids.includes(String(c.threadId)))),
   moLaiCuoc: vi.fn(async (id: string, o: Record<string, unknown>) => {
@@ -295,6 +306,62 @@ describe('nhanTin — cuộc đang không học mà phát sinh công việc thì
     BI_LOAI = [loai('T7', { moLaiAt: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString() })];
     await S.nhanTin([moi('T7', 'm1', 'Gửi em báo giá nhé')]);
     expect(MO_LAI).toHaveLength(0);
+  });
+});
+
+// Anh Tâm 16/10/2026: "làm nhé, em đọc luôn lưu kho dữ liệu, không lưu file trên server".
+describe('AI xem ảnh / đọc file trong tin Zalo', () => {
+  const ANH = 'https://photo-stal-24.zdn.vn/gr/jpg/abc/xyz.jpg';
+  const tinDb = (id: string, content: string) => ({ msgId: id, threadId: 'T1', fromSelf: false, sender: 'Chị Hà', content, ts: String(Date.now() - 60 * 60_000) });
+  const cuoc = { threadId: 'T1', name: 'Chị Hà', customer: '', customerId: '', enabled: true, aiChecked: true, isGroup: false, chuaRut: 2, lastMsgAt: '2026-10-05T01:00:00Z' };
+  const fetchGoc = globalThis.fetch;
+  beforeEach(() => {
+    THEM = [];
+    SUA_TIN.length = 0;
+  });
+  afterEach(() => {
+    globalThis.fetch = fetchGoc;
+  });
+
+  it('ảnh trên máy chủ Zalo → gửi kèm cho AI, đoạn chat ghi [TỆP 1 — ảnh], lưu MÔ TẢ thay link (không lưu tệp)', async () => {
+    const goi: string[] = [];
+    globalThis.fetch = vi.fn(async (u: string) => {
+      goi.push(String(u));
+      return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'image/jpg' } });
+    }) as unknown as typeof fetch;
+    CUOC_CAN_RUT = [cuoc];
+    CHUA_RUT = [tinDb('a', 'Em gửi anh ủy nhiệm chi nhé'), tinDb('b', `[Tệp/link: ${ANH}]`)];
+    AI_DOC = { loai: 'cong_viec', y: [], moTaTep: [{ so: 1, moTa: 'Ủy nhiệm chi 5.000.000đ tới TK 1903456789012 ngày 15/10' }] };
+    await S.rutTriThucZalo({ epNgay: true });
+    expect(goi).toEqual([ANH]);
+    expect(PROMPT).toContain('[TỆP 1 — ảnh]');
+    expect(PROMPT).not.toContain(ANH);
+    expect(THEM).toEqual([{ text: 'Tệp 1:' }, { inlineData: { mimeType: 'image/jpeg', data: 'AQID' } }]);
+    expect(SUA_TIN).toEqual([{ id: 'b', c: '[Ảnh: Ủy nhiệm chi 5.000.000đ tới TK [đã ẩn số] ngày 15/10]' }]);
+  });
+
+  it('link lạ (không phải máy chủ tệp Zalo) → không tải, AI chỉ đọc chữ', async () => {
+    globalThis.fetch = vi.fn() as unknown as typeof fetch;
+    CUOC_CAN_RUT = [cuoc];
+    CHUA_RUT = [tinDb('a', '[Tệp/link: Bảng giá — https://evil.example.com/a.jpg]'), tinDb('b', '[Tệp/link: https://www.facebook.com/x]')];
+    AI_DOC = { loai: 'cong_viec', y: [] };
+    await S.rutTriThucZalo({ epNgay: true });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(THEM).toEqual([]);
+  });
+
+  it('tải tệp: chuyển hướng ra ngoài máy chủ Zalo → bỏ; sai loại → bỏ; PDF đúng → nhận', async () => {
+    globalThis.fetch = vi.fn(async () => new Response(null, { status: 302, headers: { location: 'https://evil.example.com/x' } })) as unknown as typeof fetch;
+    expect(await S.taiTepZalo('https://file-stal-13.dlfl.vn/gr/abc', 'pdf')).toBeNull();
+    globalThis.fetch = vi.fn(async () => new Response('<html>', { status: 200, headers: { 'content-type': 'text/html' } })) as unknown as typeof fetch;
+    expect(await S.taiTepZalo('https://file-stal-13.dlfl.vn/gr/abc', 'pdf')).toBeNull();
+    let lan = 0;
+    globalThis.fetch = vi.fn(async () =>
+      lan++ === 0
+        ? new Response(null, { status: 302, headers: { location: 'https://file-stal-13-te-vnso-pt-64.flchat.vn/gr/abc' } })
+        : new Response(new Uint8Array([37, 80, 68, 70]), { status: 200, headers: { 'content-type': 'application/pdf' } }),
+    ) as unknown as typeof fetch;
+    expect(await S.taiTepZalo('https://file-stal-13.dlfl.vn/gr/abc', 'pdf')).toEqual({ mimeType: 'application/pdf', data: 'JVBERg==' });
   });
 });
 
