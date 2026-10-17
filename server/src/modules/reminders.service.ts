@@ -1,8 +1,8 @@
 // Nhắc hẹn cá nhân: chỉ người tạo nhận được thông báo.
 //
-// Vercel gói hiện tại chỉ chạy lịch tự động 1 lần/ngày, trong khi nhắc hẹn cần độ phân giải
-// theo giờ. Nên bắn theo HAI đường bổ trợ nhau:
-//   1. GET /api/jobs/reminders — gọi từ dịch vụ cron ngoài (vài phút/lần) → đúng giờ.
+// Bắn theo HAI đường bổ trợ nhau:
+//   1. GET /api/jobs/reminders — Vercel Cron gọi MỖI PHÚT (vercel.json, gói Pro — từ 17/10/2026; trước đó
+//      dùng cron-job.org, dịch vụ này tự ngừng gọi từ 15/10 làm Zalo đứng 3 ngày) → đúng giờ, và chạy Zalo.
 //   2. sweepRemindersOpportunistic() — móc ở middleware /api trong http/app.ts nên MỌI
 //      request đều thử quét (throttle 5 phút/instance).
 // Đường 2 chỉ vớt được trong cửa sổ bù 3 tiếng của isDue: hẹn 20h mà tối đó không ai mở
