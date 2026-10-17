@@ -14,7 +14,7 @@
 //   - Thư viện KHÔNG CHÍNH THỨC (zca-js giả lập Zalo Web): Zalo có thể khoá tài khoản. Anh đang mở
 //     Zalo trên TRÌNH DUYỆT (chat.zalo.me) thì lượt đồng bộ đó bị đẩy ra — Zalo điện thoại/PC không sao.
 import { maHoa, giaiMa } from '../lib/maHoa.js';
-import { maTinLonNhat, viecBanDem } from '../lib/zalo.js';
+import { maTinLonNhat, viecBanDem, gioTin } from '../lib/zalo.js';
 import { nowTz } from '../lib/datetime.js';
 import {
   docTrangThai,
@@ -371,6 +371,8 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
           ket();
         }, ms);
       };
+      /** Các mốc đã xin lô tin cũ trong lượt này. */
+      const daXin = new Set<string>();
       /** Trả true nếu là tin CHƯA có trong lượt này. */
       const nhan = (m: TinThuVien): boolean => {
         const id = String(m.data?.msgId || m.data?.cliMsgId || '');
@@ -401,16 +403,22 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
         chanDoan.tinLo += msgs.length;
         let moi = 0;
         for (const m of msgs as unknown as TinThuVien[]) if (nhan(m)) moi++;
-        // Lô có tin mới → xin tiếp lô kế từ tin CŨ NHẤT của lô này (tối đa 8 lô). Zalo không nói rõ
-        // chiều phân trang; lô trùng thì không có tin mới và dừng.
+        // Lô có tin mới → xin tiếp CẢ HAI chiều: từ tin MỚI NHẤT (tới tin mới hơn) và từ tin CŨ NHẤT của lô.
+        // Zalo không nói rõ chiều phân trang — 17/10/2026 chỉ lùi về tin cũ nên không bao giờ tới tin 15–17/10.
+        // Mỗi mốc chỉ xin một lần; tối đa 16 lô.
         const ids = (msgs as unknown as TinThuVien[]).map((m) => String(m.data?.msgId || '')).filter((x) => /^\d+$/.test(x));
-        if (moi > 0 && chanDoan.lo < 8 && ids.length) {
+        let xin = false;
+        if (moi > 0 && ids.length) {
+          const moiNhat = ids.reduce((a, b) => (BigInt(a) > BigInt(b) ? a : b));
           const cuNhat = ids.reduce((a, b) => (BigInt(a) < BigInt(b) ? a : b));
-          api.listener.requestOldMessages(ThreadType.User, cuNhat);
-          henChot(5_000);
-        } else {
-          henChot(2_500);
+          for (const moc of [moiNhat, cuNhat]) {
+            if (daXin.has(moc) || daXin.size >= 16) continue;
+            daXin.add(moc);
+            api.listener.requestOldMessages(ThreadType.User, moc);
+            xin = true;
+          }
         }
+        henChot(xin ? 5_000 : 2_500);
       });
       api.listener.on('message', (m) => {
         chanDoan.trucTiep++;
@@ -466,9 +474,12 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
     const kq = lo.length ? await nhanTin(lo) : { luu: 0, boQua: 0 };
     const gio = now();
     await ghiMocDongBo(maTinLonNhat(ds.map((m) => String(m.data.msgId || '')), st.lastMsgId), gio);
+    // Khoảng thời gian tin Zalo trả về — nhìn là biết có tới tin mới nhất không.
+    const tsDs = lo.map((t) => Number(t.ts)).filter((x) => x > 0);
+    const khoang = tsDs.length ? ` · tin từ ${gioTin(String(Math.min(...tsDs)))} đến ${gioTin(String(Math.max(...tsDs)))}` : '';
     const chiTiet =
       `kết nối ${chanDoan.khoa ? '✓' : '✗ (không nhận được khoá)'}, Zalo trả ${chanDoan.lo} lô 1-1 + ${chanDoan.loNhom} lô nhóm / ` +
-      `${chanDoan.tinLo} tin, tin trực tiếp ${chanDoan.trucTiep} · ${dsNhom.tong} nhóm${dsNhom.moi ? ` (${dsNhom.moi} mới)` : ''}`;
+      `${chanDoan.tinLo} tin, tin trực tiếp ${chanDoan.trucTiep} · ${dsNhom.tong} nhóm${dsNhom.moi ? ` (${dsNhom.moi} mới)` : ''}${khoang}`;
     const note =
       biDay ||
       `Đồng bộ lúc ${nowTz().format('HH:mm DD/MM')} — ${lo.length} tin (${nhom.length} tin nhóm; ${kq.luu} tin ở cuộc đã bật) · ${chiTiet}`;
