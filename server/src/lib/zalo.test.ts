@@ -244,3 +244,11 @@ describe('tệp trong tin Zalo — chỉ máy chủ tệp Zalo, chỉ loại AI 
     expect(moTaThayTin({ loai: 'ghi_am', ten: '' }, 'Anh dặn gửi file trước 5h')).toBe('[Ghi âm: Anh dặn gửi file trước 5h]');
   });
 });
+
+describe('nhomKhongLienQuan — tên có "MT DIGITAL" không bao giờ bị loại theo luật', () => {
+  it('nhóm khách có chữ "chung cư" mà mang tên MT DIGITAL vẫn giữ (17/10/2026)', () => {
+    expect(nhomKhongLienQuan('C PHƯƠNG -MT DIGITAL - Chung cư Global')).toBe('');
+    expect(nhomKhongLienQuan('Gia đình Spa - MTDigital')).toBe('');
+    expect(nhomKhongLienQuan('Cư dân chung cư Global')).not.toBe('');
+  });
+});

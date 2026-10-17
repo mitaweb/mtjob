@@ -253,7 +253,8 @@ const TEN_NHOM_KHONG_LIEN_QUAN =
  * Trả lý do, hoặc '' nếu không chắc (để AI xét).
  */
 export function nhomKhongLienQuan(ten: string, moTa = ''): string {
-  if (goiYTenKhachTuNhom(ten).theoMau) return '';
+  // "C PHƯƠNG -MT DIGITAL - Chung cư Global" từng bị loại vì chữ "chung cư" (17/10/2026).
+  if (goiYTenKhachTuNhom(ten).theoMau || /mt\s*digital/i.test(String(ten || ''))) return '';
   const m = TEN_NHOM_KHONG_LIEN_QUAN.exec(String(ten || ''));
   if (m) return `tên nhóm kiểu "${m[2]!.toLowerCase()}"`;
   const n = soThanhVien(moTa);

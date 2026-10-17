@@ -758,7 +758,8 @@ export async function rutCuoc(c: ZaloThread, chu: NguoiGui, viDu: ViDuQuyet = []
   return { y: kq.y.length, vaoKho, loai: 'cong_viec', nhac };
 }
 
-let dangRut = false;
+/** Khoá có hạn (75 giây) — xem KHOA_MS ở zalo.client.ts: lượt bị cắt ở 60 giây không làm kẹt mãi. */
+let rutTu = 0;
 let lanRutCuoi = 0;
 
 /**
@@ -769,9 +770,9 @@ export async function rutTriThucZalo(
   opts: { epNgay?: boolean; threadId?: string; limit?: number; han?: number; boQuaNhip?: boolean } = {},
 ): Promise<{ cuoc: number; y: number; nhac: number; caNhan: number; hoi: number; loi: string }> {
   const rong = { cuoc: 0, y: 0, nhac: 0, caNhan: 0, hoi: 0, loi: '' };
-  if (dangRut) return rong;
+  if (Date.now() - rutTu < 75_000) return rong;
   if (!opts.epNgay && !opts.boQuaNhip && Date.now() - lanRutCuoi < 4 * 60_000) return rong;
-  dangRut = true;
+  rutTu = Date.now();
   lanRutCuoi = Date.now();
   try {
     const gd = (await getDirectors())[0];
@@ -814,7 +815,7 @@ export async function rutTriThucZalo(
     await donTinCu(now - 30 * 24 * 3600 * 1000).catch(() => undefined);
     return kq;
   } finally {
-    dangRut = false;
+    rutTu = 0;
   }
 }
 

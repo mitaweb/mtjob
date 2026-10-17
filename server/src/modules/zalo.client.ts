@@ -28,11 +28,14 @@ import {
   daKeoLichSu,
   demViecNhom,
   demNhomAiDaChoHoc,
+  moLaiNhomMtDigital,
 } from './zalo.repo.js';
 import { demNhacZaloSapToi } from './reminders.repo.js';
 import { nhanTin, rutTriThucZalo, xacDinhNhomKhach, gopNhacCu, locLaiNhom, type TinTuWorker } from './zalo.service.js';
 
 const now = () => nowTz().toISOString();
+
+let daMoLaiMtDigital = false;
 
 /**
  * Gọi từ cron nhắc hẹn (~5 phút/lần), CẢ NGÀY (anh Tâm 11/10/2026): ban ngày cứ 3 tiếng đồng bộ một lượt, ban
@@ -40,11 +43,17 @@ const now = () => nowTz().toISOString();
  * tới khi hết; hết tin mới thì không gọi AI.
  */
 export async function chayBanDem(batDau = Date.now()): Promise<string> {
-  // Máy chủ sống tối đa 60 giây kể từ lúc cron gọi (`batDau`) — một cuộc AI đọc mất tới ~12 giây, chừa đủ.
-  const han = batDau + 45_000;
+  // Máy chủ sống tối đa 60 giây kể từ lúc cron gọi (`batDau`). Một cuộc AI đọc (kèm tải ảnh / mở link) có thể
+  // tới ~20 giây → không bắt đầu cuộc mới sau giây thứ 38.
+  const han = batDau + 38_000;
   const st = await docTrangThai();
   const gioVN = nowTz().hour();
   if (!st.coPhien) return xetLaiKhoBanDem();
+  // Một lần mỗi máy chủ: mở lại nhóm "… MT DIGITAL …" bị luật tên loại nhầm (17/10/2026).
+  if (!daMoLaiMtDigital) {
+    daMoLaiMtDigital = true;
+    await moLaiNhomMtDigital().catch(() => 0);
+  }
   const vn = await demViecNhom().catch(() => ({ chuaXet: 0, chuaKeo: 0 }));
   // Nhắc Zalo sắp tới giờ (25 phút tới) → đồng bộ trước cho AI xét lại với tin mới nhất.
   const bayGio = nowTz();
@@ -92,15 +101,21 @@ export function khoaPhien(): string {
 /** Nạp thư viện khi cần — không làm chậm mọi request khác của app. */
 const taiZca = () => import('zca-js');
 
-let dangDangNhap = false;
+/**
+ * Khoá "đang chạy" CÓ HẠN (anh Tâm 17/10/2026: Zalo ngừng đồng bộ 3 ngày). Trước đây là biến true/false: lượt bị
+ * Vercel cắt ở 60 giây thì khối finally không chạy, instance được dùng lại vẫn tưởng "đang chạy" → mọi lượt sau bỏ
+ * qua mãi. Giờ khoá tự hết sau 75 giây (lâu hơn mọi lượt sống được).
+ */
+export const KHOA_MS = 75_000;
+let dangNhapTu = 0;
 
 /**
  * Đăng nhập bằng QR. Chạy NỀN (trang đã trả lời ngay); ảnh QR ghi vào zalo_status để tab Zalo
  * hiện ra cho anh quét. Một lượt máy chủ chỉ sống 60 giây → QR hết hạn thì dừng, anh bấm lại.
  */
 export async function dangNhapQR(): Promise<void> {
-  if (dangDangNhap) return;
-  dangDangNhap = true;
+  if (Date.now() - dangNhapTu < KHOA_MS) return;
+  dangNhapTu = Date.now();
   let huy: (() => unknown) | null = null;
   const hetGio = setTimeout(() => {
     void ghiTrangThai({ status: 'error', note: 'Hết giờ chờ quét — bấm Đăng nhập lại', lastSeen: now() });
@@ -161,7 +176,7 @@ export async function dangNhapQR(): Promise<void> {
     }
   } finally {
     clearTimeout(hetGio);
-    dangDangNhap = false;
+    dangNhapTu = 0;
   }
 }
 
@@ -179,7 +194,8 @@ type TinThuVien = {
   data: { msgId?: string; cliMsgId?: string; dName?: string; content?: unknown; ts?: string };
 };
 
-let dangDongBo = false;
+let dongBoTu = 0;
+const dangDongBo = () => Date.now() - dongBoTu < KHOA_MS;
 
 type Zca = Awaited<ReturnType<typeof taiZca>>;
 type ApiZalo = Awaited<ReturnType<InstanceType<Zca['Zalo']>['login']>>;
@@ -282,8 +298,8 @@ async function keoLichSuNhom(api: ApiZalo, han: number): Promise<number> {
 export async function quetNhomKhach(): Promise<{ ok: boolean; note: string; conLai: number }> {
   const st = await docTrangThai();
   if (!st.coPhien) return { ok: false, note: 'Chưa đăng nhập Zalo', conLai: 0 };
-  if (dangDongBo) return { ok: true, note: 'Đang có lượt đồng bộ khác — thử lại sau ít phút', conLai: 1 };
-  dangDongBo = true;
+  if (dangDongBo()) return { ok: true, note: 'Đang có lượt đồng bộ khác — thử lại sau ít phút', conLai: 1 };
+  dongBoTu = Date.now();
   const han = Date.now() + 45_000;
   try {
     const p = await moPhien();
@@ -311,7 +327,7 @@ export async function quetNhomKhach(): Promise<{ ok: boolean; note: string; conL
     await ghiTrangThai({ status: 'online', note, lastSeen: now() }).catch(() => undefined);
     return { ok: false, note, conLai: 0 };
   } finally {
-    dangDongBo = false;
+    dongBoTu = 0;
   }
 }
 
@@ -322,8 +338,8 @@ export async function quetNhomKhach(): Promise<{ ok: boolean; note: string; conL
 export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: string }> {
   const st = await docTrangThai();
   if (!st.coPhien) return { ok: false, tin: 0, note: 'Chưa đăng nhập Zalo' };
-  if (dangDongBo) return { ok: true, tin: 0, note: 'Đang đồng bộ' };
-  dangDongBo = true;
+  if (dangDongBo()) return { ok: true, tin: 0, note: 'Đang đồng bộ' };
+  dongBoTu = Date.now();
   try {
     const p = await moPhien();
     if ('loi' in p) return { ok: false, tin: 0, note: p.loi };
@@ -459,7 +475,7 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
     await ghiTrangThai({ status: 'online', note, lastSeen: gio });
     return { ok: true, tin: lo.length, note };
   } finally {
-    dangDongBo = false;
+    dongBoTu = 0;
   }
 }
 

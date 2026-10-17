@@ -604,3 +604,18 @@ export async function cuocCuaKhach(customerId: string): Promise<ZaloThread[]> {
 export async function suaNoiDungTin(msgId: string, content: string): Promise<void> {
   await q('UPDATE zalo_messages SET content = $2 WHERE msg_id = $1', [msgId, content]);
 }
+
+/**
+ * Nhóm tên có "MT DIGITAL" bị luật tên loại nhầm (vd "C PHƯƠNG -MT DIGITAL - Chung cư Global" vì chữ "chung cư" —
+ * anh Tâm 17/10/2026) → mở lại cho AI đọc tin mà xét. Nhóm anh đã tự quyết thì không đụng. Trả số nhóm mở lại.
+ */
+export async function moLaiNhomMtDigital(): Promise<number> {
+  const r = await q(
+    `UPDATE zalo_threads SET ai_checked = false, history_done = false, ai_note = $1
+     WHERE is_group AND NOT enabled AND COALESCE(ai_checked, false) AND COALESCE(anh_quyet, '') = ''
+       AND name ~* 'mt[[:space:]]*digital' AND COALESCE(ai_note, '') LIKE 'Không liên quan%'
+     RETURNING thread_id`,
+    [`${CHUA_RO_THEO_TEN} — tên có "MT DIGITAL", trước bị loại nhầm theo luật tên`],
+  );
+  return r.length;
+}
