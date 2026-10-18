@@ -33,6 +33,8 @@ import {
   tatCaGiaoDich,
   ghiLuong,
   tatCaLuong,
+  ghiLuongNv,
+  tatCaLuongNv,
   ghiViec,
 } from './keToan.repo.js';
 import {
@@ -43,12 +45,14 @@ import {
   hoaDonCuaGiaoDich,
   tienMatSauChot,
   NGUONG_TIEN_MAT,
+  laGdLuong,
+  doiChieuLuong,
   type GiaoDich,
   type DoiTacKhop,
 } from '../lib/saoKe.js';
 import { hoaDonHieuLuc, ketQuaTheoThang, ngayISO, chuanChu, type SoCongNo, type ThanhToanDoiTac } from '../lib/keToan.js';
 import { createHash } from 'node:crypto';
-import { xemTruoc, hoaDonTheoBanDo, giaoDichTheoBanDo, congNoTheoBanDo, luongTheoBanDo, kqkdTheoBanDo, type BanDoAi } from '../lib/docAi.js';
+import { xemTruoc, hoaDonTheoBanDo, giaoDichTheoBanDo, congNoTheoBanDo, luongNvTheoBanDo, congLuongTheoThang, kqkdTheoBanDo, type BanDoAi } from '../lib/docAi.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
 
@@ -247,7 +251,7 @@ export async function layTuCongThue(token: string, thang: string, huong: 'ra' | 
 
 /** Tổng quan một năm: VAT theo quý, TNDN các năm, công nợ, hạn nộp gần nhất. */
 export async function tongQuan(nam: number) {
-  const [hoaDon, toKhai, baoCao, soThu, soTra, cd, giaoDich, luong] = await Promise.all([
+  const [hoaDon, toKhai, baoCao, soThu, soTra, cd, giaoDich, luong, luongNv] = await Promise.all([
     tatCaHoaDon(),
     tatCaToKhai(),
     tatCaBaoCao(),
@@ -256,6 +260,7 @@ export async function tongQuan(nam: number) {
     caiDat(),
     tatCaGiaoDich().catch(() => [] as GiaoDich[]),
     tatCaLuong().catch(() => []),
+    tatCaLuongNv().catch(() => []),
   ]);
   const homNay = nowTz().format('YYYY-MM-DD');
   const quyNay = quyCuaNgay(homNay);
@@ -286,6 +291,8 @@ export async function tongQuan(nam: number) {
     sapToi,
     tndn,
     congNo: { thu: congNoThu, tra: congNoTra },
+    // Lương: chi phí theo file lương; phần chuyển khoản (đợt 2) soát với sao kê từng người.
+    luongCk: doiChieuLuong(luongNv.filter((x) => x.thang.startsWith(String(nam))), giaoDich),
     // Thu / chi / lương theo tháng (anh Tâm 18/10/2026: "Thu, chi, lương, tách ra").
     ketQuaThang: ketQuaTheoThang(nam, hoaDon, luong, nam === Number(homNay.slice(0, 4)) ? homNay.slice(0, 7) : undefined),
     nganHang: {
@@ -335,6 +342,7 @@ function thanhToanSauChot(gd: GiaoDich[], chot: string, loai: 'thu' | 'tra', doi
   for (const g of gd) {
     const soTien = loai === 'thu' ? g.ghiCo : g.ghiNo;
     if (!soTien || g.ngay <= chot) continue;
+    if (loai === 'tra' && laGdLuong(g)) continue; // trả lương không phải trả nhà cung cấp
     if (loai === 'thu') {
       const l = loaiTienVao(g);
       if (l !== 'khach') {
@@ -422,7 +430,7 @@ const SCHEMA_BAN_DO = {
               tienHang: SO_COT, tienThue: SO_COT, tongTien: SO_COT, thueSuat: SO_COT, trangThai: SO_COT,
               noiDung: SO_COT, no: SO_COT, co: SO_COT, soTien: SO_COT, soDu: SO_COT, soRef: SO_COT, doiTac: SO_COT,
               ma: SO_COT, duNo: SO_COT, duCo: SO_COT,
-              thang: SO_COT, tongThuNhap: SO_COT, bhxhCty: NHIEU_COT, bhxhNld: NHIEU_COT, tncn: SO_COT, thucNhan: SO_COT,
+              thang: SO_COT, tongThuNhap: SO_COT, bhxhCty: NHIEU_COT, bhxhNld: NHIEU_COT, tncn: SO_COT, thucNhan: SO_COT, tienMat: SO_COT, chuyenKhoan: SO_COT,
             },
           },
         },
@@ -461,7 +469,8 @@ function loiNhacBanDo(ten: string, xem: string, mst: string): string {
     '- "kqkd": báo cáo kết quả kinh doanh — ghi tuNgay, denNgay, doanhThu (mã 01), loiNhuanTruocThue (mã 50) đọc từ cột kỳ này.',
     '- "bang_luong": bảng lương / BHXH. Cột: thang (cột tháng, vd "T01"), ten (họ tên), tongThuNhap (TỔNG thu nhập trước',
     '  khấu trừ: lương + phụ cấp + thưởng), bhxhCty (MỌI cột BHXH/BHYT/BHTN/KPCĐ phần DOANH NGHIỆP đóng — thường 17%, 3%,',
-    '  1%, 0,5%), bhxhNld (các cột phần NGƯỜI LAO ĐỘNG đóng — thường 8%, 1,5%, 1%), tncn (thuế TNCN), thucNhan. Ghi nam',
+    '  1%, 0,5%), bhxhNld (các cột phần NGƯỜI LAO ĐỘNG đóng — thường 8%, 1,5%, 1%), tncn (thuế TNCN), thucNhan (TỔNG',
+    '  thực lãnh), tienMat (phần thực lãnh trả TIỀN MẶT / đợt 1), chuyenKhoan (phần CHUYỂN KHOẢN / đợt 2). Ghi nam',
     '  nếu cột tháng không có năm (lấy từ tên sheet / cột kỳ kê khai).',
     '- "khac": không phải các loại trên (danh sách nhân viên, quy định KPI…).',
     '',
@@ -521,16 +530,20 @@ async function nhapBangAi(ten: string, sheets: SheetDuLieu[], nguoi: string): Pr
       thongDiep: `Kỳ ${b.tuNgay} → ${b.denNgay} · doanh thu ${tien(b.chiTieu['01'] ?? 0)}, LN trước thuế ${tien(b.chiTieu['50'] ?? 0)}`,
     };
   } else if (bd.loai === 'bang_luong') {
-    const luong = luongTheoBanDo(sheets, bd);
+    const nv = luongNvTheoBanDo(sheets, bd);
+    const luong = congLuongTheoThang(nv);
     if (!luong.length) throw new Error(`AI nhận là bảng lương ("${bd.moTa}") nhưng không cộng được tháng nào`);
     await ghiLuong(luong, id, luc);
+    await ghiLuongNv(nv, id, luc).catch(() => undefined); // bảng mới — chưa "Cập nhật cấu trúc DB" thì bỏ qua phần đối chiếu
     const tong = luong.reduce((s, x) => s + x.tongThuNhap, 0);
     const bh = luong.reduce((s, x) => s + x.bhxhCty, 0);
+    const tm = luong.reduce((s, x) => s + x.tienMat, 0);
+    const ck = luong.reduce((s, x) => s + x.chuyenKhoan, 0);
     kq = {
       ten,
       loai: nhan('Bảng lương'),
       ok: true,
-      thongDiep: `${luong.length} tháng (${luong.map((x) => `${x.thang.slice(5)}/${x.thang.slice(0, 4)}`).join(', ')}) · tổng thu nhập ${tien(tong)}, BHXH công ty đóng ${tien(bh)}`,
+      thongDiep: `${luong.length} tháng (${luong.map((x) => `${x.thang.slice(5)}/${x.thang.slice(0, 4)}`).join(', ')}) · tổng thu nhập ${tien(tong)}, BHXH công ty đóng ${tien(bh)}${ck ? ` · thực lãnh: tiền mặt ${tien(tm)}, chuyển khoản ${tien(ck)}` : ''}`,
     };
   } else {
     return { ten, loai: 'Không dùng cho số liệu thuế', ok: false, thongDiep: `AI đọc: ${bd.moTa || 'không phải hoá đơn / sao kê / công nợ / báo cáo / bảng lương'}` };

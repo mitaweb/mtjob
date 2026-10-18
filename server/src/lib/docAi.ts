@@ -191,7 +191,25 @@ export interface LuongThang {
   /** BHXH người lao động đóng (trừ vào lương) */
   bhxhNld: number;
   tncn: number;
+  /** Tổng thực lãnh = tiền mặt + chuyển khoản */
   thucNhan: number;
+  /** Phần trả tiền mặt (đợt 1) */
+  tienMat: number;
+  /** Phần chuyển khoản (đợt 2) */
+  chuyenKhoan: number;
+}
+
+/** Một người một tháng trong bảng lương — để đối chiếu từng khoản chuyển khoản lương với sao kê. */
+export interface LuongNv {
+  thang: string;
+  ten: string;
+  tongThuNhap: number;
+  bhxhCty: number;
+  bhxhNld: number;
+  tncn: number;
+  thucNhan: number;
+  tienMat: number;
+  chuyenKhoan: number;
 }
 
 /** Tháng của một ô: "T01" / "01/2026" / "Tháng 1" / ngày → "YYYY-MM" (năm lấy từ bản đồ khi ô không có năm). */
@@ -206,26 +224,75 @@ export function thangCua(o: string, nam?: number): string {
   return '';
 }
 
-/** Bảng lương theo bản đồ (cột: thang, ten, tongThuNhap, bhxhCty[], bhxhNld[], tncn, thucNhan) → cộng theo tháng. */
-export function luongTheoBanDo(sheets: SheetDuLieu[], bd: BanDoAi): LuongThang[] {
-  const m = new Map<string, LuongThang>();
+/**
+ * Cột trả lương tiền mặt / chuyển khoản / tổng thực lãnh — nhận thẳng từ dòng tiêu đề (đáng tin hơn AI đoán): mẫu
+ * kế toán của anh Tâm có "THỰC LÃNH" tách "Bằng TM" (ĐỢT 1: 15 tây tháng n) và "Bằng CK cty" (ĐỢT 2: 5 tây tháng n+1),
+ * rồi "TỔNG THỰC LÃNH".
+ */
+export function cotTraLuong(rows: string[][], dongDuLieu: number): { tienMat?: number; chuyenKhoan?: number; thucNhan?: number } {
+  const ra: { tienMat?: number; chuyenKhoan?: number; thucNhan?: number } = {};
+  for (const r of rows.slice(Math.max(0, dongDuLieu - 6), Math.max(0, dongDuLieu))) {
+    (r || []).forEach((o, j) => {
+      const t = chuanChu(o);
+      if (!t) return;
+      if (ra.thucNhan === undefined && /^tong thuc (lanh|nhan)/.test(t)) ra.thucNhan = j;
+      else if (ra.tienMat === undefined && /^(thuc (lanh|nhan) )?(bang )?(tm|tien mat)\b|^dot 1\b/.test(t)) ra.tienMat = j;
+      else if (ra.chuyenKhoan === undefined && /^(thuc (lanh|nhan) )?(bang )?(ck|chuyen khoan)\b|^dot 2\b/.test(t)) ra.chuyenKhoan = j;
+    });
+  }
+  return ra;
+}
+
+/** Bảng lương theo bản đồ → từng người từng tháng (cột: thang, ten, tongThuNhap, bhxhCty[], bhxhNld[], tncn, thucNhan, tienMat, chuyenKhoan). */
+export function luongNvTheoBanDo(sheets: SheetDuLieu[], bd: BanDoAi): LuongNv[] {
+  const m = new Map<string, LuongNv>();
   for (const b of bd.bang) {
     const sh = sheetCua(sheets, b.sheet);
     if (!sh) continue;
+    const tieuDe = cotTraLuong(sh.rows, b.dongDuLieu);
+    const cot: Record<string, number | number[]> = { ...b.cot };
+    for (const [k, v] of Object.entries(tieuDe)) if (v !== undefined) cot[k] = v;
     for (const r of sh.rows.slice(Math.max(0, b.dongDuLieu))) {
-      const ten = oCua(r, b.cot.ten);
-      const thang = thangCua(oCua(r, b.cot.thang), bd.nam);
-      const tongThuNhap = soTien(oCua(r, b.cot.tongThuNhap));
+      const ten = oCua(r, cot.ten).replace(/\s+/g, ' ');
+      const thang = thangCua(oCua(r, cot.thang), bd.nam);
+      const tongThuNhap = Math.round(soTien(oCua(r, cot.tongThuNhap)));
       if (!ten || !thang || !tongThuNhap || /^(tong|cong)/.test(chuanChu(ten))) continue;
-      const x = m.get(thang) || { thang, soNguoi: 0, tongThuNhap: 0, bhxhCty: 0, bhxhNld: 0, tncn: 0, thucNhan: 0 };
-      x.soNguoi++;
+      const tienMat = Math.round(soTien(oCua(r, cot.tienMat)));
+      const chuyenKhoan = Math.round(soTien(oCua(r, cot.chuyenKhoan)));
+      const thucNhan = Math.round(soTien(oCua(r, cot.thucNhan))) || tienMat + chuyenKhoan;
+      const k = `${thang}|${chuanChu(ten)}`;
+      const x = m.get(k) || { thang, ten, tongThuNhap: 0, bhxhCty: 0, bhxhNld: 0, tncn: 0, thucNhan: 0, tienMat: 0, chuyenKhoan: 0 };
       x.tongThuNhap += tongThuNhap;
-      x.bhxhCty += cacCot(b.cot.bhxhCty).reduce((s, c) => s + soTien(r[c]), 0);
-      x.bhxhNld += cacCot(b.cot.bhxhNld).reduce((s, c) => s + soTien(r[c]), 0);
-      x.tncn += soTien(oCua(r, b.cot.tncn));
-      x.thucNhan += soTien(oCua(r, b.cot.thucNhan));
-      m.set(thang, x);
+      x.bhxhCty += Math.round(cacCot(cot.bhxhCty).reduce((s, c) => s + soTien(r[c]), 0));
+      x.bhxhNld += Math.round(cacCot(cot.bhxhNld).reduce((s, c) => s + soTien(r[c]), 0));
+      x.tncn += Math.round(soTien(oCua(r, cot.tncn)));
+      x.thucNhan += thucNhan;
+      x.tienMat += tienMat;
+      x.chuyenKhoan += chuyenKhoan;
+      m.set(k, x);
     }
+  }
+  return [...m.values()].sort((a, c) => a.thang.localeCompare(c.thang));
+}
+
+/** Bảng lương theo bản đồ → cộng theo tháng. */
+export function luongTheoBanDo(sheets: SheetDuLieu[], bd: BanDoAi): LuongThang[] {
+  return congLuongTheoThang(luongNvTheoBanDo(sheets, bd));
+}
+
+export function congLuongTheoThang(nv: LuongNv[]): LuongThang[] {
+  const m = new Map<string, LuongThang>();
+  for (const n of nv) {
+    const x = m.get(n.thang) || { thang: n.thang, soNguoi: 0, tongThuNhap: 0, bhxhCty: 0, bhxhNld: 0, tncn: 0, thucNhan: 0, tienMat: 0, chuyenKhoan: 0 };
+    x.soNguoi++;
+    x.tongThuNhap += n.tongThuNhap;
+    x.bhxhCty += n.bhxhCty;
+    x.bhxhNld += n.bhxhNld;
+    x.tncn += n.tncn;
+    x.thucNhan += n.thucNhan;
+    x.tienMat += n.tienMat;
+    x.chuyenKhoan += n.chuyenKhoan;
+    m.set(n.thang, x);
   }
   return [...m.values()].sort((a, c) => a.thang.localeCompare(c.thang));
 }

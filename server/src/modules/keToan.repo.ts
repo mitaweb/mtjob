@@ -3,7 +3,7 @@ import { q } from '../db/client.js';
 import type { HoaDon, ToKhaiGtgt, SoCongNo, BaoCaoKqkd, Huong } from '../lib/keToan.js';
 import { khoaHoaDon } from '../lib/keToan.js';
 import type { GiaoDich } from '../lib/saoKe.js';
-import type { LuongThang } from '../lib/docAi.js';
+import type { LuongThang, LuongNv } from '../lib/docAi.js';
 
 const LO = 200;
 
@@ -312,14 +312,51 @@ export async function trangGiaoDich(o: { loai?: 'vao' | 'ra'; tim?: string; page
 export async function ghiLuong(ds: LuongThang[], taiLenId: string, luc: string): Promise<void> {
   for (const x of ds) {
     await q(
-      `INSERT INTO kt_luong (thang, so_nguoi, tong_thu_nhap, bhxh_cty, bhxh_nld, tncn, thuc_nhan, tai_len_id, cap_nhat)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO kt_luong (thang, so_nguoi, tong_thu_nhap, bhxh_cty, bhxh_nld, tncn, thuc_nhan, tien_mat, chuyen_khoan, tai_len_id, cap_nhat)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (thang) DO UPDATE SET so_nguoi = EXCLUDED.so_nguoi, tong_thu_nhap = EXCLUDED.tong_thu_nhap,
          bhxh_cty = EXCLUDED.bhxh_cty, bhxh_nld = EXCLUDED.bhxh_nld, tncn = EXCLUDED.tncn, thuc_nhan = EXCLUDED.thuc_nhan,
+         tien_mat = EXCLUDED.tien_mat, chuyen_khoan = EXCLUDED.chuyen_khoan,
          tai_len_id = EXCLUDED.tai_len_id, cap_nhat = EXCLUDED.cap_nhat`,
-      [x.thang, x.soNguoi, x.tongThuNhap, x.bhxhCty, x.bhxhNld, x.tncn, x.thucNhan, taiLenId, luc],
+      [x.thang, x.soNguoi, x.tongThuNhap, x.bhxhCty, x.bhxhNld, x.tncn, x.thucNhan, x.tienMat, x.chuyenKhoan, taiLenId, luc],
     );
   }
+}
+
+/** Từng người từng tháng — ghi đè đúng (tháng, người) có trong file, không xoá người khác. */
+export async function ghiLuongNv(ds: LuongNv[], taiLenId: string, luc: string): Promise<void> {
+  for (let i = 0; i < ds.length; i += LO) {
+    const lo = ds.slice(i, i + LO);
+    const params: unknown[] = [];
+    const vals = lo.map((x) => {
+      const b = params.length;
+      params.push(x.thang, x.ten, x.tongThuNhap, x.bhxhCty, x.bhxhNld, x.tncn, x.thucNhan, x.tienMat, x.chuyenKhoan, taiLenId, luc);
+      return `(${Array.from({ length: 11 }, (_, j) => `$${b + j + 1}`).join(', ')})`;
+    });
+    await q(
+      `INSERT INTO kt_luong_nv (thang, ten, tong_thu_nhap, bhxh_cty, bhxh_nld, tncn, thuc_nhan, tien_mat, chuyen_khoan, tai_len_id, cap_nhat)
+       VALUES ${vals.join(', ')}
+       ON CONFLICT (thang, ten) DO UPDATE SET tong_thu_nhap = EXCLUDED.tong_thu_nhap, bhxh_cty = EXCLUDED.bhxh_cty,
+         bhxh_nld = EXCLUDED.bhxh_nld, tncn = EXCLUDED.tncn, thuc_nhan = EXCLUDED.thuc_nhan, tien_mat = EXCLUDED.tien_mat,
+         chuyen_khoan = EXCLUDED.chuyen_khoan, tai_len_id = EXCLUDED.tai_len_id, cap_nhat = EXCLUDED.cap_nhat`,
+      params,
+    );
+  }
+}
+
+export async function tatCaLuongNv(): Promise<LuongNv[]> {
+  const rows = await q('SELECT * FROM kt_luong_nv ORDER BY thang, ten');
+  return rows.map((r) => ({
+    thang: String(r.thang),
+    ten: String(r.ten),
+    tongThuNhap: Number(r.tong_thu_nhap) || 0,
+    bhxhCty: Number(r.bhxh_cty) || 0,
+    bhxhNld: Number(r.bhxh_nld) || 0,
+    tncn: Number(r.tncn) || 0,
+    thucNhan: Number(r.thuc_nhan) || 0,
+    tienMat: Number(r.tien_mat) || 0,
+    chuyenKhoan: Number(r.chuyen_khoan) || 0,
+  }));
 }
 
 export async function tatCaLuong(): Promise<LuongThang[]> {
@@ -332,6 +369,8 @@ export async function tatCaLuong(): Promise<LuongThang[]> {
     bhxhNld: Number(r.bhxh_nld) || 0,
     tncn: Number(r.tncn) || 0,
     thucNhan: Number(r.thuc_nhan) || 0,
+    tienMat: Number(r.tien_mat) || 0,
+    chuyenKhoan: Number(r.chuyen_khoan) || 0,
   }));
 }
 

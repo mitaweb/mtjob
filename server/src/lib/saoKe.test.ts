@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { laSaoKe, docSaoKe, khopDoiTac, tenRieng, loaiTienVao, soHoaDonTrongNoiDung, hoaDonCuaGiaoDich, tienMatSauChot } from './saoKe.js';
+import { laSaoKe, docSaoKe, khopDoiTac, tenRieng, loaiTienVao, soHoaDonTrongNoiDung, hoaDonCuaGiaoDich, tienMatSauChot, laGdLuong, thangLuong, doiChieuLuong, type GiaoDich } from './saoKe.js';
 import { nhanDangBang, tinhCongNo, type SoCongNo, type HoaDon } from './keToan.js';
 
 // Anh Tâm 18/10/2026: "1 phần tải sao kê ngân hàng lên nữa là đủ". Số liệu dưới đây là SỐ GIẢ.
@@ -190,5 +190,37 @@ describe('khớp tiền theo số hoá đơn; hoá đơn trả tiền mặt', ()
     const r2 = tinhCongNo(so, vao, 'tra', tm);
     expect(r2.ds.find((x) => x.ma === '0300000021')).toBeUndefined(); // trả đủ tiền mặt → hết nợ
     expect(r2.ds.find((x) => x.ma === '0300000025')).toMatchObject({ hoaDonSau: 7_000_000, tienMatSau: 0, tong: 7_000_000 });
+  });
+});
+
+describe('đối chiếu chuyển khoản lương với bảng lương', () => {
+  const g = (ngay: string, ghiNo: number, noiDung: string, doiTac = ''): GiaoDich => ({ id: `${ngay}${ghiNo}${doiTac}`, soTk: '', nganHang: '', ngay, ghiNo, ghiCo: 0, soDu: 0, noiDung, soRef: '', doiTac, thuTu: 0 });
+  it('nhận khoản trả lương và tháng lương (kể cả chữ bị ngắt dòng, không ghi tháng)', () => {
+    expect(laGdLuong(g('2026-10-05', 9_000_000, 'MT Digital thanh toan luong la n 2 thang 9 nam 2026'))).toBe(true);
+    expect(laGdLuong(g('2026-09-05', 1_285_714, 'MT digital thanh toan luong thuc ta p sinh'))).toBe(true);
+    expect(laGdLuong(g('2026-09-05', 5_000_000, 'Thanh toan tien quang cao Google'))).toBe(false);
+    expect(thangLuong(g('2026-02-05', 1, 'thanh toan luong dot 2 t hang 1 nam 2026'))).toEqual({ thang: '2026-01', ro: true });
+    expect(thangLuong(g('2026-03-05', 1, 'MBCT thanh toan luong th ang 2 dot 2 D2LCV9KL/122240'))).toEqual({ thang: '2026-02', ro: true });
+    expect(thangLuong(g('2026-09-05', 1, 'thanh toan luong thuc tap sinh'))).toEqual({ thang: '2026-08', ro: false }); // trả ngày 5 → tháng trước
+    expect(thangLuong(g('2026-01-05', 1, 'thanh toan luong thang 12'))).toEqual({ thang: '2025-12', ro: true });
+  });
+  it('khớp theo tên người nhận, theo số tiền; báo lệch / thiếu / thừa', () => {
+    const nv = [
+      { thang: '2026-09', ten: 'Nguyễn Văn An', chuyenKhoan: 9_170_000, tongThuNhap: 13_000_000, thucNhan: 12_370_000, tienMat: 3_200_000 },
+      { thang: '2026-09', ten: 'Trần Thị Bình', chuyenKhoan: 8_000_000, tongThuNhap: 12_000_000, thucNhan: 11_000_000, tienMat: 3_000_000 },
+      { thang: '2026-09', ten: 'Lê Văn Cường', chuyenKhoan: 7_000_000, tongThuNhap: 10_000_000, thucNhan: 10_000_000, tienMat: 3_000_000 },
+      { thang: '2026-09', ten: 'Phạm Dũng', chuyenKhoan: 0, tongThuNhap: 5_000_000, thucNhan: 5_000_000, tienMat: 5_000_000 }, // trả hết tiền mặt
+    ];
+    const gd = [
+      g('2026-10-05', 9_233_000, 'thanh toan luong lan 2 thang 9 nam 2026', 'NGUYEN VAN AN'), // dư 63.000
+      g('2026-10-05', 8_000_000, 'thanh toan luong lan 2 thang 9 nam 2026'), // không có tên → khớp theo số tiền
+      g('2026-10-05', 2_000_000, 'thanh toan luong lan 2 thang 9 nam 2026', 'HOANG THI E'), // không có trong file
+      g('2026-09-05', 7_000_000, 'thanh toan luong thang 8 lan 2', 'LE VAN CUONG'), // lương tháng 8 — không ghép sang tháng 9
+    ];
+    const [k] = doiChieuLuong(nv, gd);
+    expect(k).toMatchObject({ thang: '2026-09', ckFile: 24_170_000, tienMat: 14_200_000, soKhop: 1, ckNganHang: 19_233_000 });
+    expect(k!.lech).toEqual([expect.objectContaining({ ten: 'Nguyễn Văn An', file: 9_170_000, nganHang: 9_233_000 })]);
+    expect(k!.thieu).toEqual([{ ten: 'Lê Văn Cường', soTien: 7_000_000 }]);
+    expect(k!.thua.map((x) => x.soTien)).toEqual([2_000_000]);
   });
 });

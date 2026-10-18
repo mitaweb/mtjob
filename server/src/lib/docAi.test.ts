@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cheSoDai, xemTruoc, hoaDonTheoBanDo, giaoDichTheoBanDo, congNoTheoBanDo, luongTheoBanDo, kqkdTheoBanDo, thangCua, type BanDoAi } from './docAi.js';
+import { cheSoDai, xemTruoc, hoaDonTheoBanDo, giaoDichTheoBanDo, congNoTheoBanDo, luongTheoBanDo, luongNvTheoBanDo, kqkdTheoBanDo, thangCua, type BanDoAi } from './docAi.js';
 
 // Anh Tâm 18/10/2026: "ở phần upload file này em cho AI vào đọc file luôn đỡ phải setup định dạng". AI chỉ trả bản đồ
 // cột; các hàm này đọc toàn bộ file theo bản đồ. Số liệu dưới đây là SỐ GIẢ.
@@ -56,9 +56,29 @@ describe('đọc theo bản đồ AI', () => {
     ];
     const bd: BanDoAi = { loai: 'bang_luong', moTa: '', nam: 2026, bang: [{ sheet: 'BHXH 2026', dongDuLieu: 1, cot: { thang: 0, ten: 1, tongThuNhap: 2, bhxhCty: [3, 4], bhxhNld: [5] } }] };
     expect(luongTheoBanDo(sh, bd)).toEqual([
-      { thang: '2026-01', soNguoi: 2, tongThuNhap: 18000000, bhxhCty: 2000000, bhxhNld: 800000, tncn: 0, thucNhan: 0 },
-      { thang: '2026-02', soNguoi: 1, tongThuNhap: 9000000, bhxhCty: 1000000, bhxhNld: 400000, tncn: 0, thucNhan: 0 },
+      { thang: '2026-01', soNguoi: 2, tongThuNhap: 18000000, bhxhCty: 2000000, bhxhNld: 800000, tncn: 0, thucNhan: 0, tienMat: 0, chuyenKhoan: 0 },
+      { thang: '2026-02', soNguoi: 1, tongThuNhap: 9000000, bhxhCty: 1000000, bhxhNld: 400000, tncn: 0, thucNhan: 0, tienMat: 0, chuyenKhoan: 0 },
     ]);
+  });
+  it('bảng lương trả 2 đợt: nhận cột "Bằng TM" / "Bằng CK" / "Tổng thực lãnh" từ tiêu đề dù AI không chỉ', () => {
+    const sh = [
+      {
+        ten: 'BHXH 2026',
+        rows: [
+          ['STT', 'THÁNG', 'HỌ VÀ TÊN', 'TỔNG LƯƠNG', 'THỰC LÃNH', 'THỰC LÃNH', 'TỔNG THỰC LÃNH'],
+          ['', '', '', '', 'Bằng TM', 'Bằng CK cty', ''],
+          ['', '', '', '', 'ĐỢT 1: 15 tây tháng n', 'ĐỢT 2: 5 tây tháng n+1', ''],
+          ['1', 'T09', 'Nguyễn Văn An', '13,000,000', '3,200,000', '9,170,000', '12,370,000'],
+          ['2', 'T09', 'Thực tập A', '1,090,909', '', '1,090,909', '1,090,909'],
+        ],
+      },
+    ];
+    const bd: BanDoAi = { loai: 'bang_luong', moTa: '', nam: 2026, bang: [{ sheet: 'BHXH 2026', dongDuLieu: 3, cot: { thang: 1, ten: 2, tongThuNhap: 3 } }] };
+    expect(luongNvTheoBanDo(sh, bd).map((x) => [x.ten, x.tienMat, x.chuyenKhoan, x.thucNhan])).toEqual([
+      ['Nguyễn Văn An', 3_200_000, 9_170_000, 12_370_000],
+      ['Thực tập A', 0, 1_090_909, 1_090_909],
+    ]);
+    expect(luongTheoBanDo(sh, bd)[0]).toMatchObject({ thang: '2026-09', soNguoi: 2, tienMat: 3_200_000, chuyenKhoan: 10_260_909 });
   });
   it('tháng: nhiều cách ghi', () => {
     expect(thangCua('T01', 2026)).toBe('2026-01');

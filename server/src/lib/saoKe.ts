@@ -326,3 +326,158 @@ export function tienMatSauChot(hoaDon: HoaDon[], chot: string, khopNganHang: Tha
   return ra;
 }
 
+
+// ── Đối chiếu chuyển khoản lương với bảng lương (anh Tâm 18/10/2026: "chi lương hiện anh chi làm 2 đợt. 1 đợt là tiền
+// mặt thì k có chuyển khoản, 1 đợt là chuyển khoản, tổng lương em tính theo file tính lương, kiểm tra xem chuyển khoản
+// có sai sót gì k") — chi phí lương lấy từ file lương; sao kê chỉ để soát phần chuyển khoản. ──
+
+/** Khoản chi trả lương ("thanh toan luong thang 9 dot 2", "luong thuc tap sinh", "luong ctv"…). */
+export function laGdLuong(g: Pick<GiaoDich, 'ghiNo' | 'noiDung'>): boolean {
+  if (!(g.ghiNo > 0)) return false;
+  const chu = chuanChu(g.noiDung).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ');
+  if (/\b(tra|thanh toan|chi|ck|chuyen) ?luong\b|\bluong (thang|dot|lan|tts|thuc tap|ctv|cong tac vien|nhan vien|nv|t\d)/.test(chu)) return true;
+  return /(traluong|thanhtoanluong|luongthang|luongdot|luonglan|luongtts|luongthuctap|luongctv)/.test(chu.replace(/ /g, ''));
+}
+
+/**
+ * Lương tháng nào: "thang 9" trong nội dung (kể cả bị ngắt "t hang 9", "th ang 2"); không ghi tháng thì chuyển trước
+ * ngày 21 là lương tháng trước (đợt 2 trả ngày 5 tháng sau), từ ngày 21 là tháng đó.
+ */
+export function thangLuongCuaGd(g: Pick<GiaoDich, 'ngay' | 'noiDung'>): string {
+  return thangLuong(g).thang;
+}
+
+/** Như trên, kèm `ro` = nội dung có ghi rõ tháng. */
+export function thangLuong(g: Pick<GiaoDich, 'ngay' | 'noiDung'>): { thang: string; ro: boolean } {
+  const chu = chuanChu(g.noiDung).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ');
+  const nam = Number(g.ngay.slice(0, 4));
+  const thangGd = Number(g.ngay.slice(5, 7));
+  const m = /\bt ?h ?a ?n ?g ?(1[0-2]|0?[1-9])(?!\d)/.exec(chu) || /\bt ?h ?a ?n ?g ?(1[0-2]|0?[1-9])(?=20\d\d)/.exec(chu);
+  let t: number;
+  let n = nam;
+  if (m) {
+    t = Number(m[1]);
+    if (t > thangGd + 1) n = nam - 1; // lương tháng 12 trả tháng 1 năm sau
+  } else {
+    t = Number(g.ngay.slice(8, 10)) <= 20 ? thangGd - 1 : thangGd;
+    if (t === 0) {
+      t = 12;
+      n = nam - 1;
+    }
+  }
+  return { thang: `${n}-${String(t).padStart(2, '0')}`, ro: !!m };
+}
+
+export interface NguoiLuong {
+  thang: string;
+  ten: string;
+  chuyenKhoan: number;
+}
+
+export interface DoiChieuLuongThang {
+  thang: string;
+  soNguoi: number;
+  /** Theo file lương */
+  tongThuNhap: number;
+  thucNhan: number;
+  tienMat: number;
+  ckFile: number;
+  /** Theo sao kê */
+  ckNganHang: number;
+  soGd: number;
+  soKhop: number;
+  /** Chuyển khác số trong file (cùng người / số gần nhất) */
+  lech: Array<{ ten: string; file: number; nganHang: number; ngay: string; noiDung: string; doiTac: string }>;
+  /** Trong file có chuyển khoản mà sao kê không thấy */
+  thieu: Array<{ ten: string; soTien: number }>;
+  /** Sao kê có khoản lương mà file không có */
+  thua: Array<{ ngay: string; soTien: number; noiDung: string; doiTac: string }>;
+}
+
+const gan = (a: number, b: number) => Math.abs(a - b) <= 2;
+
+/**
+ * So từng khoản chuyển khoản lương với cột "chuyển khoản" của từng người trong file lương. Khớp theo tên người nhận
+ * (cột tên thụ hưởng của sao kê) nếu có, rồi theo đúng số tiền (kể cả trả lệch sang tháng bên cạnh), cuối cùng ghép số
+ * gần nhất (±15%) để báo LỆCH; còn lại là thiếu / thừa. Chỉ xét các tháng có trong file lương.
+ */
+export function doiChieuLuong(
+  nv: Array<NguoiLuong & { tongThuNhap: number; thucNhan: number; tienMat: number }>,
+  gd: GiaoDich[],
+): DoiChieuLuongThang[] {
+  const thangCo = [...new Set(nv.map((x) => x.thang))].sort();
+  if (!thangCo.length) return [];
+  type Cho = { ten: string; soTien: number; thang: string; xong: boolean };
+  type Gd = { g: GiaoDich; thang: string; ro: boolean; xong: boolean };
+  const cho: Cho[] = nv.filter((x) => x.chuyenKhoan > 0).map((x) => ({ ten: x.ten, soTien: x.chuyenKhoan, thang: x.thang, xong: false }));
+  const gds: Gd[] = gd.filter(laGdLuong).map((g) => ({ g, ...thangLuong(g), xong: false })).filter((x) => thangCo.includes(x.thang) || thangCo.some((t) => Math.abs(soThang(t) - soThang(x.thang)) <= 1));
+  const kq = new Map<string, DoiChieuLuongThang>();
+  for (const t of thangCo) {
+    const ds = nv.filter((x) => x.thang === t);
+    kq.set(t, {
+      thang: t,
+      soNguoi: ds.length,
+      tongThuNhap: ds.reduce((s, x) => s + x.tongThuNhap, 0),
+      thucNhan: ds.reduce((s, x) => s + x.thucNhan, 0),
+      tienMat: ds.reduce((s, x) => s + x.tienMat, 0),
+      ckFile: ds.reduce((s, x) => s + x.chuyenKhoan, 0),
+      ckNganHang: 0,
+      soGd: 0,
+      soKhop: 0,
+      lech: [],
+      thieu: [],
+      thua: [],
+    });
+  }
+  const cungTen = (ten: string, doiTac: string) => {
+    const a = chuanChu(ten).replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const b = ` ${chuanChu(doiTac).replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim()} `;
+    return a.length >= 5 && b.includes(` ${a} `);
+  };
+  const ghep = (c: Cho, x: Gd) => {
+    c.xong = true;
+    x.xong = true;
+    const k = kq.get(c.thang)!;
+    k.ckNganHang += x.g.ghiNo;
+    k.soGd++;
+    if (gan(c.soTien, x.g.ghiNo)) k.soKhop++;
+    else k.lech.push({ ten: c.ten, file: c.soTien, nganHang: x.g.ghiNo, ngay: x.g.ngay, noiDung: x.g.noiDung, doiTac: x.g.doiTac });
+  };
+  // 1) Theo tên người nhận: cùng tháng trước; tháng bên cạnh chỉ khi nội dung không ghi rõ tháng.
+  for (const lech of [0, 1]) {
+    for (const x of gds) {
+      if (x.xong || !x.g.doiTac || (lech && x.ro)) continue;
+      const c = cho.find((c) => !c.xong && Math.abs(soThang(c.thang) - soThang(x.thang)) === lech && cungTen(c.ten, x.g.doiTac));
+      if (c) ghep(c, x);
+    }
+  }
+  // 2) Đúng số tiền: cùng tháng trước, rồi tháng bên cạnh — chỉ khi nội dung KHÔNG ghi rõ tháng (ghi "thang 3" thì
+  // là lương tháng 3, không ghép sang tháng khác dù trùng số tiền).
+  for (const lech of [0, 1]) {
+    for (const x of gds) {
+      if (x.xong || (lech && x.ro)) continue;
+      const c = cho.find((c) => !c.xong && Math.abs(soThang(c.thang) - soThang(x.thang)) === lech && gan(c.soTien, x.g.ghiNo));
+      if (c) ghep(c, x);
+    }
+  }
+  // 3) Số gần nhất cùng tháng (±15%) → lệch.
+  for (const x of gds) {
+    if (x.xong) continue;
+    const ung = cho.filter((c) => !c.xong && c.thang === x.thang && Math.abs(c.soTien - x.g.ghiNo) <= c.soTien * 0.15);
+    ung.sort((a, b) => Math.abs(a.soTien - x.g.ghiNo) - Math.abs(b.soTien - x.g.ghiNo));
+    if (ung[0]) ghep(ung[0], x);
+  }
+  for (const c of cho) if (!c.xong) kq.get(c.thang)!.thieu.push({ ten: c.ten, soTien: c.soTien });
+  for (const x of gds) {
+    if (x.xong || !kq.has(x.thang)) continue;
+    const k = kq.get(x.thang)!;
+    k.ckNganHang += x.g.ghiNo;
+    k.soGd++;
+    k.thua.push({ ngay: x.g.ngay, soTien: x.g.ghiNo, noiDung: x.g.noiDung, doiTac: x.g.doiTac });
+  }
+  return [...kq.values()];
+}
+
+function soThang(t: string): number {
+  return Number(t.slice(0, 4)) * 12 + Number(t.slice(5, 7));
+}

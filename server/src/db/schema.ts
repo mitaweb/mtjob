@@ -571,6 +571,23 @@ CREATE TABLE IF NOT EXISTS kt_luong (
   tai_len_id     text DEFAULT '',
   cap_nhat       text DEFAULT ''
 );
+-- Lương trả 2 đợt (18/10/2026): đợt 1 tiền mặt, đợt 2 chuyển khoản — từng người để soát chuyển khoản với sao kê.
+ALTER TABLE kt_luong ADD COLUMN IF NOT EXISTS tien_mat bigint DEFAULT 0;
+ALTER TABLE kt_luong ADD COLUMN IF NOT EXISTS chuyen_khoan bigint DEFAULT 0;
+CREATE TABLE IF NOT EXISTS kt_luong_nv (
+  thang          text NOT NULL,        -- YYYY-MM
+  ten            text NOT NULL,
+  tong_thu_nhap  bigint DEFAULT 0,
+  bhxh_cty       bigint DEFAULT 0,
+  bhxh_nld       bigint DEFAULT 0,
+  tncn           bigint DEFAULT 0,
+  thuc_nhan      bigint DEFAULT 0,
+  tien_mat       bigint DEFAULT 0,
+  chuyen_khoan   bigint DEFAULT 0,
+  tai_len_id     text DEFAULT '',
+  cap_nhat       text DEFAULT '',
+  PRIMARY KEY (thang, ten)
+);
 -- Việc kế toán cần giám đốc xác nhận / bổ sung (AI tách từ thư kế toán gửi, 18/10/2026).
 CREATE TABLE IF NOT EXISTS kt_viec (
   id           text PRIMARY KEY,       -- băm nội dung — dán lại cùng thư không nhân đôi
