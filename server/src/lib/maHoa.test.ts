@@ -18,7 +18,10 @@ describe('maHoa / giaiMa', () => {
   it('sai khoá hoặc bị sửa → ném lỗi', () => {
     const m = maHoa('bí mật', K);
     expect(() => giaiMa(m, K + 'x')).toThrow();
-    const sua = m.slice(0, -2) + (m.endsWith('A') ? 'B' : 'A') + m.slice(-1);
+    // Đổi ký tự ĐẦU phần dữ liệu (sau dấu chấm cuối) — ký tự cuối base64 có thể chỉ là bit đệm, đổi không làm
+    // hỏng gì nên test từng chập chờn.
+    const i = m.lastIndexOf('.') + 1;
+    const sua = m.slice(0, i) + (m[i] === 'A' ? 'B' : 'A') + m.slice(i + 1);
     expect(() => giaiMa(sua, K)).toThrow();
     expect(() => giaiMa('rác', K)).toThrow('định dạng');
   });
