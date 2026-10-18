@@ -64,13 +64,13 @@ describe('maTinLonNhat', () => {
   });
 });
 
-// Anh Tâm 11/10/2026: đồng bộ 3 tiếng/lần ban ngày; "ban đêm từ 22h đến 6h chỉ đồng bộ 1 lần lúc 5h sáng".
-describe('viecBanDem — 3 tiếng ban ngày, đêm chỉ 5h sáng', () => {
+// Anh Tâm 18/10/2026: đồng bộ 30 phút/lần ban ngày (trước 3 tiếng); "ban đêm từ 22h đến 6h chỉ đồng bộ 1 lần lúc 5h sáng".
+describe('viecBanDem — 30 phút ban ngày, đêm chỉ 5h sáng', () => {
   const luc = (gio: string) => Date.parse(`2026-10-11T${gio}:00+07:00`);
-  it('ban ngày: quá 3 tiếng thì đồng bộ', () => {
+  it('ban ngày: quá 30 phút thì đồng bộ', () => {
     expect(viecBanDem({ gioVN: 10, lastSync: '', now: luc('10:00') })).toBe('dong_bo');
-    expect(viecBanDem({ gioVN: 10, lastSync: new Date(luc('06:50')).toISOString(), now: luc('10:00') })).toBe('dong_bo');
-    expect(viecBanDem({ gioVN: 10, lastSync: new Date(luc('08:00')).toISOString(), now: luc('10:00') })).toBe('rut');
+    expect(viecBanDem({ gioVN: 10, lastSync: new Date(luc('09:25')).toISOString(), now: luc('10:00') })).toBe('dong_bo');
+    expect(viecBanDem({ gioVN: 10, lastSync: new Date(luc('09:45')).toISOString(), now: luc('10:00') })).toBe('rut');
   });
   it('ban đêm 22h–6h: không đồng bộ, trừ một lượt lúc 5h', () => {
     const toi = new Date(Date.parse('2026-10-10T19:00:00+07:00')).toISOString();
@@ -78,7 +78,8 @@ describe('viecBanDem — 3 tiếng ban ngày, đêm chỉ 5h sáng', () => {
     expect(viecBanDem({ gioVN: 3, lastSync: toi, now: luc('03:00') })).toBe('rut');
     expect(viecBanDem({ gioVN: 5, lastSync: toi, now: luc('05:02') })).toBe('dong_bo');
     expect(viecBanDem({ gioVN: 5, lastSync: new Date(luc('05:02')).toISOString(), now: luc('05:40') })).toBe('rut');
-    expect(viecBanDem({ gioVN: 6, lastSync: new Date(luc('05:02')).toISOString(), now: luc('06:30') })).toBe('rut');
+    expect(viecBanDem({ gioVN: 6, lastSync: new Date(luc('06:10')).toISOString(), now: luc('06:30') })).toBe('rut');
+    expect(viecBanDem({ gioVN: 6, lastSync: new Date(luc('05:02')).toISOString(), now: luc('06:30') })).toBe('dong_bo');
     expect(viecBanDem({ gioVN: 8, lastSync: new Date(luc('05:02')).toISOString(), now: luc('08:10') })).toBe('dong_bo');
   });
   // Anh Tâm 13/10/2026: việc đã xử lý trong chat mà vẫn bị nhắc — tin lúc nhắc cũ tới 3 tiếng.

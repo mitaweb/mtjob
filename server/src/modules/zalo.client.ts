@@ -38,7 +38,7 @@ const now = () => nowTz().toISOString();
 let daMoLaiMtDigital = false;
 
 /**
- * Gọi từ cron nhắc hẹn (~5 phút/lần), CẢ NGÀY (anh Tâm 11/10/2026): ban ngày cứ 3 tiếng đồng bộ một lượt, ban
+ * Gọi từ cron nhắc hẹn (~5 phút/lần), CẢ NGÀY (anh Tâm 11/10/2026): ban ngày cứ 30 phút đồng bộ một lượt, ban
  * đêm chỉ một lượt lúc 5h sáng (lib/zalo.viecBanDem); rồi xét nhóm và AI đọc tin MỚI dần (mỗi lượt vài cuộc — máy chủ chỉ sống 60 giây)
  * tới khi hết; hết tin mới thì không gọi AI.
  */

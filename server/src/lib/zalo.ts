@@ -81,13 +81,15 @@ export function maTinLonNhat(ids: string[], hienTai = ''): string {
 }
 
 /** Ban ngày tự đồng bộ cách nhau bao lâu. */
-export const KHOANG_DONG_BO_MS = 3 * 3600_000;
+/** Ban ngày đồng bộ 30 phút một lượt (anh Tâm 18/10/2026: "lấy thường xuyên hơn sẽ ổn hơn, quá lâu lấy số lượng sẽ rất
+ * nhiều" — trước đây 3 tiếng). */
+export const KHOANG_DONG_BO_MS = 30 * 60_000;
 /** Trước giờ nhắc Zalo: tin cũ hơn chừng này thì đồng bộ lại. */
 export const TUOI_TRUOC_NHAC_MS = 20 * 60_000;
 
 /**
  * Lịch chạy Zalo, cron ~5 phút gọi một lần (anh Tâm 11/10/2026):
- *   - ĐỒNG BỘ: ban ngày (6h–22h) cứ 3 tiếng một lượt; ban đêm (22h–6h) KHÔNG đồng bộ, trừ MỘT lượt lúc 5h
+ *   - ĐỒNG BỘ: ban ngày (6h–22h) cứ 30 phút một lượt; ban đêm (22h–6h) KHÔNG đồng bộ, trừ MỘT lượt lúc 5h
  *     sáng ("ban đêm từ 22h đến 6h chỉ đồng bộ 1 lần lúc 5h sáng");
  *   - còn nhóm chưa xét theo tên / chưa kéo lịch sử → 'nhom';
  *   - còn lại → 'rut': AI đọc các cuộc có tin MỚI (tin đã đọc không bao giờ đọc lại), mỗi lượt vài cuộc tới
@@ -100,7 +102,7 @@ export function viecBanDem(o: { gioVN: number; lastSync: string; now: number; vi
   const last = Date.parse(o.lastSync);
   const cach = Number.isFinite(last) ? o.now - last : Infinity;
   const dem = o.gioVN >= 22 || o.gioVN < 6;
-  // 5h sáng: một lượt (chưa đồng bộ trong giờ này). Đêm còn lại: không đồng bộ. Ngày: 3 tiếng một lượt.
+  // 5h sáng: một lượt (chưa đồng bộ trong giờ này). Đêm còn lại: không đồng bộ. Ngày: 30 phút một lượt.
   const canDongBo =
     o.gioVN === 5 ? cach >= 3600_000 : dem ? false : cach > KHOANG_DONG_BO_MS || (!!o.sapNhac && cach > TUOI_TRUOC_NHAC_MS);
   if (canDongBo) return 'dong_bo';

@@ -329,7 +329,7 @@ export default function BrainZalo() {
         )}
 
         <p className="text-xs text-ink-muted">
-          <b>Mọi thứ tự chạy</b> — đồng bộ 3 tiếng/lần (đêm chỉ 5h sáng), tự lọc bỏ nhóm không liên quan, AI đọc tin mới, học việc công ty
+          <b>Mọi thứ tự chạy</b> — đồng bộ 30 phút/lần (đêm chỉ 5h sáng), tự lọc bỏ nhóm không liên quan, AI đọc tin mới, học việc công ty
           vào kho, cập nhật khách trong CRM, nhắc anh việc chưa làm. Anh chỉ cần quyết các cuộc <b>❓ AI hỏi</b>.
         </p>
       </div>
