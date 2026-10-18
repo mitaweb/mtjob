@@ -31,9 +31,12 @@ import {
   ghiCaiDat,
   ghiGiaoDich,
   tatCaGiaoDich,
+  ghiLuong,
+  tatCaLuong,
 } from './keToan.repo.js';
 import { laSaoKe, docSaoKe, khopDoiTac, type GiaoDich, type DoiTacKhop } from '../lib/saoKe.js';
 import { hoaDonHieuLuc, type SoCongNo, type ThanhToanDoiTac } from '../lib/keToan.js';
+import { xemTruoc, hoaDonTheoBanDo, giaoDichTheoBanDo, congNoTheoBanDo, luongTheoBanDo, kqkdTheoBanDo, type BanDoAi } from '../lib/docAi.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
 
@@ -72,7 +75,22 @@ export interface KetQuaTep {
 const tien = (n: number) => n.toLocaleString('vi-VN');
 
 /** Một file bảng (Excel/CSV đã được trình duyệt đọc thành các dòng chữ). */
+/**
+ * Một file bảng (Excel/CSV đã được trình duyệt đọc thành các dòng chữ). Bộ đọc theo mẫu đã biết chạy trước (nhanh,
+ * không tốn AI); không nhận ra / không ra dòng nào thì AI đọc phần đầu file để chỉ ra loại file và cột (anh Tâm
+ * 18/10/2026: "cho AI vào đọc file luôn đỡ phải setup định dạng").
+ */
 export async function nhapBang(ten: string, sheets: SheetDuLieu[], nguoi: string): Promise<KetQuaTep> {
+  const kq = await nhapBangTheoMau(ten, sheets, nguoi);
+  if (kq.ok) return kq;
+  try {
+    return await nhapBangAi(ten, sheets, nguoi);
+  } catch (e) {
+    return { ten, loai: 'Chưa nhận dạng', ok: false, thongDiep: `${kq.thongDiep} · AI cũng chưa đọc được: ${(e as Error).message.slice(0, 200)}` };
+  }
+}
+
+async function nhapBangTheoMau(ten: string, sheets: SheetDuLieu[], nguoi: string): Promise<KetQuaTep> {
   const loai = nhanDangBang(sheets);
   const id = newId('KT');
   const luc = nowTz().toISOString();
@@ -217,7 +235,7 @@ export async function layTuCongThue(token: string, thang: string, huong: 'ra' | 
 
 /** Tổng quan một năm: VAT theo quý, TNDN các năm, công nợ, hạn nộp gần nhất. */
 export async function tongQuan(nam: number) {
-  const [hoaDon, toKhai, baoCao, soThu, soTra, cd, giaoDich] = await Promise.all([
+  const [hoaDon, toKhai, baoCao, soThu, soTra, cd, giaoDich, luong] = await Promise.all([
     tatCaHoaDon(),
     tatCaToKhai(),
     tatCaBaoCao(),
@@ -225,6 +243,7 @@ export async function tongQuan(nam: number) {
     soCongNoMoiNhat('tra'),
     caiDat(),
     tatCaGiaoDich().catch(() => [] as GiaoDich[]),
+    tatCaLuong().catch(() => []),
   ]);
   const homNay = nowTz().format('YYYY-MM-DD');
   const quyNay = quyCuaNgay(homNay);
@@ -235,7 +254,8 @@ export async function tongQuan(nam: number) {
   const vatTatCa = denKy >= tuKy ? tinhVatTheoQuy(hoaDon, toKhai, tuKy, denKy) : [];
   const vat = vatTatCa.filter((v) => v.ky.startsWith(`${nam}-`));
   const namCo = [...new Set([2024, ...hoaDon.map((h) => Number(h.ngay.slice(0, 4))), Number(homNay.slice(0, 4))])].filter((n) => n >= 2024).sort();
-  const tndn = namCo.map((n) => tinhTndn(n, baoCao, hoaDon, cd.namMien));
+  const luongNam = (n: number) => luong.filter((x) => x.thang.startsWith(String(n))).reduce((s, x) => s + x.tongThuNhap + x.bhxhCty, 0);
+  const tndn = namCo.map((n) => tinhTndn(n, baoCao, hoaDon, cd.namMien, luongNam(n)));
   // Tiền đã thu / đã trả sau ngày chốt sổ (theo sao kê) → trừ công nợ đúng đối tác.
   const ttThu = thanhToanSauChot(giaoDich, soThu?.ngayChot || '', 'thu', doiTacDeKhop(soThu, hoaDon, 'ra'));
   const ttTra = thanhToanSauChot(giaoDich, soTra?.ngayChot || '', 'tra', doiTacDeKhop(soTra, hoaDon, 'vao'));
@@ -334,4 +354,145 @@ function hoaDonChuaThanhToanNganHang(hoaDon: HoaDon[], gd: GiaoDich[]) {
     return !ra.some((g) => g.ngay >= tuNgay && (Math.abs(g.ghiNo - h.tongTien) <= 1000 || !!khopDoiTac(g.noiDung, dt)));
   });
   return { so: ds.length, tongThue: ds.reduce((s, h) => s + h.tienThue, 0), ds: ds.slice(0, 30) };
+}
+
+// ── AI đọc file lạ (anh Tâm 18/10/2026: "cho AI vào đọc file luôn đỡ phải setup định dạng") ──
+
+const SO_COT = { type: 'INTEGER' };
+const NHIEU_COT = { type: 'ARRAY', items: { type: 'INTEGER' } };
+
+const SCHEMA_BAN_DO = {
+  type: 'OBJECT',
+  properties: {
+    loai: { type: 'STRING', enum: ['hoa_don', 'sao_ke', 'cong_no', 'kqkd', 'bang_luong', 'khac'] },
+    moTa: { type: 'STRING' },
+    bang: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          sheet: { type: 'STRING' },
+          dongDuLieu: { type: 'INTEGER' },
+          huong: { type: 'STRING' },
+          cot: {
+            type: 'OBJECT',
+            properties: {
+              ngay: SO_COT, kyHieu: SO_COT, soHd: SO_COT, mauSo: SO_COT, mst: SO_COT, ten: SO_COT, dienGiai: SO_COT,
+              tienHang: SO_COT, tienThue: SO_COT, tongTien: SO_COT, thueSuat: SO_COT, trangThai: SO_COT,
+              noiDung: SO_COT, no: SO_COT, co: SO_COT, soTien: SO_COT, soDu: SO_COT, soRef: SO_COT,
+              ma: SO_COT, duNo: SO_COT, duCo: SO_COT,
+              thang: SO_COT, tongThuNhap: SO_COT, bhxhCty: NHIEU_COT, bhxhNld: NHIEU_COT, tncn: SO_COT, thucNhan: SO_COT,
+            },
+          },
+        },
+        required: ['sheet', 'dongDuLieu', 'cot'],
+      },
+    },
+    nganHang: { type: 'STRING' },
+    soTk: { type: 'STRING' },
+    loaiCongNo: { type: 'STRING' },
+    ngayChot: { type: 'STRING' },
+    tuNgay: { type: 'STRING' },
+    denNgay: { type: 'STRING' },
+    nam: { type: 'INTEGER' },
+    doanhThu: { type: 'NUMBER' },
+    loiNhuanTruocThue: { type: 'NUMBER' },
+  },
+  required: ['loai', 'moTa', 'bang'],
+};
+
+function loiNhacBanDo(ten: string, xem: string, mst: string): string {
+  return [
+    `Bạn là kế toán của công ty TNHH DỊCH VỤ MT DIGITAL${mst ? ` (MST ${mst})` : ''}. Dưới đây là PHẦN ĐẦU một file Excel kế toán`,
+    `tên "${ten}" (mỗi ô ghi [chỉ số cột]giá trị; số dài đã che bằng #). Xác định file là loại gì và cột nào chứa gì, để`,
+    'chương trình tự đọc TOÀN BỘ file theo đúng các cột đó. KHÔNG chép số liệu từng dòng.',
+    '',
+    'loai:',
+    '- "hoa_don": danh sách / bảng kê hoá đơn. Mỗi sheet hoá đơn ghi huong = "ra" (công ty BÁN — cột khách hàng / người mua)',
+    '  hoặc "vao" (công ty MUA — cột người bán). Cột: ngay (ngày hoá đơn), kyHieu, soHd, mauSo (nếu tách riêng), mst (của',
+    '  đối tác), ten (đối tác), dienGiai, tienHang (chưa thuế), tienThue (thuế GTGT — KHÔNG phải thuế xuất khẩu), tongTien,',
+    '  thueSuat, trangThai.',
+    '- "sao_ke": sao kê / sổ phụ ngân hàng. Cột: ngay, noiDung, no (tiền ra / ghi nợ), co (tiền vào / ghi có) — hoặc soTien',
+    '  nếu chỉ một cột có dấu; soDu, soRef. Ghi nganHang và soTk nếu thấy (số TK bị che thì để trống).',
+    '- "cong_no": tổng hợp công nợ. loaiCongNo = "thu" (phải thu khách, TK 131) / "tra" (phải trả nhà cung cấp, TK 331);',
+    '  ngayChot = ngày cuối kỳ (YYYY-MM-DD), tuNgay. Cột: ma, ten, duNo, duCo (số dư CUỐI kỳ).',
+    '- "kqkd": báo cáo kết quả kinh doanh — ghi tuNgay, denNgay, doanhThu (mã 01), loiNhuanTruocThue (mã 50) đọc từ cột kỳ này.',
+    '- "bang_luong": bảng lương / BHXH. Cột: thang (cột tháng, vd "T01"), ten (họ tên), tongThuNhap (TỔNG thu nhập trước',
+    '  khấu trừ: lương + phụ cấp + thưởng), bhxhCty (MỌI cột BHXH/BHYT/BHTN/KPCĐ phần DOANH NGHIỆP đóng — thường 17%, 3%,',
+    '  1%, 0,5%), bhxhNld (các cột phần NGƯỜI LAO ĐỘNG đóng — thường 8%, 1,5%, 1%), tncn (thuế TNCN), thucNhan. Ghi nam',
+    '  nếu cột tháng không có năm (lấy từ tên sheet / cột kỳ kê khai).',
+    '- "khac": không phải các loại trên (danh sách nhân viên, quy định KPI…).',
+    '',
+    'bang: các sheet chứa dữ liệu chính (bỏ sheet phụ / trống). dongDuLieu = số dòng (theo "dòng i") của DÒNG DỮ LIỆU ĐẦU',
+    'TIÊN, sau mọi dòng tiêu đề / dòng tổng / dòng tỉ lệ %. Cột ghi bằng chỉ số [j]; cột không có thì bỏ trống.',
+    'Ngày ghi YYYY-MM-DD. moTa: một câu tiếng Việt mô tả file.',
+    '',
+    xem,
+  ].join('\n');
+}
+
+async function nhapBangAi(ten: string, sheets: SheetDuLieu[], nguoi: string): Promise<KetQuaTep> {
+  const { aiKhoJson } = await import('../ai/brainAi.js');
+  const cd = await caiDat();
+  const bd = (await aiKhoJson(loiNhacBanDo(ten, xemTruoc(sheets), cd.mst), SCHEMA_BAN_DO)) as BanDoAi;
+  if (!bd || !Array.isArray(bd.bang)) throw new Error('AI không trả bản đồ cột');
+  const id = newId('KT');
+  const luc = nowTz().toISOString();
+  const nhan = (l: string) => `${l} (AI nhận dạng)`;
+  let kq: KetQuaTep;
+  if (bd.loai === 'hoa_don') {
+    const hoaDon = hoaDonTheoBanDo(sheets, bd);
+    if (!hoaDon.length) throw new Error(`AI nhận là hoá đơn ("${bd.moTa}") nhưng không đọc ra dòng nào`);
+    const ghi = await ghiHoaDon(hoaDon, 'ai', id, luc);
+    const ra = hoaDon.filter((h) => h.huong === 'ra');
+    const vao = hoaDon.filter((h) => h.huong === 'vao');
+    kq = {
+      ten,
+      loai: nhan('Hoá đơn'),
+      ok: true,
+      thongDiep: `${ra.length} HĐ bán ra (VAT ${tien(ra.reduce((s, h) => s + h.tienThue, 0))}), ${vao.length} HĐ mua vào (VAT ${tien(vao.reduce((s, h) => s + h.tienThue, 0))}) · ${ghi.moi} mới, ${ghi.capNhat} cập nhật`,
+    };
+  } else if (bd.loai === 'sao_ke') {
+    const gd = giaoDichTheoBanDo(sheets, bd);
+    if (!gd.length) throw new Error(`AI nhận là sao kê ("${bd.moTa}") nhưng không đọc ra giao dịch nào`);
+    const ghi = await ghiGiaoDich(gd, id);
+    const ngay = gd.map((g) => g.ngay).sort();
+    kq = {
+      ten,
+      loai: nhan(`Sao kê ${bd.nganHang || 'ngân hàng'}`),
+      ok: true,
+      thongDiep: `${gd.length} giao dịch ${ngay[0]} → ${ngay[ngay.length - 1]} · vào ${tien(gd.reduce((s, g) => s + g.ghiCo, 0))}, ra ${tien(gd.reduce((s, g) => s + g.ghiNo, 0))} · ${ghi.moi} mới, ${ghi.trung} đã có`,
+    };
+  } else if (bd.loai === 'cong_no') {
+    const so = congNoTheoBanDo(sheets, bd);
+    if (!so) throw new Error(`AI nhận là công nợ ("${bd.moTa}") nhưng thiếu loại (thu / trả) hoặc ngày chốt`);
+    const n = await ghiCongNo(so, id);
+    kq = { ten, loai: nhan(so.loai === 'thu' ? 'Công nợ phải thu' : 'Công nợ phải trả'), ok: true, thongDiep: `${n} đối tác, chốt ngày ${so.ngayChot}` };
+  } else if (bd.loai === 'kqkd') {
+    const b = kqkdTheoBanDo(bd);
+    if (!b) throw new Error('AI nhận là báo cáo kết quả kinh doanh nhưng thiếu kỳ / lợi nhuận');
+    await ghiBaoCao(b, id, luc);
+    kq = {
+      ten,
+      loai: nhan('Báo cáo kết quả kinh doanh'),
+      ok: true,
+      thongDiep: `Kỳ ${b.tuNgay} → ${b.denNgay} · doanh thu ${tien(b.chiTieu['01'] ?? 0)}, LN trước thuế ${tien(b.chiTieu['50'] ?? 0)}`,
+    };
+  } else if (bd.loai === 'bang_luong') {
+    const luong = luongTheoBanDo(sheets, bd);
+    if (!luong.length) throw new Error(`AI nhận là bảng lương ("${bd.moTa}") nhưng không cộng được tháng nào`);
+    await ghiLuong(luong, id, luc);
+    const tong = luong.reduce((s, x) => s + x.tongThuNhap, 0);
+    const bh = luong.reduce((s, x) => s + x.bhxhCty, 0);
+    kq = {
+      ten,
+      loai: nhan('Bảng lương'),
+      ok: true,
+      thongDiep: `${luong.length} tháng (${luong.map((x) => `${x.thang.slice(5)}/${x.thang.slice(0, 4)}`).join(', ')}) · tổng thu nhập ${tien(tong)}, BHXH công ty đóng ${tien(bh)}`,
+    };
+  } else {
+    return { ten, loai: 'Không dùng cho số liệu thuế', ok: false, thongDiep: `AI đọc: ${bd.moTa || 'không phải hoá đơn / sao kê / công nợ / báo cáo / bảng lương'}` };
+  }
+  await ghiTaiLen({ id, tenFile: ten, loai: kq.loai, ketQua: kq.thongDiep, nguoi, luc });
+  return kq;
 }

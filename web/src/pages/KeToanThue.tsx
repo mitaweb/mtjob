@@ -29,6 +29,7 @@ interface Tndn {
   thueNeuKhongMien: number;
   mien: boolean;
   phaiNop: number;
+  chiPhiLuong: number;
 }
 interface CongNoDoiTac {
   ma: string;
@@ -255,9 +256,9 @@ export default function KeToanThue() {
           <div className="min-w-0 flex-1">
             <div className="font-semibold">Kéo thả file kế toán gửi vào đây</div>
             <p className="text-sm text-ink-muted">
-              Sao kê ngân hàng (Excel), bảng kê hoá đơn MV-BR, hoá đơn XML, tờ khai GTGT (XML), tổng hợp công nợ phải thu /
-              phải trả, báo cáo kết quả kinh doanh. Chọn cả thư mục cũng được — app tự lọc file cần, bỏ qua PDF / file nén.
-              Tải lại file cũ không bị nhân đôi.
+              Sao kê ngân hàng, bảng kê hoá đơn, hoá đơn / tờ khai XML, công nợ, báo cáo kết quả kinh doanh, bảng lương — file
+              Excel mẫu lạ thì AI tự đọc nhận ra loại và cột. Chọn cả thư mục cũng được — app tự lọc file cần, bỏ qua PDF /
+              file nén. Tải lại file cũ không bị nhân đôi.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -694,7 +695,7 @@ function BangTndn({ tndn }: { tndn: Tndn[] }) {
   const NGUON: Record<Tndn['nguon'], string> = {
     bao_cao: 'Báo cáo KQKD cả năm',
     bao_cao_luy_ke: 'Báo cáo KQKD luỹ kế',
-    uoc_tinh: 'Ước tính thô từ hoá đơn (chưa trừ lương, chi phí không hoá đơn)',
+    uoc_tinh: 'Ước tính từ hoá đơn',
   };
   return (
     <div className="card overflow-x-auto">
@@ -729,6 +730,8 @@ function BangTndn({ tndn }: { tndn: Tndn[] }) {
               <td className="pl-3 text-xs text-ink-muted">
                 {NGUON[t.nguon]}
                 {t.denNgay ? ` tới ${ngayVN(t.denNgay)}` : ''}
+                {t.nguon === 'uoc_tinh' &&
+                  (t.chiPhiLuong ? ` − lương và BHXH ${vnd(t.chiPhiLuong)}` : ' (chưa trừ lương — tải bảng lương / BHXH)')}
               </td>
             </tr>
           ))}

@@ -555,6 +555,18 @@ CREATE TABLE IF NOT EXISTS kt_giao_dich (
   tai_len_id   text DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS kt_giao_dich_ngay_idx ON kt_giao_dich (ngay);
+-- Bảng lương (AI đọc file lương / BHXH kế toán gửi, 18/10/2026): cộng theo tháng — chi phí lương cho ước tính TNDN.
+CREATE TABLE IF NOT EXISTS kt_luong (
+  thang          text PRIMARY KEY,     -- YYYY-MM
+  so_nguoi       integer DEFAULT 0,
+  tong_thu_nhap  bigint DEFAULT 0,
+  bhxh_cty       bigint DEFAULT 0,
+  bhxh_nld       bigint DEFAULT 0,
+  tncn           bigint DEFAULT 0,
+  thuc_nhan      bigint DEFAULT 0,
+  tai_len_id     text DEFAULT '',
+  cap_nhat       text DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS kt_cai_dat (
   khoa         text PRIMARY KEY,
   gia_tri      text DEFAULT ''

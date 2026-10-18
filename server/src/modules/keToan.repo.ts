@@ -3,6 +3,7 @@ import { q } from '../db/client.js';
 import type { HoaDon, ToKhaiGtgt, SoCongNo, BaoCaoKqkd, Huong } from '../lib/keToan.js';
 import { khoaHoaDon } from '../lib/keToan.js';
 import type { GiaoDich } from '../lib/saoKe.js';
+import type { LuongThang } from '../lib/docAi.js';
 
 const LO = 200;
 
@@ -289,4 +290,33 @@ export async function trangGiaoDich(o: { loai?: 'vao' | 'ra'; tim?: string; page
     q(`SELECT * FROM kt_giao_dich ${where} ORDER BY ngay DESC, thu_tu DESC LIMIT $${p.length + 1} OFFSET $${p.length + 2}`, [...p, o.size, (o.page - 1) * o.size]),
   ]);
   return { ds: rows.map(rowToGiaoDich), tong: Number(dem[0]?.n) || 0 };
+}
+
+// ── Bảng lương theo tháng (AI đọc file lương / BHXH) ──
+
+/** Ghi đè từng tháng có trong file (tải lại bảng lương mới thay số cũ của tháng đó). */
+export async function ghiLuong(ds: LuongThang[], taiLenId: string, luc: string): Promise<void> {
+  for (const x of ds) {
+    await q(
+      `INSERT INTO kt_luong (thang, so_nguoi, tong_thu_nhap, bhxh_cty, bhxh_nld, tncn, thuc_nhan, tai_len_id, cap_nhat)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (thang) DO UPDATE SET so_nguoi = EXCLUDED.so_nguoi, tong_thu_nhap = EXCLUDED.tong_thu_nhap,
+         bhxh_cty = EXCLUDED.bhxh_cty, bhxh_nld = EXCLUDED.bhxh_nld, tncn = EXCLUDED.tncn, thuc_nhan = EXCLUDED.thuc_nhan,
+         tai_len_id = EXCLUDED.tai_len_id, cap_nhat = EXCLUDED.cap_nhat`,
+      [x.thang, x.soNguoi, x.tongThuNhap, x.bhxhCty, x.bhxhNld, x.tncn, x.thucNhan, taiLenId, luc],
+    );
+  }
+}
+
+export async function tatCaLuong(): Promise<LuongThang[]> {
+  const rows = await q('SELECT * FROM kt_luong ORDER BY thang');
+  return rows.map((r) => ({
+    thang: String(r.thang),
+    soNguoi: Number(r.so_nguoi) || 0,
+    tongThuNhap: Number(r.tong_thu_nhap) || 0,
+    bhxhCty: Number(r.bhxh_cty) || 0,
+    bhxhNld: Number(r.bhxh_nld) || 0,
+    tncn: Number(r.tncn) || 0,
+    thucNhan: Number(r.thuc_nhan) || 0,
+  }));
 }

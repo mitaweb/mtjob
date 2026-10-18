@@ -566,6 +566,8 @@ export interface KetQuaTndn {
   thueNeuKhongMien: number;
   mien: boolean;
   phaiNop: number;
+  /** Chi phí lương đã trừ khi ước tính (0 nếu lấy từ báo cáo KQKD) */
+  chiPhiLuong: number;
 }
 
 /** Thuế suất TNDN: từ kỳ tính thuế 2025 doanh thu năm ≤ 3 tỷ 15%, ≤ 50 tỷ 17%, còn lại 20%; trước 2025: 20%. */
@@ -576,7 +578,8 @@ export function thueSuatTndn(nam: number, doanhThuNam: number): number {
   return 0.2;
 }
 
-export function tinhTndn(nam: number, baoCao: BaoCaoKqkd[], hoaDon: HoaDon[], namMien: number[]): KetQuaTndn {
+/** `chiPhiLuong` = tổng thu nhập + BHXH công ty đóng của năm (từ bảng lương) — trừ khi ước tính từ hoá đơn. */
+export function tinhTndn(nam: number, baoCao: BaoCaoKqkd[], hoaDon: HoaDon[], namMien: number[], chiPhiLuong = 0): KetQuaTndn {
   // Báo cáo phủ từ đầu năm, đến ngày muộn nhất trong năm.
   const bc = baoCao
     .filter((b) => b.tuNgay === `${nam}-01-01` && b.denNgay.startsWith(String(nam)))
@@ -593,13 +596,13 @@ export function tinhTndn(nam: number, baoCao: BaoCaoKqkd[], hoaDon: HoaDon[], na
   } else {
     const hd = hoaDon.filter((h) => h.ngay.startsWith(String(nam)) && hoaDonHieuLuc(h.trangThai));
     doanhThu = hd.filter((h) => h.huong === 'ra').reduce((s, h) => s + h.tienHang, 0);
-    loiNhuan = doanhThu - hd.filter((h) => h.huong === 'vao').reduce((s, h) => s + h.tienHang, 0);
+    loiNhuan = doanhThu - hd.filter((h) => h.huong === 'vao').reduce((s, h) => s + h.tienHang, 0) - chiPhiLuong;
     nguon = 'uoc_tinh';
   }
   const thueSuat = thueSuatTndn(nam, doanhThu);
   const thueNeuKhongMien = Math.max(0, Math.round(loiNhuan * thueSuat));
   const mien = namMien.includes(nam);
-  return { nam, loiNhuan, doanhThu, nguon, denNgay, thueSuat, thueNeuKhongMien, mien, phaiNop: mien ? 0 : thueNeuKhongMien };
+  return { nam, loiNhuan, doanhThu, nguon, denNgay, thueSuat, thueNeuKhongMien, mien, phaiNop: mien ? 0 : thueNeuKhongMien, chiPhiLuong: bc ? 0 : chiPhiLuong };
 }
 
 export interface CongNoDoiTac {
