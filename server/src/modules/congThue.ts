@@ -59,10 +59,16 @@ export async function dangNhap(o: { username: string; password: string; cvalue: 
     /* không phải JSON */
   }
   if (!r.ok || !j.token) {
-    const m = String(j.message || '');
-    if (/captcha/i.test(m) || /captcha/i.test(chu)) throw new ApiError(400, 'Mã captcha sai hoặc đã hết hạn — lấy mã mới rồi nhập lại');
-    if (r.status === 401 || /mật khẩu|password|tài khoản/i.test(m)) throw new ApiError(400, 'Sai MST / mật khẩu cổng thuế');
-    throw new ApiError(502, `Cổng thuế không cho đăng nhập${m ? `: ${m}` : ` (HTTP ${r.status})`}`);
+    // Nguyên văn câu cổng thuế báo (anh Tâm 18/10/2026: "bấm đăng nhập cổng thuế không được" — trước đây app tự
+    // dịch thành câu chung nên không biết sai ở đâu). Ghi log mã + câu báo để xem trên Vercel — KHÔNG ghi mật khẩu.
+    const m = String(j.message || j.error || j.detail || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    console.warn('[cong-thue] dang nhap bi tu choi', r.status, m || chu.replace(/\s+/g, ' ').slice(0, 200));
+    const goiY = /captcha|xác thực|ma xac thuc/i.test(`${m} ${chu}`)
+      ? ' — lấy mã captcha mới, gõ đúng chữ hoa / chữ thường như trong ảnh'
+      : /mật khẩu|password|tài khoản|đăng nhập/i.test(m)
+        ? ' — kiểm tra MST / mật khẩu (đúng tài khoản đăng nhập hoadondientu.gdt.gov.vn)'
+        : '';
+    throw new ApiError(r.status >= 500 ? 502 : 400, `Cổng thuế báo: "${m || `HTTP ${r.status}`}"${goiY}`);
   }
   return { token: String(j.token) };
 }

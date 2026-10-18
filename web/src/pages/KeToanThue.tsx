@@ -541,7 +541,7 @@ function LayCongThue({ mstMacDinh, onXong }: { mstMacDinh: string; onXong: () =>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <label className="text-sm">
                   <span className="label">MST (tên đăng nhập)</span>
-                  <input className="input" value={mst} onChange={(e) => setMst(e.target.value)} autoComplete="username" />
+                  <input className="input" value={mst} onChange={(e) => setMst(e.target.value)} autoComplete="username" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
                 </label>
                 <label className="text-sm">
                   <span className="label">Mật khẩu cổng thuế</span>
@@ -554,7 +554,7 @@ function LayCongThue({ mstMacDinh, onXong }: { mstMacDinh: string; onXong: () =>
                       <img
                         src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(cap.svg)}`}
                         alt="Mã captcha"
-                        className="h-10 rounded-lg border border-brand-100 bg-white"
+                        className="h-14 rounded-xl border-2 border-ink/20 bg-white px-1"
                       />
                     ) : (
                       <span className="text-xs text-ink-faint">đang lấy…</span>
@@ -566,7 +566,16 @@ function LayCongThue({ mstMacDinh, onXong }: { mstMacDinh: string; onXong: () =>
                 </div>
                 <label className="text-sm">
                   <span className="label">Gõ mã captcha</span>
-                  <input className="input" value={maCap} onChange={(e) => setMaCap(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && dangNhap()} />
+                  <input
+                    className="input font-mono tracking-widest"
+                    value={maCap}
+                    onChange={(e) => setMaCap(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && dangNhap()}
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
                 </label>
               </div>
               <button className="btn-primary" disabled={!!dangLam || !mst || !matKhau || !maCap || !cap} onClick={dangNhap}>
