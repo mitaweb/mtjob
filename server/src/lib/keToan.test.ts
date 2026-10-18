@@ -16,6 +16,7 @@ import {
   hanNopVat,
   thueSuatTndn,
   hoaDonHieuLuc,
+  ketQuaTheoThang,
   type HoaDon,
   type ToKhaiGtgt,
 } from './keToan.js';
@@ -262,5 +263,51 @@ describe('Excel xuất từ cổng hoá đơn điện tử', () => {
       ['vao', 'C26TAB', '26990', '0103581701', 229000, 18320, 247320, 'Hóa đơn đã bị thay thế', '2026-Q2'],
     ]);
     expect(hoaDonHieuLuc(hoaDon[1]!.trangThai)).toBe(false);
+  });
+});
+
+// Anh Tâm 18/10/2026: "lãi lỗ so với phần mềm đang tính sai. Em nhận dữ liệu, tách dữ liệu ra các mảng" + "Thu, chi,
+// lương, tách ra". Số theo thư kế toán A&T: đến 08/2026 lỗ kế toán 100.865.882, chi phí không được trừ 100.800.888.
+describe('TNDN tách lãi lỗ kế toán / chi phí không được trừ / lãi lỗ tính thuế', () => {
+  const keToan = { tuNgay: '2026-01-01', denNgay: '2026-08-31', nguon: 'ke_toan' as const, chiTieu: { '50': -100_865_882, cpktd: 100_800_888, lntt: -64_494 } };
+  it('lãi lỗ tính thuế = kế toán + chi phí không được trừ; giữ số kế toán ghi để đối chiếu', () => {
+    const r = tinhTndn(2026, [keToan], [], [2024, 2025, 2026]);
+    expect(r).toMatchObject({
+      loiNhuanKeToan: -100_865_882,
+      chiPhiKhongTru: 100_800_888,
+      loiNhuan: -64_994, // tự tính
+      loiNhuanTinhThueKeToanGhi: -64_494, // thư ghi — lệch 500đ, trang sẽ báo
+      tuKeToan: true,
+      nguon: 'bao_cao_luy_ke',
+      denNgay: '2026-08-31',
+      thueNeuKhongMien: 0,
+      phaiNop: 0,
+    });
+  });
+  it('báo cáo kế toán mới hơn B02 thì dùng báo cáo kế toán; B02 cùng kỳ lấy thêm chi phí không được trừ từ thư', () => {
+    const b02 = { tuNgay: '2026-01-01', denNgay: '2026-06-30', chiTieu: { '01': 1_000_000_000, '50': -86_284_455 } };
+    expect(tinhTndn(2026, [b02, keToan], [], []).denNgay).toBe('2026-08-31');
+    const thu6 = { ...keToan, denNgay: '2026-06-30', chiTieu: { '50': -86_284_455, cpktd: 90_000_000 } };
+    const r = tinhTndn(2026, [b02, thu6], [], []);
+    expect(r).toMatchObject({ loiNhuanKeToan: -86_284_455, chiPhiKhongTru: 90_000_000, loiNhuan: 3_715_545, doanhThu: 1_000_000_000 });
+    expect(r.thueNeuKhongMien).toBe(Math.round(3_715_545 * 0.15));
+  });
+});
+
+describe('thu / chi / lương theo tháng', () => {
+  it('tách theo tháng, bỏ hoá đơn huỷ, lương = thu nhập + BHXH công ty', () => {
+    const hd = (huong: 'ra' | 'vao', ngay: string, tienHang: number, trangThai = 'Hóa đơn mới') => ({
+      huong, mauSo: '1', kyHieu: 'X', soHd: ngay + tienHang, ngay, mstDoiTac: '', tenDoiTac: '', dienGiai: '', tienHang, tienThue: 0, tongTien: tienHang, thueSuat: '', trangThai, kyKeKhai: '',
+    });
+    const r = ketQuaTheoThang(
+      2026,
+      [hd('ra', '2026-01-05', 100), hd('vao', '2026-01-09', 30), hd('ra', '2026-01-20', 999, 'Hóa đơn đã bị hủy'), hd('ra', '2026-02-01', 50)],
+      [{ thang: '2026-01', tongThuNhap: 40, bhxhCty: 5 }],
+      '2026-02',
+    );
+    expect(r.map((x) => [x.thang, x.thu, x.chi, x.luong, x.laiLo, x.coLuong])).toEqual([
+      ['2026-01', 100, 30, 45, 25, true],
+      ['2026-02', 50, 0, 0, 50, false],
+    ]);
   });
 });

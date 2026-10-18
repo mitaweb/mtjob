@@ -185,14 +185,14 @@ export async function soCongNoMoiNhat(loai: 'thu' | 'tra'): Promise<SoCongNo | n
 
 export async function ghiBaoCao(b: BaoCaoKqkd, taiLenId: string, luc: string): Promise<void> {
   await q(
-    `INSERT INTO kt_bao_cao (khoa, loai, tu_ngay, den_ngay, chi_tieu, tai_len_id, cap_nhat) VALUES ($1, 'kqkd', $2, $3, $4, $5, $6)
+    `INSERT INTO kt_bao_cao (khoa, loai, tu_ngay, den_ngay, chi_tieu, tai_len_id, cap_nhat) VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (khoa) DO UPDATE SET chi_tieu = EXCLUDED.chi_tieu, tai_len_id = EXCLUDED.tai_len_id, cap_nhat = EXCLUDED.cap_nhat`,
-    [`kqkd|${b.tuNgay}|${b.denNgay}`, b.tuNgay, b.denNgay, JSON.stringify(b.chiTieu), taiLenId, luc],
+    [`${b.nguon || 'kqkd'}|${b.tuNgay}|${b.denNgay}`, b.nguon || 'kqkd', b.tuNgay, b.denNgay, JSON.stringify(b.chiTieu), taiLenId, luc],
   );
 }
 
 export async function tatCaBaoCao(): Promise<BaoCaoKqkd[]> {
-  const rows = await q(`SELECT * FROM kt_bao_cao WHERE loai = 'kqkd' ORDER BY tu_ngay, den_ngay`);
+  const rows = await q(`SELECT * FROM kt_bao_cao WHERE loai IN ('kqkd', 'ke_toan') ORDER BY tu_ngay, den_ngay`);
   return rows.map((r) => {
     let chiTieu: Record<string, number> = {};
     try {
@@ -200,7 +200,7 @@ export async function tatCaBaoCao(): Promise<BaoCaoKqkd[]> {
     } catch {
       /* hỏng thì bỏ */
     }
-    return { tuNgay: String(r.tu_ngay), denNgay: String(r.den_ngay), chiTieu };
+    return { tuNgay: String(r.tu_ngay), denNgay: String(r.den_ngay), chiTieu, nguon: r.loai === 'ke_toan' ? ('ke_toan' as const) : ('kqkd' as const) };
   });
 }
 
@@ -319,4 +319,49 @@ export async function tatCaLuong(): Promise<LuongThang[]> {
     tncn: Number(r.tncn) || 0,
     thucNhan: Number(r.thuc_nhan) || 0,
   }));
+}
+
+// ── Việc kế toán cần giám đốc xác nhận / bổ sung (AI tách từ thư kế toán gửi) ──
+
+export interface ViecKeToan {
+  id: string;
+  /** xac_nhan_cong_no | bo_sung_hoa_don | xac_nhan_giao_dich | khac */
+  loai: string;
+  noiDung: string;
+  soTien: number;
+  doiTac: string;
+  ngay: string;
+  xong: boolean;
+  taoLuc: string;
+}
+
+export async function ghiViec(ds: Array<Omit<ViecKeToan, 'xong' | 'taoLuc'>>, luc: string): Promise<number> {
+  let moi = 0;
+  for (const v of ds) {
+    const r = await q(
+      `INSERT INTO kt_viec (id, loai, noi_dung, so_tien, doi_tac, ngay, xong, tao_luc) VALUES ($1, $2, $3, $4, $5, $6, false, $7)
+       ON CONFLICT (id) DO NOTHING RETURNING id`,
+      [v.id, v.loai, v.noiDung.slice(0, 1000), v.soTien, v.doiTac.slice(0, 200), v.ngay, luc],
+    );
+    moi += r.length;
+  }
+  return moi;
+}
+
+export async function dsViec(): Promise<ViecKeToan[]> {
+  const rows = await q('SELECT * FROM kt_viec ORDER BY xong, tao_luc DESC LIMIT 200');
+  return rows.map((r) => ({
+    id: String(r.id),
+    loai: String(r.loai || 'khac'),
+    noiDung: String(r.noi_dung || ''),
+    soTien: Number(r.so_tien) || 0,
+    doiTac: String(r.doi_tac || ''),
+    ngay: String(r.ngay || ''),
+    xong: !!r.xong,
+    taoLuc: String(r.tao_luc || ''),
+  }));
+}
+
+export async function datXongViec(id: string, xong: boolean): Promise<void> {
+  await q('UPDATE kt_viec SET xong = $2 WHERE id = $1', [id, xong]);
 }

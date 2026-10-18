@@ -30,6 +30,29 @@ interface Tndn {
   mien: boolean;
   phaiNop: number;
   chiPhiLuong: number;
+  loiNhuanKeToan: number;
+  chiPhiKhongTru: number;
+  loiNhuanTinhThueKeToanGhi: number | null;
+  tuKeToan: boolean;
+}
+interface DongKetQuaThang {
+  thang: string;
+  thu: number;
+  chi: number;
+  luong: number;
+  laiLo: number;
+  soHdRa: number;
+  soHdVao: number;
+  coLuong: boolean;
+}
+interface ViecKeToan {
+  id: string;
+  loai: string;
+  noiDung: string;
+  soTien: number;
+  doiTac: string;
+  ngay: string;
+  xong: boolean;
 }
 interface CongNoDoiTac {
   ma: string;
@@ -77,6 +100,7 @@ interface TongQuan {
   sapToi: DongVat | null;
   tndn: Tndn[];
   congNo: { thu: CongNo; tra: CongNo };
+  ketQuaThang: DongKetQuaThang[];
   nganHang: {
     taiKhoan: TaiKhoan[];
     tienVaoChuaKhop: GiaoDich[];
@@ -291,6 +315,12 @@ export default function KeToanThue() {
         )}
       </div>
 
+      <BaoCaoKeToan
+        onXong={async () => {
+          await taiTongQuan();
+        }}
+      />
+
       <LayCongThue
         mstMacDinh={tq?.caiDat.mst || ''}
         onXong={async () => {
@@ -349,8 +379,9 @@ export default function KeToanThue() {
             />
           </div>
 
-          <BangVat vat={tq.vat} nam={nam} />
+          <BangThuChi ds={tq.ketQuaThang} nam={nam} />
           <BangTndn tndn={tq.tndn} />
+          <BangVat vat={tq.vat} nam={nam} />
           <BangCongNo thu={tq.congNo.thu} tra={tq.congNo.tra} />
           <NganHang nh={tq.nganHang} lan={lan} />
         </>
@@ -691,52 +722,276 @@ function BangVat({ vat, nam }: { vat: DongVat[]; nam: number }) {
   );
 }
 
-function BangTndn({ tndn }: { tndn: Tndn[] }) {
-  const NGUON: Record<Tndn['nguon'], string> = {
-    bao_cao: 'Báo cáo KQKD cả năm',
-    bao_cao_luy_ke: 'Báo cáo KQKD luỹ kế',
-    uoc_tinh: 'Ước tính từ hoá đơn',
-  };
+/** Thu / chi / lương / lãi lỗ theo tháng (anh Tâm 18/10/2026: "Thu, chi, lương, tách ra"). */
+function BangThuChi({ ds, nam }: { ds: DongKetQuaThang[]; nam: number }) {
+  const tong = ds.reduce(
+    (t, x) => ({ thu: t.thu + x.thu, chi: t.chi + x.chi, luong: t.luong + x.luong, laiLo: t.laiLo + x.laiLo }),
+    { thu: 0, chi: 0, luong: 0, laiLo: 0 },
+  );
+  const thieuLuong = ds.filter((x) => (x.thu || x.chi) && !x.coLuong).map((x) => x.thang.slice(5));
   return (
     <div className="card overflow-x-auto">
-      <h2 className="font-semibold">Thuế thu nhập doanh nghiệp (TNDN)</h2>
+      <h2 className="font-semibold">Thu · Chi · Lương theo tháng — năm {nam}</h2>
       <p className="mb-2 text-xs text-ink-muted">
-        Thuế suất từ năm 2025: doanh thu năm ≤ 3 tỷ 15%, ≤ 50 tỷ 17%. Lỗ thì không có thuế. Muốn số đúng, tải báo cáo kết quả kinh
-        doanh cả năm của kế toán.
+        Thu = tiền hàng hoá đơn bán ra · Chi = tiền hàng hoá đơn mua vào · Lương = tổng thu nhập + BHXH công ty đóng (bảng lương).
+        Tính theo ngày hoá đơn, chưa gồm chi phí không có hoá đơn và bút toán kế toán (khấu hao, phân bổ…) — số chính thức xem phần
+        TNDN bên dưới.
+        {thieuLuong.length > 0 && <b className="text-amber-800"> Chưa có bảng lương tháng {thieuLuong.join(', ')}.</b>}
       </p>
-      <table className="w-full min-w-[720px] text-sm">
+      <table className="w-full min-w-[640px] text-sm">
         <thead>
           <tr className="text-left text-xs text-ink-muted">
-            <th className="py-1">Năm</th>
-            <th className="text-right">Doanh thu</th>
-            <th className="text-right">Lợi nhuận trước thuế</th>
-            <th className="text-right">Thuế suất</th>
-            <th className="text-right">Nếu không miễn</th>
-            <th className="text-right">Phải nộp</th>
-            <th className="pl-3">Nguồn số liệu</th>
+            <th className="py-1">Tháng</th>
+            <th className="text-right">Thu</th>
+            <th className="text-right">Chi (có hoá đơn)</th>
+            <th className="text-right">Lương + BHXH</th>
+            <th className="text-right">Lãi / lỗ</th>
           </tr>
         </thead>
         <tbody className="divide-y">
-          {tndn.map((t) => (
-            <tr key={t.nam}>
+          {ds.map((x) => (
+            <tr key={x.thang}>
               <td className="py-1.5 font-medium">
-                {t.nam} {t.mien && <Badge variant="success">Miễn</Badge>}
+                {x.thang.slice(5)}/{x.thang.slice(0, 4)}
               </td>
-              <td className="text-right">{vnd(t.doanhThu)}</td>
-              <td className={`text-right ${t.loiNhuan < 0 ? 'text-rose-600' : ''}`}>{vnd(t.loiNhuan)}</td>
-              <td className="text-right">{Math.round(t.thueSuat * 100)}%</td>
-              <td className="text-right text-ink-muted">{vnd(t.thueNeuKhongMien)}</td>
-              <td className={`text-right font-semibold ${t.phaiNop ? 'text-rose-600' : 'text-emerald-700'}`}>{vnd(t.phaiNop)}</td>
-              <td className="pl-3 text-xs text-ink-muted">
-                {NGUON[t.nguon]}
-                {t.denNgay ? ` tới ${ngayVN(t.denNgay)}` : ''}
-                {t.nguon === 'uoc_tinh' &&
-                  (t.chiPhiLuong ? ` − lương và BHXH ${vnd(t.chiPhiLuong)}` : ' (chưa trừ lương — tải bảng lương / BHXH)')}
-              </td>
+              <td className="text-right">{vnd(x.thu)}</td>
+              <td className="text-right">{vnd(x.chi)}</td>
+              <td className="text-right">{x.coLuong ? vnd(x.luong) : <span className="text-ink-faint">chưa có</span>}</td>
+              <td className={`text-right font-semibold ${x.laiLo < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{vnd(x.laiLo)}</td>
             </tr>
           ))}
+          <tr className="border-t-2 border-ink font-bold">
+            <td className="py-1.5">Cộng</td>
+            <td className="text-right">{vnd(tong.thu)}</td>
+            <td className="text-right">{vnd(tong.chi)}</td>
+            <td className="text-right">{vnd(tong.luong)}</td>
+            <td className={`text-right ${tong.laiLo < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{vnd(tong.laiLo)}</td>
+          </tr>
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function BangTndn({ tndn }: { tndn: Tndn[] }) {
+  const NGUON: Record<Tndn['nguon'], string> = {
+    bao_cao: 'Báo cáo cả năm',
+    bao_cao_luy_ke: 'Báo cáo luỹ kế',
+    uoc_tinh: 'Ước tính từ hoá đơn',
+  };
+  return (
+    <div className="card">
+      <h2 className="font-semibold">Thuế thu nhập doanh nghiệp (TNDN)</h2>
+      <p className="mb-3 text-xs text-ink-muted">
+        Lãi / lỗ tính thuế = lãi / lỗ kế toán + chi phí KHÔNG được trừ (hoá đơn sai thông tin, chi không phục vụ kinh doanh…).
+        Thuế suất từ 2025: doanh thu năm ≤ 3 tỷ 15%, ≤ 50 tỷ 17%. Dán báo cáo kế toán gửi ở ô trên để có số đúng.
+      </p>
+      <div className="grid gap-3 lg:grid-cols-2">
+        {[...tndn].reverse().map((t) => {
+          const lech = t.loiNhuanTinhThueKeToanGhi !== null && t.loiNhuanTinhThueKeToanGhi !== t.loiNhuan ? t.loiNhuanTinhThueKeToanGhi : null;
+          const Dong = ({ nhan, so, dam, mau }: { nhan: string; so: number; dam?: boolean; mau?: string }) => (
+            <div className={`flex justify-between gap-3 py-1 ${dam ? 'font-bold' : ''}`}>
+              <span className="text-ink-soft">{nhan}</span>
+              <span className={mau || (so < 0 ? 'text-rose-600' : 'text-ink')}>{vnd(so)}</span>
+            </div>
+          );
+          return (
+            <div key={t.nam} className="rounded-2xl border-2 border-ink/15 p-4 text-sm">
+              <div className="mb-1 flex flex-wrap items-center gap-2">
+                <span className="font-brand text-lg font-bold text-ink">{t.nam}</span>
+                {t.mien && <Badge variant="success">Được miễn</Badge>}
+                <span className="text-xs text-ink-muted">
+                  {t.tuKeToan ? 'Số kế toán gửi' : NGUON[t.nguon]}
+                  {t.denNgay ? ` đến ${ngayVN(t.denNgay)}` : ''}
+                </span>
+              </div>
+              <Dong nhan="Doanh thu" so={t.doanhThu} mau="text-ink" />
+              {t.nguon === 'uoc_tinh' && t.chiPhiLuong > 0 && <Dong nhan="(đã trừ lương + BHXH)" so={-t.chiPhiLuong} />}
+              <Dong nhan={t.nguon === 'uoc_tinh' ? 'Lãi / lỗ ước tính' : 'Lãi / lỗ kế toán'} so={t.loiNhuanKeToan} />
+              <Dong nhan="+ Chi phí không được trừ" so={t.chiPhiKhongTru} mau="text-ink" />
+              <div className="border-t border-ink/15" />
+              <Dong nhan="= Lãi / lỗ tính thuế" so={t.loiNhuan} dam />
+              {lech !== null && (
+                <div className="my-1 rounded-xl bg-amber-50 px-2 py-1 text-xs text-amber-900">
+                  Kế toán ghi {vnd(lech)} — tự tính ra {vnd(t.loiNhuan)} (chênh {vnd(Math.abs(t.loiNhuan - lech))}). Anh hỏi lại kế toán.
+                </div>
+              )}
+              <Dong nhan={`Thuế suất ${Math.round(t.thueSuat * 100)}% — nếu không miễn`} so={t.thueNeuKhongMien} mau="text-ink-muted" />
+              <div className="mt-1 flex justify-between gap-3 rounded-xl bg-brand-50 px-2 py-1.5 font-bold">
+                <span>Phải nộp</span>
+                <span className={t.phaiNop ? 'text-rose-600' : 'text-emerald-700'}>{vnd(t.phaiNop)}</span>
+              </div>
+              {t.nguon === 'uoc_tinh' && !t.chiPhiLuong && (
+                <p className="mt-1 text-xs text-ink-faint">Chưa trừ lương — tải bảng lương / BHXH, hoặc dán báo cáo kế toán.</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const TEN_VIEC: Record<string, string> = {
+  xac_nhan_cong_no: 'Xác nhận công nợ',
+  bo_sung_hoa_don: 'Bổ sung hoá đơn',
+  xac_nhan_giao_dich: 'Xác nhận giao dịch',
+  khac: 'Việc khác',
+};
+
+/** Dán thư / ảnh báo cáo kế toán gửi → AI tách kết quả kinh doanh + việc cần xác nhận (anh Tâm 18/10/2026). */
+function BaoCaoKeToan({ onXong }: { onXong: () => Promise<void> }) {
+  const toast = useToast();
+  const [noiDung, setNoiDung] = useState('');
+  const [anh, setAnh] = useState<{ mimeType: string; data: string; ten: string } | null>(null);
+  const [dangDoc, setDangDoc] = useState(false);
+  const [kq, setKq] = useState<null | {
+    ketQua: null | { tuNgay: string; denNgay: string; loiNhuanKeToan: number; chiPhiKhongTru: number; loiNhuanTinhThueGhi: number | null; loiNhuanTinhThueTinh: number; ghiChu: string };
+    soViec: number;
+    viecMoi: number;
+  }>(null);
+  const [viec, setViec] = useState<ViecKeToan[]>([]);
+  const [xemXong, setXemXong] = useState(false);
+
+  async function taiViec() {
+    setViec((await api<{ ds: ViecKeToan[] }>('/ke-toan/viec')).ds);
+  }
+  useEffect(() => {
+    taiViec().catch(() => undefined);
+  }, []);
+
+  function docAnh(file: File) {
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) {
+      toast.error('Chỉ nhận ảnh PNG / JPG / WEBP');
+      return;
+    }
+    if (file.size > 3_300_000) {
+      toast.error('Ảnh quá lớn (tối đa ~3 MB)');
+      return;
+    }
+    const r = new FileReader();
+    r.onload = () => {
+      const url = String(r.result || '');
+      setAnh({ mimeType: file.type, data: url.slice(url.indexOf(',') + 1), ten: file.name || 'ảnh dán' });
+    };
+    r.readAsDataURL(file);
+  }
+
+  async function gui() {
+    setDangDoc(true);
+    try {
+      const r = await api<NonNullable<typeof kq>>('/ke-toan/bao-cao-ke-toan', {
+        body: { ...(noiDung.trim() ? { noiDung } : {}), ...(anh ? { anh: { mimeType: anh.mimeType, data: anh.data } } : {}) },
+      });
+      setKq(r);
+      toast.success(r.ketQua ? 'Đã tách kết quả kinh doanh và việc cần làm' : `Đã tách ${r.soViec} việc`);
+      setNoiDung('');
+      setAnh(null);
+      await Promise.all([taiViec(), onXong()]);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDangDoc(false);
+    }
+  }
+
+  async function doiXong(v: ViecKeToan) {
+    try {
+      await api(`/ke-toan/viec/${v.id}`, { body: { xong: !v.xong } });
+      setViec((ds) => ds.map((x) => (x.id === v.id ? { ...x, xong: !x.xong } : x)));
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
+  const conMo = viec.filter((v) => !v.xong);
+  const hien = xemXong ? viec : conMo;
+  return (
+    <div className="card">
+      <h2 className="font-semibold">📨 Báo cáo kế toán gửi</h2>
+      <p className="mb-2 text-xs text-ink-muted">
+        Dán nguyên thư kế toán gửi, hoặc dán / chọn ảnh chụp — AI tách: kết quả kinh doanh (lãi lỗ kế toán, chi phí không được
+        trừ, lãi lỗ tính thuế) đưa vào phần TNDN; các việc kế toán nhờ anh xác nhận / bổ sung đưa vào danh sách bên dưới.
+      </p>
+      <textarea
+        className="input min-h-[96px]"
+        placeholder="Dán nội dung thư kế toán (Ctrl+V) — dán ảnh chụp vào đây cũng được"
+        value={noiDung}
+        onChange={(e) => setNoiDung(e.target.value)}
+        onPaste={(e) => {
+          const f = [...e.clipboardData.files].find((x) => x.type.startsWith('image/'));
+          if (f) {
+            e.preventDefault();
+            docAnh(f);
+          }
+        }}
+      />
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <label className="btn-ghost cursor-pointer text-sm">
+          🖼 Chọn ảnh
+          <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => e.target.files?.[0] && docAnh(e.target.files[0])} />
+        </label>
+        {anh && (
+          <span className="text-sm text-ink-soft">
+            Ảnh: {anh.ten}{' '}
+            <button className="text-rose-600 underline" onClick={() => setAnh(null)}>
+              bỏ
+            </button>
+          </span>
+        )}
+        <button className="btn-primary ml-auto" disabled={dangDoc || (!noiDung.trim() && !anh)} onClick={gui}>
+          {dangDoc ? 'AI đang đọc…' : 'AI đọc & tách'}
+        </button>
+      </div>
+
+      {kq?.ketQua && (
+        <div className="mt-3 rounded-2xl bg-brand-50 p-3 text-sm">
+          <b>
+            Kết quả kinh doanh {ngayVN(kq.ketQua.tuNgay)} → {ngayVN(kq.ketQua.denNgay)}:
+          </b>{' '}
+          lãi / lỗ kế toán <b className={kq.ketQua.loiNhuanKeToan < 0 ? 'text-rose-600' : ''}>{vnd(kq.ketQua.loiNhuanKeToan)}</b>, chi phí
+          không được trừ <b>{vnd(kq.ketQua.chiPhiKhongTru)}</b> → lãi / lỗ tính thuế <b>{vnd(kq.ketQua.loiNhuanTinhThueTinh)}</b>
+          {kq.ketQua.loiNhuanTinhThueGhi !== null && kq.ketQua.loiNhuanTinhThueGhi !== kq.ketQua.loiNhuanTinhThueTinh && (
+            <span className="text-amber-900">
+              {' '}
+              (thư ghi {vnd(kq.ketQua.loiNhuanTinhThueGhi)} — chênh {vnd(Math.abs(kq.ketQua.loiNhuanTinhThueTinh - kq.ketQua.loiNhuanTinhThueGhi))})
+            </span>
+          )}
+          {kq.ketQua.ghiChu && <div className="mt-1 text-xs text-ink-muted">Chi phí không được trừ: {kq.ketQua.ghiChu}</div>}
+        </div>
+      )}
+
+      <div className="mt-4">
+        <div className="mb-1 flex items-center justify-between">
+          <h3 className="text-sm font-bold">Kế toán cần anh xác nhận ({conMo.length})</h3>
+          {viec.length > conMo.length && (
+            <button className="text-xs text-ink-muted underline" onClick={() => setXemXong(!xemXong)}>
+              {xemXong ? 'ẩn việc đã xong' : `xem cả ${viec.length - conMo.length} việc đã xong`}
+            </button>
+          )}
+        </div>
+        {hien.length === 0 ? (
+          <p className="text-xs text-ink-faint">Không còn việc nào.</p>
+        ) : (
+          <ul className="divide-y">
+            {hien.map((v) => (
+              <li key={v.id} className="flex items-start gap-3 py-2">
+                <input type="checkbox" className="mt-1 h-5 w-5" checked={v.xong} onChange={() => doiXong(v)} aria-label="Đã xong" />
+                <div className={`min-w-0 flex-1 text-sm ${v.xong ? 'text-ink-faint line-through' : 'text-ink-soft'}`}>
+                  <Badge variant={v.loai === 'bo_sung_hoa_don' ? 'warn' : v.loai === 'khac' ? 'neutral' : 'info'}>{TEN_VIEC[v.loai] || v.loai}</Badge>{' '}
+                  {v.noiDung}
+                  {(v.soTien > 0 || v.doiTac || v.ngay) && (
+                    <span className="text-xs text-ink-muted">
+                      {' '}
+                      · {[v.soTien ? vnd(v.soTien) : '', v.doiTac, v.ngay ? ngayVN(v.ngay) : ''].filter(Boolean).join(' · ')}
+                    </span>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

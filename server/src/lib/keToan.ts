@@ -59,8 +59,14 @@ export interface SoCongNo {
 export interface BaoCaoKqkd {
   tuNgay: string;
   denNgay: string;
-  /** Theo mã số chỉ tiêu B02-DN: '01' doanh thu, '10' doanh thu thuần, '50' LN trước thuế, '51' thuế TNDN, '60' LN sau thuế… */
+  /**
+   * Theo mã số chỉ tiêu B02-DN: '01' doanh thu, '10' doanh thu thuần, '50' LN kế toán trước thuế, '51' thuế TNDN…
+   * Báo cáo kế toán gửi (thư / ảnh) thêm: 'cpktd' chi phí KHÔNG được trừ khi tính thuế, 'lntt' lợi nhuận tính thuế
+   * kế toán ghi (để đối chiếu với số tự tính).
+   */
   chiTieu: Record<string, number>;
+  /** 'kqkd' = báo cáo B02-DN; 'ke_toan' = số kế toán báo qua thư / ảnh (có tách chi phí không được trừ) */
+  nguon?: 'kqkd' | 'ke_toan';
 }
 
 // ── Chuẩn hoá ──
@@ -555,11 +561,19 @@ export function tinhVatTheoQuy(hoaDon: HoaDon[], toKhai: ToKhaiGtgt[], tuKy: str
 
 export interface KetQuaTndn {
   nam: number;
-  /** Lợi nhuận trước thuế dùng để tính */
+  /** Lợi nhuận TÍNH THUẾ (= kế toán + chi phí không được trừ) — cơ sở tính thuế */
   loiNhuan: number;
+  /** Lãi / lỗ kế toán trước thuế (mã 50) */
+  loiNhuanKeToan: number;
+  /** Chi phí không được trừ khi tính thuế (kế toán báo) */
+  chiPhiKhongTru: number;
+  /** Lợi nhuận tính thuế kế toán GHI trong báo cáo (nếu có) — khác số tự tính thì trang báo chênh lệch */
+  loiNhuanTinhThueKeToanGhi: number | null;
   doanhThu: number;
   /** 'bao_cao' = từ báo cáo KQKD cả năm; 'bao_cao_luy_ke' = báo cáo tới ngày; 'uoc_tinh' = từ hoá đơn */
   nguon: 'bao_cao' | 'bao_cao_luy_ke' | 'uoc_tinh';
+  /** Báo cáo dùng là số kế toán gửi qua thư / ảnh */
+  tuKeToan: boolean;
   denNgay: string;
   thueSuat: number;
   /** Thuế tính được nếu KHÔNG miễn */
@@ -580,29 +594,102 @@ export function thueSuatTndn(nam: number, doanhThuNam: number): number {
 
 /** `chiPhiLuong` = tổng thu nhập + BHXH công ty đóng của năm (từ bảng lương) — trừ khi ước tính từ hoá đơn. */
 export function tinhTndn(nam: number, baoCao: BaoCaoKqkd[], hoaDon: HoaDon[], namMien: number[], chiPhiLuong = 0): KetQuaTndn {
-  // Báo cáo phủ từ đầu năm, đến ngày muộn nhất trong năm.
+  // Báo cáo phủ từ đầu năm, đến ngày muộn nhất trong năm; cùng ngày thì ưu tiên số kế toán gửi (có tách chi phí không
+  // được trừ — anh Tâm 18/10/2026: "lãi lỗ so với phần mềm đang tính sai").
   const bc = baoCao
-    .filter((b) => b.tuNgay === `${nam}-01-01` && b.denNgay.startsWith(String(nam)))
-    .sort((a, b) => b.denNgay.localeCompare(a.denNgay))[0];
-  let loiNhuan: number;
+    .filter((b) => b.tuNgay === `${nam}-01-01` && b.denNgay.startsWith(String(nam)) && b.chiTieu['50'] !== undefined)
+    .sort((a, b) => b.denNgay.localeCompare(a.denNgay) || (b.nguon === 'ke_toan' ? 1 : 0) - (a.nguon === 'ke_toan' ? 1 : 0))[0];
+  let loiNhuanKeToan: number;
+  let chiPhiKhongTru = 0;
+  let loiNhuanTinhThueKeToanGhi: number | null = null;
   let doanhThu: number;
   let nguon: KetQuaTndn['nguon'];
   let denNgay = '';
   if (bc) {
-    loiNhuan = bc.chiTieu['50'] ?? 0;
-    doanhThu = bc.chiTieu['01'] ?? bc.chiTieu['10'] ?? 0;
+    loiNhuanKeToan = bc.chiTieu['50'] ?? 0;
+    // Chi phí không được trừ: lấy từ báo cáo kế toán cùng kỳ (nếu báo cáo đang dùng là B02 không có số này).
+    const cungKy = baoCao.find((b) => b.tuNgay === bc.tuNgay && b.denNgay === bc.denNgay && b.chiTieu.cpktd !== undefined);
+    chiPhiKhongTru = bc.chiTieu.cpktd ?? cungKy?.chiTieu.cpktd ?? 0;
+    const ghi = bc.chiTieu.lntt ?? cungKy?.chiTieu.lntt;
+    loiNhuanTinhThueKeToanGhi = ghi === undefined ? null : ghi;
+    // Thư kế toán thường không ghi doanh thu → lấy từ báo cáo B02 cùng kỳ, rồi mới tới hoá đơn.
+    const coDoanhThu = baoCao.find((b) => b.tuNgay === bc.tuNgay && b.denNgay === bc.denNgay && (b.chiTieu['01'] ?? b.chiTieu['10']) !== undefined);
+    doanhThu = bc.chiTieu['01'] ?? bc.chiTieu['10'] ?? coDoanhThu?.chiTieu['01'] ?? coDoanhThu?.chiTieu['10'] ?? 0;
+    if (!doanhThu) {
+      doanhThu = hoaDon
+        .filter((h) => h.huong === 'ra' && h.ngay >= bc.tuNgay && h.ngay <= bc.denNgay && hoaDonHieuLuc(h.trangThai))
+        .reduce((s, h) => s + h.tienHang, 0);
+    }
     nguon = bc.denNgay === `${nam}-12-31` ? 'bao_cao' : 'bao_cao_luy_ke';
     denNgay = bc.denNgay;
   } else {
     const hd = hoaDon.filter((h) => h.ngay.startsWith(String(nam)) && hoaDonHieuLuc(h.trangThai));
     doanhThu = hd.filter((h) => h.huong === 'ra').reduce((s, h) => s + h.tienHang, 0);
-    loiNhuan = doanhThu - hd.filter((h) => h.huong === 'vao').reduce((s, h) => s + h.tienHang, 0) - chiPhiLuong;
+    loiNhuanKeToan = doanhThu - hd.filter((h) => h.huong === 'vao').reduce((s, h) => s + h.tienHang, 0) - chiPhiLuong;
     nguon = 'uoc_tinh';
   }
+  // Lợi nhuận tính thuế = lãi / lỗ kế toán + chi phí không được trừ.
+  const loiNhuan = loiNhuanKeToan + chiPhiKhongTru;
   const thueSuat = thueSuatTndn(nam, doanhThu);
   const thueNeuKhongMien = Math.max(0, Math.round(loiNhuan * thueSuat));
   const mien = namMien.includes(nam);
-  return { nam, loiNhuan, doanhThu, nguon, denNgay, thueSuat, thueNeuKhongMien, mien, phaiNop: mien ? 0 : thueNeuKhongMien, chiPhiLuong: bc ? 0 : chiPhiLuong };
+  return {
+    nam,
+    loiNhuan,
+    loiNhuanKeToan,
+    chiPhiKhongTru,
+    loiNhuanTinhThueKeToanGhi,
+    doanhThu,
+    nguon,
+    tuKeToan: bc?.nguon === 'ke_toan',
+    denNgay,
+    thueSuat,
+    thueNeuKhongMien,
+    mien,
+    phaiNop: mien ? 0 : thueNeuKhongMien,
+    chiPhiLuong: bc ? 0 : chiPhiLuong,
+  };
+}
+
+export interface DongKetQuaThang {
+  /** YYYY-MM */
+  thang: string;
+  /** Doanh thu: tiền hàng HĐ bán ra (chưa VAT) */
+  thu: number;
+  /** Chi phí có hoá đơn: tiền hàng HĐ mua vào (chưa VAT) */
+  chi: number;
+  /** Lương: tổng thu nhập + BHXH công ty đóng (bảng lương) */
+  luong: number;
+  laiLo: number;
+  soHdRa: number;
+  soHdVao: number;
+  coLuong: boolean;
+}
+
+/**
+ * Thu / chi / lương / lãi lỗ theo tháng của một năm (anh Tâm 18/10/2026: "Thu, chi, lương, tách ra"). Theo NGÀY hoá
+ * đơn; chưa gồm chi phí không có hoá đơn và các bút toán kế toán (khấu hao, phân bổ…) — đối chiếu với số kế toán bên dưới.
+ */
+export function ketQuaTheoThang(
+  nam: number,
+  hoaDon: HoaDon[],
+  luong: Array<{ thang: string; tongThuNhap: number; bhxhCty: number }>,
+  denThang?: string,
+): DongKetQuaThang[] {
+  const ra: DongKetQuaThang[] = [];
+  for (let m = 1; m <= 12; m++) {
+    const thang = `${nam}-${String(m).padStart(2, '0')}`;
+    if (denThang && thang > denThang) break;
+    const hd = hoaDon.filter((h) => h.ngay.startsWith(thang) && hoaDonHieuLuc(h.trangThai));
+    const hdRa = hd.filter((h) => h.huong === 'ra');
+    const hdVao = hd.filter((h) => h.huong === 'vao');
+    const l = luong.find((x) => x.thang === thang);
+    const thu = hdRa.reduce((s, h) => s + h.tienHang, 0);
+    const chi = hdVao.reduce((s, h) => s + h.tienHang, 0);
+    const tienLuong = l ? l.tongThuNhap + l.bhxhCty : 0;
+    ra.push({ thang, thu, chi, luong: tienLuong, laiLo: thu - chi - tienLuong, soHdRa: hdRa.length, soHdVao: hdVao.length, coLuong: !!l });
+  }
+  return ra;
 }
 
 export interface CongNoDoiTac {

@@ -567,6 +567,17 @@ CREATE TABLE IF NOT EXISTS kt_luong (
   tai_len_id     text DEFAULT '',
   cap_nhat       text DEFAULT ''
 );
+-- Việc kế toán cần giám đốc xác nhận / bổ sung (AI tách từ thư kế toán gửi, 18/10/2026).
+CREATE TABLE IF NOT EXISTS kt_viec (
+  id           text PRIMARY KEY,       -- băm nội dung — dán lại cùng thư không nhân đôi
+  loai         text DEFAULT 'khac',
+  noi_dung     text DEFAULT '',
+  so_tien      bigint DEFAULT 0,
+  doi_tac      text DEFAULT '',
+  ngay         text DEFAULT '',
+  xong         boolean DEFAULT false,
+  tao_luc      text DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS kt_cai_dat (
   khoa         text PRIMARY KEY,
   gia_tri      text DEFAULT ''

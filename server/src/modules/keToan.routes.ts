@@ -3,8 +3,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../util/errors.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
-import { nhapBang, nhapXml, tongQuan, caiDat, luuCaiDat } from './keToan.service.js';
-import { trangHoaDon, lichSuTaiLen, trangGiaoDich } from './keToan.repo.js';
+import { nhapBang, nhapXml, tongQuan, caiDat, luuCaiDat, nhanBaoCaoKeToan } from './keToan.service.js';
+import { trangHoaDon, lichSuTaiLen, trangGiaoDich, dsViec, datXongViec } from './keToan.repo.js';
 import { nowTz } from '../lib/datetime.js';
 
 export const keToanRouter = Router();
@@ -124,5 +124,37 @@ keToanRouter.post(
   asyncHandler(async (req, res) => {
     const b = z.object({ mst: z.string().max(20).optional(), mienTndn: z.string().max(100).optional() }).parse(req.body);
     res.json(await luuCaiDat(b));
+  }),
+);
+
+// ── Báo cáo kế toán gửi qua thư / ảnh: AI tách kết quả kinh doanh + việc cần xác nhận (anh Tâm 18/10/2026) ──
+
+keToanRouter.post(
+  '/bao-cao-ke-toan',
+  asyncHandler(async (req, res) => {
+    const b = z
+      .object({
+        noiDung: z.string().max(20000).optional(),
+        anh: z.object({ mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']), data: z.string().max(4_500_000) }).optional(),
+      })
+      .refine((x) => (x.noiDung && x.noiDung.trim().length > 10) || x.anh, { message: 'Dán nội dung thư hoặc ảnh chụp' })
+      .parse(req.body);
+    res.json(await nhanBaoCaoKeToan(b, req.user!.name));
+  }),
+);
+
+keToanRouter.get(
+  '/viec',
+  asyncHandler(async (_req, res) => {
+    res.json({ ds: await dsViec() });
+  }),
+);
+
+keToanRouter.post(
+  '/viec/:id',
+  asyncHandler(async (req, res) => {
+    const b = z.object({ xong: z.boolean() }).parse(req.body);
+    await datXongViec(String(req.params.id), b.xong);
+    res.json({ ok: true });
   }),
 );
