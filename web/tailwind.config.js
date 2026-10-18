@@ -2,7 +2,7 @@
 //
 // Giao diện VÀNG CHỦ ĐẠO, kiểu Gen Z (anh Tâm 18/10/2026: "anh cũng muốn giao diện vàng chủ đạo lại, thiết kế lại
 // giao diện cho hiện đại, phù hợp genz" — chọn bản xem thử: vàng Amber, viền đậm + bóng lệch kiểu sticker, thanh bên
-// màu mực, font Poppins). Màu lấy từ Brand Guidelines MT DIGITAL: Amber Yellow #FFBB03, Ocean Blue #0B57C4,
+// màu mực). Màu lấy từ Brand Guidelines MT DIGITAL: Amber Yellow #FFBB03, Ocean Blue #0B57C4,
 // Slate Grey #52546D, Light Grey #F4F5F7.
 //
 // `brand` = VÀNG (nền, nút, mục đang chọn). `ocean` = XANH (chữ nhấn, link, viền focus). Chữ vàng trên nền trắng chỉ
@@ -68,10 +68,12 @@ export default {
         app: '#fffbf0',
       },
       fontFamily: {
-        // Poppins theo bộ nhận diện (có đủ dấu tiếng Việt).
-        sans: ['Poppins', 'system-ui', 'Segoe UI', 'Arial', 'sans-serif'],
-        brand: ['Poppins', 'Arial', 'sans-serif'],
-        'brand-serif': ['Poppins', 'Arial', 'sans-serif'],
+        // Poppins trên Google Fonts THIẾU chữ tiếng Việt dấu chồng (U+1EA0–1EF1: ế, ữ, ộ…) → chữ bị lẫn font (anh Tâm
+        // 18/10/2026: 'đang lỗi font'). Nội dung: Be Vietnam Pro (làm riêng cho tiếng Việt); tiêu đề / logo: Montserrat —
+        // font thay thế Poppins mà Brand Guidelines cho phép. Cả hai có đủ bộ chữ tiếng Việt.
+        sans: ['"Be Vietnam Pro"', 'system-ui', 'Segoe UI', 'Arial', 'sans-serif'],
+        brand: ['Montserrat', 'Arial', 'sans-serif'],
+        'brand-serif': ['Montserrat', 'Arial', 'sans-serif'],
       },
       borderRadius: {
         xl: '0.9rem',
