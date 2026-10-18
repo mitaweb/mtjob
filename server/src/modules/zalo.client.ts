@@ -349,7 +349,7 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
     const gom = new Map<string, TinThuVien>();
     let biDay = '';
     // Chẩn đoán cho dòng trạng thái: kết nối có nhận khoá không, Zalo trả mấy lô / mấy tin.
-    const chanDoan = { khoa: false, lo: 0, tinLo: 0, trucTiep: 0, loNhom: 0 };
+    const chanDoan = { khoa: false, lo: 0, tinLo: 0, trucTiep: 0, loNhom: 0, cacLo: [] as string[], tuDau: false };
     await new Promise<void>((resolve) => {
       let xong = false;
       const ket = () => {
@@ -372,6 +372,12 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
           ket();
         }, ms);
       };
+      /** Xin từ đầu (không mốc) — một lần mỗi lượt: khi chưa có mốc, hoặc xin từ mốc không ra tin mới hơn. */
+      const xinTuDau = () => {
+        if (chanDoan.tuDau || chanDoan.lo > 0) return;
+        chanDoan.tuDau = true;
+        api.listener.requestOldMessages(ThreadType.User, null);
+      };
       /** Các mốc đã xin lô tin cũ trong lượt này. */
       const daXin = new Set<string>();
       /** Trả true nếu là tin CHƯA có trong lượt này. */
@@ -383,9 +389,17 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
       };
       api.listener.on('cipher_key', () => {
         chanDoan.khoa = true;
-        // Xin tin gần đây — cả lô mới nhất lẫn từ mốc lần trước. Trùng thì tự bỏ (msg_id).
-        api.listener.requestOldMessages(ThreadType.User, null);
-        if (st.lastMsgId) api.listener.requestOldMessages(ThreadType.User, st.lastMsgId);
+        // Lấy tin MỚI NHẤT trước (anh Tâm 18/10/2026: "18 chạy thì phải lấy được tin từ ngày 18 luôn"): đi tiếp từ
+        // mốc tin mới nhất app đã có. Không mốc (lần đầu) mới xin từ đầu. Xin "null" mỗi lần như trước thì Zalo trả
+        // lại từ tin cũ nhất nó giữ (08/10) → tốn hết số lô vào tin đã có, không tới được tin hôm nay.
+        if (st.lastMsgId) {
+          daXin.add(st.lastMsgId);
+          api.listener.requestOldMessages(ThreadType.User, st.lastMsgId);
+          // Đường lui: 6 giây chưa có lô nào → xin từ đầu như cũ.
+          setTimeout(xinTuDau, 6_000);
+        } else {
+          xinTuDau();
+        }
         // Tin nhóm gần đây (anh Tâm 8/10/2026: cần cả nhóm khách). Lịch sử cũ của nhóm khách kéo
         // riêng bằng getGroupChatHistory ở bước quét nhóm.
         api.listener.requestOldMessages(ThreadType.Group, null);
@@ -402,20 +416,27 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
         if (type !== ThreadType.User) return;
         chanDoan.lo++;
         chanDoan.tinLo += msgs.length;
-        let moi = 0;
-        for (const m of msgs as unknown as TinThuVien[]) if (nhan(m)) moi++;
-        // Lô có tin mới → xin tiếp CẢ HAI chiều: từ tin MỚI NHẤT (tới tin mới hơn) và từ tin CŨ NHẤT của lô.
-        // Zalo không nói rõ chiều phân trang — 17/10/2026 chỉ lùi về tin cũ nên không bao giờ tới tin 15–17/10.
-        // Mỗi mốc chỉ xin một lần; tối đa 40 lô (18/10/2026: 16 lô mới tới tin 16/10 09:22 sau 3 ngày mất kết nối).
+        for (const m of msgs as unknown as TinThuVien[]) nhan(m);
+        // Ghi khoảng thời gian từng lô (chẩn đoán chiều phân trang của Zalo).
+        const tsLo = (msgs as unknown as TinThuVien[]).map((m) => Number(m.data?.ts)).filter((x) => x > 0);
+        if (tsLo.length) chanDoan.cacLo.push(`${gioTin(String(Math.min(...tsLo)))}→${gioTin(String(Math.max(...tsLo)))}`);
+        // Đi TIẾP về phía tin mới hơn: xin từ tin MỚI NHẤT của lô (18/10/2026 — xin từ tin cũ nhất chỉ lấy lại tin cũ
+        // đã có). Mỗi mốc một lần; dừng khi lô rỗng / không tiến thêm; tối đa 40 lô.
         const ids = (msgs as unknown as TinThuVien[]).map((m) => String(m.data?.msgId || '')).filter((x) => /^\d+$/.test(x));
+        // Lô đầu xin từ mốc mà không có tin nào mới hơn mốc → xin từ đầu (đường lui).
+        const moc = st.lastMsgId;
+        if (chanDoan.lo === 1 && moc && !chanDoan.tuDau && !ids.some((x) => BigInt(x) > BigInt(moc))) {
+          chanDoan.lo = 0;
+          xinTuDau();
+          henChot(5_000);
+          return;
+        }
         let xin = false;
-        if (moi > 0 && ids.length) {
+        if (ids.length) {
           const moiNhat = ids.reduce((a, b) => (BigInt(a) > BigInt(b) ? a : b));
-          const cuNhat = ids.reduce((a, b) => (BigInt(a) < BigInt(b) ? a : b));
-          for (const moc of [moiNhat, cuNhat]) {
-            if (daXin.has(moc) || daXin.size >= 40) continue;
-            daXin.add(moc);
-            api.listener.requestOldMessages(ThreadType.User, moc);
+          if (!daXin.has(moiNhat) && daXin.size < 40) {
+            daXin.add(moiNhat);
+            api.listener.requestOldMessages(ThreadType.User, moiNhat);
             xin = true;
           }
         }
@@ -480,7 +501,11 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
     const khoang = tsDs.length ? ` · tin từ ${gioTin(String(Math.min(...tsDs)))} đến ${gioTin(String(Math.max(...tsDs)))}` : '';
     const chiTiet =
       `kết nối ${chanDoan.khoa ? '✓' : '✗ (không nhận được khoá)'}, Zalo trả ${chanDoan.lo} lô 1-1 + ${chanDoan.loNhom} lô nhóm / ` +
-      `${chanDoan.tinLo} tin, tin trực tiếp ${chanDoan.trucTiep} · ${dsNhom.tong} nhóm${dsNhom.moi ? ` (${dsNhom.moi} mới)` : ''}${khoang}`;
+      `${chanDoan.tinLo} tin, tin trực tiếp ${chanDoan.trucTiep} · ${dsNhom.tong} nhóm${dsNhom.moi ? ` (${dsNhom.moi} mới)` : ''}${khoang}` +
+      (chanDoan.cacLo.length
+        ? ` · các lô${chanDoan.tuDau ? ' (xin từ đầu)' : ''}: ${chanDoan.cacLo.slice(0, 6).join(', ')}` +
+          (chanDoan.cacLo.length > 6 ? ` … ${chanDoan.cacLo[chanDoan.cacLo.length - 1]}` : '')
+        : '');
     const note =
       biDay ||
       `Đồng bộ lúc ${nowTz().format('HH:mm DD/MM')} — ${lo.length} tin (${nhom.length} tin nhóm; ${kq.luu} tin ở cuộc đã bật) · ${chiTiet}`;
