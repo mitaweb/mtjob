@@ -238,3 +238,29 @@ describe('TNDN', () => {
     expect(tinhTndn(2027, [{ tuNgay: '2027-01-01', denNgay: '2027-12-31', chiTieu: { '50': -5 } }], [], []).phaiNop).toBe(0);
   });
 });
+
+// Anh Tâm 18/10/2026: "các hóa đơn đầu vào sẽ tìm cách lấy từ cổng thuế" — Excel xuất từ hoadondientu.gdt.gov.vn.
+describe('Excel xuất từ cổng hoá đơn điện tử', () => {
+  const SH = [
+    {
+      ten: 'Sheet1',
+      rows: [
+        ['DANH SÁCH HÓA ĐƠN'],
+        ['Từ ngày 01/04/2026 đến ngày 30/04/2026'],
+        ['STT', 'Ký hiệu mẫu số', 'Ký hiệu hóa đơn', 'Số hóa đơn', 'Ngày lập', 'Thông tin hóa đơn', '', 'Tổng tiền chưa thuế', 'Tổng tiền thuế', 'Tổng tiền chiết khấu', 'Tổng tiền phí', 'Tổng tiền thanh toán', 'Đơn vị tiền tệ', 'Trạng thái hóa đơn', 'Kết quả kiểm tra hóa đơn'],
+        ['', '', '', '', '', 'MST người bán/MST người xuất hàng', 'Tên người bán/Tên người xuất hàng'],
+        ['1', '1', 'C26TGG', '1001295', '01/04/2026', '0317860332', 'GOOGLE', '5555556', '444444', '0', '0', '6000000', 'VND', 'Hóa đơn mới', 'Đã cấp mã hóa đơn'],
+        ['2', '1', 'C26TAB', '26990', '26/04/2026', '0103581701', 'INET', '229000', '18320', '0', '0', '247320', 'VND', 'Hóa đơn đã bị thay thế', 'Đã cấp mã hóa đơn'],
+      ],
+    },
+  ];
+  it('nhận dạng, hướng = mua vào (cột người bán), đúng cột thuế / thanh toán / trạng thái', () => {
+    expect(nhanDangBang(SH)).toBe('bang_ke');
+    const { hoaDon } = docBangKe(SH);
+    expect(hoaDon.map((h) => [h.huong, h.kyHieu, h.soHd, h.mstDoiTac, h.tienHang, h.tienThue, h.tongTien, h.trangThai, h.kyKeKhai])).toEqual([
+      ['vao', 'C26TGG', '1001295', '0317860332', 5555556, 444444, 6000000, 'Hóa đơn mới', '2026-Q2'],
+      ['vao', 'C26TAB', '26990', '0103581701', 229000, 18320, 247320, 'Hóa đơn đã bị thay thế', '2026-Q2'],
+    ]);
+    expect(hoaDonHieuLuc(hoaDon[1]!.trangThai)).toBe(false);
+  });
+});

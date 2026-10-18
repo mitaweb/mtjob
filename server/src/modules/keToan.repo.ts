@@ -27,10 +27,17 @@ export async function ghiHoaDon(ds: HoaDon[], nguon: string, taiLenId: string, l
          tien_hang, tien_thue, tong_tien, thue_suat, trang_thai, ky_ke_khai, nguon, tai_len_id, cap_nhat)
        VALUES ${vals.join(', ')}
        ON CONFLICT (khoa) DO UPDATE SET huong = EXCLUDED.huong, mau_so = EXCLUDED.mau_so, ky_hieu = EXCLUDED.ky_hieu,
-         so_hd = EXCLUDED.so_hd, ngay = EXCLUDED.ngay, mst_doi_tac = EXCLUDED.mst_doi_tac, ten_doi_tac = EXCLUDED.ten_doi_tac,
-         dien_giai = EXCLUDED.dien_giai, tien_hang = EXCLUDED.tien_hang, tien_thue = EXCLUDED.tien_thue,
-         tong_tien = EXCLUDED.tong_tien, thue_suat = EXCLUDED.thue_suat, trang_thai = EXCLUDED.trang_thai,
-         ky_ke_khai = EXCLUDED.ky_ke_khai, nguon = EXCLUDED.nguon, tai_len_id = EXCLUDED.tai_len_id, cap_nhat = EXCLUDED.cap_nhat
+         so_hd = EXCLUDED.so_hd, ngay = EXCLUDED.ngay,
+         mst_doi_tac = COALESCE(NULLIF(EXCLUDED.mst_doi_tac, ''), kt_hoa_don.mst_doi_tac),
+         ten_doi_tac = COALESCE(NULLIF(EXCLUDED.ten_doi_tac, ''), kt_hoa_don.ten_doi_tac),
+         dien_giai = COALESCE(NULLIF(EXCLUDED.dien_giai, ''), kt_hoa_don.dien_giai),
+         tien_hang = EXCLUDED.tien_hang, tien_thue = EXCLUDED.tien_thue, tong_tien = EXCLUDED.tong_tien,
+         thue_suat = COALESCE(NULLIF(EXCLUDED.thue_suat, ''), kt_hoa_don.thue_suat), trang_thai = EXCLUDED.trang_thai,
+         -- Kỳ kê khai THỰC TẾ do kế toán ghi trong bảng kê (có thể kê muộn sang quý sau) — nguồn khác (cổng thuế, XML)
+         -- chỉ biết ngày lập nên không được ghi đè.
+         ky_ke_khai = CASE WHEN kt_hoa_don.nguon = 'bang_ke' AND EXCLUDED.nguon <> 'bang_ke' THEN kt_hoa_don.ky_ke_khai ELSE EXCLUDED.ky_ke_khai END,
+         nguon = CASE WHEN kt_hoa_don.nguon = 'bang_ke' THEN 'bang_ke' ELSE EXCLUDED.nguon END,
+         tai_len_id = EXCLUDED.tai_len_id, cap_nhat = EXCLUDED.cap_nhat
        RETURNING (xmax = 0) AS moi`,
       params,
     );

@@ -69,6 +69,38 @@ keToanRouter.get(
   }),
 );
 
+// ── Cổng hoá đơn điện tử Tổng cục Thuế: anh tự gõ captcha; mật khẩu chuyển tiếp một lần, KHÔNG lưu, KHÔNG ghi log ──
+
+keToanRouter.get(
+  '/cong-thue/captcha',
+  asyncHandler(async (_req, res) => {
+    const { layCaptcha } = await import('./congThue.js');
+    res.json(await layCaptcha());
+  }),
+);
+
+keToanRouter.post(
+  '/cong-thue/dang-nhap',
+  asyncHandler(async (req, res) => {
+    const b = z
+      .object({ username: z.string().min(5).max(20), password: z.string().min(1).max(100), cvalue: z.string().min(1).max(20), ckey: z.string().min(1).max(100) })
+      .parse(req.body);
+    const { dangNhap } = await import('./congThue.js');
+    res.json(await dangNhap({ username: b.username.trim(), password: b.password, cvalue: b.cvalue.trim(), ckey: b.ckey }));
+  }),
+);
+
+keToanRouter.post(
+  '/cong-thue/lay',
+  asyncHandler(async (req, res) => {
+    const b = z
+      .object({ token: z.string().min(10).max(4000), thang: z.string().regex(/^\d{4}-\d{2}$/), huong: z.enum(['ra', 'vao']) })
+      .parse(req.body);
+    const { layTuCongThue } = await import('./keToan.service.js');
+    res.json(await layTuCongThue(b.token, b.thang, b.huong, req.user!.name));
+  }),
+);
+
 keToanRouter.get(
   '/cai-dat',
   asyncHandler(async (_req, res) => {

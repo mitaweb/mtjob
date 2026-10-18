@@ -180,6 +180,23 @@ export async function nhapXml(files: Array<{ ten: string; noiDung: string }>, ng
   return ketQua;
 }
 
+/**
+ * Lấy hoá đơn MỘT tháng, một hướng từ cổng thuế (anh Tâm 18/10/2026: "các hóa đơn đầu vào sẽ tìm cách lấy từ cổng
+ * thuế") rồi ghi. `xong` = false khi tháng quá nhiều hoá đơn, chưa lấy hết trong một lượt (trang gọi lại).
+ */
+export async function layTuCongThue(token: string, thang: string, huong: 'ra' | 'vao', nguoi: string): Promise<KetQuaTep & { xong: boolean; soHd: number }> {
+  const { layHoaDonThang } = await import('./congThue.js');
+  const { hoaDon, xong } = await layHoaDonThang(token, thang, huong, Date.now() + 40_000);
+  const luc = nowTz().toISOString();
+  const id = newId('KT');
+  const ghi = hoaDon.length ? await ghiHoaDon(hoaDon, 'cong_thue', id, luc) : { moi: 0, capNhat: 0 };
+  const ten = `Cổng thuế · ${huong === 'vao' ? 'mua vào' : 'bán ra'} tháng ${thang.slice(5)}/${thang.slice(0, 4)}`;
+  const vat = hoaDon.reduce((s, h) => s + h.tienThue, 0);
+  const thongDiep = `${hoaDon.length} hoá đơn (VAT ${tien(vat)}) · ${ghi.moi} mới, ${ghi.capNhat} cập nhật${xong ? '' : ' · chưa hết, đang lấy tiếp'}`;
+  if (hoaDon.length) await ghiTaiLen({ id, tenFile: ten, loai: 'Cổng thuế', ketQua: thongDiep, nguoi, luc });
+  return { ten, loai: 'Cổng thuế', ok: true, thongDiep, xong, soHd: hoaDon.length };
+}
+
 /** Tổng quan một năm: VAT theo quý, TNDN các năm, công nợ, hạn nộp gần nhất. */
 export async function tongQuan(nam: number) {
   const [hoaDon, toKhai, baoCao, soThu, soTra, cd] = await Promise.all([

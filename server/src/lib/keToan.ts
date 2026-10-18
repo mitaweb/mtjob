@@ -143,10 +143,12 @@ export interface SheetDuLieu {
 export type LoaiBang = 'bang_ke' | 'cong_no_thu' | 'cong_no_tra' | 'kqkd';
 
 export function nhanDangBang(sheets: SheetDuLieu[]): LoaiBang | null {
-  const dau = (sh: SheetDuLieu) => chuanChu(sh.rows.slice(0, 8).map((r) => r.join(' ')).join(' '));
+  const dau = (sh: SheetDuLieu) => chuanChu(sh.rows.slice(0, 12).map((r) => r.join(' ')).join(' '));
   for (const sh of sheets) {
     const d = dau(sh);
     if (d.includes('bang ke chi tiet hoa don') || (/ban ra|mua vao/.test(chuanChu(sh.ten)) && d.includes('so hoa don'))) return 'bang_ke';
+    // Excel xuất từ cổng hoá đơn điện tử: "DANH SÁCH HÓA ĐƠN …", cột "MST người bán" / "MST người mua".
+    if (d.includes('so hoa don') && (d.includes('danh sach hoa don') || /(mst|ma so thue) nguoi (ban|mua)/.test(d))) return 'bang_ke';
     if (d.includes('tong hop cong no phai thu') || (d.includes('cong no') && /tai khoan: ?131/.test(d))) return 'cong_no_thu';
     if (d.includes('tong hop cong no phai tra') || (d.includes('cong no') && /tai khoan: ?331/.test(d))) return 'cong_no_tra';
     if (d.includes('ket qua hoat dong kinh doanh')) return 'kqkd';
@@ -164,6 +166,7 @@ function timCot(rows: string[][], can: Record<string, (t: string) => boolean>, b
     for (const soDong of [1, 2]) {
       const cot: Record<string, number> = {};
       let dungDong2 = false;
+      let dungDong1 = false;
       for (let d = 0; d < soDong; d++) {
         (rows[i + d] || []).forEach((o, j) => {
           const t = chuanChu(o);
@@ -172,15 +175,37 @@ function timCot(rows: string[][], can: Record<string, (t: string) => boolean>, b
             if (cot[k] === undefined && f(t)) {
               cot[k] = j;
               if (d === 1) dungDong2 = true;
+              else dungDong1 = true;
             }
           }
         });
       }
       if (batBuoc.every((k) => cot[k] !== undefined)) {
-        // Dòng dưới vẫn là tiêu đề (chỉ gồm chữ) dù không cần cột nào từ nó → bỏ qua luôn.
+        // Gộp 2 dòng chỉ khi dòng trên CÓ tên cột (không phải dòng "Từ ngày … đến ngày …" đứng trên tiêu đề).
+        if (soDong === 2) {
+          if (!dungDong1) continue;
+          return { dong: i + (dungDong2 ? 1 : 0), cot };
+        }
+        // Dòng dưới vẫn là tiêu đề (có chữ, không có ngày, ô đầu không phải số thứ tự): lấy thêm cột còn thiếu ở đó
+        // (mẫu cổng thuế: "Thông tin hóa đơn" ở trên, "MST người bán" ở dưới) và bỏ qua dòng đó khi đọc dữ liệu.
         const duoi = rows[i + 1] || [];
-        const duoiLaTieuDe = soDong === 1 && duoi.some((x) => /[a-zA-ZÀ-ỹ]/.test(String(x))) && !duoi.some((x) => /\d{2}\/\d{2}\/\d{4}/.test(String(x)));
-        return { dong: i + (soDong === 2 && dungDong2 ? 1 : duoiLaTieuDe && chuanChu(duoi[0]) === chuanChu(rows[i]![0]) ? 1 : 0), cot };
+        const duoiLaTieuDe =
+          duoi.some((x) => /[a-zA-ZÀ-ỹ]/.test(String(x))) &&
+          !duoi.some((x) => /\d{1,2}\/\d{1,2}\/\d{4}/.test(String(x))) &&
+          !/^\d+$/.test(String(duoi[0] ?? '').trim());
+        if (!duoiLaTieuDe) return { dong: i, cot };
+        let them = false;
+        duoi.forEach((o, j) => {
+          const t = chuanChu(o);
+          if (!t) return;
+          for (const [k, f] of Object.entries(can)) {
+            if (cot[k] === undefined && f(t)) {
+              cot[k] = j;
+              them = true;
+            }
+          }
+        });
+        return { dong: i + (them || chuanChu(duoi[0]) === chuanChu(rows[i]![0]) ? 1 : 0), cot };
       }
     }
   }
@@ -194,13 +219,19 @@ export function docBangKe(sheets: SheetDuLieu[]): { hoaDon: HoaDon[]; boQua: num
   let boQua = 0;
   for (const sh of sheets) {
     const tenSh = chuanChu(sh.ten);
-    const dauSh = chuanChu(sh.rows.slice(0, 6).map((r) => r.join(' ')).join(' '));
+    const dauSh = chuanChu(sh.rows.slice(0, 12).map((r) => r.join(' ')).join(' '));
     const huong: Huong | null = /ban ra|\bbr\b/.test(tenSh) || dauSh.includes('ban ra')
       ? 'ra'
       : /mua vao|\bmv\b/.test(tenSh) || dauSh.includes('mua vao')
         ? 'vao'
         : null;
-    if (!huong) continue;
+    const huongTheoCot: Huong | null = /(mst|ma so thue|thong tin) nguoi ban/.test(dauSh)
+      ? 'vao'
+      : /(mst|ma so thue|thong tin) nguoi mua/.test(dauSh)
+        ? 'ra'
+        : null;
+    const huongSh = huong || huongTheoCot;
+    if (!huongSh) continue;
     const td = timCot(
       sh.rows,
       {
@@ -212,10 +243,11 @@ export function docBangKe(sheets: SheetDuLieu[]): { hoaDon: HoaDon[]; boQua: num
         ten: (t) => t.startsWith('ten khach hang') || t.startsWith('ten nguoi ban') || t.startsWith('ten nguoi mua'),
         dienGiai: (t) => t.startsWith('dien giai') || t.startsWith('mat hang'),
         tienHang: (t) => t.includes('chua gom thue') || t.includes('chua vat') || t.includes('chua thue'),
-        tienThue: (t) => (t.includes('thue gtgt') || t === 'tien thue') && !t.includes('suat'),
-        tongTien: (t) => t.startsWith('tong tien') && !t.includes('chua'),
+        tienThue: (t) => (t.includes('thue gtgt') || t === 'tien thue' || t.startsWith('tong tien thue')) && !t.includes('suat'),
+        tongTien: (t) =>
+          t.includes('thanh toan') || (t.startsWith('tong tien') && !/chua|thue|chiet khau|phi/.test(t)),
         thueSuat: (t) => t.startsWith('thue suat'),
-        trangThai: (t) => t.startsWith('tinh trang'),
+        trangThai: (t) => t.startsWith('tinh trang') || t.startsWith('trang thai hoa don'),
         nam: (t) => t === 'nam',
         quy: (t) => t.startsWith('thang/quy') || t === 'quy',
       },
@@ -242,7 +274,7 @@ export function docBangKe(sheets: SheetDuLieu[]): { hoaDon: HoaDon[]; boQua: num
         kyHieu = dinh[2]!;
       }
       const h: HoaDon = {
-        huong,
+        huong: huongSh,
         mauSo: mauSo || '1',
         kyHieu,
         soHd: String(Number(soHd) || soHd),

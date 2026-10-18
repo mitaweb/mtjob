@@ -261,6 +261,14 @@ export default function KeToanThue() {
         )}
       </div>
 
+      <LayCongThue
+        mstMacDinh={tq?.caiDat.mst || ''}
+        onXong={async () => {
+          await taiTongQuan();
+          setLan((x) => x + 1);
+        }}
+      />
+
       {!tq ? (
         <SkeletonRows rows={4} />
       ) : !tq.coDuLieu ? (
@@ -319,6 +327,270 @@ export default function KeToanThue() {
 
       <DanhSachHoaDon nam={nam} lan={lan} />
       <CaiDat tq={tq} onDoi={() => taiTongQuan()} />
+    </div>
+  );
+}
+
+// ── Lấy hoá đơn từ cổng hoá đơn điện tử Tổng cục Thuế (anh Tâm 18/10/2026: "các hóa đơn đầu vào sẽ tìm cách lấy từ
+// cổng thuế"). Anh tự gõ captcha. Mật khẩu không lưu; mã phiên chỉ giữ trong tab này (sessionStorage). ──
+
+const KHOA_PHIEN = 'kt_cong_thue';
+
+interface PhienCongThue {
+  token: string;
+  mst: string;
+  /** ms — hết hạn (đọc từ token nếu được, không thì ước 8 tiếng) */
+  het: number;
+}
+
+function docPhien(): PhienCongThue | null {
+  try {
+    const p = JSON.parse(sessionStorage.getItem(KHOA_PHIEN) || 'null') as PhienCongThue | null;
+    return p && p.token && p.het > Date.now() ? p : null;
+  } catch {
+    return null;
+  }
+}
+
+function hetHanToken(token: string): number {
+  try {
+    const exp = Number(JSON.parse(atob(token.split('.')[1]!.replace(/-/g, '+').replace(/_/g, '/'))).exp);
+    if (exp > 0) return exp * 1000;
+  } catch {
+    /* không phải JWT */
+  }
+  return Date.now() + 8 * 3600_000;
+}
+
+const thangNay = () => new Date().toISOString().slice(0, 7);
+function dauQuyTruoc(): string {
+  const d = new Date();
+  const q = Math.floor(d.getMonth() / 3); // 0..3 — quý hiện tại
+  const y = q === 0 ? d.getFullYear() - 1 : d.getFullYear();
+  const thang = q === 0 ? 10 : (q - 1) * 3 + 1;
+  return `${y}-${String(thang).padStart(2, '0')}`;
+}
+function cacThang(tu: string, den: string): string[] {
+  const ra: string[] = [];
+  let [y, m] = tu.split('-').map(Number) as [number, number];
+  const [y2, m2] = den.split('-').map(Number) as [number, number];
+  while ((y < y2 || (y === y2 && m <= m2)) && ra.length < 36) {
+    ra.push(`${y}-${String(m).padStart(2, '0')}`);
+    m++;
+    if (m > 12) {
+      m = 1;
+      y++;
+    }
+  }
+  return ra;
+}
+
+function LayCongThue({ mstMacDinh, onXong }: { mstMacDinh: string; onXong: () => Promise<void> }) {
+  const toast = useToast();
+  const [mo, setMo] = useState(false);
+  const [phien, setPhien] = useState<PhienCongThue | null>(() => docPhien());
+  const [mst, setMst] = useState('');
+  const [matKhau, setMatKhau] = useState('');
+  const [cap, setCap] = useState<{ key: string; svg: string } | null>(null);
+  const [maCap, setMaCap] = useState('');
+  const [dangLam, setDangLam] = useState('');
+  const [tu, setTu] = useState(dauQuyTruoc());
+  const [den, setDen] = useState(thangNay());
+  const [vao, setVao] = useState(true);
+  const [ra, setRa] = useState(true);
+  const [nhatKy, setNhatKy] = useState<string[]>([]);
+  const dung = useRef(false);
+
+  useEffect(() => {
+    if (!mst && mstMacDinh) setMst(mstMacDinh);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mstMacDinh]);
+
+  async function moiCaptcha() {
+    setMaCap('');
+    try {
+      setCap(await api<{ key: string; svg: string }>('/ke-toan/cong-thue/captcha'));
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+  useEffect(() => {
+    if (mo && !phien && !cap) void moiCaptcha();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mo, phien]);
+
+  async function dangNhap() {
+    if (!cap) return;
+    setDangLam('Đang đăng nhập cổng thuế…');
+    try {
+      const r = await api<{ token: string }>('/ke-toan/cong-thue/dang-nhap', {
+        body: { username: mst.trim(), password: matKhau, cvalue: maCap.trim(), ckey: cap.key },
+      });
+      const p = { token: r.token, mst: mst.trim(), het: hetHanToken(r.token) };
+      try {
+        sessionStorage.setItem(KHOA_PHIEN, JSON.stringify(p));
+      } catch {
+        /* trình duyệt chặn lưu — vẫn dùng được trong lúc mở trang */
+      }
+      setPhien(p);
+      setMatKhau('');
+      toast.success('Đã đăng nhập cổng thuế');
+    } catch (e) {
+      toast.error((e as Error).message);
+      void moiCaptcha();
+    } finally {
+      setDangLam('');
+    }
+  }
+
+  function dangXuat() {
+    try {
+      sessionStorage.removeItem(KHOA_PHIEN);
+    } catch {
+      /* bỏ qua */
+    }
+    setPhien(null);
+    setCap(null);
+  }
+
+  async function layHoaDon() {
+    if (!phien) return;
+    const huongs = [...(vao ? (['vao'] as const) : []), ...(ra ? (['ra'] as const) : [])];
+    const ds = cacThang(tu, den);
+    if (!huongs.length || !ds.length) return;
+    dung.current = false;
+    const ghi = (x: string) => setNhatKy((cu) => [...cu, x]);
+    setNhatKy([]);
+    let tong = 0;
+    try {
+      for (const thang of ds) {
+        for (const huong of huongs) {
+          if (dung.current) throw new Error('Đã dừng theo yêu cầu');
+          for (let lan = 0; lan < 3; lan++) {
+            setDangLam(`Đang lấy ${huong === 'vao' ? 'mua vào' : 'bán ra'} tháng ${thang.slice(5)}/${thang.slice(0, 4)}…`);
+            const r = await api<{ ten: string; thongDiep: string; xong: boolean; soHd: number }>('/ke-toan/cong-thue/lay', {
+              body: { token: phien.token, thang, huong },
+            });
+            ghi(`✓ ${r.ten}: ${r.thongDiep}`);
+            tong += r.soHd;
+            if (r.xong) break;
+          }
+        }
+      }
+      toast.success(`Đã lấy ${tong} hoá đơn từ cổng thuế`);
+    } catch (e) {
+      const m = (e as Error).message;
+      ghi(`✗ ${m}`);
+      toast.error(m);
+      if (/hết hạn|đăng nhập/i.test(m)) dangXuat();
+    } finally {
+      setDangLam('');
+      await onXong().catch(() => undefined);
+    }
+  }
+
+  return (
+    <div className="card">
+      <button className="flex w-full items-center justify-between text-left" onClick={() => setMo(!mo)}>
+        <span>
+          <span className="font-semibold">🔗 Lấy hoá đơn từ cổng thuế</span>
+          <span className="ml-2 text-sm text-ink-muted">
+            {phien ? `đã đăng nhập (MST ${phien.mst})` : 'hoadondientu.gdt.gov.vn — hoá đơn mua vào & bán ra'}
+          </span>
+        </span>
+        <span className="text-xs text-ink-faint">{mo ? '▲' : '▼'}</span>
+      </button>
+      {mo && (
+        <div className="mt-3 space-y-3">
+          {!phien ? (
+            <>
+              <p className="text-xs text-ink-muted">
+                Đăng nhập bằng tài khoản cổng hoá đơn điện tử của công ty. Anh tự gõ mã captcha. Mật khẩu chỉ dùng để đăng nhập
+                lần này, app không lưu; phiên đăng nhập chỉ giữ trong tab này, đóng tab là hết.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <label className="text-sm">
+                  <span className="label">MST (tên đăng nhập)</span>
+                  <input className="input" value={mst} onChange={(e) => setMst(e.target.value)} autoComplete="username" />
+                </label>
+                <label className="text-sm">
+                  <span className="label">Mật khẩu cổng thuế</span>
+                  <input className="input" type="password" value={matKhau} onChange={(e) => setMatKhau(e.target.value)} autoComplete="current-password" />
+                </label>
+                <div className="text-sm">
+                  <span className="label">Mã captcha</span>
+                  <div className="flex items-center gap-2">
+                    {cap ? (
+                      <img
+                        src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(cap.svg)}`}
+                        alt="Mã captcha"
+                        className="h-10 rounded-lg border border-brand-100 bg-white"
+                      />
+                    ) : (
+                      <span className="text-xs text-ink-faint">đang lấy…</span>
+                    )}
+                    <button className="btn-ghost px-2 py-1 text-sm" onClick={moiCaptcha} title="Lấy mã khác">
+                      ↻
+                    </button>
+                  </div>
+                </div>
+                <label className="text-sm">
+                  <span className="label">Gõ mã captcha</span>
+                  <input className="input" value={maCap} onChange={(e) => setMaCap(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && dangNhap()} />
+                </label>
+              </div>
+              <button className="btn-primary" disabled={!!dangLam || !mst || !matKhau || !maCap || !cap} onClick={dangNhap}>
+                {dangLam || 'Đăng nhập cổng thuế'}
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="text-sm">
+                  <span className="label">Từ tháng</span>
+                  <input className="input" type="month" value={tu} onChange={(e) => setTu(e.target.value)} />
+                </label>
+                <label className="text-sm">
+                  <span className="label">Đến tháng</span>
+                  <input className="input" type="month" value={den} onChange={(e) => setDen(e.target.value)} />
+                </label>
+                <label className="flex items-center gap-1.5 pb-2 text-sm">
+                  <input type="checkbox" checked={vao} onChange={(e) => setVao(e.target.checked)} /> Mua vào
+                </label>
+                <label className="flex items-center gap-1.5 pb-2 text-sm">
+                  <input type="checkbox" checked={ra} onChange={(e) => setRa(e.target.checked)} /> Bán ra
+                </label>
+                {dangLam ? (
+                  <button className="btn-ghost text-rose-600" onClick={() => (dung.current = true)}>
+                    ⏹ Dừng
+                  </button>
+                ) : (
+                  <button className="btn-primary" onClick={layHoaDon} disabled={!vao && !ra}>
+                    ⬇ Lấy hoá đơn
+                  </button>
+                )}
+                <button className="pb-2 text-sm text-ink-muted underline" onClick={dangXuat}>
+                  đăng xuất cổng thuế
+                </button>
+              </div>
+              <p className="text-xs text-ink-muted">
+                Lấy từng tháng, cả hoá đơn thường lẫn hoá đơn máy tính tiền. Hoá đơn đã có trong bảng kê của kế toán giữ nguyên
+                kỳ kê khai kế toán đã ghi; lấy lại nhiều lần không bị nhân đôi.
+              </p>
+            </>
+          )}
+          {dangLam && <div className="rounded-xl bg-brand-50 px-3 py-2 text-sm text-ink-soft">{dangLam}</div>}
+          {nhatKy.length > 0 && (
+            <ul className="space-y-0.5 text-sm text-ink-soft">
+              {nhatKy.map((x, i) => (
+                <li key={i} className={x.startsWith('✗') ? 'text-rose-600' : ''}>
+                  {x}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }
