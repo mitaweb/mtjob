@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { laSaoKe, docSaoKe, khopDoiTac, tenRieng } from './saoKe.js';
-import { nhanDangBang, tinhCongNo, type SoCongNo } from './keToan.js';
+import { laSaoKe, docSaoKe, khopDoiTac, tenRieng, loaiTienVao, soHoaDonTrongNoiDung, hoaDonCuaGiaoDich, tienMatSauChot } from './saoKe.js';
+import { nhanDangBang, tinhCongNo, type SoCongNo, type HoaDon } from './keToan.js';
 
 // Anh Tâm 18/10/2026: "1 phần tải sao kê ngân hàng lên nữa là đủ". Số liệu dưới đây là SỐ GIẢ.
 
@@ -79,11 +79,64 @@ describe('khớp đối tác theo nội dung chuyển khoản', () => {
   it('khớp theo tên riêng, theo MST trong nội dung; không khớp thì null', () => {
     expect(khopDoiTac('THANH DOAN TP HCM CHUYEN TIEN THANH TOAN', ds)?.ma).toBe('0307414272');
     expect(khopDoiTac('CTY SKIN JUVIA TT PHI MARKETING T7', ds)?.ma).toBe('0318749993');
-    expect(khopDoiTac('TIN DAT TT HD 15', ds)).toBeNull(); // "tin dat" chỉ là một phần, chưa đủ chắc
+    // Anh Tâm 18/10/2026: "có tên cty mà sao k khớp được" — cụm riêng "tin dat", viết liền "TINDAT" đều nhận.
+    expect(khopDoiTac('TIN DAT TT HD 15', ds)?.ma).toBe('KH008');
+    expect(khopDoiTac('TINDAT THANH TOAN MKT T6.2026 HD 66', ds)?.ma).toBe('KH008');
     expect(khopDoiTac('CTY TU DONG TIN DAT CK', ds)?.ma).toBe('KH008');
     expect(khopDoiTac('NOP TIEN MST 0318749993', ds)?.ma).toBe('0318749993');
     expect(khopDoiTac('GOOGLE*ADS 12345', ds)?.ma).toBe('0317860332');
     expect(khopDoiTac('KHACH LE CK', ds)).toBeNull();
+  });
+
+  // Tên GIẢ, cùng kiểu với sao kê thật.
+  const ds2 = [
+    { ma: 'KH004', ten: 'CÔNG TY CỔ PHẦN NHÂN LỰC SAPHIRA' },
+    { ma: '0300000001', ten: 'CÔNG TY CỔ PHẦN NHÂN LỰC SAPHIRA', mst: '0300000001' }, // cùng công ty, mã khác (sổ + hoá đơn)
+    { ma: '0300000002', ten: 'CÔNG TY TNHH MỘT THÀNH VIÊN MỘC LINH ĐƯỜNG', mst: '0300000002' },
+    { ma: '0300000003', ten: 'CÔNG TY TNHH THƯƠNG MẠI DỊCH VỤ & GIẢI TRÍ MT GROUP', mst: '0300000003' },
+    { ma: '0300000004', ten: 'CÔNG TY TNHH THƯƠNG MẠI QUỐC TẾ MỘC ĐỨC', mst: '0300000004' },
+    { ma: '0300000005', ten: 'HỘ KINH DOANH QUỐC PHONG HAIR SALON', mst: '0300000005' },
+    { ma: '0300000006', ten: 'CÔNG TY TNHH TMDV MIRAKO VIỆT NAM', mst: '0300000006' },
+  ];
+  it('tên thương hiệu một từ, chữ bị ngân hàng ngắt dòng, cụm "mt group"; một tiếng Việt đơn không đủ', () => {
+    expect(khopDoiTac('Saphira thanh toan chi phi quang cao Google thang 6 theo HD 04 2024', ds2)?.ten).toContain('SAPHIRA');
+    expect(khopDoiTac('CONG TY TNHH MOT THANH VIEN MOC LIN H DUONG CK PHI QC GG MAP', ds2)?.ma).toBe('0300000002');
+    expect(khopDoiTac('MT GROUP thanh toan lan 1 dich vu S EO theo HD 1508', ds2)?.ma).toBe('0300000003');
+    expect(khopDoiTac('IBBIZ.IBPS.CTY MOC DUC TH ANH TOAN PHONG MARKETING THUE NGOAI', ds2)?.ma).toBe('0300000004');
+    expect(khopDoiTac('Mirako tt phi chay qc gg', ds2)?.ma).toBe('0300000006');
+    // "PHONG MARKETING" không được nhầm thành "Quốc Phong"; "MT DIGITAL" không nhầm "MT GROUP".
+    expect(khopDoiTac('THANH TOAN PHONG MARKETING THUE NGOAI CHO CTY MT DIGITAL', ds2)).toBeNull();
+    // Cột tên bên chuyển của sao kê ghép vào nội dung.
+    expect(khopDoiTac('CONG TY TNHH TMDV MIRAKO VIET NAM Jan ck MT Digital viet phan mem', ds2)?.ma).toBe('0300000006');
+  });
+  it('tiền vào không phải khách trả; số hoá đơn trong nội dung', () => {
+    expect(loaiTienVao({ noiDung: 'Tra lai tien gui, so TK: #-20260718', doiTac: '' })).toBe('lai');
+    expect(loaiTienVao({ noiDung: 'RetailVISADN-139137-2500000-VND-615 #-MM GOOGLE ADWS-The 5911', doiTac: '' })).toBe('hoan_the');
+    expect(loaiTienVao({ noiDung: 'chuyen tien', doiTac: 'CONG TY TNHH DICH VU MT DIGITAL' })).toBe('noi_bo');
+    expect(loaiTienVao({ noiDung: 'MT GROUP thanh toan', doiTac: 'CONG TY TNHH MT GROUP' })).toBe('khach');
+    expect(soHoaDonTrongNoiDung('TINDAT THANH TOAN CP HD 115')).toEqual(['115']);
+    expect(soHoaDonTrongNoiDung('Thanh toan tien dich vu theo HD85 0 3 1 8')).toEqual(['85']);
+    expect(soHoaDonTrongNoiDung('TT PHI DICH VU HĐ SỐ 0121')).toEqual(['121']);
+    expect(soHoaDonTrongNoiDung('KHACH LE CK')).toEqual([]);
+  });
+});
+
+describe('sao kê MB có cột tên đơn vị chuyển / thụ hưởng', () => {
+  const MB = [
+    {
+      ten: 'Sheet1',
+      rows: [
+        ['Tài khoản', '/Account No:', '0123456789'],
+        ['STT', 'NGÀY GIAO DỊCH', 'NGÀY HẠCH TOÁN', 'PHÁT SINH NỢ', 'PHÁT SINH CÓ', 'SỐ DƯ', 'ĐƠN VỊ THỤ HƯỞNG/ĐƠN VỊ CHUYỂN', 'NỘI DUNG', 'BÚT TOÁN'],
+        ['1', '17/10/2026 09:11:28', '17/10/2026', '', '7,560,000', '57,560,000', 'CONG TY TNHH MIRAKO', 'CHUYEN TIEN QUANG CAO THANG 10', 'FT1'],
+      ],
+    },
+  ];
+  it('đọc tên bên chuyển; khoá giao dịch không đổi so với khi chưa đọc cột này (tải lại không nhân đôi)', () => {
+    const r = docSaoKe(MB, 'Bang ket qua giao dich - 0123456789.xlsx')!;
+    expect(r.giaoDich[0]).toMatchObject({ ghiCo: 7_560_000, doiTac: 'CONG TY TNHH MIRAKO', noiDung: 'CHUYEN TIEN QUANG CAO THANG 10' });
+    const khongCot = docSaoKe([{ ten: 'Sheet1', rows: MB[0]!.rows.map((x) => x.map((o, j) => (j === 6 ? (o.startsWith('ĐƠN') ? 'GHI CHÚ' : '') : o))) }], 'Bang ket qua giao dich - 0123456789.xlsx')!;
+    expect(khongCot.giaoDich[0]!.id).toBe(r.giaoDich[0]!.id);
   });
 });
 
@@ -100,5 +153,42 @@ describe('công nợ trừ tiền đã thu sau ngày chốt', () => {
     expect(r.tong).toBe(0);
     const r2 = tinhCongNo(so, [], 'thu', [{ mst: '', ten: 'THÀNH ĐOÀN TP.HCM', soTien: 15_000_000 }]);
     expect(r2.ds[0]).toMatchObject({ ma: '0307414272', soDu: 40_000_000, thanhToanSau: 15_000_000, tong: 25_000_000 });
+  });
+});
+
+describe('khớp tiền theo số hoá đơn; hoá đơn trả tiền mặt', () => {
+  const hd = (soHd: string, ngay: string, tongTien: number, mst: string, huong: 'ra' | 'vao' = 'ra', thanhToan = ''): HoaDon => ({
+    huong, mauSo: '1', kyHieu: 'C26TAA', soHd, ngay, mstDoiTac: mst, tenDoiTac: `CÔNG TY ${mst}`, dienGiai: '',
+    tienHang: tongTien, tienThue: 0, tongTien, thueSuat: '', trangThai: '', kyKeKhai: '', thanhToan,
+  });
+  const ra = [hd('115', '2026-09-20', 12_960_000, '0300000011'), hd('116', '2026-09-25', 10_000_000, '0300000012'), hd('0121', '2026-10-01', 5_400_000, '0300000013')];
+  it('số hoá đơn trong nội dung + đúng tiền; trả một phần; chỉ khớp theo tiền khi hoá đơn trong 10 ngày', () => {
+    expect(hoaDonCuaGiaoDich({ ngay: '2026-10-05', noiDung: 'TT CP HD 115' }, 12_960_000, ra)?.soHd).toBe('115');
+    expect(hoaDonCuaGiaoDich({ ngay: '2026-10-05', noiDung: 'TT PHI DICH VU HD SO 121' }, 2_000_000, ra)?.soHd).toBe('0121'); // trả một phần
+    expect(hoaDonCuaGiaoDich({ ngay: '2026-10-05', noiDung: 'thanh toan' }, 5_400_000, ra)?.soHd).toBe('0121');
+    expect(hoaDonCuaGiaoDich({ ngay: '2026-10-20', noiDung: 'thanh toan' }, 10_000_000, ra)).toBeNull(); // hoá đơn quá 10 ngày
+    expect(hoaDonCuaGiaoDich({ ngay: '2026-09-10', noiDung: 'TT CP HD 115' }, 12_960_000, ra)).toBeNull(); // hoá đơn lập SAU ngày tiền về
+  });
+  it('dưới 5 triệu không thấy chuyển khoản → coi là tiền mặt; anh đánh dấu thì theo anh', () => {
+    const vao = [
+      hd('1', '2026-07-05', 1_200_000, '0300000021', 'vao'),
+      hd('2', '2026-07-06', 3_000_000, '0300000022', 'vao'), // nhà cung cấp này có chuyển khoản sau chốt → để sao kê trừ
+      hd('3', '2026-07-07', 8_000_000, '0300000023', 'vao', 'tien_mat'),
+      hd('4', '2026-07-08', 900_000, '0300000024', 'vao', 'ngan_hang'),
+      hd('5', '2026-07-09', 7_000_000, '0300000025', 'vao'),
+      hd('6', '2026-06-01', 1_000_000, '0300000026', 'vao'), // trước ngày chốt — đã có trong sổ
+    ];
+    const tm = tienMatSauChot(vao, '2026-06-30', [{ mst: '0300000022', ten: 'X', soTien: 3_000_000 }]);
+    expect(tm.map((t) => [t.mst, t.soTien, t.tienMat])).toEqual([
+      ['0300000021', 1_200_000, true],
+      ['0300000023', 8_000_000, true],
+    ]);
+    // Công nợ phải trả: hoá đơn sau chốt − tiền mặt.
+    const r = tinhCongNo(null, vao, 'tra', tm);
+    expect(r.ds).toEqual([]); // chưa có sổ → không có ngày chốt → không tính phát sinh sau chốt
+    const so: SoCongNo = { loai: 'tra', tuNgay: '2026-01-01', ngayChot: '2026-06-30', dong: [] };
+    const r2 = tinhCongNo(so, vao, 'tra', tm);
+    expect(r2.ds.find((x) => x.ma === '0300000021')).toBeUndefined(); // trả đủ tiền mặt → hết nợ
+    expect(r2.ds.find((x) => x.ma === '0300000025')).toMatchObject({ hoaDonSau: 7_000_000, tienMatSau: 0, tong: 7_000_000 });
   });
 });

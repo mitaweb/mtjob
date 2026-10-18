@@ -151,7 +151,7 @@ export function giaoDichTheoBanDo(sheets: SheetDuLieu[], bd: BanDoAi): GiaoDich[
       if (!ghiNo && !ghiCo) return;
       const g = { soTk, nganHang, ngay, ghiNo, ghiCo, soDu: soTien(oCua(r, b.cot.soDu)), noiDung: oCua(r, b.cot.noiDung).replace(/\s+/g, ' ').slice(0, 500), soRef: oCua(r, b.cot.soRef).slice(0, 60) };
       const nguon = [g.soTk, g.ngay, g.ghiNo, g.ghiCo, g.soDu, g.soRef, chuanChu(g.noiDung).slice(0, 120), g.soRef || g.soDu ? '' : i].join('|');
-      ds.push({ id: createHash('sha1').update(nguon).digest('hex').slice(0, 24), ...g, thuTu: i });
+      ds.push({ id: createHash('sha1').update(nguon).digest('hex').slice(0, 24), ...g, doiTac: oCua(r, b.cot.doiTac).replace(/s+/g, ' ').slice(0, 200), thuTu: i });
     });
     if (ds.length > 1 && ds[0]!.ngay > ds[ds.length - 1]!.ngay) ds.forEach((g, k) => (g.thuTu = ds.length - 1 - k));
     ra.push(...ds);

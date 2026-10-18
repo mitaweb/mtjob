@@ -35,8 +35,18 @@ import {
   tatCaLuong,
   ghiViec,
 } from './keToan.repo.js';
-import { laSaoKe, docSaoKe, khopDoiTac, type GiaoDich, type DoiTacKhop } from '../lib/saoKe.js';
-import { hoaDonHieuLuc, ketQuaTheoThang, ngayISO, type SoCongNo, type ThanhToanDoiTac } from '../lib/keToan.js';
+import {
+  laSaoKe,
+  docSaoKe,
+  khopDoiTac,
+  loaiTienVao,
+  hoaDonCuaGiaoDich,
+  tienMatSauChot,
+  NGUONG_TIEN_MAT,
+  type GiaoDich,
+  type DoiTacKhop,
+} from '../lib/saoKe.js';
+import { hoaDonHieuLuc, ketQuaTheoThang, ngayISO, chuanChu, type SoCongNo, type ThanhToanDoiTac } from '../lib/keToan.js';
 import { createHash } from 'node:crypto';
 import { xemTruoc, hoaDonTheoBanDo, giaoDichTheoBanDo, congNoTheoBanDo, luongTheoBanDo, kqkdTheoBanDo, type BanDoAi } from '../lib/docAi.js';
 import { newId } from '../util/id.js';
@@ -255,14 +265,15 @@ export async function tongQuan(nam: number) {
   const denKy = nam < Number(homNay.slice(0, 4)) ? `${nam}-Q4` : quyNay;
   const vatTatCa = denKy >= tuKy ? tinhVatTheoQuy(hoaDon, toKhai, tuKy, denKy) : [];
   const vat = vatTatCa.filter((v) => v.ky.startsWith(`${nam}-`));
-  const namCo = [...new Set([2024, ...hoaDon.map((h) => Number(h.ngay.slice(0, 4))), Number(homNay.slice(0, 4))])].filter((n) => n >= 2024).sort();
+  // Mọi năm từ 2024 đến nay — không bỏ sót năm chưa có dữ liệu (vd 2025).
+  const namCo = Array.from({ length: Number(homNay.slice(0, 4)) - 2024 + 1 }, (_, i) => 2024 + i);
   const luongNam = (n: number) => luong.filter((x) => x.thang.startsWith(String(n))).reduce((s, x) => s + x.tongThuNhap + x.bhxhCty, 0);
   const tndn = namCo.map((n) => tinhTndn(n, baoCao, hoaDon, cd.namMien, luongNam(n)));
   // Tiền đã thu / đã trả sau ngày chốt sổ (theo sao kê) → trừ công nợ đúng đối tác.
-  const ttThu = thanhToanSauChot(giaoDich, soThu?.ngayChot || '', 'thu', doiTacDeKhop(soThu, hoaDon, 'ra'));
-  const ttTra = thanhToanSauChot(giaoDich, soTra?.ngayChot || '', 'tra', doiTacDeKhop(soTra, hoaDon, 'vao'));
+  const ttThu = thanhToanSauChot(giaoDich, soThu?.ngayChot || '', 'thu', doiTacDeKhop(soThu, hoaDon, 'ra'), hoaDon);
+  const ttTra = thanhToanSauChot(giaoDich, soTra?.ngayChot || '', 'tra', doiTacDeKhop(soTra, hoaDon, 'vao'), hoaDon);
   const congNoThu = tinhCongNo(soThu, hoaDon, 'thu', ttThu.khop);
-  const congNoTra = tinhCongNo(soTra, hoaDon, 'tra', ttTra.khop);
+  const congNoTra = tinhCongNo(soTra, hoaDon, 'tra', [...ttTra.khop, ...tienMatSauChot(hoaDon, soTra?.ngayChot || '', ttTra.khop)]);
   // Hạn nộp sắp tới: quý gần nhất chưa quá hạn có VAT phải nộp (hoặc quý vừa kết thúc).
   const sapToi = vatTatCa.filter((v) => v.hanNop >= homNay && v.ky < quyNay).sort((a, b) => a.hanNop.localeCompare(b.hanNop))[0] || null;
   return {
@@ -282,6 +293,10 @@ export async function tongQuan(nam: number) {
       /** Tiền vào sau ngày chốt chưa khớp được khách nào (có thể là khách chưa có trong sổ / chuyển nội bộ) */
       tienVaoChuaKhop: ttThu.chuaKhop.slice(-20).reverse(),
       soTienVaoChuaKhop: ttThu.chuaKhop.length,
+      /** Tiền vào không phải khách trả: lãi tiền gửi, tiền thẻ hoàn về, chuyển nội bộ */
+      tienVaoKhac: ttThu.khac,
+      soTienVaoDaKhop: ttThu.khop.length,
+      tienVaoTheoHoaDon: ttThu.theoHoaDon.slice(-20).reverse(),
       canhBao5tr: hoaDonChuaThanhToanNganHang(hoaDon, giaoDich),
     },
     soHoaDon: hoaDon.length,
@@ -303,24 +318,43 @@ function doiTacDeKhop(so: SoCongNo | null, hoaDon: HoaDon[], huong: 'ra' | 'vao'
   return [...ds.values()];
 }
 
-/** Giao dịch sau ngày chốt: tiền vào (phải thu) / tiền ra (phải trả) — khớp được đối tác thì trừ công nợ. */
-function thanhToanSauChot(
-  gd: GiaoDich[],
-  chot: string,
-  loai: 'thu' | 'tra',
-  doiTac: DoiTacKhop[],
-): { khop: ThanhToanDoiTac[]; chuaKhop: GiaoDich[] } {
+const lui = (ngay: string, ngayLui: number) => new Date(Date.parse(ngay) - ngayLui * 86400_000).toISOString().slice(0, 10);
+/**
+ * Giao dịch sau ngày chốt: tiền vào (phải thu) / tiền ra (phải trả) — khớp được đối tác thì trừ công nợ. Khớp theo
+ * tên bên chuyển / thụ hưởng + nội dung; không được thì theo số hoá đơn / số tiền. Tiền vào không phải khách trả
+ * (lãi, thẻ hoàn, nội bộ) tách riêng, không tính là "chưa khớp".
+ */
+function thanhToanSauChot(gd: GiaoDich[], chot: string, loai: 'thu' | 'tra', doiTac: DoiTacKhop[], hoaDon: HoaDon[]) {
   const khop: ThanhToanDoiTac[] = [];
   const chuaKhop: GiaoDich[] = [];
-  if (!chot) return { khop, chuaKhop };
+  const khac = { lai: { so: 0, tong: 0 }, hoan_the: { so: 0, tong: 0 }, noi_bo: { so: 0, tong: 0 } };
+  /** Khớp theo số hoá đơn / số tiền (không theo tên) — đưa ra để anh soát */
+  const theoHoaDon: Array<{ ngay: string; soTien: number; noiDung: string; doiTac: string; soHd: string; ten: string }> = [];
+  if (!chot) return { khop, chuaKhop, khac, theoHoaDon };
+  const hd = hoaDon.filter((h) => h.huong === (loai === 'thu' ? 'ra' : 'vao') && hoaDonHieuLuc(h.trangThai));
   for (const g of gd) {
     const soTien = loai === 'thu' ? g.ghiCo : g.ghiNo;
     if (!soTien || g.ngay <= chot) continue;
-    const d = khopDoiTac(g.noiDung, doiTac);
-    if (d) khop.push({ mst: d.mst || (LA_MST.test(d.ma) ? d.ma : ''), ten: d.ten, soTien });
-    else chuaKhop.push(g);
+    if (loai === 'thu') {
+      const l = loaiTienVao(g);
+      if (l !== 'khach') {
+        khac[l].so++;
+        khac[l].tong += soTien;
+        continue;
+      }
+    }
+    const d = khopDoiTac(`${g.doiTac} ${g.noiDung}`, doiTac);
+    if (d) {
+      khop.push({ mst: d.mst || (LA_MST.test(d.ma) ? d.ma : ''), ten: d.ten, soTien });
+      continue;
+    }
+    const h = hoaDonCuaGiaoDich(g, soTien, hd);
+    if (h) {
+      khop.push({ mst: h.mstDoiTac, ten: h.tenDoiTac, soTien });
+      theoHoaDon.push({ ngay: g.ngay, soTien, noiDung: g.noiDung, doiTac: g.doiTac, soHd: h.soHd, ten: h.tenDoiTac });
+    } else chuaKhop.push(g);
   }
-  return { khop, chuaKhop };
+  return { khop, chuaKhop, khac, theoHoaDon };
 }
 
 /** Mỗi tài khoản: khoảng ngày có sao kê, tổng vào / ra, số dư cuối. */
@@ -347,17 +381,20 @@ function tomTatTaiKhoan(gd: GiaoDich[]) {
  */
 function hoaDonChuaThanhToanNganHang(hoaDon: HoaDon[], gd: GiaoDich[]) {
   const ra = gd.filter((g) => g.ghiNo > 0);
-  if (!ra.length) return { so: 0, tongThue: 0, ds: [] as HoaDon[] };
+  // Anh đã đánh dấu trả tiền mặt (từ 5 triệu): VAT đầu vào KHÔNG được khấu trừ — báo riêng để anh biết số thuế mất.
+  const daTienMat = hoaDon.filter((h) => h.huong === 'vao' && hoaDonHieuLuc(h.trangThai) && h.tongTien >= NGUONG_TIEN_MAT && h.thanhToan === 'tien_mat');
+  const tienMat = { so: daTienMat.length, tongThue: daTienMat.reduce((s, h) => s + h.tienThue, 0) };
+  if (!ra.length) return { so: 0, tongThue: 0, ds: [] as HoaDon[], tienMat };
   const tu = ra[0]!.ngay;
   const den = ra[ra.length - 1]!.ngay;
-  const lui = (ngay: string, ngayLui: number) => new Date(Date.parse(ngay) - ngayLui * 86400_000).toISOString().slice(0, 10);
   const ds = hoaDon.filter((h) => {
-    if (h.huong !== 'vao' || !hoaDonHieuLuc(h.trangThai) || h.tongTien < 5_000_000 || h.ngay < tu || h.ngay > den) return false;
+    if (h.huong !== 'vao' || !hoaDonHieuLuc(h.trangThai) || h.tongTien < NGUONG_TIEN_MAT || h.ngay < tu || h.ngay > den) return false;
+    if (h.thanhToan === 'tien_mat' || h.thanhToan === 'ngan_hang') return false;
     const dt = [{ ma: h.mstDoiTac || h.tenDoiTac, ten: h.tenDoiTac, mst: h.mstDoiTac }];
     const tuNgay = lui(h.ngay, 30);
-    return !ra.some((g) => g.ngay >= tuNgay && (Math.abs(g.ghiNo - h.tongTien) <= 1000 || !!khopDoiTac(g.noiDung, dt)));
+    return !ra.some((g) => g.ngay >= tuNgay && (Math.abs(g.ghiNo - h.tongTien) <= 1000 || !!khopDoiTac(`${g.doiTac} ${g.noiDung}`, dt)));
   });
-  return { so: ds.length, tongThue: ds.reduce((s, h) => s + h.tienThue, 0), ds: ds.slice(0, 30) };
+  return { so: ds.length, tongThue: ds.reduce((s, h) => s + h.tienThue, 0), ds: ds.slice(0, 50), tienMat };
 }
 
 // ── AI đọc file lạ (anh Tâm 18/10/2026: "cho AI vào đọc file luôn đỡ phải setup định dạng") ──
@@ -383,7 +420,7 @@ const SCHEMA_BAN_DO = {
             properties: {
               ngay: SO_COT, kyHieu: SO_COT, soHd: SO_COT, mauSo: SO_COT, mst: SO_COT, ten: SO_COT, dienGiai: SO_COT,
               tienHang: SO_COT, tienThue: SO_COT, tongTien: SO_COT, thueSuat: SO_COT, trangThai: SO_COT,
-              noiDung: SO_COT, no: SO_COT, co: SO_COT, soTien: SO_COT, soDu: SO_COT, soRef: SO_COT,
+              noiDung: SO_COT, no: SO_COT, co: SO_COT, soTien: SO_COT, soDu: SO_COT, soRef: SO_COT, doiTac: SO_COT,
               ma: SO_COT, duNo: SO_COT, duCo: SO_COT,
               thang: SO_COT, tongThuNhap: SO_COT, bhxhCty: NHIEU_COT, bhxhNld: NHIEU_COT, tncn: SO_COT, thucNhan: SO_COT,
             },
@@ -417,7 +454,8 @@ function loiNhacBanDo(ten: string, xem: string, mst: string): string {
     '  đối tác), ten (đối tác), dienGiai, tienHang (chưa thuế), tienThue (thuế GTGT — KHÔNG phải thuế xuất khẩu), tongTien,',
     '  thueSuat, trangThai.',
     '- "sao_ke": sao kê / sổ phụ ngân hàng. Cột: ngay, noiDung, no (tiền ra / ghi nợ), co (tiền vào / ghi có) — hoặc soTien',
-    '  nếu chỉ một cột có dấu; soDu, soRef. Ghi nganHang và soTk nếu thấy (số TK bị che thì để trống).',
+    '  nếu chỉ một cột có dấu; soDu, soRef, doiTac (TÊN bên chuyển / bên thụ hưởng / đơn vị đối ứng — không phải số TK).',
+    '  Ghi nganHang và soTk nếu thấy (số TK bị che thì để trống).',
     '- "cong_no": tổng hợp công nợ. loaiCongNo = "thu" (phải thu khách, TK 131) / "tra" (phải trả nhà cung cấp, TK 331);',
     '  ngayChot = ngày cuối kỳ (YYYY-MM-DD), tuNgay. Cột: ma, ten, duNo, duCo (số dư CUỐI kỳ).',
     '- "kqkd": báo cáo kết quả kinh doanh — ghi tuNgay, denNgay, doanhThu (mã 01), loiNhuanTruocThue (mã 50) đọc từ cột kỳ này.',

@@ -60,6 +60,7 @@ interface CongNoDoiTac {
   soDu: number;
   hoaDonSau: number;
   thanhToanSau: number;
+  tienMatSau: number;
   tong: number;
 }
 interface GiaoDich {
@@ -72,6 +73,7 @@ interface GiaoDich {
   soDu: number;
   noiDung: string;
   soRef: string;
+  doiTac: string;
 }
 interface TaiKhoan {
   soTk: string;
@@ -105,7 +107,10 @@ interface TongQuan {
     taiKhoan: TaiKhoan[];
     tienVaoChuaKhop: GiaoDich[];
     soTienVaoChuaKhop: number;
-    canhBao5tr: { so: number; tongThue: number; ds: HoaDon[] };
+    soTienVaoDaKhop: number;
+    tienVaoKhac: Record<'lai' | 'hoan_the' | 'noi_bo', { so: number; tong: number }>;
+    tienVaoTheoHoaDon: Array<{ ngay: string; soTien: number; noiDung: string; doiTac: string; soHd: string; ten: string }>;
+    canhBao5tr: { so: number; tongThue: number; ds: HoaDon[]; tienMat: { so: number; tongThue: number } };
   };
   soHoaDon: number;
   coDuLieu: boolean;
@@ -126,6 +131,7 @@ interface HoaDon {
   trangThai: string;
   kyKeKhai: string;
   nguon: string;
+  thanhToan?: string;
 }
 interface KetQuaTep {
   ten: string;
@@ -175,6 +181,11 @@ export default function KeToanThue() {
 
   async function taiTongQuan(n = nam) {
     setTq(await api<TongQuan>(`/ke-toan/tong-quan?nam=${n}`));
+  }
+  /** Sau khi anh đánh dấu hoá đơn trả tiền mặt: tính lại công nợ + danh sách. */
+  function capNhatSauDanhDau() {
+    taiTongQuan().catch((e) => toast.error((e as Error).message));
+    setLan((x) => x + 1);
   }
   useEffect(() => {
     taiTongQuan(nam).catch((e) => toast.error((e as Error).message));
@@ -282,7 +293,8 @@ export default function KeToanThue() {
             <p className="text-sm text-ink-muted">
               Sao kê ngân hàng, bảng kê hoá đơn, hoá đơn / tờ khai XML, công nợ, báo cáo kết quả kinh doanh, bảng lương — file
               Excel mẫu lạ thì AI tự đọc nhận ra loại và cột. Chọn cả thư mục cũng được — app tự lọc file cần, bỏ qua PDF /
-              file nén. Tải lại file cũ không bị nhân đôi.
+              file nén. Tải thêm / tải lại chỉ <b>cập nhật</b>: số mới ghi đè đúng mục đó, dữ liệu cũ giữ nguyên, không nhân
+              đôi.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -383,11 +395,11 @@ export default function KeToanThue() {
           <BangTndn tndn={tq.tndn} />
           <BangVat vat={tq.vat} nam={nam} />
           <BangCongNo thu={tq.congNo.thu} tra={tq.congNo.tra} />
-          <NganHang nh={tq.nganHang} lan={lan} />
+          <NganHang nh={tq.nganHang} lan={lan} onDoi={capNhatSauDanhDau} />
         </>
       )}
 
-      <DanhSachHoaDon nam={nam} lan={lan} />
+      <DanhSachHoaDon nam={nam} lan={lan} onDoi={capNhatSauDanhDau} />
       <CaiDat tq={tq} onDoi={() => taiTongQuan()} />
     </div>
   );
@@ -996,6 +1008,11 @@ function BaoCaoKeToan({ onXong }: { onXong: () => Promise<void> }) {
   );
 }
 
+type CachTra = '' | 'tien_mat' | 'ngan_hang';
+async function danhDauTra(khoa: string[], cach: CachTra) {
+  return api<{ ok: boolean; n: number }>('/ke-toan/hoa-don/thanh-toan', { body: { khoa, cach } });
+}
+
 function BangCongNo({ thu, tra }: { thu: CongNo; tra: CongNo }) {
   const [loai, setLoai] = useState<'thu' | 'tra'>('thu');
   const [tim, setTim] = useState('');
@@ -1024,7 +1041,7 @@ function BangCongNo({ thu, tra }: { thu: CongNo; tra: CongNo }) {
       </div>
       <p className="mb-2 text-xs text-ink-muted">
         {cn.ngayChot
-          ? `Số dư theo sổ kế toán chốt ngày ${ngayVN(cn.ngayChot)}, cộng hoá đơn ${loai === 'thu' ? 'bán ra' : 'mua vào'} sau ngày đó, trừ tiền đã ${loai === 'thu' ? 'thu' : 'trả'} sau ngày đó theo sao kê ngân hàng (khớp theo tên / MST trong nội dung chuyển khoản).`
+          ? `Số dư theo sổ kế toán chốt ngày ${ngayVN(cn.ngayChot)}, cộng hoá đơn ${loai === 'thu' ? 'bán ra' : 'mua vào'} sau ngày đó, trừ tiền đã ${loai === 'thu' ? 'thu' : 'trả'} sau ngày đó theo sao kê ngân hàng (khớp theo tên bên chuyển / MST / số hoá đơn trong nội dung chuyển khoản)${loai === 'tra' ? ' và hoá đơn đã trả tiền mặt (dưới 5 triệu không thấy chuyển khoản, hoặc anh đánh dấu)' : ''}.`
           : `Chưa có sổ tổng hợp công nợ ${loai === 'thu' ? 'phải thu (TK 131)' : 'phải trả (TK 331)'} — tải file kế toán gửi.`}
         {cn.truoc > 0 && ` Số âm = ${loai === 'thu' ? 'khách trả trước' : 'mình đã trả trước'}: tổng ${vnd(cn.truoc)}.`}
       </p>
@@ -1050,7 +1067,16 @@ function BangCongNo({ thu, tra }: { thu: CongNo; tra: CongNo }) {
                 </td>
                 <td className="text-right">{vnd(x.soDu)}</td>
                 <td className="text-right">{x.hoaDonSau ? vnd(x.hoaDonSau) : '—'}</td>
-                <td className="text-right">{x.thanhToanSau ? `−${vnd(x.thanhToanSau)}` : '—'}</td>
+                <td className="text-right">
+                  {x.thanhToanSau || x.tienMatSau ? (
+                    <>
+                      {x.thanhToanSau ? <div>−{vnd(x.thanhToanSau)}</div> : null}
+                      {x.tienMatSau ? <div className="text-xs text-ink-muted">💵 −{vnd(x.tienMatSau)}</div> : null}
+                    </>
+                  ) : (
+                    '—'
+                  )}
+                </td>
                 <td className={`text-right font-semibold ${x.tong < 0 ? 'text-emerald-700' : ''}`}>{vnd(x.tong)}</td>
               </tr>
             ))}
@@ -1062,8 +1088,21 @@ function BangCongNo({ thu, tra }: { thu: CongNo; tra: CongNo }) {
   );
 }
 
-function NganHang({ nh, lan }: { nh: TongQuan['nganHang']; lan: number }) {
+function NganHang({ nh, lan, onDoi }: { nh: TongQuan['nganHang']; lan: number; onDoi: () => void }) {
   const toast = useToast();
+  const [dangDanh, setDangDanh] = useState('');
+  async function danh(khoa: string[], cach: CachTra, nhan: string) {
+    setDangDanh(khoa.join(','));
+    try {
+      const r = await danhDauTra(khoa, cach);
+      toast.success(`${nhan}: ${r.n} hoá đơn`);
+      onDoi();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDangDanh('');
+    }
+  }
   const [loai, setLoai] = useState<'' | 'vao' | 'ra'>('');
   const [tim, setTim] = useState('');
   const [trang, setTrang] = useState(1);
@@ -1113,18 +1152,79 @@ function NganHang({ nh, lan }: { nh: TongQuan['nganHang']; lan: number }) {
         ))}
       </div>
 
+      <p className="mb-2 text-xs text-ink-muted">
+        Hoá đơn đầu vào <b>dưới 5 triệu</b> không thấy chuyển khoản: app tự coi là <b>đã trả tiền mặt</b> (không báo, không tính
+        công nợ). Từ 5 triệu thì cần anh xác nhận ở dưới.
+      </p>
       {nh.canhBao5tr.so > 0 && (
         <div className="mb-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
-          <b>⚠ {nh.canhBao5tr.so} hoá đơn đầu vào từ 5 triệu chưa thấy chuyển khoản trả</b> (VAT {vnd(nh.canhBao5tr.tongThue)}) — trả
-          tiền mặt thì không được khấu trừ VAT. Kiểm tra lại hoặc tải thêm sao kê tài khoản khác.
-          <ul className="mt-1 list-disc pl-5 text-xs">
-            {nh.canhBao5tr.ds.slice(0, 8).map((h) => (
-              <li key={h.khoa || `${h.kyHieu}-${h.soHd}-${h.mstDoiTac}`}>
-                {ngayVN(h.ngay)} · {h.tenDoiTac} · HĐ {h.kyHieu}-{h.soHd} · {vnd(h.tongTien)}
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <b>⚠ {nh.canhBao5tr.so} hoá đơn đầu vào từ 5 triệu chưa thấy chuyển khoản trả</b> (VAT {vnd(nh.canhBao5tr.tongThue)}) —
+              trả tiền mặt thì VAT không được khấu trừ. Đã trả tiền mặt thì bấm 💵; đã chuyển từ tài khoản khác thì bấm 🏦.
+            </div>
+            {nh.canhBao5tr.ds.length > 1 && (
+              <button
+                className="btn-ghost shrink-0 py-1 text-xs"
+                disabled={!!dangDanh}
+                onClick={() =>
+                  confirm(`Đánh dấu cả ${nh.canhBao5tr.ds.length} hoá đơn đã trả tiền mặt?`) &&
+                  danh(nh.canhBao5tr.ds.map((h) => h.khoa).filter(Boolean), 'tien_mat', 'Đã đánh dấu tiền mặt')
+                }
+              >
+                💵 Tất cả đã trả tiền mặt
+              </button>
+            )}
+          </div>
+          <ul className="mt-2 divide-y divide-amber-200/60 text-xs">
+            {nh.canhBao5tr.ds.map((h) => (
+              <li key={h.khoa || `${h.kyHieu}-${h.soHd}-${h.mstDoiTac}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1">
+                <span className="min-w-0 flex-1">
+                  {ngayVN(h.ngay)} · {h.tenDoiTac} · HĐ {h.kyHieu}-{h.soHd} · <b>{vnd(h.tongTien)}</b>
+                </span>
+                {h.khoa && (
+                  <span className="flex gap-1">
+                    <button className="rounded-full bg-white px-2 py-0.5 hover:bg-brand-100" disabled={!!dangDanh} onClick={() => danh([h.khoa], 'tien_mat', 'Đã trả tiền mặt')}>
+                      💵 Tiền mặt
+                    </button>
+                    <button className="rounded-full bg-white px-2 py-0.5 hover:bg-brand-100" disabled={!!dangDanh} onClick={() => danh([h.khoa], 'ngan_hang', 'Đã chuyển khoản')}>
+                      🏦 Đã CK
+                    </button>
+                  </span>
+                )}
               </li>
             ))}
           </ul>
         </div>
+      )}
+      {nh.canhBao5tr.tienMat.so > 0 && (
+        <p className="mb-3 text-xs text-ink-muted">
+          💵 Anh đã đánh dấu {nh.canhBao5tr.tienMat.so} hoá đơn từ 5 triệu trả tiền mặt — VAT {vnd(nh.canhBao5tr.tienMat.tongThue)} không được
+          khấu trừ (báo kế toán loại khỏi tờ khai). Bỏ đánh dấu ở danh sách Hoá đơn bên dưới.
+        </p>
+      )}
+      {(nh.tienVaoKhac.lai.so > 0 || nh.tienVaoKhac.hoan_the.so > 0 || nh.tienVaoKhac.noi_bo.so > 0) && (
+        <p className="mb-2 text-xs text-ink-muted">
+          Tiền vào không phải khách trả (không tính công nợ):
+          {nh.tienVaoKhac.lai.so > 0 && ` lãi tiền gửi ${nh.tienVaoKhac.lai.so} lần ${vnd(nh.tienVaoKhac.lai.tong)};`}
+          {nh.tienVaoKhac.hoan_the.so > 0 && ` tiền thẻ hoàn về ${nh.tienVaoKhac.hoan_the.so} lần ${vnd(nh.tienVaoKhac.hoan_the.tong)};`}
+          {nh.tienVaoKhac.noi_bo.so > 0 && ` chuyển nội bộ ${nh.tienVaoKhac.noi_bo.so} lần ${vnd(nh.tienVaoKhac.noi_bo.tong)};`}
+        </p>
+      )}
+      {nh.tienVaoTheoHoaDon.length > 0 && (
+        <details className="mb-2 text-sm">
+          <summary className="cursor-pointer text-ink-soft">
+            {nh.tienVaoTheoHoaDon.length} khoản khớp theo số hoá đơn / số tiền (không có tên trong nội dung) — anh soát lại
+          </summary>
+          <ul className="mt-1 space-y-0.5 text-xs text-ink-muted">
+            {nh.tienVaoTheoHoaDon.map((x, i) => (
+              <li key={i}>
+                {ngayVN(x.ngay)} · <b>{vnd(x.soTien)}</b> · {x.doiTac ? <b>{x.doiTac} · </b> : null}
+                {x.noiDung} → <span className="text-ink">{x.ten} (HĐ {x.soHd})</span>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
 
       {nh.soTienVaoChuaKhop > 0 && (
@@ -1135,10 +1235,15 @@ function NganHang({ nh, lan }: { nh: TongQuan['nganHang']; lan: number }) {
           <ul className="mt-1 space-y-0.5 text-xs text-ink-muted">
             {nh.tienVaoChuaKhop.map((g) => (
               <li key={g.id}>
-                {ngayVN(g.ngay)} · <b>{vnd(g.ghiCo)}</b> · {g.noiDung}
+                {ngayVN(g.ngay)} · <b>{vnd(g.ghiCo)}</b> · {g.doiTac ? <b className="text-ink">{g.doiTac} · </b> : null}
+                {g.noiDung}
               </li>
             ))}
           </ul>
+          <p className="mt-1 text-xs text-ink-faint">
+            Thường là khách chưa xuất hoá đơn / chưa có trong sổ công nợ. Sao kê tải trước hôm nay chưa có cột tên bên chuyển —
+            tải lại file sao kê để app đọc thêm cột đó (không nhân đôi giao dịch).
+          </p>
         </details>
       )}
 
@@ -1148,7 +1253,7 @@ function NganHang({ nh, lan }: { nh: TongQuan['nganHang']; lan: number }) {
           <option value="vao">Tiền vào</option>
           <option value="ra">Tiền ra</option>
         </select>
-        <input className="input ml-auto w-56 py-1 text-sm" placeholder="Tìm nội dung…" value={tim} onChange={(e) => (setTim(e.target.value), setTrang(1))} />
+        <input className="input ml-auto w-56 py-1 text-sm" placeholder="Tìm nội dung, tên bên chuyển…" value={tim} onChange={(e) => (setTim(e.target.value), setTrang(1))} />
       </div>
       {!kq ? (
         <SkeletonRows rows={4} />
@@ -1171,8 +1276,9 @@ function NganHang({ nh, lan }: { nh: TongQuan['nganHang']; lan: number }) {
                 <td className="whitespace-nowrap text-xs">
                   {g.nganHang} {g.soTk ? `···${g.soTk.slice(-4)}` : ''}
                 </td>
-                <td className="max-w-md truncate" title={g.noiDung}>
-                  {g.noiDung}
+                <td className="max-w-md" title={g.noiDung}>
+                  {g.doiTac && <div className="truncate text-xs font-medium">{g.doiTac}</div>}
+                  <div className="truncate">{g.noiDung}</div>
                 </td>
                 <td className="text-right text-emerald-700">{g.ghiCo ? vnd(g.ghiCo) : ''}</td>
                 <td className="text-right text-rose-600">{g.ghiNo ? vnd(g.ghiNo) : ''}</td>
@@ -1187,8 +1293,18 @@ function NganHang({ nh, lan }: { nh: TongQuan['nganHang']; lan: number }) {
   );
 }
 
-function DanhSachHoaDon({ nam, lan }: { nam: number; lan: number }) {
+function DanhSachHoaDon({ nam, lan, onDoi }: { nam: number; lan: number; onDoi: () => void }) {
   const toast = useToast();
+  async function doiCachTra(h: HoaDon) {
+    // Vòng: tự xét → tiền mặt → đã chuyển khoản → tự xét
+    const tiep: CachTra = h.thanhToan === 'tien_mat' ? 'ngan_hang' : h.thanhToan === 'ngan_hang' ? '' : 'tien_mat';
+    try {
+      await danhDauTra([h.khoa], tiep);
+      onDoi();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
   const [huong, setHuong] = useState<'' | 'ra' | 'vao'>('');
   const [ky, setKy] = useState('');
   const [tim, setTim] = useState('');
@@ -1244,7 +1360,7 @@ function DanhSachHoaDon({ nam, lan }: { nam: number; lan: number }) {
       ) : kq.ds.length === 0 ? (
         <EmptyState icon="🧾" text="Không có hoá đơn." />
       ) : (
-        <table className="w-full min-w-[760px] text-sm">
+        <table className="w-full min-w-[820px] text-sm">
           <thead>
             <tr className="text-left text-xs text-ink-muted">
               <th className="py-1">Ngày</th>
@@ -1254,6 +1370,7 @@ function DanhSachHoaDon({ nam, lan }: { nam: number; lan: number }) {
               <th className="text-right">VAT</th>
               <th className="pl-3">Kỳ</th>
               <th>Trạng thái</th>
+              <th title="Hoá đơn đầu vào: bấm để đổi cách trả">Trả</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -1273,6 +1390,17 @@ function DanhSachHoaDon({ nam, lan }: { nam: number; lan: number }) {
                 <td className="text-right">{vnd(h.tienThue)}</td>
                 <td className="pl-3 whitespace-nowrap text-xs">{tenKy(h.kyKeKhai)}</td>
                 <td className="text-xs">{h.trangThai}</td>
+                <td className="whitespace-nowrap text-xs">
+                  {h.huong === 'vao' && (
+                    <button
+                      className={`rounded-full px-2 py-0.5 ${h.thanhToan ? 'bg-brand-100 text-ink' : 'text-ink-faint hover:bg-brand-50'}`}
+                      title="Bấm để đổi: tự xét → tiền mặt → chuyển khoản"
+                      onClick={() => doiCachTra(h)}
+                    >
+                      {h.thanhToan === 'tien_mat' ? '💵 Tiền mặt' : h.thanhToan === 'ngan_hang' ? '🏦 CK' : 'tự xét'}
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

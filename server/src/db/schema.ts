@@ -555,6 +555,10 @@ CREATE TABLE IF NOT EXISTS kt_giao_dich (
   tai_len_id   text DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS kt_giao_dich_ngay_idx ON kt_giao_dich (ngay);
+-- Tên bên chuyển / thụ hưởng (cột riêng của sao kê, 18/10/2026) — tải lại sao kê cũ thì điền thêm, không nhân đôi.
+ALTER TABLE kt_giao_dich ADD COLUMN IF NOT EXISTS doi_tac text DEFAULT '';
+-- Anh đánh dấu cách trả hoá đơn đầu vào: '' (tự xét) | tien_mat | ngan_hang. Tải lại hoá đơn KHÔNG ghi đè cột này.
+ALTER TABLE kt_hoa_don ADD COLUMN IF NOT EXISTS thanh_toan text DEFAULT '';
 -- Bảng lương (AI đọc file lương / BHXH kế toán gửi, 18/10/2026): cộng theo tháng — chi phí lương cho ước tính TNDN.
 CREATE TABLE IF NOT EXISTS kt_luong (
   thang          text PRIMARY KEY,     -- YYYY-MM

@@ -23,6 +23,10 @@ export interface HoaDon {
   trangThai: string;
   /** Kỳ kê khai thực tế "YYYY-Qn" (kế toán có thể kê hoá đơn muộn sang quý sau). */
   kyKeKhai: string;
+  /** Khoá trong DB (chỉ có khi đọc từ DB) */
+  khoa?: string;
+  /** Anh đánh dấu: '' (tự xét) | 'tien_mat' | 'ngan_hang' */
+  thanhToan?: string;
 }
 
 export interface ToKhaiGtgt {
@@ -701,6 +705,8 @@ export interface CongNoDoiTac {
   hoaDonSau: number;
   /** Tiền đã thu (phải thu) / đã trả (phải trả) SAU ngày chốt, theo sao kê ngân hàng */
   thanhToanSau: number;
+  /** Hoá đơn đầu vào sau chốt đã trả tiền mặt (anh đánh dấu, hoặc dưới 5 triệu không thấy chuyển khoản) */
+  tienMatSau: number;
   tong: number;
 }
 
@@ -709,6 +715,8 @@ export interface ThanhToanDoiTac {
   mst: string;
   ten: string;
   soTien: number;
+  /** Trả tiền mặt (không qua ngân hàng) */
+  tienMat?: boolean;
 }
 
 /**
@@ -727,14 +735,14 @@ export function tinhCongNo(
   const m = new Map<string, CongNoDoiTac>();
   for (const d of so?.dong || []) {
     const soDu = loai === 'thu' ? d.duNo - d.duCo : d.duCo - d.duNo;
-    m.set(d.ma, { ma: d.ma, ten: d.ten, soDu, hoaDonSau: 0, thanhToanSau: 0, tong: soDu });
+    m.set(d.ma, { ma: d.ma, ten: d.ten, soDu, hoaDonSau: 0, thanhToanSau: 0, tienMatSau: 0, tong: soDu });
   }
   const chot = so?.ngayChot || '';
   const dongCua = (mst: string, ten: string): CongNoDoiTac => {
     // Sổ có khách mang mã nội bộ (KH002…) thay vì MST → khớp thêm theo tên đã chuẩn hoá.
     const theoTen = [...m.values()].find((x) => chuanChu(x.ten) === chuanChu(ten));
     const ma = mst && m.has(mst) ? mst : theoTen?.ma || mst || ten;
-    const x = m.get(ma) || { ma, ten, soDu: 0, hoaDonSau: 0, thanhToanSau: 0, tong: 0 };
+    const x = m.get(ma) || { ma, ten, soDu: 0, hoaDonSau: 0, thanhToanSau: 0, tienMatSau: 0, tong: 0 };
     m.set(ma, x);
     return x;
   };
@@ -743,9 +751,13 @@ export function tinhCongNo(
       if (h.huong !== huong || !hoaDonHieuLuc(h.trangThai) || h.ngay <= chot) continue;
       dongCua(h.mstDoiTac, h.tenDoiTac).hoaDonSau += h.tongTien;
     }
-    for (const t of thanhToan) dongCua(t.mst, t.ten).thanhToanSau += t.soTien;
+    for (const t of thanhToan) {
+      const x = dongCua(t.mst, t.ten);
+      if (t.tienMat) x.tienMatSau += t.soTien;
+      else x.thanhToanSau += t.soTien;
+    }
   }
-  for (const x of m.values()) x.tong = x.soDu + x.hoaDonSau - x.thanhToanSau;
+  for (const x of m.values()) x.tong = x.soDu + x.hoaDonSau - x.thanhToanSau - x.tienMatSau;
   const ds = [...m.values()].filter((x) => x.tong !== 0).sort((a, b) => b.tong - a.tong);
   const phai = ds.filter((x) => x.tong > 0).reduce((s, x) => s + x.tong, 0);
   const truoc = ds.filter((x) => x.tong < 0).reduce((s, x) => s - x.tong, 0);

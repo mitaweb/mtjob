@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { asyncHandler } from '../util/errors.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
 import { nhapBang, nhapXml, tongQuan, caiDat, luuCaiDat, nhanBaoCaoKeToan } from './keToan.service.js';
-import { trangHoaDon, lichSuTaiLen, trangGiaoDich, dsViec, datXongViec } from './keToan.repo.js';
+import { trangHoaDon, lichSuTaiLen, trangGiaoDich, dsViec, datXongViec, datThanhToanHoaDon } from './keToan.repo.js';
 import { nowTz } from '../lib/datetime.js';
 
 export const keToanRouter = Router();
@@ -59,6 +59,17 @@ keToanRouter.get(
     const page = Math.max(1, Number(req.query.page) || 1);
     const size = Math.min(100, Math.max(5, Number(req.query.size) || 20));
     res.json(await trangHoaDon({ huong, ky, tim: String(req.query.q || ''), page, size }));
+  }),
+);
+
+/** Anh đánh dấu hoá đơn đầu vào đã trả tiền mặt / qua ngân hàng ('' = để app tự xét). */
+keToanRouter.post(
+  '/hoa-don/thanh-toan',
+  asyncHandler(async (req, res) => {
+    const b = z.object({ khoa: z.array(z.string().min(1).max(300)).min(1).max(200), cach: z.enum(['', 'tien_mat', 'ngan_hang']) }).parse(req.body);
+    let n = 0;
+    for (const k of b.khoa) if (await datThanhToanHoaDon(k, b.cach)) n++;
+    res.json({ ok: true, n });
   }),
 );
 

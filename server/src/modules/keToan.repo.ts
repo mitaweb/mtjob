@@ -28,13 +28,18 @@ export async function ghiHoaDon(ds: HoaDon[], nguon: string, taiLenId: string, l
       `INSERT INTO kt_hoa_don (khoa, huong, mau_so, ky_hieu, so_hd, ngay, mst_doi_tac, ten_doi_tac, dien_giai,
          tien_hang, tien_thue, tong_tien, thue_suat, trang_thai, ky_ke_khai, nguon, tai_len_id, cap_nhat)
        VALUES ${vals.join(', ')}
+       -- Tải lại = CẬP NHẬT, không xoá (anh Tâm 18/10/2026: "chỉ là nội dung cập nhật, ghi đè thôi, không phải xóa hoàn
+       -- toàn nội dung cũ"): ô trống / tiền 0 ở nguồn mới thì giữ số cũ; cột thanh_toan (anh tự đánh dấu) không bao giờ đụng.
        ON CONFLICT (khoa) DO UPDATE SET huong = EXCLUDED.huong, mau_so = EXCLUDED.mau_so, ky_hieu = EXCLUDED.ky_hieu,
-         so_hd = EXCLUDED.so_hd, ngay = EXCLUDED.ngay,
+         so_hd = EXCLUDED.so_hd, ngay = COALESCE(NULLIF(EXCLUDED.ngay, ''), kt_hoa_don.ngay),
          mst_doi_tac = COALESCE(NULLIF(EXCLUDED.mst_doi_tac, ''), kt_hoa_don.mst_doi_tac),
          ten_doi_tac = COALESCE(NULLIF(EXCLUDED.ten_doi_tac, ''), kt_hoa_don.ten_doi_tac),
          dien_giai = COALESCE(NULLIF(EXCLUDED.dien_giai, ''), kt_hoa_don.dien_giai),
-         tien_hang = EXCLUDED.tien_hang, tien_thue = EXCLUDED.tien_thue, tong_tien = EXCLUDED.tong_tien,
-         thue_suat = COALESCE(NULLIF(EXCLUDED.thue_suat, ''), kt_hoa_don.thue_suat), trang_thai = EXCLUDED.trang_thai,
+         tien_hang = CASE WHEN EXCLUDED.tong_tien = 0 AND kt_hoa_don.tong_tien <> 0 THEN kt_hoa_don.tien_hang ELSE EXCLUDED.tien_hang END,
+         tien_thue = CASE WHEN EXCLUDED.tong_tien = 0 AND kt_hoa_don.tong_tien <> 0 THEN kt_hoa_don.tien_thue ELSE EXCLUDED.tien_thue END,
+         tong_tien = CASE WHEN EXCLUDED.tong_tien = 0 AND kt_hoa_don.tong_tien <> 0 THEN kt_hoa_don.tong_tien ELSE EXCLUDED.tong_tien END,
+         thue_suat = COALESCE(NULLIF(EXCLUDED.thue_suat, ''), kt_hoa_don.thue_suat),
+         trang_thai = COALESCE(NULLIF(EXCLUDED.trang_thai, ''), kt_hoa_don.trang_thai),
          -- Kỳ kê khai THỰC TẾ do kế toán ghi trong bảng kê (có thể kê muộn sang quý sau) — nguồn khác (cổng thuế, XML)
          -- chỉ biết ngày lập nên không được ghi đè.
          ky_ke_khai = CASE WHEN kt_hoa_don.nguon = 'bang_ke' AND EXCLUDED.nguon <> 'bang_ke' THEN kt_hoa_don.ky_ke_khai ELSE EXCLUDED.ky_ke_khai END,
@@ -64,6 +69,8 @@ function rowToHoaDon(r: Record<string, unknown>): HoaDon {
     thueSuat: String(r.thue_suat || ''),
     trangThai: String(r.trang_thai || ''),
     kyKeKhai: String(r.ky_ke_khai || ''),
+    khoa: String(r.khoa || ''),
+    thanhToan: String(r.thanh_toan || ''),
   };
 }
 
@@ -137,9 +144,11 @@ export async function tatCaToKhai(): Promise<ToKhaiGtgt[]> {
   });
 }
 
-/** Sổ công nợ tại một ngày chốt: thay TOÀN BỘ dòng của (loại, ngày chốt) bằng bản mới. */
+/**
+ * Sổ công nợ tại một ngày chốt: CẬP NHẬT từng đối tác có trong file (ghi đè số mới), KHÔNG xoá dòng cũ — anh Tâm
+ * 18/10/2026: "chỉ là nội dung cập nhật, ghi đè thôi, không phải xóa hoàn toàn nội dung cũ".
+ */
 export async function ghiCongNo(so: SoCongNo, taiLenId: string): Promise<number> {
-  await q('DELETE FROM kt_cong_no WHERE loai = $1 AND ngay_chot = $2', [so.loai, so.ngayChot]);
   for (let i = 0; i < so.dong.length; i += LO) {
     const lo = so.dong.slice(i, i + LO);
     const params: unknown[] = [];
@@ -151,7 +160,7 @@ export async function ghiCongNo(so: SoCongNo, taiLenId: string): Promise<number>
     await q(
       `INSERT INTO kt_cong_no (loai, ngay_chot, ma, ten, du_no_dau, du_co_dau, ps_no, ps_co, du_no, du_co, tu_ngay, tai_len_id)
        VALUES ${vals.join(', ')}
-       ON CONFLICT (loai, ngay_chot, ma) DO UPDATE SET ten = EXCLUDED.ten, du_no = EXCLUDED.du_no, du_co = EXCLUDED.du_co,
+       ON CONFLICT (loai, ngay_chot, ma) DO UPDATE SET ten = COALESCE(NULLIF(EXCLUDED.ten, ''), kt_cong_no.ten), du_no = EXCLUDED.du_no, du_co = EXCLUDED.du_co,
          ps_no = EXCLUDED.ps_no, ps_co = EXCLUDED.ps_co, du_no_dau = EXCLUDED.du_no_dau, du_co_dau = EXCLUDED.du_co_dau`,
       params,
     );
@@ -243,15 +252,19 @@ export async function ghiGiaoDich(ds: GiaoDich[], taiLenId: string): Promise<{ m
     const params: unknown[] = [];
     const vals = lo.map((g) => {
       const b = params.length;
-      params.push(g.id, g.soTk, g.nganHang, g.ngay, g.ghiNo, g.ghiCo, g.soDu, g.noiDung, g.soRef, g.thuTu, taiLenId);
-      return `(${Array.from({ length: 11 }, (_, j) => `$${b + j + 1}`).join(', ')})`;
+      params.push(g.id, g.soTk, g.nganHang, g.ngay, g.ghiNo, g.ghiCo, g.soDu, g.noiDung, g.soRef, g.thuTu, taiLenId, g.doiTac || '');
+      return `(${Array.from({ length: 12 }, (_, j) => `$${b + j + 1}`).join(', ')})`;
     });
+    // Giao dịch đã có: chỉ điền thêm tên đối tác nếu trước chưa có (sao kê tải trước khi app đọc cột này).
     const rows = await q(
-      `INSERT INTO kt_giao_dich (id, so_tk, ngan_hang, ngay, ghi_no, ghi_co, so_du, noi_dung, so_ref, thu_tu, tai_len_id)
-       VALUES ${vals.join(', ')} ON CONFLICT (id) DO NOTHING RETURNING id`,
+      `INSERT INTO kt_giao_dich (id, so_tk, ngan_hang, ngay, ghi_no, ghi_co, so_du, noi_dung, so_ref, thu_tu, tai_len_id, doi_tac)
+       VALUES ${vals.join(', ')}
+       ON CONFLICT (id) DO UPDATE SET doi_tac = EXCLUDED.doi_tac
+         WHERE COALESCE(kt_giao_dich.doi_tac, '') = '' AND EXCLUDED.doi_tac <> ''
+       RETURNING (xmax = 0) AS moi`,
       params,
     );
-    moi += rows.length;
+    moi += rows.filter((r) => r.moi).length;
   }
   return { moi, trung: tat.length - moi };
 }
@@ -267,6 +280,7 @@ function rowToGiaoDich(r: Record<string, unknown>): GiaoDich {
     soDu: Number(r.so_du) || 0,
     noiDung: String(r.noi_dung || ''),
     soRef: String(r.so_ref || ''),
+    doiTac: String(r.doi_tac || ''),
     thuTu: Number(r.thu_tu) || 0,
   };
 }
@@ -282,7 +296,7 @@ export async function trangGiaoDich(o: { loai?: 'vao' | 'ra'; tim?: string; page
   if (o.loai === 'ra') dk.push('ghi_no > 0');
   if (o.tim?.trim()) {
     p.push(`%${o.tim.trim()}%`);
-    dk.push(`(noi_dung ILIKE $${p.length} OR so_ref ILIKE $${p.length})`);
+    dk.push(`(noi_dung ILIKE $${p.length} OR so_ref ILIKE $${p.length} OR doi_tac ILIKE $${p.length})`);
   }
   const where = dk.length ? `WHERE ${dk.join(' AND ')}` : '';
   const [dem, rows] = await Promise.all([
@@ -364,4 +378,10 @@ export async function dsViec(): Promise<ViecKeToan[]> {
 
 export async function datXongViec(id: string, xong: boolean): Promise<void> {
   await q('UPDATE kt_viec SET xong = $2 WHERE id = $1', [id, xong]);
+}
+
+/** Anh đánh dấu cách trả một hoá đơn đầu vào ('' = để app tự xét). Tải lại hoá đơn không ghi đè. */
+export async function datThanhToanHoaDon(khoa: string, cach: '' | 'tien_mat' | 'ngan_hang'): Promise<boolean> {
+  const r = await q('UPDATE kt_hoa_don SET thanh_toan = $2 WHERE khoa = $1 RETURNING khoa', [khoa, cach]);
+  return r.length > 0;
 }
