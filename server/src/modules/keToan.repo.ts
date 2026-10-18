@@ -2,6 +2,7 @@
 import { q } from '../db/client.js';
 import type { HoaDon, ToKhaiGtgt, SoCongNo, BaoCaoKqkd, Huong } from '../lib/keToan.js';
 import { khoaHoaDon } from '../lib/keToan.js';
+import type { GiaoDich } from '../lib/saoKe.js';
 
 const LO = 200;
 
@@ -228,4 +229,64 @@ export async function ghiCaiDat(khoa: string, giaTri: string): Promise<void> {
     'INSERT INTO kt_cai_dat (khoa, gia_tri) VALUES ($1, $2) ON CONFLICT (khoa) DO UPDATE SET gia_tri = EXCLUDED.gia_tri',
     [khoa, giaTri],
   );
+}
+
+// ── Sao kê ngân hàng ──
+
+export async function ghiGiaoDich(ds: GiaoDich[], taiLenId: string): Promise<{ moi: number; trung: number }> {
+  const theoId = new Map(ds.map((g) => [g.id, g]));
+  const tat = [...theoId.values()];
+  let moi = 0;
+  for (let i = 0; i < tat.length; i += LO) {
+    const lo = tat.slice(i, i + LO);
+    const params: unknown[] = [];
+    const vals = lo.map((g) => {
+      const b = params.length;
+      params.push(g.id, g.soTk, g.nganHang, g.ngay, g.ghiNo, g.ghiCo, g.soDu, g.noiDung, g.soRef, g.thuTu, taiLenId);
+      return `(${Array.from({ length: 11 }, (_, j) => `$${b + j + 1}`).join(', ')})`;
+    });
+    const rows = await q(
+      `INSERT INTO kt_giao_dich (id, so_tk, ngan_hang, ngay, ghi_no, ghi_co, so_du, noi_dung, so_ref, thu_tu, tai_len_id)
+       VALUES ${vals.join(', ')} ON CONFLICT (id) DO NOTHING RETURNING id`,
+      params,
+    );
+    moi += rows.length;
+  }
+  return { moi, trung: tat.length - moi };
+}
+
+function rowToGiaoDich(r: Record<string, unknown>): GiaoDich {
+  return {
+    id: String(r.id),
+    soTk: String(r.so_tk || ''),
+    nganHang: String(r.ngan_hang || ''),
+    ngay: String(r.ngay || ''),
+    ghiNo: Number(r.ghi_no) || 0,
+    ghiCo: Number(r.ghi_co) || 0,
+    soDu: Number(r.so_du) || 0,
+    noiDung: String(r.noi_dung || ''),
+    soRef: String(r.so_ref || ''),
+    thuTu: Number(r.thu_tu) || 0,
+  };
+}
+
+export async function tatCaGiaoDich(): Promise<GiaoDich[]> {
+  return (await q('SELECT * FROM kt_giao_dich ORDER BY ngay, thu_tu')).map(rowToGiaoDich);
+}
+
+export async function trangGiaoDich(o: { loai?: 'vao' | 'ra'; tim?: string; page: number; size: number }): Promise<{ ds: GiaoDich[]; tong: number }> {
+  const dk: string[] = [];
+  const p: unknown[] = [];
+  if (o.loai === 'vao') dk.push('ghi_co > 0');
+  if (o.loai === 'ra') dk.push('ghi_no > 0');
+  if (o.tim?.trim()) {
+    p.push(`%${o.tim.trim()}%`);
+    dk.push(`(noi_dung ILIKE $${p.length} OR so_ref ILIKE $${p.length})`);
+  }
+  const where = dk.length ? `WHERE ${dk.join(' AND ')}` : '';
+  const [dem, rows] = await Promise.all([
+    q(`SELECT COUNT(*)::int AS n FROM kt_giao_dich ${where}`, p),
+    q(`SELECT * FROM kt_giao_dich ${where} ORDER BY ngay DESC, thu_tu DESC LIMIT $${p.length + 1} OFFSET $${p.length + 2}`, [...p, o.size, (o.page - 1) * o.size]),
+  ]);
+  return { ds: rows.map(rowToGiaoDich), tong: Number(dem[0]?.n) || 0 };
 }

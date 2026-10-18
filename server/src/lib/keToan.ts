@@ -75,6 +75,7 @@ export function soTien(v: unknown): number {
     am = true;
     s = s.slice(1, -1);
   }
+  if (s.startsWith('+')) s = s.slice(1).trim(); // sao kê ngân hàng: "+1,000,000"
   if (s.startsWith('-')) {
     am = !am;
     s = s.slice(1);
@@ -161,7 +162,7 @@ export function nhanDangBang(sheets: SheetDuLieu[]): LoaiBang | null {
  * (ô gộp: dòng trên "Ký hiệu hoá đơn" / "HOÁ ĐƠN", dòng dưới tên các cột tiền) — xét gộp dòng i và i+1.
  * Trả `dong` = dòng tiêu đề cuối cùng (dữ liệu bắt đầu ngay sau).
  */
-function timCot(rows: string[][], can: Record<string, (t: string) => boolean>, batBuoc: string[]): { dong: number; cot: Record<string, number> } | null {
+export function timCot(rows: string[][], can: Record<string, (t: string) => boolean>, batBuoc: string[]): { dong: number; cot: Record<string, number> } | null {
   for (let i = 0; i < Math.min(rows.length, 20); i++) {
     for (const soDong of [1, 2]) {
       const cot: Record<string, number> = {};
@@ -606,13 +607,23 @@ export interface CongNoDoiTac {
   ten: string;
   /** Số dư theo sổ tại ngày chốt (phải thu: Nợ − Có; phải trả: Có − Nợ) */
   soDu: number;
-  /** Hoá đơn phát sinh SAU ngày chốt (chưa có trong sổ, chưa trừ tiền đã thu/trả) */
+  /** Hoá đơn phát sinh SAU ngày chốt (chưa có trong sổ) */
   hoaDonSau: number;
+  /** Tiền đã thu (phải thu) / đã trả (phải trả) SAU ngày chốt, theo sao kê ngân hàng */
+  thanhToanSau: number;
   tong: number;
 }
 
-/** Công nợ theo đối tác: số dư sổ tại ngày chốt + hoá đơn sau ngày chốt (khớp theo MST). */
+/** Một khoản tiền sau ngày chốt đã khớp được đối tác (từ sao kê). */
+export interface ThanhToanDoiTac {
+  mst: string;
+  ten: string;
+  soTien: number;
+}
+
 /**
+ * Công nợ theo đối tác = số dư sổ tại ngày chốt + hoá đơn sau ngày chốt − tiền đã thu/trả sau ngày chốt (sao kê).
+ * Khớp đối tác theo MST, hoặc theo tên khi sổ dùng mã nội bộ (KH002…).
  * `phai` = tổng các bên còn nợ / mình còn nợ (số dương); `truoc` = tổng tiền đã ứng trước (bên có số dư ngược chiều —
  * khách trả trước, hoặc mình đã trả trước cho nhà cung cấp); `tong` = phai − truoc.
  */
@@ -620,25 +631,31 @@ export function tinhCongNo(
   so: SoCongNo | null,
   hoaDon: HoaDon[],
   loai: 'thu' | 'tra',
+  thanhToan: ThanhToanDoiTac[] = [],
 ): { ngayChot: string; ds: CongNoDoiTac[]; tong: number; phai: number; truoc: number } {
   const huong: Huong = loai === 'thu' ? 'ra' : 'vao';
   const m = new Map<string, CongNoDoiTac>();
   for (const d of so?.dong || []) {
     const soDu = loai === 'thu' ? d.duNo - d.duCo : d.duCo - d.duNo;
-    m.set(d.ma, { ma: d.ma, ten: d.ten, soDu, hoaDonSau: 0, tong: soDu });
+    m.set(d.ma, { ma: d.ma, ten: d.ten, soDu, hoaDonSau: 0, thanhToanSau: 0, tong: soDu });
   }
   const chot = so?.ngayChot || '';
-  for (const h of hoaDon) {
-    if (h.huong !== huong || !hoaDonHieuLuc(h.trangThai) || (chot && h.ngay <= chot)) continue;
-    if (!chot) continue; // chưa có sổ công nợ thì không đoán
+  const dongCua = (mst: string, ten: string): CongNoDoiTac => {
     // Sổ có khách mang mã nội bộ (KH002…) thay vì MST → khớp thêm theo tên đã chuẩn hoá.
-    const theoTen = [...m.values()].find((x) => chuanChu(x.ten) === chuanChu(h.tenDoiTac));
-    const ma = m.has(h.mstDoiTac) ? h.mstDoiTac : theoTen?.ma || h.mstDoiTac || h.tenDoiTac;
-    const x = m.get(ma) || { ma, ten: h.tenDoiTac, soDu: 0, hoaDonSau: 0, tong: 0 };
-    x.hoaDonSau += h.tongTien;
-    x.tong = x.soDu + x.hoaDonSau;
+    const theoTen = [...m.values()].find((x) => chuanChu(x.ten) === chuanChu(ten));
+    const ma = mst && m.has(mst) ? mst : theoTen?.ma || mst || ten;
+    const x = m.get(ma) || { ma, ten, soDu: 0, hoaDonSau: 0, thanhToanSau: 0, tong: 0 };
     m.set(ma, x);
+    return x;
+  };
+  if (chot) {
+    for (const h of hoaDon) {
+      if (h.huong !== huong || !hoaDonHieuLuc(h.trangThai) || h.ngay <= chot) continue;
+      dongCua(h.mstDoiTac, h.tenDoiTac).hoaDonSau += h.tongTien;
+    }
+    for (const t of thanhToan) dongCua(t.mst, t.ten).thanhToanSau += t.soTien;
   }
+  for (const x of m.values()) x.tong = x.soDu + x.hoaDonSau - x.thanhToanSau;
   const ds = [...m.values()].filter((x) => x.tong !== 0).sort((a, b) => b.tong - a.tong);
   const phai = ds.filter((x) => x.tong > 0).reduce((s, x) => s + x.tong, 0);
   const truoc = ds.filter((x) => x.tong < 0).reduce((s, x) => s - x.tong, 0);

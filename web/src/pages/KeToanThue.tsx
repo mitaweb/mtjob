@@ -35,7 +35,29 @@ interface CongNoDoiTac {
   ten: string;
   soDu: number;
   hoaDonSau: number;
+  thanhToanSau: number;
   tong: number;
+}
+interface GiaoDich {
+  id: string;
+  soTk: string;
+  nganHang: string;
+  ngay: string;
+  ghiNo: number;
+  ghiCo: number;
+  soDu: number;
+  noiDung: string;
+  soRef: string;
+}
+interface TaiKhoan {
+  soTk: string;
+  nganHang: string;
+  tuNgay: string;
+  denNgay: string;
+  soGd: number;
+  tongVao: number;
+  tongRa: number;
+  soDuCuoi: number;
 }
 interface CongNo {
   ngayChot: string;
@@ -54,6 +76,12 @@ interface TongQuan {
   sapToi: DongVat | null;
   tndn: Tndn[];
   congNo: { thu: CongNo; tra: CongNo };
+  nganHang: {
+    taiKhoan: TaiKhoan[];
+    tienVaoChuaKhop: GiaoDich[];
+    soTienVaoChuaKhop: number;
+    canhBao5tr: { so: number; tongThue: number; ds: HoaDon[] };
+  };
   soHoaDon: number;
   coDuLieu: boolean;
 }
@@ -97,7 +125,7 @@ async function docFile(f: File): Promise<FileTho | null> {
   const sheets = wb.SheetNames.slice(0, 20).map((ten) => {
     const rows = XLSX.utils
       .sheet_to_json<unknown[]>(wb.Sheets[ten]!, { header: 1, raw: false, defval: '', blankrows: false, dateNF: 'dd/mm/yyyy' })
-      .slice(0, 6000)
+      .slice(0, 10000)
       .map((r) => {
         const o = r.slice(0, 40).map((x) => String(x ?? '').slice(0, 2000));
         while (o.length && !o[o.length - 1]!.trim()) o.pop();
@@ -227,8 +255,9 @@ export default function KeToanThue() {
           <div className="min-w-0 flex-1">
             <div className="font-semibold">Kéo thả file kế toán gửi vào đây</div>
             <p className="text-sm text-ink-muted">
-              Bảng kê hoá đơn MV-BR, hoá đơn XML, tờ khai GTGT (XML), tổng hợp công nợ phải thu / phải trả, báo cáo kết quả kinh
-              doanh. Chọn cả thư mục cũng được — app tự lọc file cần, bỏ qua PDF / file nén. Tải lại file cũ không bị nhân đôi.
+              Sao kê ngân hàng (Excel), bảng kê hoá đơn MV-BR, hoá đơn XML, tờ khai GTGT (XML), tổng hợp công nợ phải thu /
+              phải trả, báo cáo kết quả kinh doanh. Chọn cả thư mục cũng được — app tự lọc file cần, bỏ qua PDF / file nén.
+              Tải lại file cũ không bị nhân đôi.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -322,6 +351,7 @@ export default function KeToanThue() {
           <BangVat vat={tq.vat} nam={nam} />
           <BangTndn tndn={tq.tndn} />
           <BangCongNo thu={tq.congNo.thu} tra={tq.congNo.tra} />
+          <NganHang nh={tq.nganHang} lan={lan} />
         </>
       )}
 
@@ -727,7 +757,7 @@ function BangCongNo({ thu, tra }: { thu: CongNo; tra: CongNo }) {
       </div>
       <p className="mb-2 text-xs text-ink-muted">
         {cn.ngayChot
-          ? `Số dư theo sổ kế toán chốt ngày ${ngayVN(cn.ngayChot)}, cộng hoá đơn ${loai === 'thu' ? 'bán ra' : 'mua vào'} phát sinh sau ngày đó (chưa trừ tiền đã ${loai === 'thu' ? 'thu' : 'trả'} sau ngày chốt).`
+          ? `Số dư theo sổ kế toán chốt ngày ${ngayVN(cn.ngayChot)}, cộng hoá đơn ${loai === 'thu' ? 'bán ra' : 'mua vào'} sau ngày đó, trừ tiền đã ${loai === 'thu' ? 'thu' : 'trả'} sau ngày đó theo sao kê ngân hàng (khớp theo tên / MST trong nội dung chuyển khoản).`
           : `Chưa có sổ tổng hợp công nợ ${loai === 'thu' ? 'phải thu (TK 131)' : 'phải trả (TK 331)'} — tải file kế toán gửi.`}
         {cn.truoc > 0 && ` Số âm = ${loai === 'thu' ? 'khách trả trước' : 'mình đã trả trước'}: tổng ${vnd(cn.truoc)}.`}
       </p>
@@ -740,7 +770,8 @@ function BangCongNo({ thu, tra }: { thu: CongNo; tra: CongNo }) {
               <th className="py-1">Đối tác</th>
               <th className="text-right">Số dư sổ</th>
               <th className="text-right">HĐ sau ngày chốt</th>
-              <th className="text-right">Tổng</th>
+              <th className="text-right">{loai === 'thu' ? 'Đã thu sau chốt' : 'Đã trả sau chốt'}</th>
+              <th className="text-right">Còn lại</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -752,6 +783,7 @@ function BangCongNo({ thu, tra }: { thu: CongNo; tra: CongNo }) {
                 </td>
                 <td className="text-right">{vnd(x.soDu)}</td>
                 <td className="text-right">{x.hoaDonSau ? vnd(x.hoaDonSau) : '—'}</td>
+                <td className="text-right">{x.thanhToanSau ? `−${vnd(x.thanhToanSau)}` : '—'}</td>
                 <td className={`text-right font-semibold ${x.tong < 0 ? 'text-emerald-700' : ''}`}>{vnd(x.tong)}</td>
               </tr>
             ))}
@@ -759,6 +791,131 @@ function BangCongNo({ thu, tra }: { thu: CongNo; tra: CongNo }) {
         </table>
       )}
       <PhanTrang trang={t} tong={ds.length} co={CO} onDoi={setTrang} />
+    </div>
+  );
+}
+
+function NganHang({ nh, lan }: { nh: TongQuan['nganHang']; lan: number }) {
+  const toast = useToast();
+  const [loai, setLoai] = useState<'' | 'vao' | 'ra'>('');
+  const [tim, setTim] = useState('');
+  const [trang, setTrang] = useState(1);
+  const [kq, setKq] = useState<{ ds: GiaoDich[]; tong: number } | null>(null);
+  const CO = 20;
+  useEffect(() => {
+    if (!nh.taiKhoan.length) return;
+    const h = setTimeout(() => {
+      const p = new URLSearchParams({ page: String(trang), size: String(CO) });
+      if (loai) p.set('loai', loai);
+      if (tim.trim()) p.set('q', tim.trim());
+      api<{ ds: GiaoDich[]; tong: number }>(`/ke-toan/giao-dich?${p}`)
+        .then(setKq)
+        .catch((e) => toast.error((e as Error).message));
+    }, 250);
+    return () => clearTimeout(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loai, tim, trang, lan, nh.taiKhoan.length]);
+
+  if (!nh.taiKhoan.length) {
+    return (
+      <div className="card">
+        <h2 className="font-semibold">🏦 Ngân hàng</h2>
+        <EmptyState icon="🏦" text="Chưa có sao kê — kéo thả file Excel sao kê (Shinhan, MB, ACB, VPBank…) vào ô trên để trừ công nợ đã thu / đã trả." />
+      </div>
+    );
+  }
+  return (
+    <div className="card overflow-x-auto">
+      <h2 className="mb-2 font-semibold">🏦 Ngân hàng</h2>
+      <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {nh.taiKhoan.map((t) => (
+          <div key={`${t.nganHang}|${t.soTk}`} className="rounded-xl bg-brand-50 p-3 text-sm">
+            <div className="font-semibold">
+              {t.nganHang || 'Ngân hàng'} {t.soTk ? `···${t.soTk.slice(-4)}` : ''}
+            </div>
+            <div className="text-xs text-ink-muted">
+              {ngayVN(t.tuNgay)} → {ngayVN(t.denNgay)} · {t.soGd} giao dịch
+            </div>
+            <div className="mt-1">
+              Số dư cuối: <b>{vnd(t.soDuCuoi)}</b>
+            </div>
+            <div className="text-xs text-ink-muted">
+              Vào {vnd(t.tongVao)} · Ra {vnd(t.tongRa)}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {nh.canhBao5tr.so > 0 && (
+        <div className="mb-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+          <b>⚠ {nh.canhBao5tr.so} hoá đơn đầu vào từ 5 triệu chưa thấy chuyển khoản trả</b> (VAT {vnd(nh.canhBao5tr.tongThue)}) — trả
+          tiền mặt thì không được khấu trừ VAT. Kiểm tra lại hoặc tải thêm sao kê tài khoản khác.
+          <ul className="mt-1 list-disc pl-5 text-xs">
+            {nh.canhBao5tr.ds.slice(0, 8).map((h) => (
+              <li key={h.khoa || `${h.kyHieu}-${h.soHd}-${h.mstDoiTac}`}>
+                {ngayVN(h.ngay)} · {h.tenDoiTac} · HĐ {h.kyHieu}-{h.soHd} · {vnd(h.tongTien)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {nh.soTienVaoChuaKhop > 0 && (
+        <details className="mb-3 text-sm">
+          <summary className="cursor-pointer text-ink-soft">
+            {nh.soTienVaoChuaKhop} khoản tiền vào sau ngày chốt sổ chưa khớp được khách nào
+          </summary>
+          <ul className="mt-1 space-y-0.5 text-xs text-ink-muted">
+            {nh.tienVaoChuaKhop.map((g) => (
+              <li key={g.id}>
+                {ngayVN(g.ngay)} · <b>{vnd(g.ghiCo)}</b> · {g.noiDung}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <select className="input w-auto py-1 text-sm" value={loai} onChange={(e) => (setLoai(e.target.value as '' | 'vao' | 'ra'), setTrang(1))}>
+          <option value="">Tiền vào + ra</option>
+          <option value="vao">Tiền vào</option>
+          <option value="ra">Tiền ra</option>
+        </select>
+        <input className="input ml-auto w-56 py-1 text-sm" placeholder="Tìm nội dung…" value={tim} onChange={(e) => (setTim(e.target.value), setTrang(1))} />
+      </div>
+      {!kq ? (
+        <SkeletonRows rows={4} />
+      ) : (
+        <table className="w-full min-w-[720px] text-sm">
+          <thead>
+            <tr className="text-left text-xs text-ink-muted">
+              <th className="py-1">Ngày</th>
+              <th>Tài khoản</th>
+              <th>Nội dung</th>
+              <th className="text-right">Vào</th>
+              <th className="text-right">Ra</th>
+              <th className="text-right">Số dư</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {kq.ds.map((g) => (
+              <tr key={g.id}>
+                <td className="py-1.5 whitespace-nowrap">{ngayVN(g.ngay)}</td>
+                <td className="whitespace-nowrap text-xs">
+                  {g.nganHang} {g.soTk ? `···${g.soTk.slice(-4)}` : ''}
+                </td>
+                <td className="max-w-md truncate" title={g.noiDung}>
+                  {g.noiDung}
+                </td>
+                <td className="text-right text-emerald-700">{g.ghiCo ? vnd(g.ghiCo) : ''}</td>
+                <td className="text-right text-rose-600">{g.ghiNo ? vnd(g.ghiNo) : ''}</td>
+                <td className="text-right text-ink-muted">{g.soDu ? vnd(g.soDu) : ''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <PhanTrang trang={trang} tong={kq?.tong || 0} co={CO} onDoi={setTrang} />
     </div>
   );
 }

@@ -540,6 +540,21 @@ CREATE TABLE IF NOT EXISTS kt_tai_len (
   nguoi        text DEFAULT '',
   luc          text DEFAULT ''
 );
+-- Sao kê ngân hàng (anh Tâm 18/10/2026): giao dịch tiền vào / ra tài khoản công ty — trừ công nợ sau ngày chốt sổ.
+CREATE TABLE IF NOT EXISTS kt_giao_dich (
+  id           text PRIMARY KEY,       -- băm (TK + ngày + tiền + số dư + tham chiếu + nội dung) — tải lại không nhân đôi
+  so_tk        text DEFAULT '',
+  ngan_hang    text DEFAULT '',
+  ngay         text DEFAULT '',        -- YYYY-MM-DD
+  ghi_no       bigint DEFAULT 0,       -- tiền ra
+  ghi_co       bigint DEFAULT 0,       -- tiền vào
+  so_du        bigint DEFAULT 0,
+  noi_dung     text DEFAULT '',
+  so_ref       text DEFAULT '',
+  thu_tu       integer DEFAULT 0,      -- thứ tự trong sao kê (lớn = muộn hơn) — số dư cuối khi nhiều giao dịch cùng ngày
+  tai_len_id   text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS kt_giao_dich_ngay_idx ON kt_giao_dich (ngay);
 CREATE TABLE IF NOT EXISTS kt_cai_dat (
   khoa         text PRIMARY KEY,
   gia_tri      text DEFAULT ''

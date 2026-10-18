@@ -4,13 +4,13 @@ import { z } from 'zod';
 import { asyncHandler } from '../util/errors.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
 import { nhapBang, nhapXml, tongQuan, caiDat, luuCaiDat } from './keToan.service.js';
-import { trangHoaDon, lichSuTaiLen } from './keToan.repo.js';
+import { trangHoaDon, lichSuTaiLen, trangGiaoDich } from './keToan.repo.js';
 import { nowTz } from '../lib/datetime.js';
 
 export const keToanRouter = Router();
 keToanRouter.use(requireAuth, requireRole('director'));
 
-const MAX_DONG = 6000;
+const MAX_DONG = 10000;
 const MAX_COT = 40;
 
 const bangSchema = z.object({
@@ -59,6 +59,17 @@ keToanRouter.get(
     const page = Math.max(1, Number(req.query.page) || 1);
     const size = Math.min(100, Math.max(5, Number(req.query.size) || 20));
     res.json(await trangHoaDon({ huong, ky, tim: String(req.query.q || ''), page, size }));
+  }),
+);
+
+/** Giao dịch ngân hàng (sao kê đã tải). */
+keToanRouter.get(
+  '/giao-dich',
+  asyncHandler(async (req, res) => {
+    const loai = req.query.loai === 'vao' || req.query.loai === 'ra' ? req.query.loai : undefined;
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const size = Math.min(100, Math.max(5, Number(req.query.size) || 20));
+    res.json(await trangGiaoDich({ loai, tim: String(req.query.q || ''), page, size }));
   }),
 );
 
