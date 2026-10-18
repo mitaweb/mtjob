@@ -14,6 +14,7 @@ const Scores = lazy(() => import('./pages/Scores'));
 const Payroll = lazy(() => import('./pages/Payroll'));
 const AdminPayroll = lazy(() => import('./pages/AdminPayroll'));
 const Finance = lazy(() => import('./pages/Finance'));
+const KeToanThue = lazy(() => import('./pages/KeToanThue'));
 const CRM = lazy(() => import('./pages/CRM'));
 const Projects = lazy(() => import('./pages/Projects'));
 const Brain = lazy(() => import('./pages/Brain'));
@@ -79,6 +80,14 @@ export default function App() {
           element={
             <Protected roles={['director', 'admin']}>
               <AdminPayroll />
+            </Protected>
+          }
+        />
+        <Route
+          path="/ke-toan-thue"
+          element={
+            <Protected roles={['director']}>
+              <KeToanThue />
             </Protected>
           }
         />

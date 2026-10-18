@@ -11,6 +11,7 @@ import {
   Landmark,
   LayoutDashboard,
   MessageCircle,
+  Receipt,
   Settings,
   Star,
   Brain,
@@ -39,6 +40,8 @@ const NAV: NavItem[] = [
   { to: '/payroll', label: 'Lương', icon: Wallet, roles: ['member', 'leader'] },
   { to: '/payroll-admin', label: 'Bảng lương', icon: Banknote, roles: ['director', 'admin'] },
   { to: '/finance', label: 'Tài chính', icon: Landmark, roles: ['director', 'admin', 'accountant'] },
+  // Kế toán thuế (18/10/2026): VAT, TNDN, công nợ theo sổ sách thuế — chỉ giám đốc.
+  { to: '/ke-toan-thue', label: 'Kế toán thuế', icon: Receipt, roles: ['director'] },
   { to: '/crm', label: 'Khách hàng', icon: Users, roles: ['sale', 'director', 'admin'] },
   { to: '/projects', label: 'Dự án', icon: FolderKanban, roles: ['member', 'leader', 'director', 'admin', 'sale'] },
   // Lưu ý KH đã gộp vào Kho tri thức (tab Khách hàng) — anh Tâm 4/10/2026.

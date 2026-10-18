@@ -473,6 +473,77 @@ CREATE TABLE IF NOT EXISTS point_bonus_lines (
 );
 -- Vì sao hệ số là 0,5 ("2/4 dự án đạt") — chụp lại để tháng đã chốt vẫn giải thích được.
 ALTER TABLE point_bonus_lines ADD COLUMN IF NOT EXISTS ly_do text DEFAULT '';
+
+-- Kế toán thuế (anh Tâm 18/10/2026) — CHỈ giám đốc. Số liệu theo sổ sách thuế: hoá đơn đầu ra / đầu vào, tờ khai GTGT,
+-- công nợ 131/331, báo cáo kết quả kinh doanh. Tải lại file trùng không nhân đôi (khoá theo hoá đơn / kỳ / ngày chốt).
+CREATE TABLE IF NOT EXISTS kt_hoa_don (
+  khoa         text PRIMARY KEY,
+  huong        text NOT NULL,          -- ra | vao
+  mau_so       text DEFAULT '',
+  ky_hieu      text DEFAULT '',
+  so_hd        text DEFAULT '',
+  ngay         text DEFAULT '',        -- YYYY-MM-DD
+  mst_doi_tac  text DEFAULT '',
+  ten_doi_tac  text DEFAULT '',
+  dien_giai    text DEFAULT '',
+  tien_hang    bigint DEFAULT 0,
+  tien_thue    bigint DEFAULT 0,
+  tong_tien    bigint DEFAULT 0,
+  thue_suat    text DEFAULT '',
+  trang_thai   text DEFAULT '',
+  ky_ke_khai   text DEFAULT '',        -- YYYY-Qn
+  nguon        text DEFAULT '',        -- bang_ke | xml
+  tai_len_id   text DEFAULT '',
+  cap_nhat     text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS kt_hoa_don_ky_idx ON kt_hoa_don (ky_ke_khai);
+CREATE INDEX IF NOT EXISTS kt_hoa_don_ngay_idx ON kt_hoa_don (huong, ngay);
+CREATE TABLE IF NOT EXISTS kt_to_khai (
+  khoa         text PRIMARY KEY,       -- gtgt|YYYY-Qn|soLan
+  ky           text NOT NULL,
+  loai         text DEFAULT 'C',       -- C chính thức | B bổ sung
+  so_lan       integer DEFAULT 0,
+  ngay_lap     text DEFAULT '',
+  chi_tieu     text DEFAULT '{}',      -- JSON {ct22, ct25, ct35, ct40, ct43…}
+  tai_len_id   text DEFAULT '',
+  cap_nhat     text DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS kt_cong_no (
+  loai         text NOT NULL,          -- thu (131) | tra (331)
+  ngay_chot    text NOT NULL,
+  ma           text NOT NULL,
+  ten          text DEFAULT '',
+  du_no_dau    bigint DEFAULT 0,
+  du_co_dau    bigint DEFAULT 0,
+  ps_no        bigint DEFAULT 0,
+  ps_co        bigint DEFAULT 0,
+  du_no        bigint DEFAULT 0,
+  du_co        bigint DEFAULT 0,
+  tu_ngay      text DEFAULT '',
+  tai_len_id   text DEFAULT '',
+  PRIMARY KEY (loai, ngay_chot, ma)
+);
+CREATE TABLE IF NOT EXISTS kt_bao_cao (
+  khoa         text PRIMARY KEY,       -- kqkd|tu|den
+  loai         text DEFAULT 'kqkd',
+  tu_ngay      text DEFAULT '',
+  den_ngay     text DEFAULT '',
+  chi_tieu     text DEFAULT '{}',
+  tai_len_id   text DEFAULT '',
+  cap_nhat     text DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS kt_tai_len (
+  id           text PRIMARY KEY,
+  ten_file     text DEFAULT '',
+  loai         text DEFAULT '',
+  ket_qua      text DEFAULT '',
+  nguoi        text DEFAULT '',
+  luc          text DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS kt_cai_dat (
+  khoa         text PRIMARY KEY,
+  gia_tri      text DEFAULT ''
+);
 `;
 
 /**
