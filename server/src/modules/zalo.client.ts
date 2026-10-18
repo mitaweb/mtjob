@@ -362,7 +362,8 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
         }
         resolve();
       };
-      const tong = setTimeout(ket, 22_000);
+      // Nhiều lô (tới 40) sau mấy ngày không đồng bộ → cho tới 32 giây.
+      const tong = setTimeout(ket, 32_000);
       let chot: ReturnType<typeof setTimeout> | null = null;
       const henChot = (ms: number) => {
         if (chot) clearTimeout(chot);
@@ -405,14 +406,14 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
         for (const m of msgs as unknown as TinThuVien[]) if (nhan(m)) moi++;
         // Lô có tin mới → xin tiếp CẢ HAI chiều: từ tin MỚI NHẤT (tới tin mới hơn) và từ tin CŨ NHẤT của lô.
         // Zalo không nói rõ chiều phân trang — 17/10/2026 chỉ lùi về tin cũ nên không bao giờ tới tin 15–17/10.
-        // Mỗi mốc chỉ xin một lần; tối đa 16 lô.
+        // Mỗi mốc chỉ xin một lần; tối đa 40 lô (18/10/2026: 16 lô mới tới tin 16/10 09:22 sau 3 ngày mất kết nối).
         const ids = (msgs as unknown as TinThuVien[]).map((m) => String(m.data?.msgId || '')).filter((x) => /^\d+$/.test(x));
         let xin = false;
         if (moi > 0 && ids.length) {
           const moiNhat = ids.reduce((a, b) => (BigInt(a) > BigInt(b) ? a : b));
           const cuNhat = ids.reduce((a, b) => (BigInt(a) < BigInt(b) ? a : b));
           for (const moc of [moiNhat, cuNhat]) {
-            if (daXin.has(moc) || daXin.size >= 16) continue;
+            if (daXin.has(moc) || daXin.size >= 40) continue;
             daXin.add(moc);
             api.listener.requestOldMessages(ThreadType.User, moc);
             xin = true;
