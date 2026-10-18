@@ -130,7 +130,9 @@ export async function layHoaDonThang(token: string, thang: string, huong: 'ra' |
     let state = '';
     for (let trang = 0; trang < 60; trang++) {
       if (Date.now() > han) return { hoaDon: ra, xong: false };
-      const qs = `sort=tdlap:desc,khmshdon:asc,shdon:desc&size=50${state ? `&state=${encodeURIComponent(state)}` : ''}&search=tdlap=ge=${tu};tdlap=le=${den}`;
+      // Danh sách chỉ nhận sắp theo MỘT trường (sắp nhiều trường là của lệnh xuất Excel — cổng báo "Không hỗ trợ sắp xếp
+      // theo nhiều trường", 18/10/2026).
+      const qs = `sort=tdlap:desc&size=50${state ? `&state=${encodeURIComponent(state)}` : ''}&search=tdlap=ge=${tu};tdlap=le=${den}`;
       let r: Response | null = null;
       for (let lan = 0; lan < 3; lan++) {
         r = await fetch(`${GOC}/${nguon}/invoices/${loai}?${qs}`, { headers: dauGoi(token), signal: AbortSignal.timeout(15_000) });
