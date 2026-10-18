@@ -104,9 +104,9 @@ const taiZca = () => import('zca-js');
 /**
  * Khoá "đang chạy" CÓ HẠN (anh Tâm 17/10/2026: Zalo ngừng đồng bộ 3 ngày). Trước đây là biến true/false: lượt bị
  * Vercel cắt ở 60 giây thì khối finally không chạy, instance được dùng lại vẫn tưởng "đang chạy" → mọi lượt sau bỏ
- * qua mãi. Giờ khoá tự hết sau 75 giây (lâu hơn mọi lượt sống được).
+ * qua mãi. Giờ khoá tự hết sau 130 giây (lâu hơn mọi lượt sống được — maxDuration 120 giây, gói Pro).
  */
-export const KHOA_MS = 75_000;
+export const KHOA_MS = 130_000;
 let dangNhapTu = 0;
 
 /**
@@ -540,6 +540,8 @@ export async function xuLyNgay(): Promise<{
     return { nhom: vn.chuaXet + vn.chuaKeo, doc: await demCuocCanRut().catch(() => 0) };
   };
   // Nhắc lẻ kiểu cũ → mỗi khách MỘT nhắc gộp (nhanh, không cần AI).
+  // Hạn giờ tính từ đầu lượt (18/10/2026: lượt bị cắt 504 vì các bước trước đã ngốn giờ rồi mới tính 40 giây đọc).
+  const han = Date.now() + 45_000;
   const gop = await gopNhacCu().catch(() => ({ gop: 0, khach: 0 }));
   if (gop.gop > 0) {
     return { ok: true, buoc: 'nhom', note: `Gộp ${gop.gop} nhắc lẻ thành ${gop.khach} nhắc (mỗi khách một nhắc)`, con: await demCon() };
@@ -559,14 +561,14 @@ export async function xuLyNgay(): Promise<{
 
   // Lọc lại nhóm AI đã cho học (tiêu chí chặt) — trước khi đọc, để khỏi tốn AI đọc nhóm thừa.
   if ((await demNhomAiDaChoHoc().catch(() => 0)) > 0) {
-    const l = await locLaiNhom(Date.now() + 40_000);
+    const l = await locLaiNhom(han);
     if (l.xet > 0) {
       return { ok: true, buoc: 'nhom', note: `Lọc lại ${l.xet} nhóm: giữ ${l.giu}, bỏ ${l.bo} nhóm không liên quan — còn ${l.conLai}`, con: await demCon() };
     }
   }
 
   if (truoc.doc > 0) {
-    const r = await rutTriThucZalo({ epNgay: true, limit: 40, han: Date.now() + 40_000 });
+    const r = await rutTriThucZalo({ epNgay: true, limit: 40, han });
     if (r.loi) return { ok: false, buoc: 'doc', note: `AI hết lượt: ${r.loi}`, con: await demCon() };
     if (r.cuoc > 0) {
       const note = `AI đọc ${r.cuoc} cuộc: ${r.y} ý vào kho, ${r.nhac} nhắc việc, ${r.caNhan} cuộc không liên quan bỏ qua, ${r.hoi} cuộc cần anh quyết`;

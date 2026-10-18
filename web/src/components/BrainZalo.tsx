@@ -168,8 +168,19 @@ export default function BrainZalo() {
       }
       let dungYen = 0;
       let truoc = '';
+      let loiLienTiep = 0;
       for (let lan = 0; lan < 40 && !dung.current; lan++) {
-        const r = await api<{ ok: boolean; buoc: string; note: string; con: { nhom: number; doc: number } }>('/zalo/process', { body: {} });
+        let r: { ok: boolean; buoc: string; note: string; con: { nhom: number; doc: number } };
+        try {
+          r = await api('/zalo/process', { body: {} });
+          loiLienTiep = 0;
+        } catch (e) {
+          // Một lượt lỗi (vd máy chủ quá giờ khi tin dồn nhiều) → làm tiếp lượt sau; lỗi 3 lần liền mới dừng.
+          loiLienTiep++;
+          ghi(`Lượt này lỗi (${(e as Error).message.slice(0, 120)}) — ${loiLienTiep < 3 ? 'làm tiếp…' : 'dừng, app tự làm tiếp ở nền.'}`);
+          if (loiLienTiep >= 3) break;
+          continue;
+        }
         ghi(`${r.note}${r.buoc !== 'xong' ? ` — còn ${r.con.nhom} việc nhóm, ${r.con.doc} cuộc chưa đọc` : ''}`);
         await tai();
         if (!r.ok) {
