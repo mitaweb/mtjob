@@ -463,7 +463,7 @@ export async function taiTepZalo(url: string, loai: LoaiTep): Promise<{ mimeType
   let u = url;
   for (let buoc = 0; buoc < 4; buoc++) {
     if (!laHostTepZalo(u)) return null;
-    const r = await fetch(u, { redirect: 'manual', signal: AbortSignal.timeout(10_000) });
+    const r = await fetch(u, { redirect: 'manual', signal: AbortSignal.timeout(8_000) });
     if (r.status >= 300 && r.status < 400) {
       const toi = r.headers.get('location');
       if (!toi) return null;
@@ -758,7 +758,7 @@ export async function rutCuoc(c: ZaloThread, chu: NguoiGui, viDu: ViDuQuyet = []
   return { y: kq.y.length, vaoKho, loai: 'cong_viec', nhac };
 }
 
-/** Khoá có hạn (130 giây) — xem KHOA_MS ở zalo.client.ts: lượt bị Vercel cắt không làm kẹt mãi. */
+/** Khoá có hạn (75 giây) — xem KHOA_MS ở zalo.client.ts: lượt bị Vercel cắt không làm kẹt mãi. */
 let rutTu = 0;
 let lanRutCuoi = 0;
 
@@ -770,7 +770,7 @@ export async function rutTriThucZalo(
   opts: { epNgay?: boolean; threadId?: string; limit?: number; han?: number; boQuaNhip?: boolean } = {},
 ): Promise<{ cuoc: number; y: number; nhac: number; caNhan: number; hoi: number; loi: string }> {
   const rong = { cuoc: 0, y: 0, nhac: 0, caNhan: 0, hoi: 0, loi: '' };
-  if (Date.now() - rutTu < 130_000) return rong;
+  if (Date.now() - rutTu < 75_000) return rong;
   if (!opts.epNgay && !opts.boQuaNhip && Date.now() - lanRutCuoi < 4 * 60_000) return rong;
   rutTu = Date.now();
   lanRutCuoi = Date.now();

@@ -44,14 +44,16 @@ jobsRouter.get(
   asyncHandler(async (req, res) => {
     checkCron(req.headers.authorization);
     const batDau = Date.now();
-    const sent = await runDueReminders();
-    res.json({ ok: true, job: 'reminders', sent });
-    // Zalo → kho tri thức ăn theo nhịp cron này (anh Tâm 8/10/2026: chạy trên Vercel, chỉ ban đêm).
-    // Ban ngày / chưa đăng nhập Zalo thì không làm gì. Chạy nền sau khi đã trả lời cron.
+    // Trả lời cron NGAY rồi mới làm (18/10/2026): dịch vụ cron ngoài (cron-job.org — dùng lại nếu không còn gói Vercel
+    // Pro) chỉ chờ ~30 giây, trả chậm bị tính lỗi, lỗi nhiều lần nó tự tắt job — nghi là lý do nó ngừng gọi từ 15/10.
+    res.json({ ok: true, job: 'reminders' });
+    // Nhắc hẹn rồi Zalo → kho tri thức, chạy nền nối tiếp nhau.
     runInBackground(
-      import('./zalo.client.js')
+      runDueReminders()
+        .catch((e) => console.warn('[reminders] quét:', (e as Error).message))
+        .then(() => import('./zalo.client.js'))
         .then((z) => z.chayBanDem(batDau))
-        .catch((e) => console.warn('[zalo] ban đêm:', (e as Error).message)),
+        .catch((e) => console.warn('[zalo] lượt nền:', (e as Error).message)),
     );
   }),
 );

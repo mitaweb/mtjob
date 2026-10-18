@@ -14,7 +14,7 @@
 //   - Thư viện KHÔNG CHÍNH THỨC (zca-js giả lập Zalo Web): Zalo có thể khoá tài khoản. Anh đang mở
 //     Zalo trên TRÌNH DUYỆT (chat.zalo.me) thì lượt đồng bộ đó bị đẩy ra — Zalo điện thoại/PC không sao.
 import { maHoa, giaiMa } from '../lib/maHoa.js';
-import { maTinLonNhat, viecBanDem, gioTin } from '../lib/zalo.js';
+import { maTinLonNhat, viecBanDem, gioTin, KHOANG_DONG_BO_MS } from '../lib/zalo.js';
 import { nowTz } from '../lib/datetime.js';
 import {
   docTrangThai,
@@ -44,8 +44,8 @@ let daMoLaiMtDigital = false;
  */
 export async function chayBanDem(batDau = Date.now()): Promise<string> {
   // Máy chủ sống tối đa 60 giây kể từ lúc cron gọi (`batDau`). Một cuộc AI đọc (kèm tải ảnh / mở link) có thể
-  // tới ~20 giây → không bắt đầu cuộc mới sau giây thứ 38.
-  const han = batDau + 38_000;
+  // tới ~30 giây → chỉ bắt đầu cuộc mới trong 25 giây đầu.
+  const han = batDau + 25_000;
   const st = await docTrangThai();
   const gioVN = nowTz().hour();
   if (!st.coPhien) return xetLaiKhoBanDem();
@@ -104,9 +104,9 @@ const taiZca = () => import('zca-js');
 /**
  * Khoá "đang chạy" CÓ HẠN (anh Tâm 17/10/2026: Zalo ngừng đồng bộ 3 ngày). Trước đây là biến true/false: lượt bị
  * Vercel cắt ở 60 giây thì khối finally không chạy, instance được dùng lại vẫn tưởng "đang chạy" → mọi lượt sau bỏ
- * qua mãi. Giờ khoá tự hết sau 130 giây (lâu hơn mọi lượt sống được — maxDuration 120 giây, gói Pro).
+ * qua mãi. Giờ khoá tự hết sau 75 giây (lâu hơn mọi lượt sống được — maxDuration 60 giây).
  */
-export const KHOA_MS = 130_000;
+export const KHOA_MS = 75_000;
 let dangNhapTu = 0;
 
 /**
@@ -335,7 +335,10 @@ export async function quetNhomKhach(): Promise<{ ok: boolean; note: string; conL
  * Một lượt đồng bộ (chỉ lấy tin, KHÔNG rút tri thức — việc đó để ban đêm hoặc nút "Rút ngay").
  * Lỗi đăng nhập (phiên hết hạn / bị đăng xuất) → xoá phiên, báo anh đăng nhập lại.
  */
-export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: string }> {
+/** Mỗi lượt đồng bộ lấy tối đa chừng này lô tin 1-1 (~50 tin/lô) — vừa 60 giây, không cần gói Pro. */
+export const LO_MOI_LUOT = 10;
+
+export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: string; conTin?: boolean }> {
   const st = await docTrangThai();
   if (!st.coPhien) return { ok: false, tin: 0, note: 'Chưa đăng nhập Zalo' };
   if (dangDongBo()) return { ok: true, tin: 0, note: 'Đang đồng bộ' };
@@ -348,6 +351,7 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
 
     const gom = new Map<string, TinThuVien>();
     let biDay = '';
+    let conTin = false;
     // Chẩn đoán cho dòng trạng thái: kết nối có nhận khoá không, Zalo trả mấy lô / mấy tin.
     const chanDoan = { khoa: false, lo: 0, tinLo: 0, trucTiep: 0, loNhom: 0, cacLo: [] as string[], tuDau: false };
     await new Promise<void>((resolve) => {
@@ -362,8 +366,8 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
         }
         resolve();
       };
-      // Nhiều lô (tới 40) sau mấy ngày không đồng bộ → cho tới 32 giây.
-      const tong = setTimeout(ket, 32_000);
+      // Mỗi lượt tối đa LO_MOI_LUOT lô, nghe tối đa 20 giây — phần còn lại để lượt sau (chia nhỏ cho vừa 60 giây).
+      const tong = setTimeout(ket, 20_000);
       let chot: ReturnType<typeof setTimeout> | null = null;
       const henChot = (ms: number) => {
         if (chot) clearTimeout(chot);
@@ -434,10 +438,12 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
         let xin = false;
         if (ids.length) {
           const moiNhat = ids.reduce((a, b) => (BigInt(a) > BigInt(b) ? a : b));
-          if (!daXin.has(moiNhat) && daXin.size < 40) {
+          if (!daXin.has(moiNhat) && daXin.size < LO_MOI_LUOT) {
             daXin.add(moiNhat);
             api.listener.requestOldMessages(ThreadType.User, moiNhat);
             xin = true;
+          } else if (!daXin.has(moiNhat)) {
+            conTin = true; // hết số lô của lượt này mà lô cuối vẫn có tin → còn tin, lượt sau lấy tiếp
           }
         }
         henChot(xin ? 5_000 : 2_500);
@@ -502,7 +508,9 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
     lo.push(...nhom.map(tinNhom));
     const kq = lo.length ? await nhanTin(lo) : { luu: 0, boQua: 0 };
     const gio = now();
-    await ghiMocDongBo(maTinLonNhat(ds.map((m) => String(m.data.msgId || '')), st.lastMsgId), gio);
+    // Còn tin chưa lấy hết → ghi giờ đồng bộ lùi lại quá chu kỳ để lượt cron kế tiếp (1 phút sau) lấy tiếp từ mốc mới.
+    const gioGhi = conTin ? new Date(Date.now() - KHOANG_DONG_BO_MS - 60_000).toISOString() : gio;
+    await ghiMocDongBo(maTinLonNhat(ds.map((m) => String(m.data.msgId || '')), st.lastMsgId), gioGhi);
     // Khoảng thời gian tin Zalo trả về — nhìn là biết có tới tin mới nhất không.
     const tsDs = lo.map((t) => Number(t.ts)).filter((x) => x > 0);
     const khoang = tsDs.length ? ` · tin từ ${gioTin(String(Math.min(...tsDs)))} đến ${gioTin(String(Math.max(...tsDs)))}` : '';
@@ -515,9 +523,9 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
         : '');
     const note =
       biDay ||
-      `Đồng bộ lúc ${nowTz().format('HH:mm DD/MM')} — ${lo.length} tin (${nhom.length} tin nhóm; ${kq.luu} tin ở cuộc đã bật) · ${chiTiet}`;
+      `Đồng bộ lúc ${nowTz().format('HH:mm DD/MM')}${conTin ? ' (còn tin — lượt sau lấy tiếp)' : ''} — ${lo.length} tin (${nhom.length} tin nhóm; ${kq.luu} tin ở cuộc đã bật) · ${chiTiet}`;
     await ghiTrangThai({ status: 'online', note, lastSeen: gio });
-    return { ok: true, tin: lo.length, note };
+    return { ok: true, tin: lo.length, note, conTin };
   } finally {
     dongBoTu = 0;
   }
@@ -541,7 +549,7 @@ export async function xuLyNgay(): Promise<{
   };
   // Nhắc lẻ kiểu cũ → mỗi khách MỘT nhắc gộp (nhanh, không cần AI).
   // Hạn giờ tính từ đầu lượt (18/10/2026: lượt bị cắt 504 vì các bước trước đã ngốn giờ rồi mới tính 40 giây đọc).
-  const han = Date.now() + 45_000;
+  const han = Date.now() + 25_000;
   const gop = await gopNhacCu().catch(() => ({ gop: 0, khach: 0 }));
   if (gop.gop > 0) {
     return { ok: true, buoc: 'nhom', note: `Gộp ${gop.gop} nhắc lẻ thành ${gop.khach} nhắc (mỗi khách một nhắc)`, con: await demCon() };

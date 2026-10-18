@@ -161,10 +161,14 @@ export default function BrainZalo() {
     setTienTrinh([]);
     try {
       if (st?.coPhien) {
-        ghi('Đang đồng bộ tin mới từ Zalo…');
-        const s = await api<{ ok: boolean; note: string }>('/zalo/sync', { body: {} });
-        ghi(s.note);
-        await tai();
+        // Mỗi lần máy chủ chỉ lấy một phần (≤ 10 lô) cho vừa thời gian — còn tin thì lấy tiếp.
+        for (let lan = 0; lan < 10 && !dung.current; lan++) {
+          ghi(lan ? 'Lấy tiếp tin mới…' : 'Đang đồng bộ tin mới từ Zalo…');
+          const s = await api<{ ok: boolean; note: string; conTin?: boolean }>('/zalo/sync', { body: {} });
+          ghi(s.note);
+          await tai();
+          if (!s.ok || !s.conTin) break;
+        }
       }
       let dungYen = 0;
       let truoc = '';
