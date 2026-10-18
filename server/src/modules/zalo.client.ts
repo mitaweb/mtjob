@@ -459,7 +459,14 @@ export async function dongBoZalo(): Promise<{ ok: boolean; tin: number; note: st
     const laNhom = (m: TinThuVien) => m.type === ThreadType.Group;
     const nhom = tatCa.filter(laNhom);
     // Tên cuộc = tên người kia. Tin của mình không mang tên người kia → tra hồ sơ.
-    const ds = tatCa.filter((m) => !laNhom(m));
+    // CHỈ tin MỚI sau mốc đã lấy (anh Tâm 18/10/2026: "mỗi mốc đã lấy tin thì lấy từ đó trở đi, không xem tin cũ làm
+    // gì nữa") — tin cũ hơn / bằng mốc (Zalo trả lại khi xin từ đầu) bỏ luôn, không lưu, không cho AI đọc.
+    const mocCu = /^\d+$/.test(st.lastMsgId || '') ? BigInt(st.lastMsgId!) : null;
+    const sauMoc = (m: TinThuVien) => {
+      const id = String(m.data?.msgId || '');
+      return mocCu === null || !/^\d+$/.test(id) || BigInt(id) > mocCu;
+    };
+    const ds = tatCa.filter((m) => !laNhom(m) && sauMoc(m));
     const ten = new Map<string, string>();
     for (const m of ds) if (!m.isSelf && m.data?.dName) ten.set(m.threadId, String(m.data.dName));
     const thieu = [...new Set(ds.map((m) => m.threadId).filter((id) => !ten.has(id)))];
