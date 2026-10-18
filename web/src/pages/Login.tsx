@@ -28,10 +28,14 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-brand-100 via-white to-brand-50">
-      <form onSubmit={submit} className="card shadow-card w-full max-w-sm space-y-4">
+    <div className="relative min-h-screen overflow-hidden flex items-center justify-center p-4 bg-brand-500">
+      {/* Họa tiết góc theo bộ nhận diện: tam giác xanh Ocean + vàng, vòng tròn nét mảnh. */}
+      <div aria-hidden className="pointer-events-none absolute -left-10 -top-10 h-56 w-56 bg-ocean-600 [clip-path:polygon(0_0,100%_0,0_100%)]" />
+      <div aria-hidden className="pointer-events-none absolute -bottom-12 -right-12 h-64 w-64 bg-ink [clip-path:polygon(100%_0,100%_100%,0_100%)]" />
+      <div aria-hidden className="pointer-events-none absolute right-10 top-16 h-24 w-24 rounded-full border-2 border-ink/40" />
+      <form onSubmit={submit} className="card relative w-full max-w-sm space-y-4 shadow-pop-lg">
         <div className="text-center">
-          <Brand className="py-2" />
+          <Brand />
           <p className="text-ink-faint text-xs mt-2">MTJOB — Quản lý công việc & chấm công</p>
         </div>
         <div>

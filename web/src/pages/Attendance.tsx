@@ -90,7 +90,7 @@ export default function Attendance() {
         </div>
         {msg && <div className="mt-3 text-sm rounded-lg bg-brand-50 px-3 py-2">{msg}</div>}
         <button
-          className="mt-3 text-sm text-brand-600 underline"
+          className="mt-3 text-sm text-ocean-600 underline"
           onClick={() => enablePush().then((r) => setMsg(r.message))}
         >
           Bật thông báo đẩy

@@ -9,12 +9,12 @@ const BADGE_CLS: Record<BadgeVariant, string> = {
   success: 'bg-emerald-100 text-emerald-700',
   warn: 'bg-amber-100 text-amber-700',
   danger: 'bg-rose-100 text-rose-600',
-  info: 'bg-brand-100 text-brand-700',
-  neutral: 'bg-brand-200 text-ink-soft',
+  info: 'bg-ocean-100 text-ocean-700',
+  neutral: 'bg-brand-100 text-ink-soft',
 };
 
 export function Badge({ variant = 'neutral', children }: { variant?: BadgeVariant; children: ReactNode }) {
-  return <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${BADGE_CLS[variant]}`}>{children}</span>;
+  return <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${BADGE_CLS[variant]}`}>{children}</span>;
 }
 
 /** Đầu trang chuẩn: tiêu đề + mô tả + slot hành động bên phải. */
@@ -28,10 +28,11 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="card flex items-center justify-between gap-3">
-      <div>
-        <h1 className="text-lg font-bold">{title}</h1>
-        {desc ? <p className="text-sm text-ink-muted">{desc}</p> : null}
+    <div className="flex flex-wrap items-end justify-between gap-3 pb-1">
+      <div className="min-w-0">
+        {/* Tiêu đề to, gạch vàng như bút dạ quang — điểm nhấn Gen Z (18/10/2026). */}
+        <h1 className="inline bg-[linear-gradient(transparent_62%,#ffbb03_62%)] text-2xl font-bold tracking-tight text-ink sm:text-3xl">{title}</h1>
+        {desc ? <p className="mt-1.5 text-sm text-ink-muted">{desc}</p> : null}
       </div>
       {action}
     </div>

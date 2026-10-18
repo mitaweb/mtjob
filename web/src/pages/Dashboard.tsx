@@ -101,7 +101,7 @@ export default function Dashboard() {
                 onClick={() => setDetail({ id: s.memberId, name: s.fullName })}
               >
                 <td className="py-1">{s.rank}</td>
-                <td className="font-medium text-brand-700 underline">{s.fullName}</td>
+                <td className="font-medium text-ocean-700 underline">{s.fullName}</td>
                 <td>{s.teamId}</td>
                 <td className="font-medium">{s.monthPoints}</td>
                 <td className="text-emerald-700">{vnd(s.bonus)}</td>

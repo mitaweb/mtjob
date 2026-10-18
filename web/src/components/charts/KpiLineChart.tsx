@@ -17,7 +17,7 @@ export default function KpiLineChart({ data }: { data: SeriesPoint[] }) {
           <XAxis dataKey="label" tick={{ fontSize: 11 }} />
           <YAxis tick={{ fontSize: 11 }} />
           <Tooltip />
-          <Line type="monotone" dataKey="value" stroke={MAU.chinh} strokeWidth={2} dot={{ r: 3 }} />
+          <Line type="monotone" dataKey="value" stroke={MAU.nhan} strokeWidth={2.5} dot={{ r: 3, fill: MAU.nhan }} />
         </LineChart>
       </ResponsiveContainer>
     </div>

@@ -293,7 +293,7 @@ function DuLieuKho() {
         <div className="card">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
-              <span className="text-2xl font-bold text-brand-600">{stats.total}</span>{' '}
+              <span className="text-2xl font-bold text-ocean-600">{stats.total}</span>{' '}
               <span className="text-sm text-ink-muted">đoạn đang được ghi nhớ (mục tri thức + hồ sơ + tài liệu)</span>
             </div>
             {stats.remaining > 0 ? (
@@ -367,7 +367,7 @@ function DuLieuKho() {
                   </button>
                   <div className="flex shrink-0 gap-2 text-xs">
                     {d.status === 'error' && (
-                      <button className="text-brand-600 underline" onClick={() => retryDoc(d.id)}>
+                      <button className="text-ocean-600 underline" onClick={() => retryDoc(d.id)}>
                         xử lý lại
                       </button>
                     )}
@@ -574,7 +574,7 @@ export default function Brain() {
             <button
               key={t.key}
               className={`whitespace-nowrap rounded-xl border px-3 py-1.5 text-sm ${
-                dangXem === t.key ? 'border-brand-600 bg-brand-600 text-white' : 'border-brand-200 bg-white text-ink-soft'
+                dangXem === t.key ? 'border-brand-600 bg-brand-600 text-ink' : 'border-brand-200 bg-white text-ink-soft'
               }`}
               onClick={() => setParams(t.key === 'kho' ? {} : { tab: t.key })}
             >

@@ -206,7 +206,7 @@ function Bar100({ percent, thin }: { percent: number; thin?: boolean }) {
 function ChiSoTheoTeam({ kpis }: { kpis: KpiTomTat[] }) {
   const PHAN_TRAM_MAU = {
     emerald: 'text-emerald-700',
-    brand: 'text-brand-600',
+    brand: 'text-ocean-600',
     amber: 'text-amber-700',
   };
   const theoTeam = TEAMS.map((t) => [t, kpis.filter((k) => k.teamId === t)] as const)
@@ -618,7 +618,7 @@ export default function Projects() {
                           </div>
                         )}
                         <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                          <button className="text-brand-600 underline" onClick={() => setChartKpi(chartKpi?.id === k.id ? null : k)}>
+                          <button className="text-ocean-600 underline" onClick={() => setChartKpi(chartKpi?.id === k.id ? null : k)}>
                             {chartKpi?.id === k.id ? 'Ẩn biểu đồ' : 'Xem biểu đồ'}
                           </button>
                           {canManage && (
@@ -718,7 +718,7 @@ export default function Projects() {
                     <button
                       key={`${p.teamId}-${p.name}`}
                       type="button"
-                      className="rounded-full border border-brand-100 px-3 py-1 text-xs text-ink-soft hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
+                      className="rounded-full border border-brand-100 px-3 py-1 text-xs text-ink-soft hover:border-brand-300 hover:bg-brand-50 hover:text-ocean-700"
                       onClick={() =>
                         setKpiRows((rows) => [...rows, { ...p, id: '', active: true, startDate: '', endDate: '' }])
                       }
@@ -1020,7 +1020,7 @@ function ThuongVaThanhVien({
 
   if (!mo) {
     return (
-      <button className="mt-2 text-xs text-brand-600 underline" onClick={() => setMo(true)}>
+      <button className="mt-2 text-xs text-ocean-600 underline" onClick={() => setMo(true)}>
         👥 Thành viên phòng {team} trong dự án
       </button>
     );
@@ -1051,7 +1051,7 @@ function ThuongVaThanhVien({
                   disabled={!suaDuoc}
                   onClick={() => doiThamGia(m.id, !co)}
                   className={`rounded-lg border px-2 py-1 text-xs ${
-                    co ? 'border-brand-600 bg-brand-600 text-white' : 'border-brand-200 bg-white text-ink-soft'
+                    co ? 'border-brand-600 bg-brand-600 text-ink' : 'border-brand-200 bg-white text-ink-soft'
                   } ${suaDuoc ? '' : 'cursor-not-allowed opacity-60'}`}
                 >
                   {co ? '✓ ' : '+ '}

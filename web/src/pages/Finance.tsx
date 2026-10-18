@@ -292,7 +292,7 @@ export default function Finance() {
         <Stat
           label={sum?.carryOverTotal ? 'Phải thu tháng này + nợ cũ' : 'Tổng phải thu/tháng'}
           value={vnd((sum?.receivableTotal ?? 0) + (sum?.carryOverTotal ?? 0))}
-          cls="text-brand-600"
+          cls="text-ocean-600"
         />
       </div>
       {moLuyKe && (
@@ -444,7 +444,7 @@ export default function Finance() {
                               : 'Đã thu'}
                       </button>
                       <button
-                        className="text-brand-600 underline text-xs mr-2"
+                        className="text-ocean-600 underline text-xs mr-2"
                         onClick={() => {
                           setPForm({ ...p });
                           setMucGoc(p.receivable);
@@ -524,7 +524,7 @@ export default function Finance() {
                 <label
                   key={k}
                   className={`cursor-pointer rounded-lg border px-3 py-1 ${
-                    (pForm.kind || 'monthly') === k ? 'border-brand-600 bg-brand-600 text-white' : 'border-brand-200 bg-white'
+                    (pForm.kind || 'monthly') === k ? 'border-brand-600 bg-brand-600 text-ink' : 'border-brand-200 bg-white'
                   }`}
                 >
                   <input type="radio" className="hidden" checked={(pForm.kind || 'monthly') === k} onChange={() => setPForm({ ...pForm, kind: k })} />
@@ -610,7 +610,7 @@ export default function Finance() {
               <div className="text-xs text-ink-muted mb-1">Người nhận nhắc thu (5 ngày trước hạn):</div>
               <div className="flex flex-wrap gap-2">
                 {members.map((m) => (
-                  <label key={m.id} className={`text-xs px-2 py-1 rounded-lg cursor-pointer border ${(pForm.notifyMemberIds || []).includes(m.id) ? 'bg-brand-600 text-white border-brand-600' : 'bg-white border-brand-200'}`}>
+                  <label key={m.id} className={`text-xs px-2 py-1 rounded-lg cursor-pointer border ${(pForm.notifyMemberIds || []).includes(m.id) ? 'bg-brand-600 text-ink border-brand-600' : 'bg-white border-brand-200'}`}>
                     <input type="checkbox" className="hidden" checked={(pForm.notifyMemberIds || []).includes(m.id)} onChange={() => toggleNotify(m.id)} />
                     {m.fullName}
                   </label>

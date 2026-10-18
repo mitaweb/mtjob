@@ -247,7 +247,7 @@ export default function AdminPayroll() {
             <li key={r.memberId} className="py-2 text-sm">
               <div className="flex items-center justify-between gap-2">
                 <button
-                  className="font-semibold text-brand-700 underline-offset-2 hover:underline"
+                  className="font-semibold text-ocean-700 underline-offset-2 hover:underline"
                   onClick={() => openEditor(r)}
                 >
                   {r.fullName}
@@ -284,7 +284,7 @@ export default function AdminPayroll() {
               <tr key={r.memberId} className="border-t">
                 <td className="py-2">
                   <button
-                    className="font-medium text-brand-700 underline-offset-2 hover:underline"
+                    className="font-medium text-ocean-700 underline-offset-2 hover:underline"
                     onClick={() => openEditor(r)}
                   >
                     {r.fullName}
@@ -451,7 +451,7 @@ export default function AdminPayroll() {
                       <td>{a.mode}</td>
                       <td className="text-right">
                         {!locked && (
-                          <button className="text-brand-600 underline text-xs" onClick={() => setForm({ ...a })}>
+                          <button className="text-ocean-600 underline text-xs" onClick={() => setForm({ ...a })}>
                             sửa
                           </button>
                         )}
@@ -519,7 +519,7 @@ function DongLeader({ l }: { l: DuAnThuong }) {
   const truot = l.truot ?? [];
   return (
     <div className="text-xs text-ink-muted">
-      <span className="text-brand-700">Leader {l.teamId ?? ''}</span>
+      <span className="text-ocean-700">Leader {l.teamId ?? ''}</span>
       {' · '}
       {l.tyLe === null ? 'chưa đo được chỉ số nào' : `${l.soDat}/${l.soChiSo} chỉ số đạt (${Math.round(l.tyLe)}%)`}
       {' → '}
@@ -587,7 +587,7 @@ function CaiDatThuong({ onSaved }: { onSaved: () => void }) {
             {cd.teams.map((t) => `${t.id} ${vnd(t.leaderKpiBonus)}`).join(' · ')} · đạt từ {cd.kpiPassRate}%
           </span>
         </span>
-        <span className="shrink-0 whitespace-nowrap text-xs text-brand-600 underline">{mo ? 'Thu gọn' : 'Sửa'}</span>
+        <span className="shrink-0 whitespace-nowrap text-xs text-ocean-600 underline">{mo ? 'Thu gọn' : 'Sửa'}</span>
       </button>
 
       {mo && (

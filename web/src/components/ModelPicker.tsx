@@ -106,7 +106,7 @@ export default function ModelPicker({
                   <button
                     type="button"
                     className={`block w-full px-3 py-1.5 text-left text-sm hover:bg-brand-50 ${
-                      m.id === draft ? 'bg-brand-50 font-medium text-brand-700' : 'text-ink-soft'
+                      m.id === draft ? 'bg-brand-50 font-medium text-ocean-700' : 'text-ink-soft'
                     }`}
                     onClick={() => chon(m.id)}
                   >

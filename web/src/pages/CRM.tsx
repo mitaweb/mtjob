@@ -328,7 +328,7 @@ export default function CRM() {
             onClick={() => setTab(t.key)}
           >
             {t.label}
-            <span className={`ml-1.5 text-xs ${tab === t.key ? 'text-brand-600' : 'text-ink-faint'}`}>
+            <span className={`ml-1.5 text-xs ${tab === t.key ? 'text-ocean-600' : 'text-ink-faint'}`}>
               {counts[t.key]}
             </span>
           </button>
@@ -370,7 +370,7 @@ export default function CRM() {
                         : c.note || '—'}
                     </td>
                     <td className="text-right">
-                      <button className="text-xs text-brand-600 underline" onClick={() => openCustomer(c)}>
+                      <button className="text-xs text-ocean-600 underline" onClick={() => openCustomer(c)}>
                         chi tiết
                       </button>
                     </td>
@@ -492,7 +492,7 @@ export default function CRM() {
                         {fmtDT(a.at)}
                         {a.note ? ` — ${a.note}` : ''}
                       </span>
-                      <button className="text-xs text-brand-600 underline" onClick={() => toggleDone(a)}>
+                      <button className="text-xs text-ocean-600 underline" onClick={() => toggleDone(a)}>
                         {a.done ? 'mở lại' : 'xong'}
                       </button>
                     </li>

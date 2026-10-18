@@ -358,7 +358,7 @@ export default function BrainZalo() {
             {tienTrinh.map((d, i) => (
               <div key={i}>{d}</div>
             ))}
-            {dangXuLy && <div className="text-brand-700">⏳ AI đang làm…</div>}
+            {dangXuLy && <div className="text-ocean-700">⏳ AI đang làm…</div>}
           </div>
         )}
         {(dem.tat_ca > 0 || tim) && (
@@ -366,7 +366,7 @@ export default function BrainZalo() {
             {LOC.map(([k, nhanLoc, so]) => (
               <button
                 key={k}
-                className={`rounded-full border px-3 py-1 text-xs ${locHienTai === k ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-line text-ink-soft'}`}
+                className={`rounded-full border px-3 py-1 text-xs ${locHienTai === k ? 'border-brand-500 bg-brand-50 text-ocean-700' : 'border-line text-ink-soft'}`}
                 onClick={() => setLoc(k)}
               >
                 {nhanLoc} ({so})
@@ -454,12 +454,12 @@ export default function BrainZalo() {
                 )}
                 <div className="flex flex-wrap gap-3">
                   {(c.aiHoi || c.chuaRut > 0 || c.enabled) && (
-                    <button className="text-xs text-brand-600 underline" onClick={() => xemTin(c)}>
+                    <button className="text-xs text-ocean-600 underline" onClick={() => xemTin(c)}>
                       {dangXem[c.threadId] ? 'Ẩn tin' : 'Xem tin gần đây'}
                     </button>
                   )}
                   {!c.aiHoi && (
-                    <button className="text-xs text-brand-600 underline" onClick={() => setMoGiaiThich({ ...moGiaiThich, [c.threadId]: !moGiaiThich[c.threadId] })}>
+                    <button className="text-xs text-ocean-600 underline" onClick={() => setMoGiaiThich({ ...moGiaiThich, [c.threadId]: !moGiaiThich[c.threadId] })}>
                       💬 {c.anhGhiChu ? 'Sửa lời giải thích' : 'Giải thích cho AI'}
                     </button>
                   )}

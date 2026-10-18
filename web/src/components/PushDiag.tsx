@@ -87,7 +87,7 @@ export default function PushDiag() {
             <div key={d.tail} className="pl-5 text-xs text-ink-muted">
               · {d.host} …{d.tail}
               {d.tail === myTail && (
-                <span className="ml-1 rounded bg-brand-100 px-1.5 py-0.5 font-medium text-brand-700">máy này</span>
+                <span className="ml-1 rounded bg-brand-100 px-1.5 py-0.5 font-medium text-ocean-700">máy này</span>
               )}
               {d.ua && <span className="text-ink-faint"> ({d.ua})</span>}
             </div>
@@ -129,7 +129,7 @@ export default function PushDiag() {
           {res.results.map((r) => (
             <div key={r.tail} className="mt-1 text-xs">
               …{r.tail}
-              {r.tail === myTail && <span className="text-brand-700"> (máy này)</span>}:{' '}
+              {r.tail === myTail && <span className="text-ocean-700"> (máy này)</span>}:{' '}
               {r.ok ? <span className="text-emerald-700">gửi được</span> : (
                 <span className="text-rose-600">
                   lỗi {r.status || '—'} · {r.error}

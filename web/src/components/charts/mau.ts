@@ -5,16 +5,17 @@
 // riêng, đổi màu thương hiệu là sót — mà sót thì không ai thấy cho tới lúc mở đúng trang
 // có biểu đồ đó.
 //
-// Giữ khớp với `brand` trong tailwind.config.js.
+// Giữ khớp với `brand` / `ocean` trong tailwind.config.js.
+// Giao diện vàng chủ đạo (18/10/2026): cột chính vàng Amber viền mực, nhấn bằng xanh Ocean.
 export const MAU = {
-  /** brand-600 — Ocean Blue, màu chính. */
-  chinh: '#0b57c4',
-  /** brand-300 — cột phụ, đường tham chiếu. */
-  nhat: '#99b8e6',
-  /** accent-500 — vàng nhấn. */
-  nhan: '#ffbb03',
+  /** brand-600 — Amber Yellow, màu chính. */
+  chinh: '#ffbb03',
+  /** brand-200 — cột phụ, đường tham chiếu. */
+  nhat: '#ffe285',
+  /** ocean-600 — xanh nhấn. */
+  nhan: '#0b57c4',
   /** ink-muted — chữ trên trục. */
   chu: '#52546d',
-  /** brand-100 — đường lưới. */
-  luoi: '#e2ebf8',
+  /** viền mặc định — đường lưới. */
+  luoi: '#efe4c6',
 } as const;

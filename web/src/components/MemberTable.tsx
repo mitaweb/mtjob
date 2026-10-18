@@ -344,7 +344,7 @@ export default function MemberTable() {
               <div key={m.id} className="flex flex-wrap items-center gap-2 text-sm">
                 <span className="text-ink-muted">{m.fullName}</span>
                 <span className="text-xs text-ink-faint">{m.position || m.teamId}</span>
-                <button className="text-xs text-brand-600 underline" onClick={() => setActive(m, true)}>
+                <button className="text-xs text-ocean-600 underline" onClick={() => setActive(m, true)}>
                   Nhận lại
                 </button>
                 <button className="text-xs text-rose-600 underline" onClick={() => openKill(m)}>

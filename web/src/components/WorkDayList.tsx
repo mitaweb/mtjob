@@ -55,7 +55,7 @@ export default function WorkDayList({
           <div className="flex items-center justify-between gap-2 text-sm">
             <span className="font-medium text-ink">📅 {fmtDay(d.date)}</span>
             <span className="text-xs text-ink-muted">
-              {d.tasks.length} việc · <b className="text-brand-600">{signed(d.points)}</b>
+              {d.tasks.length} việc · <b className="text-ocean-600">{signed(d.points)}</b>
               {d.minutes > 0 && ` · ⏱ ${fmtMin(d.minutes)}`}
               {d.noTimeCount > 0 && (
                 <span className="text-amber-700"> · ⚠️ {d.noTimeCount} việc không có giờ</span>
@@ -88,7 +88,7 @@ export default function WorkDayList({
                 <div className="text-xs text-ink-faint">
                   {t.adjusted ? (
                     // Dòng nhập tay: không có giờ là ĐÚNG, đừng gắn cảnh báo làm anh tưởng lỗi.
-                    <span className="text-brand-600">✎ điểm nhập bù</span>
+                    <span className="text-ocean-600">✎ điểm nhập bù</span>
                   ) : t.minutes === null ? (
                     <span className="text-amber-700">⚠️ không có giờ làm (báo thẳng)</span>
                   ) : (

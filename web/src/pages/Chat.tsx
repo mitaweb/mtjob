@@ -643,7 +643,7 @@ export default function Chat() {
             <div
               className={`min-w-0 max-w-[85%] break-words rounded-2xl px-4 py-2 ${
                 m.role === 'user'
-                  ? 'whitespace-pre-wrap bg-brand-600 text-white'
+                  ? 'whitespace-pre-wrap bg-brand-600 text-ink'
                   : 'border border-brand-100 bg-white'
               }`}
             >
@@ -716,7 +716,7 @@ export default function Chat() {
                   </div>
                 ) : (
                   <button
-                    className="mt-2 text-xs text-brand-600 underline"
+                    className="mt-2 text-xs text-ocean-600 underline"
                     onClick={() => {
                       setSavingIdx(i);
                       setSaveTitle((m.question || '').slice(0, 120));
@@ -787,7 +787,7 @@ export default function Chat() {
             📎
           </button>
           <input
-            className={`input ${keoTha ? 'ring-2 ring-brand-400' : ''}`}
+            className={`input ${keoTha ? 'ring-2 ring-ocean-400' : ''}`}
             placeholder={
               tepCho.length
                 ? 'Hỏi gì về tệp này? (bỏ trống = tóm tắt)'

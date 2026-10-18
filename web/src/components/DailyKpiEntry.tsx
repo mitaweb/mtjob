@@ -260,7 +260,7 @@ export default function DailyKpiEntry({
                             return (
                               <input
                                 key={date}
-                                className={`w-full rounded-lg border px-2 py-1.5 text-center text-sm text-ink-soft outline-none transition placeholder:text-ink-faint focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 ${mau}`}
+                                className={`w-full rounded-lg border px-2 py-1.5 text-center text-sm text-ink-soft outline-none transition placeholder:text-ink-faint focus:border-brand-500 focus:ring-2 focus:ring-ocean-500/15 ${mau}`}
                                 type="number"
                                 min={0}
                                 inputMode="numeric"

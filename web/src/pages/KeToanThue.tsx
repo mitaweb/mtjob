@@ -239,7 +239,7 @@ export default function KeToanThue() {
 
       {/* Tải file — một chỗ cho mọi loại */}
       <div
-        className={`card border-2 border-dashed ${keo ? 'border-brand-500 bg-brand-50' : 'border-brand-100'}`}
+        className={`card border-2 border-dashed ${keo ? 'border-ink bg-brand-50' : 'border-ink/40'}`}
         onDragOver={(e) => {
           e.preventDefault();
           setKeo(true);
@@ -344,7 +344,7 @@ export default function KeToanThue() {
               nhan="Công nợ phải thu"
               giaTri={vnd(tq.congNo.thu.phai)}
               phu={`Phải trả ${vnd(tq.congNo.tra.phai)}${tq.congNo.thu.ngayChot ? ` · sổ chốt ${ngayVN(tq.congNo.thu.ngayChot)}` : ''}`}
-              mau="text-brand-700"
+              mau="text-ocean-700"
             />
           </div>
 
@@ -744,7 +744,7 @@ function BangCongNo({ thu, tra }: { thu: CongNo; tra: CongNo }) {
         {(['thu', 'tra'] as const).map((l) => (
           <button
             key={l}
-            className={`rounded-full px-3 py-1 text-sm ${loai === l ? 'bg-brand-600 text-white' : 'bg-brand-50 text-ink-soft'}`}
+            className={`rounded-full px-3 py-1 text-sm ${loai === l ? 'bg-brand-600 text-ink' : 'bg-brand-50 text-ink-soft'}`}
             onClick={() => {
               setLoai(l);
               setTrang(1);

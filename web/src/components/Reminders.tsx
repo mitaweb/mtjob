@@ -234,7 +234,7 @@ export default function Reminders({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
               <div className="flex shrink-0 gap-2 text-xs">
-                <button className="text-brand-600 underline" onClick={() => toggle(r)}>
+                <button className="text-ocean-600 underline" onClick={() => toggle(r)}>
                   {r.active ? 'tắt' : 'bật'}
                 </button>
                 <button className="text-rose-600 underline" onClick={() => remove(r.id)}>

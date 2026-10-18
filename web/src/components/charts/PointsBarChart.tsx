@@ -20,7 +20,7 @@ export default function PointsBarChart({ data }: { data: PointsPoint[] }) {
           <XAxis dataKey="name" tick={{ fontSize: 12 }} />
           <YAxis tick={{ fontSize: 12 }} />
           <Tooltip />
-          <Bar dataKey="points" fill={MAU.chinh} radius={[6, 6, 0, 0]} />
+          <Bar dataKey="points" fill={MAU.chinh} stroke="#16172e" strokeWidth={1.5} radius={[6, 6, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

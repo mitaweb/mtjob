@@ -293,7 +293,7 @@ export default function Admin() {
                 href={syncInfo.taskSheetUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="font-medium text-brand-700 underline hover:text-brand-800"
+                className="font-medium text-ocean-700 underline hover:text-ocean-800"
               >
                 📊 Mở Sheet bảng điểm
               </a>
@@ -563,7 +563,7 @@ export default function Admin() {
           <div className="mt-4 border-t border-brand-100 pt-3">
             <p className="text-sm text-ink-muted mb-2">
               Lấy API key tại{' '}
-              <a className="text-brand-600 underline" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
+              <a className="text-ocean-600 underline" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
                 aistudio.google.com/apikey
               </a>{' '}
               rồi dán vào ô dưới — <b>hiệu lực ngay, không cần redeploy</b>.
@@ -603,7 +603,7 @@ export default function Admin() {
           <div className="mt-4 border-t border-brand-100 pt-3">
             <p className="text-sm text-ink-muted mb-2">
               Lấy API key tại{' '}
-              <a className="text-brand-600 underline" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">
+              <a className="text-ocean-600 underline" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">
                 console.anthropic.com
               </a>{' '}
               — trả theo mức dùng, không phải thuê bao.{' '}

@@ -113,7 +113,7 @@ export default function Scores() {
               )}
             </div>
             <div className="card text-center">
-              <div className="text-2xl font-bold text-brand-600">{fmtMin(score?.workMinutesToday ?? 0)}</div>
+              <div className="text-2xl font-bold text-ocean-600">{fmtMin(score?.workMinutesToday ?? 0)}</div>
               <div className="text-xs text-ink-muted">⏱ Giờ làm hôm nay</div>
             </div>
           </>
@@ -183,7 +183,7 @@ export default function Scores() {
               href={sheetUrl}
               target="_blank"
               rel="noreferrer"
-              className="text-sm text-brand-600 underline whitespace-nowrap"
+              className="text-sm text-ocean-600 underline whitespace-nowrap"
             >
               📄 Bảng điểm gốc ↗
             </a>

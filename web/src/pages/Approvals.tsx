@@ -103,7 +103,7 @@ export default function Approvals() {
             onClick={() => setTab(t.key)}
           >
             {t.label}
-            <span className={`ml-1.5 text-xs ${tab === t.key ? 'text-brand-600' : 'text-ink-faint'}`}>{counts[t.key]}</span>
+            <span className={`ml-1.5 text-xs ${tab === t.key ? 'text-ocean-600' : 'text-ink-faint'}`}>{counts[t.key]}</span>
           </button>
         ))}
       </div>

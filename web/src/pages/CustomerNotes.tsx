@@ -293,7 +293,7 @@ export default function CustomerNotes() {
         </div>
         <button
           onClick={() => openEditor(emptyNote())}
-          className="shrink-0 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-brand-600/30 hover:bg-brand-700"
+          className="shrink-0 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-ink shadow-sm shadow-brand-600/30 hover:bg-brand-700"
         >
           + Thêm khách hàng
         </button>
@@ -319,7 +319,7 @@ export default function CustomerNotes() {
               }}
               className={`relative flex flex-col rounded-2xl border p-4 text-left shadow-card transition ${cardCls(n.color)} ${
                 keoId === n.id
-                  ? 'opacity-60 ring-2 ring-brand-400'
+                  ? 'opacity-60 ring-2 ring-ocean-400'
                   : keoId
                     ? ''
                     : 'hover:-translate-y-0.5 hover:shadow-lg'
@@ -407,7 +407,7 @@ export default function CustomerNotes() {
                   title="Màu chữ"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => exec('foreColor', c)}
-                  className="h-6 w-6 rounded-full ring-1 ring-brand-200"
+                  className="h-6 w-6 rounded-full ring-1 ring-ocean-200"
                   style={{ background: c }}
                   aria-label={`Màu ${c}`}
                 />
@@ -490,7 +490,7 @@ export default function CustomerNotes() {
                 <button
                   onClick={save}
                   disabled={busy}
-                  className="rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                  className="rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-ink hover:bg-brand-700 disabled:opacity-50"
                 >
                   {busy ? 'Đang lưu…' : 'Lưu'}
                 </button>
@@ -531,7 +531,7 @@ export default function CustomerNotes() {
                       </div>
                       <button
                         onClick={() => restore(h)}
-                        className="shrink-0 rounded-lg border border-brand-100 px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50"
+                        className="shrink-0 rounded-lg border border-brand-100 px-2.5 py-1 text-xs font-medium text-ocean-700 hover:bg-brand-50"
                       >
                         ↩️ Khôi phục
                       </button>

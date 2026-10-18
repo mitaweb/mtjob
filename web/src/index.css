@@ -6,32 +6,53 @@
   color-scheme: light;
 }
 
+/*
+ * Giao diện vàng chủ đạo kiểu Gen Z (anh Tâm 18/10/2026): thẻ viền mực đậm bo tròn lớn, nút vàng có bóng lệch như
+ * sticker (bấm xuống thì bóng mất — cảm giác "ấn được"), thanh bên màu mực. Màu xem tailwind.config.js.
+ */
 body {
   @apply bg-app text-ink-muted antialiased;
   margin: 0;
-  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
 }
 
-.card {
-  @apply bg-white rounded-2xl border border-brand-100 shadow-soft p-5;
+/* Vòng focus rõ cho người dùng bàn phím — xanh Ocean (vàng trên nền trắng quá mờ). */
+:focus-visible {
+  outline: 2px solid #0b57c4;
+  outline-offset: 2px;
 }
 
-.btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 font-medium transition
-    active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100;
+h1,
+h2,
+h3 {
+  @apply text-ink;
 }
-.btn-primary {
-  @apply btn bg-brand-600 text-white hover:bg-brand-700 shadow-sm shadow-brand-600/25;
-}
-.btn-ghost {
-  @apply btn bg-brand-50 text-brand-700 hover:bg-brand-100;
-}
-.input {
-  @apply w-full rounded-xl border border-brand-100 bg-white px-3.5 py-2.5 text-ink outline-none transition
-    placeholder:text-ink-muted/60 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10;
-}
-.label {
-  @apply block text-sm font-medium text-ink-soft mb-1.5;
+
+/* Trong @layer components để tiện ích (w-auto, py-1, px-3…) đặt tại chỗ dùng được ưu tiên hơn. */
+@layer components {
+  .card {
+    @apply bg-white rounded-3xl border-2 border-ink p-5;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 font-semibold transition duration-150
+      disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 text-ink border-2 border-ink shadow-pop
+      hover:-translate-x-px hover:-translate-y-px hover:shadow-pop-lg
+      active:translate-x-[2px] active:translate-y-[2px] active:shadow-none
+      disabled:translate-x-0 disabled:translate-y-0 disabled:shadow-none;
+  }
+  .btn-ghost {
+    @apply btn bg-white text-ink border-2 border-ink/15 hover:border-ink hover:bg-brand-50 active:translate-y-px;
+  }
+  .input {
+    @apply w-full rounded-2xl border-2 border-ink/20 bg-white px-3.5 py-2.5 text-ink outline-none transition
+      placeholder:text-ink-faint focus:border-ink focus:ring-4 focus:ring-brand-300/60;
+  }
+  .label {
+    @apply block text-sm font-semibold text-ink-soft mb-1.5;
+  }
 }
 
 /*
@@ -63,7 +84,7 @@ body {
   display: block;
 }
 .note-rich a {
-  @apply text-brand-700 underline;
+  @apply text-ocean-700 underline;
 }
 .note-rich p {
   margin: 4px 0;
@@ -86,7 +107,7 @@ body {
   @apply transition duration-200;
 }
 .lift:hover {
-  @apply -translate-y-0.5 shadow-lift;
+  @apply -translate-x-px -translate-y-0.5 shadow-pop-lg;
 }
 
 /* Hộp thoại trượt vào thay vì hiện đột ngột */
@@ -140,7 +161,7 @@ body {
   height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #c4d7f1;
+  background: #e8d9a8;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-track {

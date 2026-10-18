@@ -1,26 +1,23 @@
-// Logo chữ MT DIGITAL (theo bộ nhận diện: sans đậm + tagline serif nghiêng).
-// variant light = chữ trắng (nền đậm), dark = chữ đen (nền sáng).
+// Logo MT DIGITAL theo Brand Guidelines: logotype "MT DIGITAL" Poppins Bold chữ hoa, trắng, đặt trong khối bo góc
+// màu Ocean Blue, dòng slogan màu vàng Amber bên dưới. Khối xanh đọc rõ trên mọi nền (sáng, thanh bên mực, nền vàng).
+// `variant` giữ cho tương thích chỗ gọi cũ — logo dạng khối không cần đổi màu theo nền.
 interface BrandProps {
   variant?: 'light' | 'dark';
-  compact?: boolean; // chỉ hiện MT DIGITAL, ẩn tagline (cho header)
+  compact?: boolean; // header / thanh bên: khối nhỏ, slogan ngắn
   className?: string;
 }
 
-export default function Brand({ variant = 'dark', compact = false, className = '' }: BrandProps) {
-  const main = variant === 'light' ? 'text-white' : 'text-ink';
-  const sub = variant === 'light' ? 'text-white/80' : 'text-ink-soft';
+export default function Brand({ compact = false, className = '' }: BrandProps) {
   return (
-    <div className={`select-none leading-none text-center ${className}`}>
-      <div
-        className={`font-brand font-extrabold tracking-[0.12em] ${compact ? 'text-lg' : 'text-3xl'} ${main}`}
-      >
-        MT DIGITAL
-      </div>
-      {!compact && (
-        <div className={`font-brand-serif italic mt-1.5 text-sm ${sub}`}>
-          Marketing trọn gói cho doanh nghiệp
-        </div>
-      )}
+    <div
+      className={`inline-flex select-none flex-col items-center rounded-xl bg-ocean-600 text-center leading-none ${
+        compact ? 'px-3 py-1.5' : 'px-6 py-3'
+      } ${className}`}
+    >
+      <span className={`font-bold uppercase tracking-wide text-white ${compact ? 'text-base' : 'text-3xl'}`}>MT DIGITAL</span>
+      <span className={`mt-1 font-semibold uppercase text-brand-500 ${compact ? 'text-[7px] tracking-[0.18em]' : 'text-[10px] tracking-[0.22em]'}`}>
+        {compact ? 'Marketing trọn gói' : 'Marketing trọn gói cho doanh nghiệp'}
+      </span>
     </div>
   );
 }

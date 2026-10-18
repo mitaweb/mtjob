@@ -243,7 +243,7 @@ export default function Inbox() {
       <div className="flex items-center justify-between gap-2 text-sm">
         <span className="text-ink-muted">{current.hint}</span>
         {unread[tab] > 0 && (
-          <button className="whitespace-nowrap text-xs text-brand-600 underline" onClick={markGroupRead}>
+          <button className="whitespace-nowrap text-xs text-ocean-600 underline" onClick={markGroupRead}>
             Đánh dấu đã đọc ({unread[tab]})
           </button>
         )}
@@ -273,7 +273,7 @@ export default function Inbox() {
           </div>
           <div className="mt-1 whitespace-pre-wrap text-sm">{n.body}</div>
           <button
-            className="mt-2 text-xs text-brand-600 underline"
+            className="mt-2 text-xs text-ocean-600 underline"
             onClick={(e) => {
               e.stopPropagation();
               if (!n.readAt) markRead(n.id);

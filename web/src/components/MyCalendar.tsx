@@ -20,7 +20,7 @@ interface NgayLich {
 }
 
 const LOAI: Record<LoaiMuc, { nhan: string; icon: string; cham: string; nen: string }> = {
-  reminder: { nhan: 'Nhắc hẹn', icon: '⏰', cham: 'bg-brand-600', nen: 'bg-brand-50 text-brand-700' },
+  reminder: { nhan: 'Nhắc hẹn', icon: '⏰', cham: 'bg-brand-600', nen: 'bg-brand-50 text-ocean-700' },
   appointment: { nhan: 'Hẹn khách', icon: '📅', cham: 'bg-emerald-500', nen: 'bg-emerald-50 text-emerald-700' },
   birthday: { nhan: 'Sinh nhật', icon: '🎂', cham: 'bg-amber-500', nen: 'bg-amber-50 text-amber-800' },
   holiday: { nhan: 'Ngày lễ', icon: '🎌', cham: 'bg-rose-500', nen: 'bg-rose-50 text-rose-700' },
@@ -100,11 +100,11 @@ export default function MyCalendar({ onClose }: { onClose: () => void }) {
                     onClick={() => setChon(d.ngay)}
                     className={`flex min-h-[3rem] flex-col items-center justify-start rounded-xl border p-1 text-xs transition ${
                       dangChon
-                        ? 'border-brand-600 bg-brand-50 font-semibold text-brand-700'
+                        ? 'border-brand-600 bg-brand-50 font-semibold text-ocean-700'
                         : 'border-brand-100 hover:bg-brand-50'
                     }`}
                   >
-                    <span className={laHomNay && !dangChon ? 'font-bold text-brand-700' : ''}>
+                    <span className={laHomNay && !dangChon ? 'font-bold text-ocean-700' : ''}>
                       {/* Ngày 1 ghi kèm tháng: 30 ngày vắt qua hai tháng, không có mốc này
                           thì nhìn số 1 không biết đang là tháng nào. */}
                       {toDate(d.ngay).getDate() === 1

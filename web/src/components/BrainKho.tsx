@@ -68,7 +68,7 @@ export function QuyTacKho() {
     <div className="card">
       <button className="flex w-full items-center justify-between gap-2 text-left" onClick={() => setMo(!mo)}>
         <span className="font-semibold">📏 Cái gì vào kho, cái gì không</span>
-        <span className="shrink-0 text-xs text-brand-600 underline">{mo ? 'Thu gọn' : 'Xem'}</span>
+        <span className="shrink-0 text-xs text-ocean-600 underline">{mo ? 'Thu gọn' : 'Xem'}</span>
       </button>
       {mo && (
         <div className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
@@ -325,7 +325,7 @@ export function TabKho({ nhomList, isDirector, reloadKey, onChanged }: { nhomLis
     <div className="space-y-3">
       <div className="card space-y-3">
         <div className="flex flex-wrap gap-1.5">
-          <button className={`rounded-lg border px-2.5 py-1 text-sm ${nhom === '' ? 'border-brand-600 bg-brand-600 text-white' : 'border-brand-200 bg-white'}`} onClick={() => setNhom('')}>
+          <button className={`rounded-lg border px-2.5 py-1 text-sm ${nhom === '' ? 'border-brand-600 bg-brand-600 text-ink' : 'border-brand-200 bg-white'}`} onClick={() => setNhom('')}>
             Tất cả ({tong})
           </button>
           {nhomList
@@ -333,7 +333,7 @@ export function TabKho({ nhomList, isDirector, reloadKey, onChanged }: { nhomLis
             .map((n) => (
               <button
                 key={n.key}
-                className={`rounded-lg border px-2.5 py-1 text-sm ${nhom === n.key ? 'border-brand-600 bg-brand-600 text-white' : 'border-brand-200 bg-white'}`}
+                className={`rounded-lg border px-2.5 py-1 text-sm ${nhom === n.key ? 'border-brand-600 bg-brand-600 text-ink' : 'border-brand-200 bg-white'}`}
                 onClick={() => setNhom(n.key)}
               >
                 {n.label} ({n.count})
@@ -348,7 +348,7 @@ export function TabKho({ nhomList, isDirector, reloadKey, onChanged }: { nhomLis
           ] as const).map(([k, nhan]) => (
             <button
               key={k}
-              className={`rounded-full border px-3 py-1 text-xs ${kieu === k ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-line text-ink-soft'}`}
+              className={`rounded-full border px-3 py-1 text-xs ${kieu === k ? 'border-brand-500 bg-brand-50 text-ocean-700' : 'border-line text-ink-soft'}`}
               onClick={() => {
                 setKieu(k);
                 setTrang(1);
@@ -395,7 +395,7 @@ export function TabKho({ nhomList, isDirector, reloadKey, onChanged }: { nhomLis
                     ))}
                   </ul>
                   {g.ds.length > 3 && (
-                    <button className="text-xs text-brand-600 underline" onClick={() => setMoNhom({ ...moNhom, [g.k]: !moNhom[g.k] })}>
+                    <button className="text-xs text-ocean-600 underline" onClick={() => setMoNhom({ ...moNhom, [g.k]: !moNhom[g.k] })}>
                       {moNhom[g.k] ? 'Thu gọn' : `Xem cả ${g.ds.length} mục`}
                     </button>
                   )}
@@ -741,7 +741,7 @@ export function TabDanhSach({ status, category, nhomList, rong, onChanged }: { s
             Chọn cả trang
           </label>
           {chon.size < tong && (
-            <button className="text-brand-600 underline" onClick={() => setChon(new Set((items || []).map((i) => i.id)))}>
+            <button className="text-ocean-600 underline" onClick={() => setChon(new Set((items || []).map((i) => i.id)))}>
               Chọn tất cả {tong}
             </button>
           )}

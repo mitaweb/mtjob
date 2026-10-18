@@ -1,35 +1,50 @@
 /** @type {import('tailwindcss').Config} */
 //
-// Màu thương hiệu MT Digital — Ocean Blue (anh Tâm 4/8/2026, theo file Brand Guidelines).
-// Trước đây app chạy tím #7367f0, không dính gì tới nhận diện của công ty.
+// Giao diện VÀNG CHỦ ĐẠO, kiểu Gen Z (anh Tâm 18/10/2026: "anh cũng muốn giao diện vàng chủ đạo lại, thiết kế lại
+// giao diện cho hiện đại, phù hợp genz" — chọn bản xem thử: vàng Amber, viền đậm + bóng lệch kiểu sticker, thanh bên
+// màu mực, font Poppins). Màu lấy từ Brand Guidelines MT DIGITAL: Amber Yellow #FFBB03, Ocean Blue #0B57C4,
+// Slate Grey #52546D, Light Grey #F4F5F7.
 //
-// Mọi cặp chữ/nền dưới đây ĐÃ ĐO tương phản, không ước lượng bằng mắt:
-//   chữ trắng trên brand-600 .... 6.61
-//   chữ trắng trên brand-700 .... 8.37
-//   chữ ink  trên nền app ....... 13.09
-//   chữ muted trên nền app ...... 6.73
-//   chữ ink  trên accent ........ 8.44
-// Chuẩn AA cho chữ thường là 4.5.
+// `brand` = VÀNG (nền, nút, mục đang chọn). `ocean` = XANH (chữ nhấn, link, viền focus). Chữ vàng trên nền trắng chỉ
+// đạt 1.70 → CẤM dùng `text-brand-*` cho chữ thường; chữ nhấn dùng `text-ocean-*`.
 //
-// CẤM chữ trắng trên `accent`: chỉ đạt 1.70. Vàng luôn đi với chữ ink.
+// Tương phản đã ĐO (chuẩn AA chữ thường 4.5):
+//   ink trên brand-600 (vàng) ....... 10.33   ink trên nền kem ......... 16.98
+//   ink-muted trên nền kem .......... 7.13    ink-faint trên nền kem ... 4.78
+//   ocean-600 trên trắng ............ 6.61    ocean-600 trên brand-100 . 5.83
+//   brand-800 trên trắng ............ 6.45    chữ thanh bên trên ink ... 10.88
+//   ink-muted trên brand-600 chỉ 4.34 → trên nền vàng đậm chỉ dùng chữ ink / ink-soft.
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
         brand: {
+          50: '#fff9e6',
+          100: '#fff0c2',
+          200: '#ffe285',
+          300: '#ffd447',
+          400: '#ffc61f',
+          500: '#ffbb03',
+          600: '#ffbb03', // Amber Yellow — màu chính (nền nút, mục đang chọn) — đi với chữ ink
+          700: '#e5a800', // hover
+          800: '#7a5900', // vàng đất — chữ trên nền sáng khi thật cần sắc vàng
+          900: '#4d3800',
+        },
+        /** Xanh Ocean Blue: chữ nhấn, link, số liệu cần nổi, viền focus. */
+        ocean: {
           50: '#f3f7fc',
           100: '#e2ebf8',
           200: '#c4d7f1',
           300: '#99b8e6',
           400: '#5e90d8',
           500: '#2d6fcc',
-          600: '#0b57c4', // Ocean Blue — màu chính
+          600: '#0b57c4',
           700: '#0949a5',
           800: '#073b85',
           900: '#062d66',
         },
-        /** Vàng nhấn: cảnh báo nhẹ, con số cần chú ý. Luôn dùng với chữ `ink`. */
+        /** Vàng nhấn (giữ cho tương thích chỗ cũ) — luôn đi với chữ `ink`. */
         accent: {
           50: '#fff8e6',
           100: '#ffefc0',
@@ -37,40 +52,39 @@ export default {
           500: '#ffbb03',
           700: '#c48f00',
         },
-        /** Navy đậm cho chữ — ấm hơn xám trung tính, hợp nền ngả xanh. */
         ink: {
-          DEFAULT: '#232650', // tiêu đề, số liệu
-          soft: '#3a3c55', // chữ thường
-          muted: '#52546d', // chữ phụ
-          // Chữ mờ nhất (nhãn, chú thích). Thay `slate-400` cũ vốn chỉ đạt 2.56 — DƯỚI
-          // chuẩn AA. Màu này đạt 4.94 trên nền trắng và 4.51 trên nền app.
+          DEFAULT: '#16172e', // mực — chữ chính, viền đậm, thanh bên
+          soft: '#3a3c55',
+          muted: '#52546d', // Slate Grey
           faint: '#6b6e8f',
         },
       },
       borderColor: {
-        // `border-t` trơ trọi (bảng biểu dùng đầy) mặc định ăn xám gray-200 của Tailwind.
-        // Đổi mặc định sang xanh nhạt để không còn đường kẻ xám lạc lõng giữa nền xanh.
-        DEFAULT: '#e2ebf8',
+        // Đường kẻ mảnh trong bảng: kem đậm, hợp nền vàng.
+        DEFAULT: '#efe4c6',
       },
       backgroundColor: {
-        /** Nền trang: xanh rất nhạt thay cho #f5f5f9 xám. */
-        app: '#eff5ff',
+        /** Nền trang: kem ấm. */
+        app: '#fffbf0',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'Segoe UI', 'Arial', 'sans-serif'],
-        brand: ['Montserrat', 'Arial', 'sans-serif'],
-        'brand-serif': ['"Playfair Display"', 'Georgia', 'serif'],
+        // Poppins theo bộ nhận diện (có đủ dấu tiếng Việt).
+        sans: ['Poppins', 'system-ui', 'Segoe UI', 'Arial', 'sans-serif'],
+        brand: ['Poppins', 'Arial', 'sans-serif'],
+        'brand-serif': ['Poppins', 'Arial', 'sans-serif'],
       },
       borderRadius: {
-        // Bo góc lớn hơn để giống ảnh mẫu anh Tâm gửi.
         xl: '0.9rem',
         '2xl': '1.25rem',
+        '3xl': '1.5rem',
       },
       boxShadow: {
-        // Bóng ngả xanh thay vì xám tím, dịu và "nổi" hơn bóng cũ.
-        soft: '0 2px 10px 0 rgba(11, 87, 196, 0.07)',
-        card: '0 6px 20px -4px rgba(11, 87, 196, 0.12)',
-        lift: '0 12px 28px -8px rgba(11, 87, 196, 0.22)',
+        // Bóng lệch đặc (kiểu sticker) — dấu hiệu Gen Z của giao diện.
+        pop: '3px 3px 0 0 #16172e',
+        'pop-lg': '5px 5px 0 0 #16172e',
+        soft: '0 2px 10px 0 rgba(22, 23, 46, 0.06)',
+        card: '0 6px 20px -4px rgba(22, 23, 46, 0.12)',
+        lift: '5px 5px 0 0 #16172e',
       },
     },
   },

@@ -105,9 +105,9 @@ export default function Layout() {
   }, [user, onInbox]);
 
   const sidebar = (
-    <div className="flex h-full flex-col bg-white">
+    <div className="flex h-full flex-col bg-ink text-white">
       <div className="px-5 py-5">
-        <Brand variant="dark" compact />
+        <Brand variant="light" compact />
       </div>
       <nav className="flex-1 overflow-y-auto px-3 pb-3 space-y-1">
         {items.map((n) => (
@@ -116,10 +116,8 @@ export default function Layout() {
             to={n.to}
             onClick={() => setOpen(false)}
             className={({ isActive }) =>
-              `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                isActive
-                  ? 'bg-brand-600 text-white shadow-sm shadow-brand-600/30'
-                  : 'text-ink-muted hover:bg-brand-100 hover:text-ink'
+              `flex items-center gap-3 rounded-full px-4 py-2.5 text-sm transition ${
+                isActive ? 'bg-brand-600 font-semibold text-ink' : 'font-medium text-white/75 hover:bg-white/10 hover:text-white'
               }`
             }
           >
@@ -128,25 +126,25 @@ export default function Layout() {
           </NavLink>
         ))}
       </nav>
-      <div className="border-t border-brand-100 p-3">
+      <div className="border-t border-white/10 p-3">
         <button
           onClick={() => {
             setOpen(false);
             navigate('/profile');
           }}
-          className="w-full flex items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-brand-100"
+          className="w-full flex items-center gap-3 rounded-2xl px-2 py-2 text-left hover:bg-white/10"
         >
-          <div className="h-9 w-9 shrink-0 rounded-full bg-brand-600 text-white grid place-items-center text-sm font-semibold">
+          <div className="h-9 w-9 shrink-0 rounded-full bg-brand-600 text-ink grid place-items-center text-sm font-bold">
             {initial}
           </div>
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-ink-soft truncate">{user?.fullName}</div>
-            <div className="text-xs text-ink-faint">{ROLE_LABEL[user?.role || ''] || user?.role}</div>
+            <div className="text-sm font-semibold text-white truncate">{user?.fullName}</div>
+            <div className="text-xs text-white/60">{ROLE_LABEL[user?.role || ''] || user?.role}</div>
           </div>
         </button>
         <button
           onClick={logout}
-          className="mt-1 w-full rounded-xl px-3 py-2 text-left text-sm text-ink-muted hover:bg-rose-50 hover:text-rose-600 transition"
+          className="mt-1 w-full rounded-full px-4 py-2 text-left text-sm text-white/70 hover:bg-white/10 hover:text-rose-300 transition"
         >
           ⎋ Đăng xuất
         </button>
@@ -157,12 +155,12 @@ export default function Layout() {
   return (
     <div className="min-h-screen">
       {/* Sidebar cố định (desktop) */}
-      <aside className="hidden lg:block fixed inset-y-0 left-0 w-64 border-r border-brand-100">{sidebar}</aside>
+      <aside className="hidden lg:block fixed inset-y-0 left-0 w-64">{sidebar}</aside>
 
       {/* Drawer (mobile) */}
       {open && <div className="fixed inset-0 z-40 bg-ink/40 lg:hidden" onClick={() => setOpen(false)} />}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 border-r border-brand-100 shadow-card transition-transform duration-200 lg:hidden ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 shadow-card transition-transform duration-200 lg:hidden ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -171,22 +169,22 @@ export default function Layout() {
 
       {/* Khu vực chính */}
       <div className="lg:pl-64 flex min-h-screen flex-col">
-        <header className="sticky top-0 z-30 border-b border-brand-100 bg-white/80 backdrop-blur">
+        <header className="sticky top-0 z-30 border-b-2 border-ink bg-app/90 backdrop-blur">
           <div className="flex h-14 items-center gap-2 px-4">
             <button
-              className="lg:hidden grid h-9 w-9 place-items-center rounded-lg text-ink-muted hover:bg-brand-100"
+              className="lg:hidden grid h-10 w-10 place-items-center rounded-full text-ink hover:bg-brand-100"
               onClick={() => setOpen(true)}
               aria-label="Mở menu"
             >
               ☰
             </button>
             <div className="lg:hidden">
-              <Brand variant="dark" compact />
+              <Brand compact />
             </div>
             <div className="ml-auto flex items-center gap-1">
               <NavLink
                 to="/inbox"
-                className="relative grid h-9 w-9 place-items-center rounded-lg text-ink-muted hover:bg-brand-100"
+                className="relative grid h-10 w-10 place-items-center rounded-full text-ink hover:bg-brand-100"
                 aria-label={unread > 0 ? `Thông báo (${unread} chưa đọc)` : 'Thông báo'}
               >
                 <Bell size={20} aria-hidden />
@@ -198,7 +196,7 @@ export default function Layout() {
               </NavLink>
               <NavLink
                 to="/profile"
-                className="grid h-9 w-9 place-items-center rounded-full bg-brand-600 text-sm font-semibold text-white"
+                className="grid h-10 w-10 place-items-center rounded-full border-2 border-ink bg-brand-600 text-sm font-bold text-ink shadow-pop"
                 aria-label="Hồ sơ cá nhân"
               >
                 {initial}
