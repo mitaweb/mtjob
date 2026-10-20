@@ -17,6 +17,7 @@ import {
   type Nhom,
 } from '../components/BrainKho';
 import BrainZalo from '../components/BrainZalo';
+import ZaloGuiHangLoat from '../components/ZaloGuiHangLoat';
 
 interface Chunk {
   id: string;
@@ -515,7 +516,7 @@ function DuLieuKho() {
 
 // ── Trang Kho tri thức: "bộ não thứ hai" của công ty (anh Tâm 4/10/2026) ──
 
-type TabKey = 'kho' | 'khach' | 'gop' | 'duyet' | 'hoi' | 'rieng' | 'zalo' | 'tailieu';
+type TabKey = 'kho' | 'khach' | 'gop' | 'duyet' | 'hoi' | 'rieng' | 'zalo' | 'zalo_gui' | 'tailieu';
 
 export default function Brain() {
   const { user } = useAuth();
@@ -549,6 +550,7 @@ export default function Brain() {
     { key: 'hoi', label: `❓ Câu hỏi${dem.openQuestions ? ` (${dem.openQuestions})` : ''}`, chiGd: true },
     { key: 'rieng', label: '🔒 Riêng anh', chiGd: true },
     { key: 'zalo', label: '💬 Zalo', chiGiamDoc: true },
+    { key: 'zalo_gui', label: '📣 Gửi Zalo', chiGiamDoc: true },
     { key: 'tailieu', label: '📎 Tài liệu & dữ liệu' },
   ];
   const hien = tabs.filter((t) => (t.chiGiamDoc ? laGiamDoc : !t.chiGd || isDirector));
@@ -605,6 +607,7 @@ export default function Brain() {
         <TabDanhSach status="published" category="rieng" nhomList={nhomList} rong="Chưa có mục riêng nào." onChanged={doi} />
       )}
       {dangXem === 'zalo' && laGiamDoc && <BrainZalo />}
+      {dangXem === 'zalo_gui' && laGiamDoc && <ZaloGuiHangLoat />}
       {dangXem === 'tailieu' && <DuLieuKho />}
     </div>
   );

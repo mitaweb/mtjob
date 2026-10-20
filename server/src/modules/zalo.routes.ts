@@ -140,3 +140,84 @@ zaloRouter.post(
     }
   }),
 );
+
+// ── Gửi tin hàng loạt (anh Tâm 20/10/2026). Tin chỉ đi ra khi anh soạn + tích chọn người nhận ở đây; máy chủ gửi
+// chậm theo nhịp cron (lib/zaloGui.ts). ──
+
+/** Mọi người / nhóm có thể nhận + thẻ phân loại Zalo + tình hình gửi hôm nay. */
+zaloRouter.get(
+  '/gui/nguoi-nhan',
+  asyncHandler(async (_req, res) => {
+    const { dsNguoiNhan, demDaGuiTu } = await import('./zaloGui.repo.js');
+    const g = await import('../lib/zaloGui.js');
+    const { nowTz } = await import('../lib/datetime.js');
+    try {
+      const [d, daGui] = await Promise.all([dsNguoiNhan(), demDaGuiTu(nowTz().startOf('day').toISOString())]);
+      res.json({ ...d, daGuiHomNay: daGui, gioiHanNgay: g.GIOI_HAN_NGAY, gioGui: g.GIO_GUI, toiDaNguoi: g.TOI_DA_NGUOI });
+    } catch (e) {
+      if (isMissingTable(e)) res.json({ needsMigrate: true, ds: [], nhan: [], danhBaLuc: '', daGuiHomNay: 0, gioiHanNgay: g.GIOI_HAN_NGAY, gioGui: g.GIO_GUI, toiDaNguoi: g.TOI_DA_NGUOI });
+      else throw e;
+    }
+  }),
+);
+
+/** Lấy bạn bè + thẻ phân loại + nhóm từ Zalo về (~10 giây). */
+zaloRouter.post(
+  '/gui/danh-ba',
+  asyncHandler(async (_req, res) => {
+    const { capNhatDanhBaZalo } = await import('./zalo.client.js');
+    res.json(await capNhatDanhBaZalo());
+  }),
+);
+
+zaloRouter.get(
+  '/gui',
+  asyncHandler(async (_req, res) => {
+    const { dsChienDich } = await import('./zaloGui.repo.js');
+    try {
+      res.json({ ds: await dsChienDich(20) });
+    } catch (e) {
+      if (isMissingTable(e)) res.json({ ds: [], needsMigrate: true });
+      else throw e;
+    }
+  }),
+);
+
+zaloRouter.get(
+  '/gui/:id',
+  asyncHandler(async (req, res) => {
+    const { chiTietChienDich } = await import('./zaloGui.repo.js');
+    res.json({ ds: await chiTietChienDich(String(req.params.id)) });
+  }),
+);
+
+/** Tạo chiến dịch: nội dung + danh sách người đã tích chọn. Chỉ nhận người có trong danh bạ / các cuộc của app. */
+zaloRouter.post(
+  '/gui',
+  asyncHandler(async (req, res) => {
+    const g = await import('../lib/zaloGui.js');
+    const b = z
+      .object({ noiDung: z.string().trim().min(2).max(2000), ids: z.array(z.string().min(1).max(64)).min(1).max(g.TOI_DA_NGUOI) })
+      .parse(req.body);
+    const { dsNguoiNhan, taoChienDich } = await import('./zaloGui.repo.js');
+    const { newId } = await import('../util/id.js');
+    const { nowTz } = await import('../lib/datetime.js');
+    const theoId = new Map((await dsNguoiNhan()).ds.map((x) => [x.id, x]));
+    const chon = [...new Set(b.ids)].map((id) => theoId.get(id)).filter((x): x is NonNullable<typeof x> => !!x);
+    if (!chon.length) throw new ApiError(400, 'Không có người nhận hợp lệ');
+    const id = newId('ZG-');
+    await taoChienDich({ id, noiDung: b.noiDung, nguoi: req.user!.name, taoLuc: nowTz().toISOString() }, chon);
+    res.json({ ok: true, id, soNguoi: chon.length, boQua: b.ids.length - chon.length });
+  }),
+);
+
+/** Dừng hẳn / tạm dừng / chạy tiếp một chiến dịch. */
+zaloRouter.post(
+  '/gui/:id/trang-thai',
+  asyncHandler(async (req, res) => {
+    const b = z.object({ trangThai: z.enum(['dung', 'tam_dung', 'dang_gui']) }).parse(req.body);
+    const { doiTrangThaiChienDich } = await import('./zaloGui.repo.js');
+    if (!(await doiTrangThaiChienDich(String(req.params.id), b.trangThai))) throw new ApiError(404, 'Không tìm thấy chiến dịch');
+    res.json({ ok: true });
+  }),
+);

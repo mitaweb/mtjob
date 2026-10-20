@@ -780,6 +780,46 @@ ALTER TABLE zalo_status ADD COLUMN IF NOT EXISTS session_enc text DEFAULT '';
 ALTER TABLE zalo_status ADD COLUMN IF NOT EXISTS last_msg_id text DEFAULT '';
 ALTER TABLE zalo_status ADD COLUMN IF NOT EXISTS last_sync text DEFAULT '';
 
+-- Gửi tin Zalo hàng loạt (anh Tâm 20/10/2026). Danh bạ bạn bè + thẻ phân loại lấy từ Zalo (KHÔNG lưu số điện thoại).
+CREATE TABLE IF NOT EXISTS zalo_danh_ba (
+  thread_id   text PRIMARY KEY,        -- mã người dùng Zalo (= mã cuộc 1-1)
+  ten         text DEFAULT '',
+  gioi_tinh   integer DEFAULT -1,      -- 0 nam, 1 nữ, -1 không rõ
+  cap_nhat    text DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS zalo_nhan (
+  label_id    text PRIMARY KEY,
+  ten         text DEFAULT '',
+  mau         text DEFAULT '',
+  emoji       text DEFAULT '',
+  cuoc        text DEFAULT '[]',       -- JSON mã cuộc gắn thẻ này
+  cap_nhat    text DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS zalo_chien_dich (
+  id          text PRIMARY KEY,
+  noi_dung    text NOT NULL,
+  nguoi       text DEFAULT '',
+  tao_luc     text DEFAULT '',
+  trang_thai  text DEFAULT 'dang_gui', -- dang_gui | tam_dung | dung | xong
+  tong        integer DEFAULT 0,
+  ghi_chu     text DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS zalo_gui (
+  chien_dich_id text NOT NULL,
+  thread_id   text NOT NULL,
+  ten         text DEFAULT '',
+  is_group    boolean DEFAULT false,
+  thu_tu      integer DEFAULT 0,
+  trang_thai  text DEFAULT 'cho',      -- cho | da_gui | loi | bo
+  loi         text DEFAULT '',
+  gui_luc     text DEFAULT '',
+  msg_id      text DEFAULT '',
+  PRIMARY KEY (chien_dich_id, thread_id)
+);
+CREATE INDEX IF NOT EXISTS zalo_gui_trang_thai_idx ON zalo_gui (trang_thai, gui_luc);
+CREATE INDEX IF NOT EXISTS zalo_gui_thread_idx ON zalo_gui (thread_id, gui_luc);
+CREATE INDEX IF NOT EXISTS zalo_gui_msg_idx ON zalo_gui (msg_id);
+
 -- Anh Tâm 4/10/2026: "lịch trình cá nhân, phân tích task chỉ anh được hỏi". Các đoạn AI tự vơ
 -- từ chat, đoạn lưu tay kiểu cũ và lịch hẹn đang mở cho cả công ty → ẩn về riêng giám đốc.
 -- Nút "Phân loại lại kho" sẽ đưa phần công việc ra lại cho nhân viên sau khi AI xếp nhãn.

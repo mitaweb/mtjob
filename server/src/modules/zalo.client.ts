@@ -10,7 +10,8 @@
 //
 // AN TOÀN:
 //   - Phiên đăng nhập lưu dạng BẢN MÃ (lib/maHoa.ts); khoá ở biến môi trường ZALO_SESSION_KEY.
-//   - Chỉ ĐỌC tin. Không gửi tin, không kết bạn, không làm gì thay anh.
+//   - Đọc tin. GỬI duy nhất các tin anh tự soạn + tích chọn người nhận ở mục "Gửi hàng loạt" (20/10/2026), gửi chậm,
+//     có giới hạn (lib/zaloGui.ts). Không tự gửi gì khác, không kết bạn.
 //   - Thư viện KHÔNG CHÍNH THỨC (zca-js giả lập Zalo Web): Zalo có thể khoá tài khoản. Anh đang mở
 //     Zalo trên TRÌNH DUYỆT (chat.zalo.me) thì lượt đồng bộ đó bị đẩy ra — Zalo điện thoại/PC không sao.
 import { maHoa, giaiMa } from '../lib/maHoa.js';
@@ -71,6 +72,9 @@ export async function chayBanDem(batDau = Date.now()): Promise<string> {
     const r = await rutTriThucZalo({ limit: 20, han, boQuaNhip: true });
     return r.cuoc ? `${db.note} — rồi đọc luôn ${r.cuoc} cuộc: ${r.y} ý, ${r.nhac} nhắc việc` : db.note;
   }
+  // Tin hàng loạt anh đã soạn: gửi vài tin mỗi lượt (đồng bộ tin ở trên vẫn ưu tiên trước).
+  const gui = await guiTheoLo(han).catch((e) => `gửi hàng loạt lỗi: ${(e as Error).message}`);
+  if (gui) return gui;
   if (viec === 'nhom') return (await quetNhomKhach()).note;
   // Tự lọc lại nhóm AI đã cho học theo tiêu chí chặt — không cần anh bấm nút (anh Tâm 12/10/2026: "giảm nút lại
   // ít nhất có thể, tự động nhiều nhất có thể"). Hết nhóm cần lọc thì bước này không tốn gì.
@@ -595,4 +599,94 @@ export async function xuLyNgay(): Promise<{
     };
   }
   return { ok: true, buoc: 'xong', note: 'Đã đọc và phân loại hết', con: await demCon() };
+}
+
+// ── Gửi tin hàng loạt (anh Tâm 20/10/2026: "bổ sung trong đó phần gửi tin nhắn hàng loạt qua zalo nữa, lọc các yếu tố mà
+// zalo cho phép, tích chọn vào những người để gửi"). Trước đây phần Zalo CHỈ ĐỌC; từ nay CHỈ GỬI những tin anh soạn
+// và tích chọn người nhận trên app — không tự gửi gì khác, không kết bạn. Nhịp gửi chậm, có giới hạn (lib/zaloGui.ts)
+// để giảm nguy cơ Zalo khoá tài khoản. ──
+
+let danhBaTu = 0;
+
+/** Lấy danh sách bạn bè + thẻ phân loại + nhóm từ Zalo về (để lọc người nhận). KHÔNG lưu số điện thoại. */
+export async function capNhatDanhBaZalo(): Promise<{ ok: boolean; note: string }> {
+  if (Date.now() - danhBaTu < KHOA_MS || dangDongBo()) return { ok: false, note: 'Đang làm việc khác với Zalo — thử lại sau ít phút' };
+  danhBaTu = Date.now();
+  try {
+    const p = await moPhien();
+    if ('loi' in p) return { ok: false, note: p.loi };
+    const { ghiDanhBa } = await import('./zaloGui.repo.js');
+    const ban = await p.api.getAllFriends();
+    const nhan = await p.api.getLabels().catch(() => ({ labelData: [] as Array<{ id: number; text: string; color: string; emoji: string; conversations: string[] }> }));
+    const nhom = await capNhatDanhSachNhom(p.api).catch(() => ({ tong: 0, moi: 0 }));
+    await ghiDanhBa(
+      (ban || [])
+        .filter((u) => u?.userId)
+        .map((u) => ({ id: String(u.userId), ten: String(u.displayName || u.zaloName || ''), gioiTinh: u.gender === 0 || u.gender === 1 ? Number(u.gender) : -1 })),
+      (nhan.labelData || []).map((l) => ({
+        id: String(l.id),
+        ten: String(l.text || ''),
+        mau: String(l.color || ''),
+        emoji: String(l.emoji || ''),
+        cuoc: (l.conversations || []).map(String),
+      })),
+      now(),
+    );
+    return { ok: true, note: `${(ban || []).length} bạn bè, ${(nhan.labelData || []).length} thẻ phân loại, ${nhom.tong} nhóm` };
+  } finally {
+    danhBaTu = 0;
+  }
+}
+
+let guiTu = 0;
+
+/**
+ * Gửi vài tin đang chờ (gọi từ cron mỗi phút, trong `han`). Trả '' khi không có việc gửi (để lượt cron làm việc khác).
+ * Luật: chỉ 8h–21h; tối đa GIOI_HAN_NGAY tin/ngày; mỗi lượt MOI_LUOT tin, cách nhau ngẫu nhiên; một người không nhận
+ * hai tin trong 24 giờ; lỗi liên tiếp → tạm dừng chiến dịch.
+ */
+export async function guiTheoLo(han: number): Promise<string> {
+  const g = await import('../lib/zaloGui.js');
+  const r = await import('./zaloGui.repo.js');
+  if (!g.trongGioGui(nowTz().hour())) return '';
+  if (Date.now() - guiTu < KHOA_MS || dangDongBo()) return '';
+  const cho = await r.tinChoGui(g.MOI_LUOT).catch(() => []);
+  if (!cho.length) return '';
+  const daGui = await r.demDaGuiTu(nowTz().startOf('day').toISOString());
+  if (daGui >= g.GIOI_HAN_NGAY) return `gửi hàng loạt: đủ ${g.GIOI_HAN_NGAY} tin hôm nay, mai gửi tiếp`;
+  guiTu = Date.now();
+  try {
+    const p = await moPhien();
+    if ('loi' in p) return `gửi hàng loạt: ${p.loi}`;
+    const { ThreadType } = p.zca;
+    let gui = 0;
+    let loiLienTiep = 0;
+    for (const [i, x] of cho.slice(0, g.GIOI_HAN_NGAY - daGui).entries()) {
+      if (Date.now() > han) break;
+      const luc = now();
+      const truoc = await r.guiCuoiToi(x.id);
+      if (truoc && Date.now() - Date.parse(truoc) < g.CACH_NGUOI_MS) {
+        await r.ghiKetQuaGui(x.chienDichId, x.id, { trangThai: 'bo', loi: 'đã nhận tin hàng loạt trong 24 giờ qua', luc });
+        continue;
+      }
+      if (i > 0 && gui > 0) await new Promise((ok) => setTimeout(ok, g.choGiuaTin()));
+      try {
+        const kq = await p.api.sendMessage(g.traiNoiDung(x.noiDung, x.ten), x.id, x.laNhom ? ThreadType.Group : ThreadType.User);
+        await r.ghiKetQuaGui(x.chienDichId, x.id, { trangThai: 'da_gui', msgId: String(kq?.message?.msgId ?? ''), luc: now() });
+        gui++;
+        loiLienTiep = 0;
+      } catch (e) {
+        loiLienTiep++;
+        await r.ghiKetQuaGui(x.chienDichId, x.id, { trangThai: 'loi', loi: (e as Error).message, luc });
+        if (loiLienTiep >= g.LOI_LIEN_TIEP_DUNG) {
+          await r.doiTrangThaiChienDich(x.chienDichId, 'tam_dung', `Tạm dừng: ${g.LOI_LIEN_TIEP_DUNG} tin lỗi liên tiếp (${(e as Error).message.slice(0, 120)}) — có thể Zalo đang chặn gửi`);
+          break;
+        }
+      }
+    }
+    await r.chotChienDichXong();
+    return `gửi hàng loạt: ${gui} tin`;
+  } finally {
+    guiTu = 0;
+  }
 }

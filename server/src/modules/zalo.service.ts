@@ -63,8 +63,14 @@ export interface TinTuWorker {
  * Nhận một lô tin vừa đồng bộ từ Zalo. Lưu nội dung để AI đọc — trừ cuộc đã bị loại (AI thấy là chuyện
  * cá nhân, hoặc anh tự tắt): chỉ đếm số tin, KHÔNG lưu nội dung.
  */
-export async function nhanTin(lo: TinTuWorker[]): Promise<{ luu: number; boQua: number }> {
+export async function nhanTin(loVao: TinTuWorker[]): Promise<{ luu: number; boQua: number }> {
   const now = nowTz().toISOString();
+  // Tin do app gửi hàng loạt (anh soạn) không phải hội thoại: bỏ hẳn — không lưu, không làm "mở lại" cuộc, AI không đọc.
+  const tuMinh = loVao.filter((t) => t?.fromSelf && t.msgId).map((t) => String(t.msgId));
+  const hangLoat = tuMinh.length
+    ? await import('./zaloGui.repo.js').then((m) => m.laTinHangLoat(tuMinh)).catch(() => new Set<string>())
+    : new Set<string>();
+  const lo = hangLoat.size ? loVao.filter((t) => !(t?.fromSelf && hangLoat.has(String(t.msgId)))) : loVao;
   const theoCuoc = new Map<string, TinTuWorker[]>();
   for (const t of lo) {
     if (!t?.threadId || !t?.msgId) continue;
