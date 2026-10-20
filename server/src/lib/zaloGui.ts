@@ -63,3 +63,29 @@ export function uocTinhNgay(n: number, daGuiHomNay = 0): number {
   if (n <= conHomNay) return 0;
   return Math.ceil((n - conHomNay) / GIOI_HAN_NGAY);
 }
+
+/** Ảnh kèm mỗi lần gửi (anh Tâm 20/10/2026: "Anh cần chọn ảnh nữa"). */
+export const TOI_DA_ANH = 5;
+export const ANH_TOI_DA_BYTE = 5 * 1024 * 1024;
+
+export interface AnhGui {
+  url: string;
+  ten: string;
+  /** byte */
+  kichThuoc: number;
+  rong: number;
+  cao: number;
+}
+
+/**
+ * Ảnh chỉ được lấy từ kho Vercel Blob của app (anh tải lên ở trang) — máy chủ tải về để gửi Zalo, nên chặn mọi địa chỉ
+ * khác (chống dùng máy chủ đi tải link lạ).
+ */
+export function laAnhHopLe(a: Pick<AnhGui, 'url' | 'ten'>): boolean {
+  try {
+    const u = new URL(a.url);
+    return u.protocol === 'https:' && /\.public\.blob\.vercel-storage\.com$/.test(u.hostname) && /\.(jpe?g|png|webp)$/i.test(a.ten);
+  } catch {
+    return false;
+  }
+}

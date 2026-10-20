@@ -196,9 +196,22 @@ zaloRouter.post(
   '/gui',
   asyncHandler(async (req, res) => {
     const g = await import('../lib/zaloGui.js');
+    const anhSchema = z.object({
+      url: z.string().url().max(500),
+      ten: z.string().min(1).max(200),
+      kichThuoc: z.number().int().min(1).max(g.ANH_TOI_DA_BYTE),
+      rong: z.number().int().min(0).max(20000),
+      cao: z.number().int().min(0).max(20000),
+    });
     const b = z
-      .object({ noiDung: z.string().trim().min(2).max(2000), ids: z.array(z.string().min(1).max(64)).min(1).max(g.TOI_DA_NGUOI) })
+      .object({
+        noiDung: z.string().trim().max(2000).default(''),
+        anh: z.array(anhSchema).max(g.TOI_DA_ANH).default([]),
+        ids: z.array(z.string().min(1).max(64)).min(1).max(g.TOI_DA_NGUOI),
+      })
+      .refine((x) => x.noiDung.length >= 2 || x.anh.length > 0, { message: 'Soạn nội dung hoặc chọn ảnh' })
       .parse(req.body);
+    if (b.anh.some((a) => !g.laAnhHopLe(a))) throw new ApiError(400, 'Ảnh không hợp lệ — chỉ JPG / PNG / WEBP tải lên từ trang này');
     const { dsNguoiNhan, taoChienDich } = await import('./zaloGui.repo.js');
     const { newId } = await import('../util/id.js');
     const { nowTz } = await import('../lib/datetime.js');
@@ -206,7 +219,7 @@ zaloRouter.post(
     const chon = [...new Set(b.ids)].map((id) => theoId.get(id)).filter((x): x is NonNullable<typeof x> => !!x);
     if (!chon.length) throw new ApiError(400, 'Không có người nhận hợp lệ');
     const id = newId('ZG-');
-    await taoChienDich({ id, noiDung: b.noiDung, nguoi: req.user!.name, taoLuc: nowTz().toISOString() }, chon);
+    await taoChienDich({ id, noiDung: b.noiDung, nguoi: req.user!.name, taoLuc: nowTz().toISOString(), anh: b.anh }, chon);
     res.json({ ok: true, id, soNguoi: chon.length, boQua: b.ids.length - chon.length });
   }),
 );

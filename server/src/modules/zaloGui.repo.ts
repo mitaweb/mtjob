@@ -1,5 +1,15 @@
 // Gửi tin Zalo hàng loạt — đọc/ghi DB (anh Tâm 20/10/2026). Chỉ giám đốc dùng (router /api/zalo đã chặn).
 import { q } from '../db/client.js';
+import type { AnhGui } from '../lib/zaloGui.js';
+
+function docAnh(v: unknown): AnhGui[] {
+  try {
+    const a = JSON.parse(String(v || '[]'));
+    return Array.isArray(a) ? a : [];
+  } catch {
+    return [];
+  }
+}
 
 export interface NguoiNhan {
   id: string;
@@ -145,6 +155,7 @@ export interface ChienDich {
   trangThai: string;
   tong: number;
   ghiChu: string;
+  anh: AnhGui[];
   daGui: number;
   loi: number;
   bo: number;
@@ -152,15 +163,16 @@ export interface ChienDich {
 }
 
 export async function taoChienDich(
-  cd: { id: string; noiDung: string; nguoi: string; taoLuc: string },
+  cd: { id: string; noiDung: string; nguoi: string; taoLuc: string; anh: AnhGui[] },
   ds: Array<{ id: string; ten: string; laNhom: boolean }>,
 ): Promise<void> {
-  await q(`INSERT INTO zalo_chien_dich (id, noi_dung, nguoi, tao_luc, trang_thai, tong) VALUES ($1, $2, $3, $4, 'dang_gui', $5)`, [
+  await q(`INSERT INTO zalo_chien_dich (id, noi_dung, nguoi, tao_luc, trang_thai, tong, anh) VALUES ($1, $2, $3, $4, 'dang_gui', $5, $6)`, [
     cd.id,
     cd.noiDung,
     cd.nguoi,
     cd.taoLuc,
     ds.length,
+    JSON.stringify(cd.anh),
   ]);
   for (let i = 0; i < ds.length; i += 200) {
     const lo = ds.slice(i, i + 200);
@@ -193,6 +205,7 @@ export async function dsChienDich(limit = 20): Promise<ChienDich[]> {
     trangThai: String(r.trang_thai || ''),
     tong: Number(r.tong) || 0,
     ghiChu: String(r.ghi_chu || ''),
+    anh: docAnh(r.anh),
     daGui: Number(r.da_gui) || 0,
     loi: Number(r.loi) || 0,
     bo: Number(r.bo) || 0,
@@ -220,9 +233,11 @@ export async function doiTrangThaiChienDich(id: string, trangThai: 'dung' | 'tam
 }
 
 /** Vài người kế tiếp chờ gửi (chiến dịch cũ trước, theo thứ tự anh chọn). */
-export async function tinChoGui(n: number): Promise<Array<{ chienDichId: string; noiDung: string; id: string; ten: string; laNhom: boolean }>> {
+export async function tinChoGui(
+  n: number,
+): Promise<Array<{ chienDichId: string; noiDung: string; anh: AnhGui[]; id: string; ten: string; laNhom: boolean }>> {
   const rows = await q(
-    `SELECT g.chien_dich_id, c.noi_dung, g.thread_id, g.ten, g.is_group
+    `SELECT g.chien_dich_id, c.noi_dung, c.anh, g.thread_id, g.ten, g.is_group
        FROM zalo_gui g JOIN zalo_chien_dich c ON c.id = g.chien_dich_id
       WHERE c.trang_thai = 'dang_gui' AND g.trang_thai = 'cho'
       ORDER BY c.tao_luc, g.thu_tu LIMIT $1`,
@@ -231,6 +246,7 @@ export async function tinChoGui(n: number): Promise<Array<{ chienDichId: string;
   return rows.map((r) => ({
     chienDichId: String(r.chien_dich_id),
     noiDung: String(r.noi_dung || ''),
+    anh: docAnh(r.anh),
     id: String(r.thread_id),
     ten: String(r.ten || ''),
     laNhom: !!r.is_group,
@@ -271,9 +287,15 @@ export async function chotChienDichXong(): Promise<void> {
   );
 }
 
-/** Các mã tin do app gửi hàng loạt — đồng bộ tin về thì bỏ qua, AI không đọc tin quảng cáo của chính mình. */
+/**
+ * Các mã tin do app gửi hàng loạt — đồng bộ tin về thì bỏ qua, AI không đọc tin quảng cáo của chính mình. Một lần gửi
+ * có ảnh ra nhiều tin (chữ + từng ảnh) → `msg_id` lưu nhiều mã, cách nhau dấu phẩy.
+ */
 export async function laTinHangLoat(msgIds: string[]): Promise<Set<string>> {
   if (!msgIds.length) return new Set();
-  const r = await q('SELECT msg_id FROM zalo_gui WHERE msg_id = ANY($1)', [msgIds]).catch(() => [] as Record<string, unknown>[]);
-  return new Set(r.map((x) => String(x.msg_id)));
+  const r = await q("SELECT msg_id FROM zalo_gui WHERE msg_id <> '' AND string_to_array(msg_id, ',') && $1::text[]", [msgIds]).catch(
+    () => [] as Record<string, unknown>[],
+  );
+  const can = new Set(msgIds);
+  return new Set(r.flatMap((x) => String(x.msg_id).split(',')).filter((id) => can.has(id)));
 }

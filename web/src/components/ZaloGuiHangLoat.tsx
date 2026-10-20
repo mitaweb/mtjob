@@ -1,8 +1,9 @@
 // Gửi tin Zalo hàng loạt (anh Tâm 20/10/2026: "bổ sung trong đó phần gửi tin nhắn hàng loạt qua zalo nữa, lọc các
 // yếu tố mà zalo cho phép, tích chọn vào những người để gửi"). Chỉ giám đốc. Máy chủ gửi chậm theo nhịp cron
 // (8h–21h, giới hạn mỗi ngày) để giảm nguy cơ Zalo khoá tài khoản.
-import { useEffect, useMemo, useState } from 'react';
-import { api } from '../lib/api';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { upload } from '@vercel/blob/client';
+import { api, getToken } from '../lib/api';
 import AsyncButton from './AsyncButton';
 import { useToast } from './Toaster';
 import { Badge, EmptyState, PhanTrang, SkeletonRows, type BadgeVariant } from './ui';
@@ -36,9 +37,17 @@ interface DuLieu {
   toiDaNguoi: number;
   needsMigrate?: boolean;
 }
+interface AnhGui {
+  url: string;
+  ten: string;
+  kichThuoc: number;
+  rong: number;
+  cao: number;
+}
 interface ChienDich {
   id: string;
   noiDung: string;
+  anh?: AnhGui[];
   taoLuc: string;
   trangThai: string;
   tong: number;
@@ -58,6 +67,22 @@ interface DongGui {
 }
 
 const NGAY = 24 * 3600 * 1000;
+// Ảnh kèm (anh Tâm 20/10/2026: "Anh cần chọn ảnh nữa") — khớp giới hạn máy chủ (lib/zaloGui.ts).
+const TOI_DA_ANH = 5;
+const ANH_TOI_DA_BYTE = 5 * 1024 * 1024;
+const LOAI_ANH = ['image/jpeg', 'image/png', 'image/webp'];
+
+/** Kích thước ảnh (Zalo cần rộng × cao để hiện ảnh đúng tỉ lệ). */
+async function kichThuocAnh(file: File): Promise<{ rong: number; cao: number }> {
+  try {
+    const b = await createImageBitmap(file);
+    const r = { rong: b.width, cao: b.height };
+    b.close();
+    return r;
+  } catch {
+    return { rong: 0, cao: 0 };
+  }
+}
 const CO_TRANG = 30;
 const ngayGio = (iso: string) =>
   iso ? new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
@@ -88,6 +113,9 @@ export default function ZaloGuiHangLoat() {
   const [cd, setCd] = useState<ChienDich[]>([]);
   const [chon, setChon] = useState<Set<string>>(new Set());
   const [noiDung, setNoiDung] = useState('');
+  const [anh, setAnh] = useState<AnhGui[]>([]);
+  const [dangTaiAnh, setDangTaiAnh] = useState(false);
+  const oAnh = useRef<HTMLInputElement>(null);
   const [trang, setTrang] = useState(1);
   const [moCd, setMoCd] = useState<{ id: string; ds: DongGui[] } | null>(null);
   // Bộ lọc
@@ -187,9 +215,43 @@ export default function ZaloGuiHangLoat() {
     await tai();
   }
 
+  async function chonAnh(files: FileList | null) {
+    const ds = [...(files || [])];
+    if (!ds.length) return;
+    setDangTaiAnh(true);
+    try {
+      const moi: AnhGui[] = [];
+      for (const file of ds) {
+        if (anh.length + moi.length >= TOI_DA_ANH) {
+          toast.error(`Tối đa ${TOI_DA_ANH} ảnh mỗi lần gửi`);
+          break;
+        }
+        if (!LOAI_ANH.includes(file.type)) {
+          toast.error(`${file.name}: chỉ nhận ảnh JPG / PNG / WEBP`);
+          continue;
+        }
+        if (file.size > ANH_TOI_DA_BYTE) {
+          toast.error(`${file.name}: ảnh quá 5 MB`);
+          continue;
+        }
+        const { rong, cao } = await kichThuocAnh(file);
+        const duoi = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
+        const ten = /\.(jpe?g|png|webp)$/i.test(file.name) ? file.name : `${file.name || 'anh'}.${duoi}`;
+        const blob = await upload(`zalo-gui/${ten}`, file, { access: 'public', handleUploadUrl: '/api/brain/upload', clientPayload: getToken() || '' });
+        moi.push({ url: blob.url, ten, kichThuoc: file.size, rong, cao });
+      }
+      setAnh((cu) => [...cu, ...moi].slice(0, TOI_DA_ANH));
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDangTaiAnh(false);
+      if (oAnh.current) oAnh.current.value = '';
+    }
+  }
+
   async function gui() {
     if (!chon.size) return toast.error('Chưa tích chọn người nhận');
-    if (noiDung.trim().length < 2) return toast.error('Chưa soạn nội dung');
+    if (noiDung.trim().length < 2 && !anh.length) return toast.error('Chưa soạn nội dung hoặc chọn ảnh');
     const conHomNay = Math.max(0, (dl?.gioiHanNgay || 100) - (dl?.daGuiHomNay || 0));
     const ngay = chon.size <= conHomNay ? 'trong hôm nay' : `khoảng ${Math.ceil((chon.size - conHomNay) / (dl?.gioiHanNgay || 100)) + 1} ngày`;
     if (
@@ -198,10 +260,11 @@ export default function ZaloGuiHangLoat() {
       )
     )
       return;
-    const r = await api<{ ok: boolean; soNguoi: number; boQua: number }>('/zalo/gui', { body: { noiDung, ids: [...chon] } });
+    const r = await api<{ ok: boolean; soNguoi: number; boQua: number }>('/zalo/gui', { body: { noiDung, anh, ids: [...chon] } });
     toast.success(`Đã xếp lịch gửi ${r.soNguoi} người${r.boQua ? ` (bỏ ${r.boQua} không hợp lệ)` : ''}`);
     setChon(new Set());
     setNoiDung('');
+    setAnh([]);
     await taiCd();
   }
 
@@ -369,17 +432,63 @@ export default function ZaloGuiHangLoat() {
           </button>
           <span className="ml-auto">{noiDung.length}/2000</span>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {anh.map((a, i) => (
+            <div key={a.url} className="relative h-20 w-20 overflow-hidden rounded-xl border border-brand-200 bg-brand-50">
+              <img src={a.url} alt={a.ten} className="h-full w-full object-cover" />
+              <button
+                className="absolute right-1 top-1 rounded-full bg-ink/70 px-1.5 text-xs text-white"
+                title="Bỏ ảnh này"
+                onClick={() => setAnh((cu) => cu.filter((_, k) => k !== i))}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          {anh.length < TOI_DA_ANH && (
+            <button
+              className="flex h-20 w-20 flex-col items-center justify-center rounded-xl border-2 border-dashed border-brand-300 text-xs text-ink-soft hover:bg-brand-50"
+              disabled={dangTaiAnh}
+              onClick={() => oAnh.current?.click()}
+            >
+              {dangTaiAnh ? (
+                'Đang tải…'
+              ) : (
+                <>
+                  <span className="text-xl">🖼️</span>
+                  Chọn ảnh
+                </>
+              )}
+            </button>
+          )}
+          <input ref={oAnh} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={(e) => chonAnh(e.target.files)} />
+          <span className="text-xs text-ink-muted">
+            Tối đa {TOI_DA_ANH} ảnh, mỗi ảnh ≤ 5 MB. 1 ảnh: chữ thành chú thích ảnh; nhiều ảnh: gửi chữ trước rồi album ảnh.
+          </span>
+        </div>
         <p className="text-xs text-ink-muted">
           Mỗi người nhận một câu hơi khác nhau (tên riêng, lời chào ngẫu nhiên) — Zalo ít coi là tin rác hơn so với gửi y hệt.
         </p>
-        {noiDung.trim() && nguoiDau && (
+        {(noiDung.trim() || anh.length > 0) && nguoiDau && (
           <div className="rounded-xl bg-brand-50 p-3 text-sm">
             <div className="mb-1 text-xs text-ink-muted">Xem trước — gửi {nguoiDau.ten}:</div>
-            <div className="whitespace-pre-wrap">{xemTruoc(noiDung, nguoiDau.ten)}</div>
+            {anh.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1">
+                {anh.map((a) => (
+                  <img key={a.url} src={a.url} alt="" className="h-16 w-16 rounded-lg object-cover" />
+                ))}
+              </div>
+            )}
+            {noiDung.trim() && <div className="whitespace-pre-wrap">{xemTruoc(noiDung, nguoiDau.ten)}</div>}
           </div>
         )}
         <div className="flex justify-end">
-          <AsyncButton className="btn-primary" disabled={!chon.size || noiDung.trim().length < 2} onClick={gui} busyLabel="Đang xếp lịch…">
+          <AsyncButton
+            className="btn-primary"
+            disabled={!chon.size || dangTaiAnh || (noiDung.trim().length < 2 && !anh.length)}
+            onClick={gui}
+            busyLabel="Đang xếp lịch…"
+          >
             📣 Gửi cho {chon.size} người
           </AsyncButton>
         </div>
@@ -420,7 +529,14 @@ export default function ZaloGuiHangLoat() {
                       </button>
                     </span>
                   </div>
-                  <p className="line-clamp-2 whitespace-pre-wrap text-sm">{c.noiDung}</p>
+                  {!!c.anh?.length && (
+                    <div className="flex gap-1">
+                      {c.anh.map((a) => (
+                        <img key={a.url} src={a.url} alt="" className="h-10 w-10 rounded-md object-cover" />
+                      ))}
+                    </div>
+                  )}
+                  {c.noiDung && <p className="line-clamp-2 whitespace-pre-wrap text-sm">{c.noiDung}</p>}
                   <div className="h-1.5 overflow-hidden rounded-full bg-brand-50">
                     <div className="h-full bg-emerald-500" style={{ width: `${pct}%` }} />
                   </div>

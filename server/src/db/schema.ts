@@ -819,6 +819,8 @@ CREATE TABLE IF NOT EXISTS zalo_gui (
 CREATE INDEX IF NOT EXISTS zalo_gui_trang_thai_idx ON zalo_gui (trang_thai, gui_luc);
 CREATE INDEX IF NOT EXISTS zalo_gui_thread_idx ON zalo_gui (thread_id, gui_luc);
 CREATE INDEX IF NOT EXISTS zalo_gui_msg_idx ON zalo_gui (msg_id);
+-- Ảnh kèm (anh Tâm 20/10/2026: "Anh cần chọn ảnh nữa"): JSON [{url, ten, kichThuoc, rong, cao}] — ảnh ở Vercel Blob.
+ALTER TABLE zalo_chien_dich ADD COLUMN IF NOT EXISTS anh text DEFAULT '[]';
 
 -- Anh Tâm 4/10/2026: "lịch trình cá nhân, phân tích task chỉ anh được hỏi". Các đoạn AI tự vơ
 -- từ chat, đoạn lưu tay kiểu cũ và lịch hẹn đang mở cho cả công ty → ẩn về riêng giám đốc.

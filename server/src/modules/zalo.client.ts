@@ -659,6 +659,22 @@ export async function guiTheoLo(han: number): Promise<string> {
     const p = await moPhien();
     if ('loi' in p) return `gửi hàng loạt: ${p.loi}`;
     const { ThreadType } = p.zca;
+    // Ảnh tải MỘT lần mỗi lượt (giữ trong bộ nhớ, không ghi đĩa), dùng cho mọi người nhận trong lượt.
+    const anhTai = new Map<string, Promise<Buffer>>();
+    const taiAnh = (a: { url: string }) => {
+      let p = anhTai.get(a.url);
+      if (!p) {
+        p = (async () => {
+          const res = await fetch(a.url, { redirect: 'error', signal: AbortSignal.timeout(15_000) });
+          if (!res.ok) throw new Error(`không tải được ảnh (${res.status})`);
+          const buf = Buffer.from(await res.arrayBuffer());
+          if (buf.length > g.ANH_TOI_DA_BYTE) throw new Error('ảnh quá lớn');
+          return buf;
+        })();
+        anhTai.set(a.url, p);
+      }
+      return p;
+    };
     let gui = 0;
     let loiLienTiep = 0;
     for (const [i, x] of cho.slice(0, g.GIOI_HAN_NGAY - daGui).entries()) {
@@ -671,8 +687,25 @@ export async function guiTheoLo(han: number): Promise<string> {
       }
       if (i > 0 && gui > 0) await new Promise((ok) => setTimeout(ok, g.choGiuaTin()));
       try {
-        const kq = await p.api.sendMessage(g.traiNoiDung(x.noiDung, x.ten), x.id, x.laNhom ? ThreadType.Group : ThreadType.User);
-        await r.ghiKetQuaGui(x.chienDichId, x.id, { trangThai: 'da_gui', msgId: String(kq?.message?.msgId ?? ''), luc: now() });
+        const anh = x.anh.filter((a) => g.laAnhHopLe(a));
+        const attachments = await Promise.all(
+          anh.map(async (a) => {
+            const data = await taiAnh(a);
+            const duoi = (/\.(jpe?g|png|webp)$/i.exec(a.ten)?.[1] || 'jpg').toLowerCase();
+            return {
+              data,
+              filename: `anh-${anh.indexOf(a) + 1}.${duoi}` as `${string}.${string}`,
+              metadata: { totalSize: data.length, width: a.rong || undefined, height: a.cao || undefined },
+            };
+          }),
+        );
+        const kq = await p.api.sendMessage(
+          { msg: g.traiNoiDung(x.noiDung, x.ten), ...(attachments.length ? { attachments } : {}) },
+          x.id,
+          x.laNhom ? ThreadType.Group : ThreadType.User,
+        );
+        const ma = [kq?.message?.msgId, ...(kq?.attachment || []).map((t) => t?.msgId)].filter((v) => v !== undefined && v !== null).map(String);
+        await r.ghiKetQuaGui(x.chienDichId, x.id, { trangThai: 'da_gui', msgId: ma.join(',').slice(0, 500), luc: now() });
         gui++;
         loiLienTiep = 0;
       } catch (e) {
