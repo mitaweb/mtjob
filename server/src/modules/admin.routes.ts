@@ -43,6 +43,16 @@ adminRouter.get(
   }),
 );
 
+/** Vị trí chấm công: toạ độ đang cài + gợi ý theo các lần chấm thật ở văn phòng (anh Tâm 22/10/2026). */
+adminRouter.get(
+  '/vi-tri-cham-cong',
+  asyncHandler(async (_req, res) => {
+    const cfg = await getConfig({ fresh: true });
+    const { goiYViTriCongTy } = await import('./attendance.nhac.js');
+    res.json({ lat: cfg.companyLat, lng: cfg.companyLng, banKinh: cfg.checkinRadiusM, goiY: await goiYViTriCongTy().catch(() => null) });
+  }),
+);
+
 adminRouter.post(
   '/config',
   asyncHandler(async (req, res) => {

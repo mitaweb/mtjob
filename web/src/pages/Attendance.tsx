@@ -33,6 +33,16 @@ const hm = (iso?: string) =>
     ? new Date(iso).toLocaleTimeString('vi-VN', GIO_VN)
     : CO_GIO[iso || ''] || iso || '—';
 
+/** Cách bật vị trí chính xác theo loại máy. */
+function huongDanViTri(): string {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad/.test(ua))
+    return 'iPhone: Cài đặt → Quyền riêng tư & Bảo mật → Dịch vụ định vị → Safari (hoặc trình duyệt đang dùng) → chọn "Khi dùng ứng dụng" và BẬT "Vị trí chính xác", rồi bấm chấm lại.';
+  if (/Android/.test(ua))
+    return 'Android: bật Định vị và "Độ chính xác vị trí của Google" (Cài đặt → Vị trí), cho trình duyệt quyền vị trí "Chính xác", rồi bấm chấm lại.';
+  return 'Máy tính không có GPS — hãy chấm bằng điện thoại. Vẫn không được thì làm đơn Quên chấm công.';
+}
+
 export default function Attendance() {
   const [data, setData] = useState<MeResponse | null>(null);
   const [msg, setMsg] = useState('');
@@ -51,9 +61,17 @@ export default function Attendance() {
 
   async function punch(kind: 'checkin' | 'checkout') {
     setBusy(true);
-    setMsg('Đang lấy vị trí…');
+    setMsg('Đang lấy vị trí… (có thể mất 10–15 giây)');
     try {
       const pos = await getPosition();
+      // Vị trí chỉ gần đúng (vd iPhone tắt "Vị trí chính xác" → sai số 1–3 km): báo cách sửa NGAY trên máy, đừng để
+      // người ta tưởng đã chấm (anh Tâm 22/10/2026: "có bạn ở cty nhưng gps nhận 2000m").
+      if (pos.accuracy > 200) {
+        setMsg(
+          `⚠️ Máy chỉ biết vị trí gần đúng (sai số ~${Math.round(pos.accuracy)}m) nên CHƯA chấm được. ${huongDanViTri()}`,
+        );
+        return;
+      }
       const r = await api<{ shift: string; time: string; late: boolean; distanceM: number; dayFraction: number }>(
         `/attendance/${kind}`,
         // Gửi kèm sai số: máy chủ cần biết con số khoảng cách có đáng tin không.
@@ -72,7 +90,9 @@ export default function Attendance() {
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  // Ngày theo giờ máy (Việt Nam) — toISOString là giờ UTC, trước 7h sáng sẽ ra ngày hôm qua.
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const todayRec = data?.records.find((r) => r.date === today);
 
   return (
@@ -107,6 +127,11 @@ export default function Attendance() {
             <div>Ca chiều ra: <b>{hm(todayRec.afternoonOutAt)}</b></div>
             <div>Ngày công: <b>{todayRec.dayFraction}</b></div>
             <div>Trạng thái: <b>{todayRec.status}</b></div>
+            {/^20/.test(todayRec.morningInAt || '') && !todayRec.afternoonOutAt && !todayRec.morningOutAt && (
+              <div className="col-span-2 rounded-lg bg-amber-50 px-3 py-2 text-amber-900">
+                Mới chấm giờ vào nên đang là <b>0.5 công</b> — nhớ bấm <b>⬆️ Giờ ra</b> trước khi về để đủ 1 công.
+              </div>
+            )}
           </div>
         ) : (
           <p className="text-sm text-ink-muted">Chưa chấm công hôm nay.</p>

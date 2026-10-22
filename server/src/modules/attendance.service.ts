@@ -51,9 +51,12 @@ function requireAtOffice(dist: number, accuracy: number, radiusM: number, viec: 
   if (verdict === 'inaccurate') {
     throw new ApiError(
       400,
-      `Máy không định vị chính xác được (sai số khoảng ${Math.round(accuracy)}m) nên chưa ${viec} được. ` +
-        'Máy tính nối WiFi thường lấy vị trí của nhà mạng chứ không phải chỗ bạn ngồi. ' +
-        'Hãy dùng điện thoại có bật Định vị để chấm, hoặc xin duyệt làm online.',
+      `Máy chỉ biết vị trí gần đúng (sai số khoảng ${Math.round(accuracy)}m) nên chưa ${viec} được. ` +
+        // Anh Tâm 22/10/2026: "có bạn ở cty nhưng gps nhận 2000m" — iPhone tắt "Vị trí chính xác" chỉ báo vị trí
+        // trong bán kính vài km; máy tính nối WiFi lấy vị trí nhà mạng.
+        'iPhone: Cài đặt → Quyền riêng tư & Bảo mật → Dịch vụ định vị → Safari (hoặc trình duyệt đang dùng) → chọn "Khi dùng ứng dụng" và BẬT "Vị trí chính xác". ' +
+        'Android: bật Định vị và "Độ chính xác vị trí của Google", cho trình duyệt quyền vị trí "Chính xác". ' +
+        'Máy tính: dùng điện thoại để chấm. Vẫn không được thì làm đơn Quên chấm công.',
     );
   }
 

@@ -5,6 +5,7 @@ import MemberTable from '../components/MemberTable';
 import StorageCard from '../components/StorageCard';
 import AdminHolidays from '../components/AdminHolidays';
 import AdminBrainAi from '../components/AdminBrainAi';
+import AdminViTriChamCong from '../components/AdminViTriChamCong';
 import { useToast } from '../components/Toaster';
 import ModelPicker from '../components/ModelPicker';
 
@@ -652,6 +653,7 @@ export default function Admin() {
         )}
       </div>
 
+      <AdminViTriChamCong />
       <AdminBrainAi />
 
       <AdminHolidays />

@@ -8,6 +8,9 @@ export interface Coords {
 const DU_TOT_M = 50;
 /** Chờ tối đa bao lâu để máy tìm được vị trí tốt hơn. */
 const CHO_TOI_DA_MS = 8000;
+/** Hết 8 giây mà vị trí vẫn kém (sai số > mức này) thì chờ thêm — GPS điện thoại trong nhà đôi khi cần 10–15 giây. */
+const VAN_KEM_M = 100;
+const CHO_THEM_MS = 7000;
 
 /**
  * Lấy vị trí TỐT NHẤT trong vài giây, thay vì lấy đúng mẫu đầu tiên.
@@ -39,7 +42,16 @@ export function getPosition(): Promise<Coords> {
       else reject(new Error('Không lấy được vị trí. Kiểm tra xem đã bật Định vị cho trình duyệt chưa.'));
     };
 
-    const hetGio = setTimeout(ketThuc, CHO_TOI_DA_MS);
+    let daChoThem = false;
+    const hetGioDau = () => {
+      if (!daChoThem && (!totNhat || totNhat.accuracy <= 0 || totNhat.accuracy > VAN_KEM_M)) {
+        daChoThem = true;
+        hetGio = setTimeout(ketThuc, CHO_THEM_MS);
+        return;
+      }
+      ketThuc();
+    };
+    let hetGio = setTimeout(hetGioDau, CHO_TOI_DA_MS);
 
     watchId = navigator.geolocation.watchPosition(
       (pos) => {
@@ -63,7 +75,7 @@ export function getPosition(): Promise<Coords> {
         if (watchId >= 0) navigator.geolocation.clearWatch(watchId);
         reject(new Error(err.message || 'Không lấy được vị trí.'));
       },
-      { enableHighAccuracy: true, timeout: CHO_TOI_DA_MS, maximumAge: 0 },
+      { enableHighAccuracy: true, timeout: CHO_TOI_DA_MS + CHO_THEM_MS, maximumAge: 0 },
     );
   });
 }

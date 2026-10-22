@@ -49,7 +49,11 @@ jobsRouter.get(
     res.json({ ok: true, job: 'reminders' });
     // Nhắc hẹn rồi Zalo → kho tri thức, chạy nền nối tiếp nhau.
     runInBackground(
-      runDueReminders()
+      // Nhắc chấm giờ ra sau giờ tan ca (anh Tâm 22/10/2026) — mỗi người mỗi ngày một lần.
+      import('./attendance.nhac.js')
+        .then((m) => m.nhacChamGioRa())
+        .catch((e) => console.warn('[cham-cong] nhắc giờ ra:', (e as Error).message))
+        .then(() => runDueReminders())
         .catch((e) => console.warn('[reminders] quét:', (e as Error).message))
         .then(() => import('./zalo.client.js'))
         .then((z) => z.chayBanDem(batDau))
