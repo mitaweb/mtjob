@@ -141,7 +141,10 @@ adminPayrollRouter.get(
       dayFraction: r.dayFraction,
       mode: r.mode,
     }));
-    res.json({ year, month, records, kyLuat: await kyLuatCuaThanhVien(memberId, year, month) });
+    // Lần chấm hỏng trong tháng (26/10/2026) — biết ngày nào người đó CÓ bấm mà không vào được, để sửa / duyệt.
+    const { lanChamHongTrongKhoang } = await import('./attendance.repo.js');
+    const thuHong = (await lanChamHongTrongKhoang(memberId, start, end).catch(() => [])).map((x) => ({ ...x, gio: fmtHm(x.luc) }));
+    res.json({ year, month, records, thuHong, kyLuat: await kyLuatCuaThanhVien(memberId, year, month) });
   }),
 );
 

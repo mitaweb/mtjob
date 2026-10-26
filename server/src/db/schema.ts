@@ -88,6 +88,20 @@ CREATE TABLE IF NOT EXISTS attendance (
 );
 -- PK là (date, member_id) nên truy vấn theo member cần index riêng:
 CREATE INDEX IF NOT EXISTS attendance_member_date_idx ON attendance (member_id, date);
+-- Lần chấm công HỎNG (anh Tâm 26/10/2026: "có bạn chấm công xong, nó lên 1 công nhưng hôm sau quay lại mất, cụ thể là An
+-- Thùy" — log máy chủ không có lượt giờ ra nào: lấy vị trí hỏng trên máy thì trước đây không để lại dấu vết gì).
+-- Ghi cả lần máy chủ từ chối (ở xa / vị trí gần đúng) lẫn lần điện thoại không lấy được vị trí.
+CREATE TABLE IF NOT EXISTS attendance_thu (
+  id          text PRIMARY KEY,
+  member_id   text NOT NULL,
+  ngay        text NOT NULL,           -- YYYY-MM-DD (giờ VN)
+  luc         text NOT NULL,           -- ISO
+  loai        text DEFAULT '',         -- checkin | checkout
+  ly_do       text DEFAULT '',
+  sai_so      integer,
+  may         text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS attendance_thu_idx ON attendance_thu (member_id, ngay);
 
 CREATE TABLE IF NOT EXISTS requests (
   req_id          text PRIMARY KEY,

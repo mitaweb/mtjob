@@ -40,7 +40,18 @@ const blankAttn = (date = ''): AttnRow => ({
   mode: 'office',
 });
 
+/** Lần chấm công hỏng (máy chủ từ chối / điện thoại không lấy được vị trí) — anh Tâm 26/10/2026. */
+interface LanChamHong {
+  ngay: string;
+  gio: string;
+  loai: string;
+  lyDo: string;
+  saiSo: number | null;
+  may: string;
+}
+
 export default function AdminPayroll() {
+  const [thuHong, setThuHong] = useState<LanChamHong[]>([]);
   const init = currentYm();
   const [ym, setYm] = useState(`${init.year}-${String(init.month).padStart(2, '0')}`);
   const [rows, setRows] = useState<PayRow[]>([]);
@@ -138,10 +149,11 @@ export default function AdminPayroll() {
     setEditing(row);
     setForm(blankAttn());
     try {
-      const r = await api<{ records: AttnRow[]; kyLuat: TongKetKyLuat }>(
+      const r = await api<{ records: AttnRow[]; kyLuat: TongKetKyLuat; thuHong?: LanChamHong[] }>(
         `/admin/attendance?memberId=${row.memberId}&${qs()}`,
       );
       setRecords(r.records);
+      setThuHong(r.thuHong || []);
       setKyLuat(r.kyLuat);
     } catch (e) {
       setMsg((e as Error).message);
@@ -468,6 +480,26 @@ export default function AdminPayroll() {
                 </tbody>
               </table>
             </div>
+            {thuHong.length > 0 && (
+              <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+                <div className="font-semibold">⚠ {thuHong.length} lần bấm chấm công KHÔNG vào được trong tháng</div>
+                <p className="text-xs">
+                  Người này có bấm nhưng máy chủ từ chối (ở xa / vị trí gần đúng) hoặc điện thoại không lấy được vị trí. Đúng là có đi làm
+                  thì bấm "sửa" ngày đó để điền giờ.
+                </p>
+                <ul className="mt-1 space-y-0.5 text-xs">
+                  {thuHong.map((x, i) => (
+                    <li key={i}>
+                      <b>
+                        {x.ngay} {x.gio}
+                      </b>{' '}
+                      · {x.loai === 'checkout' ? 'giờ ra' : 'giờ vào'} · {x.may}
+                      {x.saiSo ? ` · sai số ${x.saiSo}m` : ''} — {x.lyDo}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
       )}

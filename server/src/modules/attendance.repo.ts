@@ -1,6 +1,40 @@
 import { q } from '../db/client.js';
 import type { AttendanceRow, AttendanceMode } from '../types.js';
 
+/** Một lần chấm công hỏng (máy chủ từ chối, hoặc điện thoại không lấy được vị trí). */
+export interface LanChamHong {
+  ngay: string;
+  luc: string;
+  loai: string;
+  lyDo: string;
+  saiSo: number | null;
+  may: string;
+}
+
+export async function ghiLanChamHong(memberId: string, x: Omit<LanChamHong, 'ngay'> & { ngay: string; id: string }): Promise<void> {
+  await q(
+    'INSERT INTO attendance_thu (id, member_id, ngay, luc, loai, ly_do, sai_so, may) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING',
+    [x.id, memberId, x.ngay, x.luc, x.loai, x.lyDo.slice(0, 400), x.saiSo, x.may.slice(0, 80)],
+  );
+}
+
+export async function demLanChamHong(memberId: string, ngay: string): Promise<number> {
+  const r = await q('SELECT COUNT(*)::int AS n FROM attendance_thu WHERE member_id = $1 AND ngay = $2', [memberId, ngay]);
+  return Number(r[0]?.n) || 0;
+}
+
+export async function lanChamHongTrongKhoang(memberId: string, tu: string, den: string): Promise<LanChamHong[]> {
+  const rows = await q('SELECT * FROM attendance_thu WHERE member_id = $1 AND ngay >= $2 AND ngay <= $3 ORDER BY luc', [memberId, tu, den]);
+  return rows.map((r) => ({
+    ngay: String(r.ngay),
+    luc: String(r.luc),
+    loai: String(r.loai || ''),
+    lyDo: String(r.ly_do || ''),
+    saiSo: r.sai_so === null || r.sai_so === undefined ? null : Number(r.sai_so),
+    may: String(r.may || ''),
+  }));
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function rowToAttendance(r: any): AttendanceRow {
   return {

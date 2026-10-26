@@ -59,14 +59,25 @@ export default function Attendance() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ym]);
 
+  /** Báo máy chủ lần chấm hỏng ngay trên máy (chưa gửi được chấm công) — để quản lý biết là có bấm. Lỗi thì thôi. */
+  function baoHong(kind: 'checkin' | 'checkout', lyDo: string, saiSo?: number) {
+    api('/attendance/thu-hong', { body: { loai: kind, lyDo: lyDo.slice(0, 300), ...(saiSo ? { saiSo: Math.round(saiSo) } : {}) } }).catch(
+      () => undefined,
+    );
+  }
+
   async function punch(kind: 'checkin' | 'checkout') {
     setBusy(true);
     setMsg('Đang lấy vị trí… (có thể mất 10–15 giây)');
     try {
-      const pos = await getPosition();
+      const pos = await getPosition().catch((e) => {
+        baoHong(kind, `Không lấy được vị trí: ${(e as Error).message}`);
+        throw e;
+      });
       // Vị trí chỉ gần đúng (vd iPhone tắt "Vị trí chính xác" → sai số 1–3 km): báo cách sửa NGAY trên máy, đừng để
       // người ta tưởng đã chấm (anh Tâm 22/10/2026: "có bạn ở cty nhưng gps nhận 2000m").
       if (pos.accuracy > 200) {
+        baoHong(kind, 'Vị trí chỉ gần đúng — chưa gửi chấm công', pos.accuracy);
         setMsg(
           `⚠️ Máy chỉ biết vị trí gần đúng (sai số ~${Math.round(pos.accuracy)}m) nên CHƯA chấm được. ${huongDanViTri()}`,
         );

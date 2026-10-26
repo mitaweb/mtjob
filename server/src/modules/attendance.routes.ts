@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { asyncHandler } from '../util/errors.js';
+import { asyncHandler, ApiError } from '../util/errors.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
 import { checkIn, checkOut } from './attendance.service.js';
-import { getForMemberRange, getForDate } from './attendance.repo.js';
+import { getForMemberRange, getForDate, ghiLanChamHong, demLanChamHong } from './attendance.repo.js';
+import { newId } from '../util/id.js';
 import { notify } from './notifications.service.js';
 import { findById, membersInTeam } from './members.repo.js';
 import { getHolidaySet } from './holidays.repo.js';
@@ -17,13 +18,41 @@ attendanceRouter.use(requireAuth);
 // accuracy: sai so met do trinh duyet bao. Khong co (may cu) thi coi nhu 0 = so thang khoang cach.
 const geoSchema = z.object({ lat: z.number(), lng: z.number(), accuracy: z.number().optional().default(0) });
 
+/** Loại máy gọn (iPhone / Android / Mac / Windows) — để biết lần hỏng là ở máy nào. */
+function loaiMay(ua: string): string {
+  if (/iPhone|iPad/.test(ua)) return 'iPhone';
+  if (/Android/.test(ua)) return 'Android';
+  if (/Macintosh/.test(ua)) return 'Mac';
+  if (/Windows/.test(ua)) return 'Windows';
+  return 'khác';
+}
+
+/** Ghi lại lần chấm bị máy chủ từ chối (ở xa / vị trí gần đúng) — tối đa 20 lần mỗi người mỗi ngày. Hỏng thì bỏ qua. */
+async function ghiTuChoi(memberId: string, loai: string, e: unknown, accuracy: number, ua: string): Promise<void> {
+  if (!(e instanceof ApiError) || e.status !== 400) return;
+  const ngay = todayIso();
+  if ((await demLanChamHong(memberId, ngay).catch(() => 99)) >= 20) return;
+  await ghiLanChamHong(memberId, {
+    id: newId('AT-'),
+    ngay,
+    luc: nowTz().toISOString(),
+    loai,
+    lyDo: `Máy chủ từ chối: ${e.message}`,
+    saiSo: Math.round(accuracy) || null,
+    may: loaiMay(ua),
+  }).catch(() => undefined);
+}
+
 const shiftVi = (s: Shift) => (s === 'morning' ? 'sáng' : 'chiều');
 
 attendanceRouter.post(
   '/checkin',
   asyncHandler(async (req, res) => {
     const { lat, lng, accuracy } = geoSchema.parse(req.body);
-    const r = await checkIn(req.user!.sub, lat, lng, accuracy);
+    const r = await checkIn(req.user!.sub, lat, lng, accuracy).catch(async (e) => {
+      await ghiTuChoi(req.user!.sub, 'checkin', e, accuracy, String(req.headers['user-agent'] || ''));
+      throw e;
+    });
     await notify(req.user!.sub, {
       type: 'attendance',
       title: 'Chấm công thành công ✅',
@@ -38,7 +67,10 @@ attendanceRouter.post(
   '/checkout',
   asyncHandler(async (req, res) => {
     const { lat, lng, accuracy } = geoSchema.parse(req.body);
-    const r = await checkOut(req.user!.sub, lat, lng, accuracy);
+    const r = await checkOut(req.user!.sub, lat, lng, accuracy).catch(async (e) => {
+      await ghiTuChoi(req.user!.sub, 'checkout', e, accuracy, String(req.headers['user-agent'] || ''));
+      throw e;
+    });
     await notify(req.user!.sub, {
       type: 'attendance',
       title: 'Chấm công thành công ✅',
@@ -46,6 +78,29 @@ attendanceRouter.post(
       url: '/attendance',
     }, { background: true });
     res.json({ ok: true, ...r });
+  }),
+);
+
+/** Điện thoại không lấy được vị trí / vị trí gần đúng nên CHƯA gửi chấm công — ghi lại để quản lý biết là có bấm. */
+attendanceRouter.post(
+  '/thu-hong',
+  asyncHandler(async (req, res) => {
+    const b = z
+      .object({ loai: z.enum(['checkin', 'checkout']), lyDo: z.string().min(1).max(300), saiSo: z.number().min(0).max(1_000_000).optional() })
+      .parse(req.body);
+    const ngay = todayIso();
+    if ((await demLanChamHong(req.user!.sub, ngay)) < 20) {
+      await ghiLanChamHong(req.user!.sub, {
+        id: newId('AT-'),
+        ngay,
+        luc: nowTz().toISOString(),
+        loai: b.loai,
+        lyDo: `Trên máy: ${b.lyDo}`,
+        saiSo: b.saiSo === undefined ? null : Math.round(b.saiSo),
+        may: loaiMay(String(req.headers['user-agent'] || '')),
+      });
+    }
+    res.json({ ok: true });
   }),
 );
 
