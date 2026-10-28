@@ -11,7 +11,7 @@ import { aiKhoJson, cauHinhAiKho } from '../ai/brainAi.js';
 import type { GeminiPart } from '../gemini/client.js';
 import { linkTrongTin, ganMoTaLink } from '../lib/trangWeb.js';
 import { xemLink } from './xemLink.js';
-import { dungDoanChat, denLucRut, noiDungTin, goiYTenKhachTuNhom, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, dangDoc, nhomKhongLienQuan, coDauHieuCongViec, tepTrongTin, laHostTepZalo, moTaThayTin, type TinZalo, type LoaiTep } from '../lib/zalo.js';
+import { dungDoanChat, denLucRut, noiDungTin, goiYTenKhachTuNhom, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, dangDoc, viecKhongCanNhac, nhomKhongLienQuan, coDauHieuCongViec, tepTrongTin, laHostTepZalo, moTaThayTin, type TinZalo, type LoaiTep } from '../lib/zalo.js';
 import { khopKhach, xoaLienHe, chuanTen } from '../lib/brainGate.js';
 import {
   ghiNhieuCuoc,
@@ -345,7 +345,8 @@ export async function docCuoc(
     '   KHÔNG nhắc: việc đã thấy trả lời / đã làm / đã chốt trong chat (kể cả giám đốc chỉ đáp "ok", "a làm rồi",',
     '   gửi ảnh chụp xác nhận); việc của NGƯỜI KHÁC tự làm không cần giám đốc (thành viên hội nhóm / BNI tự đăng',
     '   ký, tự đi họp, nhân viên tự làm phần việc của mình); "theo dõi", "tìm cơ hội", "duy trì" chung chung không',
-    '   có hạn hay việc cụ thể.',
+    '   có hạn hay việc cụ thể; câu XÃ GIAO hẹn mơ hồ ("hẹn lại dịp khác", "khi nào rảnh ghé", "để sau", "lúc khác",',
+    '   mời ghé chơi / thăm không ngày giờ) — KHÔNG tự bịa ngày cho chúng; "chờ bên kia…" mà không có hạn cụ thể.',
     o.dangTheoDoi
       ? `   ĐANG THEO DÕI: "${o.dangTheoDoi.slice(0, 600)}" — giữ việc chưa xong, BỎ việc chat cho thấy đã xong, thêm việc mới.`
       : '',
@@ -429,7 +430,7 @@ export async function docCuoc(
       ? []
       : (Array.isArray(r?.nhac) ? r.nhac : [])
             .map((x: { viec?: unknown; han?: unknown; khach?: unknown }) => ({ viec: chu(x?.viec, 200), han: chu(x?.han, 20), khach: chu(x?.khach, 120) }))
-            .filter((x: { viec: string }) => x.viec.length >= 5)
+            .filter((x: { viec: string; han: string }) => x.viec.length >= 5 && !viecKhongCanNhac(x))
             .slice(0, 5),
   };
 }
@@ -1075,7 +1076,7 @@ export async function xetLaiNhacZalo(r: { id: string; title: string; memberId: s
     `Bây giờ là ${now.format('HH:mm DD/MM/YYYY')} (giờ Việt Nam). Đọc đoạn chat gần nhất bên dưới và trả về con = các việc`,
     'CÒN CẦN LÀM: BỎ việc đã xong / đã trả lời / đã chốt (vd khách đã đồng ý phương án, đã thanh toán, đã nhận file;',
     'giám đốc đã đáp "ok", "a làm rồi", gửi ảnh xác nhận); BỎ việc của người khác tự làm không cần giám đốc và việc',
-    '"theo dõi" chung chung không có hạn — chỉ giữ việc giám đốc thật sự phải làm / hỏi lại;',
+    '"theo dõi" chung chung không có hạn; BỎ câu xã giao hẹn mơ hồ ("hẹn lại dịp khác", "khi nào rảnh", "để sau") — chỉ giữ việc giám đốc thật sự phải làm / hỏi lại;',
     'CẬP NHẬT việc theo tin mới (vd khách hẹn thứ Hai gửi clip → "Nhận / nhắc gửi clip" với han là thứ Hai đó).',
     'Mỗi việc: viec ngắn gọn (không lặp tên khách), han = "YYYY-MM-DD HH:mm" nếu có hẹn cụ thể, không thì để trống.',
     'Hết việc thì con = []. KHÔNG bịa việc không có trong chat hoặc danh sách.',
@@ -1088,7 +1089,7 @@ export async function xetLaiNhacZalo(r: { id: string; title: string; memberId: s
     const kq = await aiKhoJson(prompt, SCHEMA_XET_NHAC);
     con = (Array.isArray(kq?.con) ? kq.con : [])
       .map((x: { viec?: unknown; han?: unknown }) => ({ viec: String(x?.viec ?? '').trim().slice(0, 200), han: String(x?.han ?? '').trim().slice(0, 20) }))
-      .filter((x: { viec: string }) => x.viec.length >= 5)
+      .filter((x: { viec: string; han: string }) => x.viec.length >= 5 && !viecKhongCanNhac(x))
       .slice(0, 5);
   } catch (e) {
     console.warn('[zalo] xét lại nhắc', r.id, (e as Error).message);

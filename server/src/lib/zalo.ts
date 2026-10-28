@@ -188,7 +188,7 @@ export function nhacGop(
   viecs: Array<{ viec: string; han: string }>,
   bayGio: { ngay: string; gio: string },
 ): { title: string; onDate: string; atTime: string } | null {
-  const ds = viecs.map((v) => ({ ...v, viec: v.viec.replace(/\s+/g, ' ').trim() })).filter((v) => v.viec);
+  const ds = viecs.map((v) => ({ ...v, viec: v.viec.replace(/\s+/g, ' ').trim() })).filter((v) => v.viec && !viecKhongCanNhac(v));
   if (!ds.length) return null;
   const gio = ds.map((v) => gioNhac(v.han, bayGio)).sort((a, b) => `${a.onDate} ${a.atTime}`.localeCompare(`${b.onDate} ${b.atTime}`))[0]!;
   const noi = ds.length === 1 ? ds[0]!.viec : ds.map((v, i) => `${i + 1}) ${v.viec}`).join('; ');
@@ -317,4 +317,21 @@ export function moTaThayTin(t: { loai: LoaiTep; ten: string }, moTa: string): st
   if (t.loai === 'anh') return `[Ảnh: ${sach}]`;
   if (t.loai === 'ghi_am') return `[Ghi âm: ${sach}]`;
   return `[Tệp ${t.ten || 'PDF'}: ${sach}]`;
+}
+
+/**
+ * Việc AI đề xuất nhắc nhưng KHÔNG đáng nhắc (anh Tâm 28/10/2026: "hẹn lại dịp khác này đâu cần đặt lịch đâu em ha"):
+ * - câu xã giao hẹn mơ hồ: "hẹn lại dịp khác", "khi nào rảnh", "để sau", "lúc khác"… — kể cả khi AI tự gắn ngày;
+ * - chờ người khác / theo dõi mà KHÔNG có hạn cụ thể (luật c: bên kia hứa phải CÓ HẠN mới nhắc).
+ */
+export function viecKhongCanNhac(v: { viec: string; han?: string }): boolean {
+  const t = String(v.viec || '')
+    .toLowerCase()
+    .normalize('NFC');
+  // Hết từ ở cuối cụm: "khi khác" không được bắt nhầm "sau khi khách…".
+  if (/(^|\s)(dịp khác|dịp sau|lúc khác|hôm khác|khi khác|bữa khác|khi nào rảnh|khi rảnh|lúc nào rảnh|để sau|hẹn sau|sau này|khi có dịp|có dịp)(?=$|[\s,.;:!?)(])/.test(t)) return true;
+  const coHan = /^\d{4}-\d{2}-\d{2}/.test(String(v.han || '').trim());
+  // (\b không hiểu chữ có dấu như "chờ" → dùng khoảng trắng / hết chuỗi.)
+  if (!coHan && /^(chờ|đợi|theo dõi|duy trì|tìm cơ hội)(\s|$)/.test(t)) return true;
+  return false;
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { noiDungTin, gioTin, dungDoanChat, denLucRut, maTinLonNhat, viecBanDem, goiYTenKhachTuNhom, gioNhac, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, dangDoc, nhomKhongLienQuan, tepTrongTin, laHostTepZalo, moTaThayTin, type TinZalo } from './zalo.js';
+import { noiDungTin, gioTin, dungDoanChat, denLucRut, maTinLonNhat, viecBanDem, goiYTenKhachTuNhom, gioNhac, noiThongTinKhach, nhacGop, ghiChuViecAi, tachViec, gopThemViec, dangDoc, nhomKhongLienQuan, tepTrongTin, laHostTepZalo, moTaThayTin, viecKhongCanNhac, type TinZalo } from './zalo.js';
 
 // Anh Tâm 5/10/2026: đọc tin nhắn Zalo giữa anh và khách để đưa vào kho có chọn lọc.
 
@@ -168,8 +168,8 @@ describe('nhacGop / ghiChuViecAi', () => {
         { viec: 'Gửi báo giá video', han: '2026-10-12 15:00' },
       ], luc),
     ).toEqual({ title: 'Tín Đạt Controls: 1) Theo dõi xin kho tư liệu; 2) Gửi báo giá video', onDate: '2026-10-12', atTime: '15:00' });
-    expect(nhacGop('Maple', [{ viec: 'Theo dõi bản sửa video', han: '' }], luc)).toEqual({
-      title: 'Maple: Theo dõi bản sửa video',
+    expect(nhacGop('Maple', [{ viec: 'Hỏi lại bản sửa video', han: '' }], luc)).toEqual({
+      title: 'Maple: Hỏi lại bản sửa video',
       onDate: '2026-10-12',
       atTime: '08:30',
     });
@@ -251,5 +251,35 @@ describe('nhomKhongLienQuan — tên có "MT DIGITAL" không bao giờ bị lo�
     expect(nhomKhongLienQuan('C PHƯƠNG -MT DIGITAL - Chung cư Global')).toBe('');
     expect(nhomKhongLienQuan('Gia đình Spa - MTDigital')).toBe('');
     expect(nhomKhongLienQuan('Cư dân chung cư Global')).not.toBe('');
+  });
+});
+
+describe('việc không đáng nhắc (anh Tâm 28/10/2026: "hẹn lại dịp khác này đâu cần đặt lịch")', () => {
+  it('câu xã giao hẹn mơ hồ — bỏ dù AI tự gắn ngày', () => {
+    expect(viecKhongCanNhac({ viec: 'Hẹn lại dịp khác mời qua thăm chapter New Day (ưu tiên khung giờ trưa)', han: '2026-11-10 09:00' })).toBe(true);
+    expect(viecKhongCanNhac({ viec: 'Khi nào rảnh ghé văn phòng uống cà phê', han: '' })).toBe(true);
+    expect(viecKhongCanNhac({ viec: 'Để sau bàn tiếp gói SEO', han: '' })).toBe(true);
+  });
+  it('chờ / theo dõi không có hạn — bỏ; có hạn thì giữ', () => {
+    expect(viecKhongCanNhac({ viec: 'Chờ anh Hiếu hẹn lịch gặp để trao đổi marketing', han: '' })).toBe(true);
+    expect(viecKhongCanNhac({ viec: 'Theo dõi kết quả test đưa giá vào video', han: '' })).toBe(true);
+    expect(viecKhongCanNhac({ viec: 'Chờ khách gửi logo', han: '2026-11-02 09:00' })).toBe(false);
+  });
+  it('việc thật — giữ', () => {
+    expect(viecKhongCanNhac({ viec: 'Gửi báo giá gói quảng cáo Facebook', han: '' })).toBe(false);
+    expect(viecKhongCanNhac({ viec: 'Hỏi lại xác nhận tham dự buổi BNI sáng 29/10', han: '2026-10-28 20:00' })).toBe(false);
+    expect(viecKhongCanNhac({ viec: 'Thu lại bản đề án đã ký đóng dấu (scan)', han: '' })).toBe(false);
+  });
+  it('nhắc gộp bỏ việc không đáng nhắc; hết việc thì không nhắc', () => {
+    const bayGio = { ngay: '2026-10-28', gio: '10:00' };
+    expect(nhacGop('Thanh Thuý', [{ viec: 'Hẹn lại dịp khác mời qua thăm chapter', han: '2026-11-10 09:00' }], bayGio)).toBeNull();
+    expect(nhacGop('A', [{ viec: 'Hẹn lại dịp khác', han: '' }, { viec: 'Gửi báo giá', han: '2026-10-29 09:00' }], bayGio)!.title).toBe('A: Gửi báo giá');
+  });
+});
+
+describe('việc không đáng nhắc — không bắt nhầm', () => {
+  it('"sau khi khách" không phải "khi khác"', () => {
+    expect(viecKhongCanNhac({ viec: 'Chốt gói SEO cho CARDIY (3tr hay 5tr/4 tháng) sau khi khách xin thêm ngân sách', han: '' })).toBe(false);
+    expect(viecKhongCanNhac({ viec: 'Gặp lại dịp khác.', han: '' })).toBe(true);
   });
 });
