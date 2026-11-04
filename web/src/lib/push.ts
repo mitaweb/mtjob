@@ -117,3 +117,37 @@ export async function enablePush(): Promise<{ ok: boolean; message: string }> {
   await api('/notifications/subscribe', { body: sub.toJSON() });
   return { ok: true, message: 'Đã bật thông báo đẩy ✅' };
 }
+
+/**
+ * Mỗi lần mở app: đã cho phép thông báo thì báo lại cho máy chủ ĐÚNG địa chỉ nhận đẩy hiện tại của máy này.
+ *
+ * Anh Tâm 4/11/2026: "hiện tại anh k nhận được thông báo luôn" — máy chủ vẫn gửi thành công, nhưng tới địa chỉ đăng ký
+ * từ tháng 6–7. Điện thoại / trình duyệt có thể tự đổi địa chỉ nhận (cập nhật iOS, cài lại app ra màn hình chính, xoá
+ * dữ liệu trình duyệt) mà trước đây app chỉ đăng ký MỘT lần lúc bấm "Bật thông báo" → máy chủ gửi vào địa chỉ cũ.
+ * Gửi lại tối đa 12 giờ một lần (hoặc ngay khi địa chỉ đổi); không bao giờ tự hỏi quyền.
+ */
+export async function dongBoDangKyDay(): Promise<void> {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    const { key } = await api<{ key: string }>('/notifications/vapid-public-key');
+    if (!key) return;
+    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) });
+  }
+  const KHOA = 'mtjob_push_dong_bo';
+  let cu: { endpoint?: string; luc?: number } = {};
+  try {
+    cu = JSON.parse(localStorage.getItem(KHOA) || '{}');
+  } catch {
+    /* bỏ qua */
+  }
+  if (cu.endpoint === sub.endpoint && Date.now() - (cu.luc || 0) < 12 * 3600 * 1000) return;
+  await api('/notifications/subscribe', { body: sub.toJSON() });
+  try {
+    localStorage.setItem(KHOA, JSON.stringify({ endpoint: sub.endpoint, luc: Date.now() }));
+  } catch {
+    /* bỏ qua */
+  }
+}

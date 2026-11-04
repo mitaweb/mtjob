@@ -21,6 +21,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
+import { dongBoDangKyDay } from '../lib/push';
 import { api } from '../lib/api';
 import Brand from './Brand';
 import type { Role } from '../lib/types';
@@ -83,6 +84,10 @@ export default function Layout() {
   // lượt. Giờ chỉ tải khi vào app, khi rời trang Thông báo (lúc đó số vừa đổi thật), và
   // mỗi phút một nhịp.
   const onInbox = location.pathname === '/inbox';
+  // Mở app là cập nhật lại địa chỉ nhận thông báo đẩy của máy này (anh Tâm 4/11/2026: không nhận được thông báo).
+  useEffect(() => {
+    if (user) dongBoDangKyDay().catch(() => undefined);
+  }, [user]);
   useEffect(() => {
     if (!user) return;
     const load = () =>
