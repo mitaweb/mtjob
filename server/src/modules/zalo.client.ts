@@ -110,7 +110,8 @@ const taiZca = () => import('zca-js');
  * Vercel cắt ở 60 giây thì khối finally không chạy, instance được dùng lại vẫn tưởng "đang chạy" → mọi lượt sau bỏ
  * qua mãi. Giờ khoá tự hết sau 75 giây (lâu hơn mọi lượt sống được — maxDuration 60 giây).
  */
-export const KHOA_MS = 75_000;
+// Lớn hơn maxDuration (300 giây, vercel.json — 6/11/2026) để lượt dài không bị lượt sau chạy chồng.
+export const KHOA_MS = 310_000;
 let dangNhapTu = 0;
 
 /**

@@ -44,6 +44,8 @@ export interface ChatTurn {
 }
 
 const FRIENDLY_ERROR = 'Xin lỗi, trợ lý đang bận, thử lại sau ít phút nhé.';
+/** Mỗi lần trợ lý chat chờ AI tối đa ngần này — vercel.json cho máy chủ sống 300 giây. */
+const TRO_LY_CHO_AI_MS = 240_000;
 const MAX_ROUNDS = 5; // chặn vòng lặp functionCall vô hạn
 const MAX_HISTORY_CHARS = 4000;
 
@@ -697,11 +699,14 @@ export async function runToolLoop(opts: ToolLoopOpts): Promise<string> {
 
   // Chỉ stream khi caller cần và nhà cung cấp hỗ trợ; không thì gọi thường như cũ.
   const wantStream = !!opts.onEvent && !!provider.generateContentStream;
+  // Trợ lý chat được chờ AI lâu (anh Tâm 6/11/2026: Opus nghĩ lâu bị ngắt ở 50 giây) — máy chủ giờ sống 300 giây.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const call = (req: any): Promise<GeminiPart[]> =>
-    wantStream
+  const call = (req0: any): Promise<GeminiPart[]> => {
+    const req = { ...req0, timeoutMs: req0.timeoutMs ?? TRO_LY_CHO_AI_MS };
+    return wantStream
       ? provider.generateContentStream!(req, (d) => opts.onEvent!({ type: 'text', delta: d }))
       : provider.generateContent(req);
+  };
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const parts = await call({ contents, tools, systemInstruction });
@@ -920,7 +925,7 @@ export async function answerDataQuestion(
     // Anh Tâm 6/11/2026: "(Nguyên nhân: terminated)" — AI trả lời quá ~50 giây thì bị ngắt (máy chủ chỉ sống 60 giây).
     if (/terminated|timed? ?out|timeout|aborted/i.test(m)) {
       return (
-        'Xin lỗi anh, AI trả lời quá lâu (hơn 50 giây) nên bị ngắt giữa chừng — chưa ghi gì cả. ' +
+        'Xin lỗi anh, AI trả lời quá lâu (hơn 4 phút) nên bị ngắt giữa chừng — chưa ghi gì cả. ' +
         'Anh hỏi gọn hơn (vd một khách / một tháng), hoặc chọn model nhanh hơn ở Quản trị → AI trợ lý.' +
         `\n\n(Nguyên nhân: ${m.slice(0, 200)})`
       );

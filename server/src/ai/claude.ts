@@ -13,7 +13,7 @@ import type { AiProvider } from './types.js';
 
 const DEFAULT_MODEL = 'claude-sonnet-5';
 const MAX_TOKENS = 8000; // không stream → giữ dưới ngưỡng timeout HTTP
-const TIMEOUT_MS = 50_000; // maxDuration function trên Vercel là 60s
+const TIMEOUT_MS = 50_000; // mặc định cho việc nền (Zalo, kho tri thức); trợ lý chat truyền timeoutMs dài hơn
 
 async function cfg(): Promise<{ apiKey: string; model: string; baseUrl: string }> {
   try {
@@ -208,7 +208,7 @@ async function buildRequest(req: GenerateRequest): Promise<{ client: Anthropic; 
   const client = new (await taiSdk())({
     apiKey,
     ...(baseUrl ? { baseURL: baseUrl.replace(/\/+$/, '') } : {}),
-    timeout: TIMEOUT_MS,
+    timeout: req.timeoutMs ?? TIMEOUT_MS,
     maxRetries: 1,
   });
 
