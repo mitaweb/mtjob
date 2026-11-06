@@ -565,11 +565,19 @@ export function laHamGhi(name: string): boolean {
  *
  * Dùng lookbehind \p{L} chứ không dùng \b: "đ" không phải ký tự ASCII nên \b đứng trước "đã"
  * không khớp — regex trông đúng mà không bắt được gì.
+ *
+ * CHỈ bắt khi trợ lý TỰ NHẬN việc của mình: "Đã đặt…" đứng đầu câu / dòng / sau ✅, hoặc "em/mình/tôi đã…".
+ * Anh Tâm 6/11/2026: hỏi "còn cần báo giá cho ai không" (chỉ tra cứu) mà bị báo "CHƯA ghi được gì" — câu trả lời kể
+ * "khách X đã chốt gói…", trước đây cụm "đã chốt" ở BẤT KỲ đâu cũng bị coi là trợ lý nhận đã ghi.
  */
+const DONG_TU_GHI = '(đặt|ghi|thêm|tắt|xo[áa]|hu[ỷy]|cập nhật|lưu|tạo|chốt|gỡ|đổi)';
 export function nhanLaDaGhi(text: string): boolean {
   const s = String(text || '');
   return (
-    /(?<!\p{L})(đã|vừa)\s*(đặt|ghi|thêm|tắt|xo[áa]|hu[ỷy]|cập nhật|lưu|tạo|chốt|gỡ|đổi)(?!\p{L})/iu.test(s) ||
+    // Đầu câu / đầu dòng / sau dấu ✅ • - * ( "…: Đã đặt nhắc", "✅ Đã đặt", "**Đã ghi**")
+    new RegExp(`(^|[\\n.!?:;•✅*\\-(]\\s*)\\**\\s*(đã|vừa)\\s*${DONG_TU_GHI}(?!\\p{L})`, 'iu').test(s) ||
+    // Chủ ngữ là chính trợ lý
+    new RegExp(`(?<!\\p{L})(em|mình|tôi)\\s+(cũng\\s+)?(đã|vừa)\\s*${DONG_TU_GHI}(?!\\p{L})`, 'iu').test(s) ||
     /(?<!\p{L})(em|mình|tôi)\s+(đặt|ghi|tạo|tắt|xo[áa])\s+(ngay|luôn)(?!\p{L})/iu.test(s)
   );
 }
@@ -908,7 +916,16 @@ export async function answerDataQuestion(
     console.error('[assistant] director Q&A:', e);
     // Giám đốc/admin là người cấu hình hệ thống → cho xem luôn nguyên nhân để tự xử lý,
     // thay vì chỉ báo chung chung rồi phải đi mò log.
-    return `${FRIENDLY_ERROR}\n\n(Nguyên nhân: ${(e as Error).message.slice(0, 300)})`;
+    const m = (e as Error).message || '';
+    // Anh Tâm 6/11/2026: "(Nguyên nhân: terminated)" — AI trả lời quá ~50 giây thì bị ngắt (máy chủ chỉ sống 60 giây).
+    if (/terminated|timed? ?out|timeout|aborted/i.test(m)) {
+      return (
+        'Xin lỗi anh, AI trả lời quá lâu (hơn 50 giây) nên bị ngắt giữa chừng — chưa ghi gì cả. ' +
+        'Anh hỏi gọn hơn (vd một khách / một tháng), hoặc chọn model nhanh hơn ở Quản trị → AI trợ lý.' +
+        `\n\n(Nguyên nhân: ${m.slice(0, 200)})`
+      );
+    }
+    return `${FRIENDLY_ERROR}\n\n(Nguyên nhân: ${m.slice(0, 300)})`;
   }
 }
 

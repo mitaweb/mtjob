@@ -149,6 +149,14 @@ describe('nhanLaDaGhi', () => {
     expect(nhanLaDaGhi('Khách đã thanh toán 20.000.000đ ngày 12/9.')).toBe(false);
     expect(nhanLaDaGhi('Tháng 8 anh có 21 ngày công.')).toBe(false);
   });
+  it('kể về khách / dữ liệu có "đã chốt, đã cập nhật" — không phải trợ lý nhận đã ghi (6/11/2026)', () => {
+    expect(nhanLaDaGhi('Còn 2 khách chờ báo giá: Aureve (đang hỏi gói 45tr). Topaz đã chốt gói Google, JVS đã đổi sang gói Facebook.')).toBe(false);
+    expect(nhanLaDaGhi('Hồ sơ khách đã cập nhật ngày 12/10.')).toBe(false);
+    expect(nhanLaDaGhi('Đã đặt nhắc: "Gặp anh Sơn" — 16/10 14:00.')).toBe(true);
+    expect(nhanLaDaGhi('Xong anh ạ.\nĐã ghi khoản thu 20.000.000đ.')).toBe(true);
+    expect(nhanLaDaGhi('**Đã thêm** khách X Salon vào CRM.')).toBe(true);
+    expect(nhanLaDaGhi('Mình vừa tạo nhắc cho anh.')).toBe(true);
+  });
 });
 
 describe('laHamGhi', () => {
