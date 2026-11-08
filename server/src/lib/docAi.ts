@@ -3,7 +3,7 @@
 // liệu, cột nào là gì. Các hàm THUẦN ở đây đọc TOÀN BỘ file theo bản đồ đó — số tiền lấy nguyên từ file, AI không
 // chép lại số nên không sai chữ số.
 import { soTien, ngayISO, quyCuaNgay, khoaHoaDon, chuanChu, type HoaDon, type Huong, type SheetDuLieu, type SoCongNo, type BaoCaoKqkd } from './keToan.js';
-import type { GiaoDich } from './saoKe.js';
+import { khoaGiaoDich, type GiaoDich } from './saoKe.js';
 import { createHash } from 'node:crypto';
 
 export type LoaiAi = 'hoa_don' | 'sao_ke' | 'cong_no' | 'kqkd' | 'bang_luong' | 'khac';
@@ -151,7 +151,7 @@ export function giaoDichTheoBanDo(sheets: SheetDuLieu[], bd: BanDoAi): GiaoDich[
       if (!ghiNo && !ghiCo) return;
       const g = { soTk, nganHang, ngay, ghiNo, ghiCo, soDu: soTien(oCua(r, b.cot.soDu)), noiDung: oCua(r, b.cot.noiDung).replace(/\s+/g, ' ').slice(0, 500), soRef: oCua(r, b.cot.soRef).slice(0, 60) };
       const nguon = [g.soTk, g.ngay, g.ghiNo, g.ghiCo, g.soDu, g.soRef, chuanChu(g.noiDung).slice(0, 120), g.soRef || g.soDu ? '' : i].join('|');
-      ds.push({ id: createHash('sha1').update(nguon).digest('hex').slice(0, 24), ...g, doiTac: oCua(r, b.cot.doiTac).replace(/s+/g, ' ').slice(0, 200), thuTu: i });
+      ds.push({ id: createHash('sha1').update(nguon).digest('hex').slice(0, 24), ...g, doiTac: oCua(r, b.cot.doiTac).replace(/\s+/g, ' ').slice(0, 200), thuTu: i });
     });
     if (ds.length > 1 && ds[0]!.ngay > ds[ds.length - 1]!.ngay) ds.forEach((g, k) => (g.thuTu = ds.length - 1 - k));
     ra.push(...ds);
@@ -305,4 +305,87 @@ export function kqkdTheoBanDo(bd: BanDoAi): BaoCaoKqkd | null {
   const chiTieu: Record<string, number> = { '50': Math.round(Number(bd.loiNhuanTruocThue) || 0) };
   if (bd.doanhThu !== undefined) chiTieu['01'] = Math.round(Number(bd.doanhThu) || 0);
   return { tuNgay, denNgay, chiTieu };
+}
+
+// ── AI đọc trước, bộ đọc mẫu kiểm chéo (anh Tâm 8/11/2026: "sử dụng AI để đọc luôn các tài liệu gửi lên") ──
+
+export interface KetHop<T> {
+  ds: T[];
+  /** Số mục chỉ AI đọc ra (bộ đọc mẫu bỏ sót) đã thêm */
+  them: number;
+  /** Số mục chỉ AI đọc ra nhưng bị bỏ vì số liệu AI đọc không tự khớp */
+  bo: number;
+}
+
+/**
+ * Gộp kết quả AI với bộ đọc mẫu. Mục cả hai cùng thấy: giữ bản mẫu (khoá cũ — tải lại không nhân đôi), điền chỗ trống
+ * từ AI. Mục chỉ AI thấy: chỉ thêm khi số liệu AI đọc tự khớp (`tyLe` ≥ 90%, hoặc không kiểm được).
+ */
+function ketHop<T>(ai: T[], mau: T[] | null, khoa: (x: T) => string, tyLe: (ds: T[]) => number | null, bu: (mau: T, ai: T) => T): KetHop<T> {
+  if (!mau || !mau.length) return { ds: ai, them: 0, bo: 0 };
+  const conAi = new Map<string, T[]>();
+  for (const x of ai) conAi.set(khoa(x), [...(conAi.get(khoa(x)) || []), x]);
+  const ds = mau.map((m) => {
+    const a = conAi.get(khoa(m))?.shift();
+    return a ? bu(m, a) : m;
+  });
+  const chiAi = [...conAi.values()].flat();
+  if (!chiAi.length) return { ds, them: 0, bo: 0 };
+  const t = tyLe(ai);
+  if (t !== null && t < 0.9) return { ds, them: 0, bo: chiAi.length };
+  return { ds: [...ds, ...chiAi], them: chiAi.length, bo: 0 };
+}
+
+/** Tỉ lệ cặp giao dịch liền nhau có số dư chạy đúng (sao kê xếp cũ → mới hoặc mới → cũ). null = không đủ số dư để kiểm. */
+export function tyLeSoDu(gd: GiaoDich[]): number | null {
+  const co = gd.filter((g) => g.soDu);
+  if (co.length < 3) return null;
+  let xuoi = 0;
+  let nguoc = 0;
+  for (let i = 1; i < co.length; i++) {
+    const a = co[i - 1]!;
+    const b = co[i]!;
+    if (Math.abs(a.soDu + b.ghiCo - b.ghiNo - b.soDu) <= 1) xuoi++;
+    if (Math.abs(b.soDu + a.ghiCo - a.ghiNo - a.soDu) <= 1) nguoc++;
+  }
+  return Math.max(xuoi, nguoc) / (co.length - 1);
+}
+
+/** Tỉ lệ hoá đơn có tiền hàng + thuế = tổng tiền (±1.000đ). */
+export function tyLeTongHd(hd: HoaDon[]): number | null {
+  if (!hd.length) return null;
+  return hd.filter((h) => Math.abs(h.tienHang + h.tienThue - h.tongTien) <= 1000).length / hd.length;
+}
+
+/**
+ * Sao kê: gộp AI + mẫu theo (ngày, tiền ra, tiền vào, số dư). `tk` (ngân hàng / số TK đọc từ đầu file) dùng khi chỉ AI
+ * đọc được — AI không thấy số TK (đã che) — để khoá giao dịch giống hệt khoá bộ đọc mẫu. `daCo`: khoá AI đọc (chưa có số
+ * TK) đã lưu từ các lần tải trước → giữ nguyên khoá đó để tải lại không nhân đôi.
+ */
+export function ketHopSaoKe(ai: GiaoDich[], mau: GiaoDich[] | null, tk?: { nganHang: string; soTk: string }, daCo: Set<string> = new Set()): KetHop<GiaoDich> {
+  let dsAi = ai;
+  if (tk && (!mau || !mau.length)) {
+    dsAi = ai.map((g) => {
+      const x = { ...g, soTk: tk.soTk || g.soTk, nganHang: tk.nganHang || g.nganHang };
+      return { ...x, id: daCo.has(g.id) ? g.id : khoaGiaoDich(x, g.thuTu) };
+    });
+  }
+  return ketHop(
+    dsAi,
+    mau,
+    (g) => `${g.ngay}|${g.ghiNo}|${g.ghiCo}|${g.soDu}`,
+    tyLeSoDu,
+    (m, a) => (m.doiTac || !a.doiTac ? m : { ...m, doiTac: a.doiTac }),
+  );
+}
+
+/** Hoá đơn: gộp AI + mẫu theo khoá hoá đơn; số tiền theo bộ đọc mẫu, chữ còn trống (tên, MST, diễn giải) lấy từ AI. */
+export function ketHopHoaDon(ai: HoaDon[], mau: HoaDon[] | null): KetHop<HoaDon> {
+  return ketHop(ai, mau, khoaHoaDon, tyLeTongHd, (m, a) => ({
+    ...m,
+    tenDoiTac: m.tenDoiTac || a.tenDoiTac,
+    mstDoiTac: m.mstDoiTac || a.mstDoiTac,
+    dienGiai: m.dienGiai || a.dienGiai,
+    thueSuat: m.thueSuat || a.thueSuat,
+  }));
 }

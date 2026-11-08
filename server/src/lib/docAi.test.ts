@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { cheSoDai, xemTruoc, hoaDonTheoBanDo, giaoDichTheoBanDo, congNoTheoBanDo, luongTheoBanDo, luongNvTheoBanDo, kqkdTheoBanDo, thangCua, type BanDoAi } from './docAi.js';
+import { cheSoDai, xemTruoc, hoaDonTheoBanDo, giaoDichTheoBanDo, congNoTheoBanDo, luongTheoBanDo, luongNvTheoBanDo, kqkdTheoBanDo, thangCua, ketHopSaoKe, ketHopHoaDon, type BanDoAi } from './docAi.js';
+import { docSaoKe, taiKhoanSaoKe } from './saoKe.js';
+import type { HoaDon } from './keToan.js';
 
 // Anh Tâm 18/10/2026: "ở phần upload file này em cho AI vào đọc file luôn đỡ phải setup định dạng". AI chỉ trả bản đồ
 // cột; các hàm này đọc toàn bộ file theo bản đồ. Số liệu dưới đây là SỐ GIẢ.
@@ -93,5 +95,69 @@ describe('đọc theo bản đồ AI', () => {
       chiTieu: { '01': 100, '50': -5 },
     });
     expect(kqkdTheoBanDo({ loai: 'kqkd', moTa: '', bang: [] })).toBeNull();
+  });
+});
+
+// Anh Tâm 8/11/2026: "sử dụng AI để đọc luôn các tài liệu gửi lên" — AI đọc mọi file trước; bộ đọc mẫu (nếu đọc được)
+// dùng để kiểm chéo: cùng giao dịch / hoá đơn thì giữ khoá cũ (tải lại không nhân đôi), AI bổ sung phần mẫu thiếu.
+describe('kết hợp AI + bộ đọc mẫu', () => {
+  const SK = [
+    {
+      ten: 'Sheet1',
+      rows: [
+        ['NGÂN HÀNG TMCP QUÂN ĐỘI - MB BANK'],
+        ['SAO KÊ TÀI KHOẢN'],
+        ['Số tài khoản: 0123 4567 89012'],
+        ['Ngày giao dịch', 'Số bút toán', 'Ghi nợ', 'Ghi có', 'Số dư', 'Diễn giải', 'Bên liên quan'],
+        ['02/07/2026', 'FT1', '', '1.000.000', '11.000.000', 'CK TIEN HANG', 'CONG TY SON HA'],
+        ['03/07/2026', 'FT2', '', '40.000.000', '51.000.000', 'THANH TOAN HD 25', 'NGUYEN VAN SANG'],
+        ['05/07/2026', 'FT3', '2.000.000', '', '49.000.000', 'PHI DICH VU', ''],
+      ],
+    },
+  ];
+  const bd = (cot: Record<string, number>): BanDoAi => ({ loai: 'sao_ke', moTa: '', nganHang: 'MB', soTk: '', bang: [{ sheet: 'Sheet1', dongDuLieu: 4, cot }] });
+  const DUNG = { ngay: 0, soRef: 1, no: 2, co: 3, soDu: 4, noiDung: 5, doiTac: 6 };
+
+  it('tên đối tác giữ nguyên chữ "s"', () => {
+    expect(giaoDichTheoBanDo(SK, bd(DUNG)).map((g) => g.doiTac)).toEqual(['CONG TY SON HA', 'NGUYEN VAN SANG', '']);
+  });
+  it('sao kê cả hai cùng đọc: giữ khoá của bộ đọc mẫu, lấy thêm tên đối tác AI đọc được', () => {
+    const mau = docSaoKe(SK, 'sk.xlsx')!.giaoDich;
+    const r = ketHopSaoKe(giaoDichTheoBanDo(SK, bd(DUNG)), mau);
+    expect(r.ds.map((g) => g.id)).toEqual(mau.map((g) => g.id));
+    expect(r.ds.map((g) => g.doiTac)).toEqual(['CONG TY SON HA', 'NGUYEN VAN SANG', '']);
+    expect(r).toMatchObject({ them: 0, bo: 0 });
+  });
+  it('AI chọn nhầm cột tiền (số dư không khớp) → bỏ phần AI, giữ bộ đọc mẫu', () => {
+    const mau = docSaoKe(SK, 'sk.xlsx')!.giaoDich;
+    const r = ketHopSaoKe(giaoDichTheoBanDo(SK, bd({ ...DUNG, co: 4, no: 1 })), mau);
+    expect(r.ds).toEqual(mau);
+    expect(r.bo).toBeGreaterThan(0);
+  });
+  it('chỉ AI đọc được: số TK lấy từ đầu file (AI không thấy số TK) → khoá trùng khoá bộ đọc mẫu', () => {
+    const mau = docSaoKe(SK, 'sk.xlsx')!;
+    const r = ketHopSaoKe(giaoDichTheoBanDo(SK, bd(DUNG)), null, taiKhoanSaoKe(SK[0]!.rows.slice(0, 4), 'sk.xlsx'));
+    expect(r.ds.map((g) => [g.soTk, g.nganHang, g.id])).toEqual(mau.giaoDich.map((g) => [mau.soTk, 'MB', g.id]));
+  });
+  it('giao dịch AI đọc trước đây (khoá chưa có số TK) đã lưu → giữ khoá cũ, không ghi thêm bản mới', () => {
+    const ai = giaoDichTheoBanDo(SK, bd(DUNG));
+    const r = ketHopSaoKe(ai, null, { nganHang: 'MB', soTk: '0123456789012' }, new Set([ai[0]!.id]));
+    expect(r.ds[0]!.id).toBe(ai[0]!.id);
+    expect(r.ds[1]!.id).not.toBe(ai[1]!.id);
+  });
+
+  const hd = (soHd: string, o: Partial<HoaDon> = {}): HoaDon => ({
+    huong: 'vao', mauSo: '1', kyHieu: 'C26TAA', soHd, ngay: '2026-04-01', mstDoiTac: '0300000001', tenDoiTac: '', dienGiai: '',
+    tienHang: 100, tienThue: 8, tongTien: 108, thueSuat: '8%', trangThai: 'Hóa đơn mới', kyKeKhai: '2026-Q2', ...o,
+  });
+  it('hoá đơn: giữ số tiền bộ đọc mẫu, điền chỗ trống từ AI, thêm hoá đơn mẫu bỏ sót', () => {
+    const r = ketHopHoaDon([hd('1', { tenDoiTac: 'CTY A', tienHang: 999, tongTien: 1007 }), hd('2', { tenDoiTac: 'CTY B' })], [hd('1')]);
+    expect(r.ds).toEqual([hd('1', { tenDoiTac: 'CTY A' }), hd('2', { tenDoiTac: 'CTY B' })]);
+    expect(r).toMatchObject({ them: 1, bo: 0 });
+  });
+  it('hoá đơn AI đọc tiền hàng + thuế ≠ tổng tiền → không thêm hoá đơn chỉ AI thấy', () => {
+    const r = ketHopHoaDon([hd('1'), hd('2', { tongTien: 500_000 }), hd('3', { tongTien: 700_000 })], [hd('1')]);
+    expect(r.ds).toEqual([hd('1')]);
+    expect(r.bo).toBe(2);
   });
 });

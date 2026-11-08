@@ -73,9 +73,18 @@ export function laSaoKe(sheets: SheetDuLieu[]): boolean {
 }
 
 /** Khoá KHÔNG gồm `doiTac` (cột thêm sau) — tải lại sao kê cũ ra đúng khoá cũ, chỉ điền thêm tên đối tác. */
-function khoaGiaoDich(g: Omit<GiaoDich, 'id' | 'thuTu' | 'doiTac'>, thuTu: number): string {
+export function khoaGiaoDich(g: Omit<GiaoDich, 'id' | 'thuTu' | 'doiTac'>, thuTu: number): string {
   const nguon = [g.soTk, g.ngay, g.ghiNo, g.ghiCo, g.soDu, g.soRef, chuanChu(g.noiDung).slice(0, 120), g.soRef || g.soDu ? '' : thuTu].join('|');
   return createHash('sha1').update(nguon).digest('hex').slice(0, 24);
+}
+
+/** Ngân hàng + số tài khoản từ phần đầu sao kê (các dòng tới dòng tiêu đề) / tên file. */
+export function taiKhoanSaoKe(dauRows: string[][], tenFile = ''): { nganHang: string; soTk: string } {
+  const dau = chuanChu(`${dauRows.map((r) => r.join(' ')).join(' ')} ${tenFile}`);
+  const nganHang = NGAN_HANG.find(([re]) => re.test(dau))?.[1] || '';
+  const mTk = /(so tai khoan|tai khoan so|account (no|number)|so tk|stk)[^0-9]{0,25}(\d[\d .-]{5,22}\d)/.exec(dau);
+  const soTk = mTk ? mTk[3]!.replace(/[^\d]/g, '') : /(\d{8,16})/.exec(tenFile)?.[1] || '';
+  return { nganHang, soTk };
 }
 
 /** Đọc sao kê: số tài khoản, ngân hàng (từ phần đầu file / tên file), các giao dịch. */
@@ -87,11 +96,7 @@ export function docSaoKe(sheets: SheetDuLieu[], tenFile = ''): { nganHang: strin
     const { cot, dong } = td;
     const haiCot = cot.no !== undefined && cot.co !== undefined;
     if (!haiCot && cot.soTien === undefined) continue;
-    const dauChu = rows.slice(0, dong + 1).map((r) => r.join(' ')).join(' ');
-    const dau = chuanChu(`${dauChu} ${tenFile}`);
-    const nganHang = NGAN_HANG.find(([re]) => re.test(dau))?.[1] || '';
-    const mTk = /(so tai khoan|tai khoan so|account (no|number)|so tk|stk)[^0-9]{0,25}(\d[\d .-]{5,22}\d)/.exec(dau);
-    const soTk = mTk ? mTk[3]!.replace(/[^\d]/g, '') : /(\d{8,16})/.exec(tenFile)?.[1] || '';
+    const { nganHang, soTk } = taiKhoanSaoKe(rows.slice(0, dong + 1), tenFile);
     const giaoDich: GiaoDich[] = [];
     let boQua = 0;
     rows.slice(dong + 1).forEach((r, i) => {

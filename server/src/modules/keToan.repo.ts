@@ -269,6 +269,13 @@ export async function ghiGiaoDich(ds: GiaoDich[], taiLenId: string): Promise<{ m
   return { moi, trung: tat.length - moi };
 }
 
+/** Các khoá giao dịch đã có trong số `ids`. */
+export async function idGiaoDichDaCo(ids: string[]): Promise<Set<string>> {
+  if (!ids.length) return new Set();
+  const rows = await q('SELECT id FROM kt_giao_dich WHERE id = ANY($1::text[])', [ids]);
+  return new Set(rows.map((r) => String(r.id)));
+}
+
 function rowToGiaoDich(r: Record<string, unknown>): GiaoDich {
   return {
     id: String(r.id),

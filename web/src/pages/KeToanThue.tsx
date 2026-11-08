@@ -235,7 +235,7 @@ export default function KeToanThue() {
     try {
       for (let i = 0; i < files.length; i++) {
         const f = files[i]!;
-        setDangTai(`Đang đọc ${i + 1}/${files.length}: ${f.name}`);
+        setDangTai(`AI đang đọc ${i + 1}/${files.length}: ${f.name}`);
         if (f.size > 15 * 1024 * 1024) {
           ketQua.push({ ten: f.name, loai: 'Quá lớn', ok: false, thongDiep: 'File trên 15 MB — bỏ qua' });
           continue;
@@ -325,8 +325,8 @@ export default function KeToanThue() {
           <div className="min-w-0 flex-1">
             <div className="font-semibold">Kéo thả file kế toán gửi vào đây</div>
             <p className="text-sm text-ink-muted">
-              Sao kê ngân hàng, bảng kê hoá đơn, hoá đơn / tờ khai XML, công nợ, báo cáo kết quả kinh doanh, bảng lương — file
-              Excel mẫu lạ thì AI tự đọc nhận ra loại và cột. Chọn cả thư mục cũng được — app tự lọc file cần, bỏ qua PDF /
+              Sao kê ngân hàng, bảng kê hoá đơn, hoá đơn / tờ khai XML, công nợ, báo cáo kết quả kinh doanh, bảng lương — mọi
+              file Excel / CSV đều do AI đọc (nhận loại file, cột, cả tên người chuyển), rồi tự đối chiếu số dư / tổng tiền. Chọn cả thư mục cũng được — app tự lọc file cần, bỏ qua PDF /
               file nén. Tải thêm / tải lại chỉ <b>cập nhật</b>: số mới ghi đè đúng mục đó, dữ liệu cũ giữ nguyên, không nhân
               đôi.
             </p>

@@ -30,6 +30,7 @@ import {
   docCaiDat,
   ghiCaiDat,
   ghiGiaoDich,
+  idGiaoDichDaCo,
   tatCaGiaoDich,
   ghiLuong,
   tatCaLuong,
@@ -40,6 +41,7 @@ import {
 import {
   laSaoKe,
   docSaoKe,
+  taiKhoanSaoKe,
   khopDoiTac,
   loaiTienVao,
   hoaDonCuaGiaoDich,
@@ -53,7 +55,20 @@ import {
 import { hoaDonHieuLuc, ketQuaTheoThang, ngayISO, chuanChu, type SoCongNo, type ThanhToanDoiTac } from '../lib/keToan.js';
 import { createHash } from 'node:crypto';
 import { laiLoTheoThang, congNoTheoSaoKe } from '../lib/laiLoCongNo.js';
-import { xemTruoc, hoaDonTheoBanDo, giaoDichTheoBanDo, congNoTheoBanDo, luongNvTheoBanDo, congLuongTheoThang, kqkdTheoBanDo, type BanDoAi } from '../lib/docAi.js';
+import {
+  xemTruoc,
+  hoaDonTheoBanDo,
+  giaoDichTheoBanDo,
+  congNoTheoBanDo,
+  luongNvTheoBanDo,
+  congLuongTheoThang,
+  kqkdTheoBanDo,
+  ketHopSaoKe,
+  ketHopHoaDon,
+  tyLeSoDu,
+  tyLeTongHd,
+  type BanDoAi,
+} from '../lib/docAi.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
 
@@ -91,20 +106,26 @@ export interface KetQuaTep {
 
 const tien = (n: number) => n.toLocaleString('vi-VN');
 
-/** Một file bảng (Excel/CSV đã được trình duyệt đọc thành các dòng chữ). */
 /**
- * Một file bảng (Excel/CSV đã được trình duyệt đọc thành các dòng chữ). Bộ đọc theo mẫu đã biết chạy trước (nhanh,
- * không tốn AI); không nhận ra / không ra dòng nào thì AI đọc phần đầu file để chỉ ra loại file và cột (anh Tâm
- * 18/10/2026: "cho AI vào đọc file luôn đỡ phải setup định dạng").
+ * Một file bảng (Excel/CSV đã được trình duyệt đọc thành các dòng chữ). AI đọc MỌI file trước (anh Tâm 8/11/2026: "sử
+ * dụng AI để đọc luôn các tài liệu gửi lên thay vì khớp trường"): AI xem phần đầu file, chỉ ra loại file và cột nào là
+ * gì (kể cả cột tên người chuyển mà bộ đọc mẫu không biết), rồi đọc toàn bộ file theo đó. Bộ đọc mẫu đọc được thì dùng
+ * kiểm chéo (giữ khoá cũ, số tiền đối chiếu); AI lỗi / hết lượt thì quay về bộ đọc mẫu.
  */
 export async function nhapBang(ten: string, sheets: SheetDuLieu[], nguoi: string): Promise<KetQuaTep> {
-  const kq = await nhapBangTheoMau(ten, sheets, nguoi);
-  if (kq.ok) return kq;
+  let loiAi = '';
+  let bd: BanDoAi | null = null;
   try {
-    return await nhapBangAi(ten, sheets, nguoi);
+    bd = await banDoAi(ten, sheets);
+    const kq = await nhapTheoBanDo(ten, sheets, bd, nguoi);
+    if (kq) return kq;
   } catch (e) {
-    return { ten, loai: 'Chưa nhận dạng', ok: false, thongDiep: `${kq.thongDiep} · AI cũng chưa đọc được: ${(e as Error).message.slice(0, 200)}` };
+    loiAi = (e as Error).message.slice(0, 200);
   }
+  const kq = await nhapBangTheoMau(ten, sheets, nguoi);
+  if (kq.ok) return loiAi ? { ...kq, thongDiep: `${kq.thongDiep} · AI chưa đọc được (${loiAi}) — dùng bộ đọc mẫu` } : kq;
+  if (bd?.loai === 'khac') return { ten, loai: 'Không dùng cho số liệu thuế', ok: false, thongDiep: `AI đọc: ${bd.moTa || 'không phải hoá đơn / sao kê / công nợ / báo cáo / bảng lương'}` };
+  return loiAi ? { ...kq, thongDiep: `${kq.thongDiep} · AI cũng chưa đọc được: ${loiAi}` } : kq;
 }
 
 async function nhapBangTheoMau(ten: string, sheets: SheetDuLieu[], nguoi: string): Promise<KetQuaTep> {
@@ -493,45 +514,79 @@ function loiNhacBanDo(ten: string, xem: string, mst: string): string {
   ].join('\n');
 }
 
-async function nhapBangAi(ten: string, sheets: SheetDuLieu[], nguoi: string): Promise<KetQuaTep> {
+async function banDoAi(ten: string, sheets: SheetDuLieu[]): Promise<BanDoAi> {
   const { aiKhoJson } = await import('../ai/brainAi.js');
   const cd = await caiDat();
   const bd = (await aiKhoJson(loiNhacBanDo(ten, xemTruoc(sheets), cd.mst), SCHEMA_BAN_DO)) as BanDoAi;
   if (!bd || !Array.isArray(bd.bang)) throw new Error('AI không trả bản đồ cột');
+  return bd;
+}
+
+/** Ghi file theo bản đồ AI. null = AI cho là file không dùng cho số liệu thuế (để bộ đọc mẫu thử lại). */
+async function nhapTheoBanDo(ten: string, sheets: SheetDuLieu[], bd: BanDoAi, nguoi: string): Promise<KetQuaTep | null> {
   const id = newId('KT');
   const luc = nowTz().toISOString();
-  const nhan = (l: string) => `${l} (AI nhận dạng)`;
+  const nhan = (l: string) => `${l} (AI đọc)`;
+  const loaiMau = nhanDangBang(sheets);
   let kq: KetQuaTep;
   if (bd.loai === 'hoa_don') {
-    const hoaDon = hoaDonTheoBanDo(sheets, bd);
+    const mau = loaiMau === 'bang_ke' ? docBangKe(sheets).hoaDon : null;
+    const kh = ketHopHoaDon(hoaDonTheoBanDo(sheets, bd), mau);
+    const hoaDon = kh.ds;
     if (!hoaDon.length) throw new Error(`AI nhận là hoá đơn ("${bd.moTa}") nhưng không đọc ra dòng nào`);
-    const ghi = await ghiHoaDon(hoaDon, 'ai', id, luc);
+    const ghi = await ghiHoaDon(hoaDon, mau?.length ? 'bang_ke' : 'ai', id, luc);
     const ra = hoaDon.filter((h) => h.huong === 'ra');
     const vao = hoaDon.filter((h) => h.huong === 'vao');
+    const tl = tyLeTongHd(hoaDon);
+    const kiem = mau?.length
+      ? ` · đã đối chiếu bộ đọc mẫu${kh.them ? `, thêm ${kh.them} HĐ mẫu bỏ sót` : ''}${kh.bo ? `, bỏ ${kh.bo} HĐ AI đọc lệch số` : ''}`
+      : tl !== null && tl < 0.9
+        ? ` · ⚠️ ${Math.round((1 - tl) * 100)}% HĐ có tiền hàng + thuế ≠ tổng tiền — anh xem lại`
+        : '';
     kq = {
       ten,
       loai: nhan('Hoá đơn'),
       ok: true,
-      thongDiep: `${ra.length} HĐ bán ra (VAT ${tien(ra.reduce((s, h) => s + h.tienThue, 0))}), ${vao.length} HĐ mua vào (VAT ${tien(vao.reduce((s, h) => s + h.tienThue, 0))}) · ${ghi.moi} mới, ${ghi.capNhat} cập nhật`,
+      thongDiep: `${ra.length} HĐ bán ra (VAT ${tien(ra.reduce((s, h) => s + h.tienThue, 0))}), ${vao.length} HĐ mua vào (VAT ${tien(vao.reduce((s, h) => s + h.tienThue, 0))}) · ${ghi.moi} mới, ${ghi.capNhat} cập nhật${kiem}`,
     };
   } else if (bd.loai === 'sao_ke') {
-    const gd = giaoDichTheoBanDo(sheets, bd);
+    const mau = laSaoKe(sheets) ? docSaoKe(sheets, ten) : null;
+    const b0 = bd.bang[0];
+    const sh0 = b0 ? sheets.find((s) => s.ten === b0.sheet) || sheets[0] : sheets[0];
+    const tk = taiKhoanSaoKe((sh0?.rows || []).slice(0, Math.max(1, b0?.dongDuLieu ?? 1)), ten);
+    const aiDoc = giaoDichTheoBanDo(sheets, bd);
+    const daCo = !mau && tk.soTk ? await idGiaoDichDaCo(aiDoc.map((g) => g.id)) : new Set<string>();
+    const kh = ketHopSaoKe(aiDoc, mau?.giaoDich ?? null, tk, daCo);
+    const gd = kh.ds;
     if (!gd.length) throw new Error(`AI nhận là sao kê ("${bd.moTa}") nhưng không đọc ra giao dịch nào`);
     const ghi = await ghiGiaoDich(gd, id);
     const ngay = gd.map((g) => g.ngay).sort();
+    const soTk = mau?.soTk || tk.soTk;
+    const tl = tyLeSoDu(gd);
+    const coTen = gd.filter((g) => g.doiTac).length;
+    const kiem = mau
+      ? ` · đã đối chiếu bộ đọc mẫu${kh.them ? `, thêm ${kh.them} giao dịch mẫu bỏ sót` : ''}${kh.bo ? `, bỏ ${kh.bo} giao dịch AI đọc lệch số dư` : ''}`
+      : tl === null
+        ? ''
+        : tl < 0.9
+          ? ` · ⚠️ số dư chỉ khớp ${Math.round(tl * 100)}% — anh xem lại`
+          : ' · số dư khớp';
     kq = {
       ten,
-      loai: nhan(`Sao kê ${bd.nganHang || 'ngân hàng'}`),
+      loai: nhan(`Sao kê ${mau?.nganHang || tk.nganHang || bd.nganHang || 'ngân hàng'}${soTk ? ` ···${soTk.slice(-4)}` : ''}`),
       ok: true,
-      thongDiep: `${gd.length} giao dịch ${ngay[0]} → ${ngay[ngay.length - 1]} · vào ${tien(gd.reduce((s, g) => s + g.ghiCo, 0))}, ra ${tien(gd.reduce((s, g) => s + g.ghiNo, 0))} · ${ghi.moi} mới, ${ghi.trung} đã có`,
+      thongDiep: `${gd.length} giao dịch ${ngay[0]} → ${ngay[ngay.length - 1]} · vào ${tien(gd.reduce((s, g) => s + g.ghiCo, 0))}, ra ${tien(gd.reduce((s, g) => s + g.ghiNo, 0))} · ${ghi.moi} mới, ${ghi.trung} đã có${coTen ? ` · ${coTen} giao dịch có tên người chuyển / nhận` : ''}${kiem}`,
     };
   } else if (bd.loai === 'cong_no') {
-    const so = congNoTheoBanDo(sheets, bd);
+    // Sổ công nợ theo mẫu kế toán đọc được thì lấy số của bộ đọc mẫu (chính xác từng dòng), không thì theo AI.
+    const theoMau = loaiMau === 'cong_no_thu' || loaiMau === 'cong_no_tra' ? docCongNo(sheets, loaiMau === 'cong_no_thu' ? 'thu' : 'tra', ten) : null;
+    const so = theoMau || congNoTheoBanDo(sheets, bd);
     if (!so) throw new Error(`AI nhận là công nợ ("${bd.moTa}") nhưng thiếu loại (thu / trả) hoặc ngày chốt`);
     const n = await ghiCongNo(so, id);
     kq = { ten, loai: nhan(so.loai === 'thu' ? 'Công nợ phải thu' : 'Công nợ phải trả'), ok: true, thongDiep: `${n} đối tác, chốt ngày ${so.ngayChot}` };
   } else if (bd.loai === 'kqkd') {
-    const b = kqkdTheoBanDo(bd);
+    // Báo cáo theo mẫu: số chỉ tiêu đọc thẳng từ file; AI chỉ chép 2 con số chính nên chỉ dùng khi mẫu không đọc được.
+    const b = (loaiMau === 'kqkd' ? docKqkd(sheets) : null) || kqkdTheoBanDo(bd);
     if (!b) throw new Error('AI nhận là báo cáo kết quả kinh doanh nhưng thiếu kỳ / lợi nhuận');
     await ghiBaoCao(b, id, luc);
     kq = {
@@ -557,7 +612,7 @@ async function nhapBangAi(ten: string, sheets: SheetDuLieu[], nguoi: string): Pr
       thongDiep: `${luong.length} tháng (${luong.map((x) => `${x.thang.slice(5)}/${x.thang.slice(0, 4)}`).join(', ')}) · tổng thu nhập ${tien(tong)}, BHXH công ty đóng ${tien(bh)}${ck ? ` · thực lãnh: tiền mặt ${tien(tm)}, chuyển khoản ${tien(ck)}` : ''}`,
     };
   } else {
-    return { ten, loai: 'Không dùng cho số liệu thuế', ok: false, thongDiep: `AI đọc: ${bd.moTa || 'không phải hoá đơn / sao kê / công nợ / báo cáo / bảng lương'}` };
+    return null;
   }
   await ghiTaiLen({ id, tenFile: ten, loai: kq.loai, ketQua: kq.thongDiep, nguoi, luc });
   return kq;
