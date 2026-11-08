@@ -52,6 +52,7 @@ import {
 } from '../lib/saoKe.js';
 import { hoaDonHieuLuc, ketQuaTheoThang, ngayISO, chuanChu, type SoCongNo, type ThanhToanDoiTac } from '../lib/keToan.js';
 import { createHash } from 'node:crypto';
+import { laiLoTheoThang, congNoTheoSaoKe } from '../lib/laiLoCongNo.js';
 import { xemTruoc, hoaDonTheoBanDo, giaoDichTheoBanDo, congNoTheoBanDo, luongNvTheoBanDo, congLuongTheoThang, kqkdTheoBanDo, type BanDoAi } from '../lib/docAi.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
@@ -295,6 +296,16 @@ export async function tongQuan(nam: number) {
     luongCk: doiChieuLuong(luongNv.filter((x) => x.thang.startsWith(String(nam))), giaoDich),
     // Thu / chi / lương theo tháng (anh Tâm 18/10/2026: "Thu, chi, lương, tách ra").
     ketQuaThang: ketQuaTheoThang(nam, hoaDon, luong, nam === Number(homNay.slice(0, 4)) ? homNay.slice(0, 7) : undefined),
+    // Lãi lỗ ĐƠN GIẢN + công nợ theo sao kê (anh Tâm 8/11/2026) — xem lib/laiLoCongNo.ts.
+    laiLo: laiLoTheoThang(nam, { hoaDon, luong, giaoDich }, nam === Number(homNay.slice(0, 4)) ? homNay.slice(0, 7) : undefined),
+    congNoSaoKe: (['thu', 'tra'] as const).reduce(
+      (acc, loai) => {
+        const r = congNoTheoSaoKe({ loai, hoaDon, giaoDich });
+        acc[loai] = { ...r, chuaKhop: r.chuaKhop.slice(-30).reverse(), soChuaKhop: r.chuaKhop.length };
+        return acc;
+      },
+      {} as Record<'thu' | 'tra', ReturnType<typeof congNoTheoSaoKe> & { soChuaKhop: number }>,
+    ),
     nganHang: {
       taiKhoan: tomTatTaiKhoan(giaoDich),
       /** Tiền vào sau ngày chốt chưa khớp được khách nào (có thể là khách chưa có trong sổ / chuyển nội bộ) */

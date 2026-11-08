@@ -59,6 +59,32 @@ interface DoiChieuLuongThang {
   thieu: Array<{ ten: string; soTien: number }>;
   thua: Array<{ ngay: string; soTien: number; noiDung: string; doiTac: string }>;
 }
+interface ThangLaiLo {
+  thang: string;
+  doanhThu: number;
+  hdVao: number;
+  luongBhxh: number;
+  nhaThauNN: number;
+  thueNha: number;
+  laiLo: number;
+}
+interface CongNoSaoKeDong {
+  ma: string;
+  ten: string;
+  mst: string;
+  hoaDon: number;
+  daTra: number;
+  con: number;
+  hdChuaTra: Array<{ soHd: string; ngay: string; tongTien: number; conLai: number }>;
+}
+interface CongNoSaoKeTong {
+  tuNgay: string;
+  ds: CongNoSaoKeDong[];
+  phai: number;
+  truoc: number;
+  chuaKhop: GiaoDich[];
+  soChuaKhop: number;
+}
 interface CongNoDoiTac {
   ma: string;
   ten: string;
@@ -108,6 +134,8 @@ interface TongQuan {
   tndn: Tndn[];
   congNo: { thu: CongNo; tra: CongNo };
   ketQuaThang: DongKetQuaThang[];
+  laiLo: ThangLaiLo[];
+  congNoSaoKe: Record<'thu' | 'tra', CongNoSaoKeTong>;
   luongCk: DoiChieuLuongThang[];
   nganHang: {
     taiKhoan: TaiKhoan[];
@@ -385,17 +413,17 @@ export default function KeToanThue() {
             />
             <ChiSo
               nhan="Công nợ phải thu"
-              giaTri={vnd(tq.congNo.thu.phai)}
-              phu={`Phải trả ${vnd(tq.congNo.tra.phai)}${tq.congNo.thu.ngayChot ? ` · sổ chốt ${ngayVN(tq.congNo.thu.ngayChot)}` : ''}`}
+              giaTri={vnd(tq.congNoSaoKe.thu.phai)}
+              phu={`Phải trả ${vnd(tq.congNoSaoKe.tra.phai)} · theo sao kê từ ${ngayVN(tq.congNoSaoKe.thu.tuNgay)}`}
               mau="text-ocean-700"
             />
           </div>
 
-          <BangThuChi ds={tq.ketQuaThang} nam={nam} />
+          <BangLaiLo ds={tq.laiLo} nam={nam} thieuLuong={tq.ketQuaThang.filter((x) => (x.thu || x.chi) && !x.coLuong).map((x) => x.thang.slice(5))} />
           <BangLuongCk ds={tq.luongCk || []} coSaoKe={tq.nganHang.taiKhoan.length > 0} />
           <BangTndn tndn={tq.tndn} />
           <BangVat vat={tq.vat} nam={nam} />
-          <BangCongNo thu={tq.congNo.thu} tra={tq.congNo.tra} />
+          <BangCongNoSaoKe thu={tq.congNoSaoKe.thu} tra={tq.congNoSaoKe.tra} />
           <NganHang nh={tq.nganHang} lan={lan} onDoi={capNhatSauDanhDau} />
         </>
       )}
@@ -828,28 +856,38 @@ function BangLuongCk({ ds, coSaoKe }: { ds: DoiChieuLuongThang[]; coSaoKe: boole
   );
 }
 
-function BangThuChi({ ds, nam }: { ds: DongKetQuaThang[]; nam: number }) {
-  const tong = ds.reduce(
-    (t, x) => ({ thu: t.thu + x.thu, chi: t.chi + x.chi, luong: t.luong + x.luong, laiLo: t.laiLo + x.laiLo }),
-    { thu: 0, chi: 0, luong: 0, laiLo: 0 },
-  );
-  const thieuLuong = ds.filter((x) => (x.thu || x.chi) && !x.coLuong).map((x) => x.thang.slice(5));
+/**
+ * Lãi lỗ ĐƠN GIẢN (anh Tâm 8/11/2026): hoá đơn ra − hoá đơn vào − lương + BHXH − chi phí không có trên thuế điện tử
+ * (nhà thầu nước ngoài trả thẻ, thuê nhà). Tiền rút ra chi tiêu khác không tính.
+ */
+function BangLaiLo({ ds, nam, thieuLuong }: { ds: ThangLaiLo[]; nam: number; thieuLuong: string[] }) {
+  const cong = (k: keyof Omit<ThangLaiLo, 'thang'>) => ds.reduce((s, x) => s + x[k], 0);
+  const cot: Array<[keyof Omit<ThangLaiLo, 'thang'>, string]> = [
+    ['doanhThu', 'Hoá đơn ra'],
+    ['hdVao', 'Hoá đơn vào'],
+    ['luongBhxh', 'Lương + BHXH'],
+    ['nhaThauNN', 'Nhà thầu nước ngoài'],
+    ['thueNha', 'Thuê nhà'],
+  ];
+  const mau = (n: number) => (n < 0 ? 'text-rose-600' : 'text-emerald-700');
   return (
     <div className="card overflow-x-auto">
-      <h2 className="font-semibold">Thu · Chi · Lương theo tháng — năm {nam}</h2>
+      <h2 className="font-semibold">Lãi lỗ theo tháng — năm {nam}</h2>
       <p className="mb-2 text-xs text-ink-muted">
-        Thu = tiền hàng hoá đơn bán ra · Chi = tiền hàng hoá đơn mua vào · Lương = tổng thu nhập + BHXH công ty đóng (bảng lương).
-        Tính theo ngày hoá đơn, chưa gồm chi phí không có hoá đơn và bút toán kế toán (khấu hao, phân bổ…) — số chính thức xem phần
-        TNDN bên dưới.
-        {thieuLuong.length > 0 && <b className="text-amber-800"> Chưa có bảng lương tháng {thieuLuong.join(', ')}.</b>}
+        Lãi lỗ = hoá đơn ra − hoá đơn vào (tiền hàng chưa VAT, theo thuế điện tử) − lương + BHXH công ty (bảng lương) − chi phí
+        không có trên thuế điện tử: <b>nhà thầu nước ngoài</b> trả thẻ (TikTok, phần mềm… — Google / Meta đã có hoá đơn thì tính
+        theo hoá đơn) và <b>thuê nhà</b> (theo sao kê). Tiền rút ra chi tiêu khác không tính.
+        {thieuLuong.length > 0 && <b className="text-amber-800"> Chưa có bảng lương tháng {thieuLuong.join(', ')} — lãi các tháng đó đang cao hơn thật.</b>}
       </p>
-      <table className="w-full min-w-[640px] text-sm">
+      <table className="w-full min-w-[760px] text-sm">
         <thead>
           <tr className="text-left text-xs text-ink-muted">
             <th className="py-1">Tháng</th>
-            <th className="text-right">Thu</th>
-            <th className="text-right">Chi (có hoá đơn)</th>
-            <th className="text-right">Lương + BHXH</th>
+            {cot.map(([k, ten]) => (
+              <th key={k} className="text-right">
+                {ten}
+              </th>
+            ))}
             <th className="text-right">Lãi / lỗ</th>
           </tr>
         </thead>
@@ -859,21 +897,136 @@ function BangThuChi({ ds, nam }: { ds: DongKetQuaThang[]; nam: number }) {
               <td className="py-1.5 font-medium">
                 {x.thang.slice(5)}/{x.thang.slice(0, 4)}
               </td>
-              <td className="text-right">{vnd(x.thu)}</td>
-              <td className="text-right">{vnd(x.chi)}</td>
-              <td className="text-right">{x.coLuong ? vnd(x.luong) : <span className="text-ink-faint">chưa có</span>}</td>
-              <td className={`text-right font-semibold ${x.laiLo < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{vnd(x.laiLo)}</td>
+              {cot.map(([k]) => (
+                <td key={k} className="text-right">
+                  {x[k] ? vnd(x[k]) : <span className="text-ink-faint">—</span>}
+                </td>
+              ))}
+              <td className={`text-right font-semibold ${mau(x.laiLo)}`}>{vnd(x.laiLo)}</td>
             </tr>
           ))}
           <tr className="border-t-2 border-ink font-bold">
             <td className="py-1.5">Cộng</td>
-            <td className="text-right">{vnd(tong.thu)}</td>
-            <td className="text-right">{vnd(tong.chi)}</td>
-            <td className="text-right">{vnd(tong.luong)}</td>
-            <td className={`text-right ${tong.laiLo < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{vnd(tong.laiLo)}</td>
+            {cot.map(([k]) => (
+              <td key={k} className="text-right">
+                {vnd(cong(k))}
+              </td>
+            ))}
+            <td className={`text-right ${mau(cong('laiLo'))}`}>{vnd(cong('laiLo'))}</td>
           </tr>
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/**
+ * Công nợ theo sao kê (anh Tâm 8/11/2026): hoá đơn trong kỳ có sao kê − tiền khớp được (tên công ty trong nội dung →
+ * tên người / đơn vị chuyển → số tiền trùng hoá đơn); tiền trả trừ hoá đơn cũ trước.
+ */
+function BangCongNoSaoKe({ thu, tra }: { thu: CongNoSaoKeTong; tra: CongNoSaoKeTong }) {
+  const [loai, setLoai] = useState<'thu' | 'tra'>('thu');
+  const [tim, setTim] = useState('');
+  const [trang, setTrang] = useState(1);
+  const [mo, setMo] = useState('');
+  const cn = loai === 'thu' ? thu : tra;
+  const ds = cn.ds.filter((x) => x.con !== 0 && (!tim.trim() || `${x.ten} ${x.mst}`.toLowerCase().includes(tim.trim().toLowerCase())));
+  const CO = 15;
+  const tr = Math.min(trang, Math.max(1, Math.ceil(ds.length / CO)));
+  const homNay = Date.now();
+  return (
+    <div className="card overflow-x-auto">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <h2 className="mr-2 font-semibold">Công nợ theo sao kê</h2>
+        {(['thu', 'tra'] as const).map((l) => (
+          <button
+            key={l}
+            className={`rounded-full px-3 py-1 text-sm ${loai === l ? 'bg-brand-600 text-ink' : 'bg-brand-50 text-ink-soft'}`}
+            onClick={() => {
+              setLoai(l);
+              setTrang(1);
+              setMo('');
+            }}
+          >
+            {l === 'thu' ? `Phải thu ${vnd(thu.phai)}` : `Phải trả ${vnd(tra.phai)}`}
+          </button>
+        ))}
+        <input className="input ml-auto w-48 py-1 text-sm" placeholder="Tìm đối tác…" value={tim} onChange={(e) => (setTim(e.target.value), setTrang(1))} />
+      </div>
+      <p className="mb-2 text-xs text-ink-muted">
+        Hoá đơn {loai === 'thu' ? 'bán ra' : 'mua vào'} từ {ngayVN(cn.tuNgay)} (ngày đầu có sao kê) trừ tiền {loai === 'thu' ? 'về' : 'chi'}{' '}
+        khớp theo: tên công ty trong nội dung → tên người / đơn vị chuyển → số tiền trùng hoá đơn. Trả tiền trừ hoá đơn cũ trước.
+        {loai === 'tra' && ' Hoá đơn dưới 5 triệu coi như đã trả tiền mặt.'}
+        {cn.truoc > 0 && ` Số âm = ${loai === 'thu' ? 'khách trả dư / trả trước / trả hoá đơn trước kỳ' : 'mình trả dư / trả trước'}: tổng ${vnd(cn.truoc)}.`}
+      </p>
+      {ds.length === 0 ? (
+        <EmptyState icon="✅" text="Không có công nợ." />
+      ) : (
+        <table className="w-full min-w-[640px] text-sm">
+          <thead>
+            <tr className="text-left text-xs text-ink-muted">
+              <th className="py-1">Đối tác</th>
+              <th className="text-right">Hoá đơn</th>
+              <th className="text-right">{loai === 'thu' ? 'Đã thu' : 'Đã trả'}</th>
+              <th className="text-right">Còn lại</th>
+              <th className="pl-3">Hoá đơn còn nợ</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {ds.slice((tr - 1) * CO, tr * CO).map((x) => (
+              <Fragment key={x.ma}>
+                <tr className="align-top">
+                  <td className="py-1.5">
+                    <div className="font-medium">{x.ten}</div>
+                    <div className="text-xs text-ink-faint">{x.mst}</div>
+                  </td>
+                  <td className="text-right">{vnd(x.hoaDon)}</td>
+                  <td className="text-right">{x.daTra ? vnd(x.daTra) : '—'}</td>
+                  <td className={`text-right font-semibold ${x.con < 0 ? 'text-emerald-700' : ''}`}>{vnd(x.con)}</td>
+                  <td className="pl-3 text-xs">
+                    {x.hdChuaTra.length > 0 && (
+                      <button className="text-ocean-600 underline" onClick={() => setMo(mo === x.ma ? '' : x.ma)}>
+                        {x.hdChuaTra.length} HĐ, cũ nhất {ngayVN(x.hdChuaTra[0]!.ngay)} {mo === x.ma ? '▲' : '▼'}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+                {mo === x.ma && (
+                  <tr>
+                    <td colSpan={5} className="pb-2 text-xs">
+                      <ul className="sticky left-0 max-w-[calc(100vw-4.5rem)] space-y-0.5 rounded-xl bg-brand-50 p-2 sm:max-w-none">
+                        {x.hdChuaTra.map((h) => (
+                          <li key={`${h.soHd}-${h.ngay}`}>
+                            HĐ <b>{h.soHd}</b> · {ngayVN(h.ngay)} · {vnd(h.tongTien)}
+                            {h.conLai < h.tongTien && <> · còn <b>{vnd(h.conLai)}</b></>}
+                            <span className="text-ink-faint"> · {Math.floor((homNay - Date.parse(h.ngay)) / 86_400_000)} ngày</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <PhanTrang trang={tr} tong={ds.length} co={CO} onDoi={setTrang} />
+      {cn.soChuaKhop > 0 && (
+        <details className="mt-2 text-sm">
+          <summary className="cursor-pointer text-ink-soft">
+            {cn.soChuaKhop} khoản tiền {loai === 'thu' ? 'về' : 'chi'} chưa khớp được đối tác nào
+          </summary>
+          <ul className="mt-1 space-y-0.5 text-xs text-ink-muted">
+            {cn.chuaKhop.map((g) => (
+              <li key={g.id}>
+                {ngayVN(g.ngay)} · <b>{vnd(loai === 'thu' ? g.ghiCo : g.ghiNo)}</b> · {g.doiTac ? <b className="text-ink">{g.doiTac} · </b> : null}
+                {g.noiDung}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }
@@ -941,81 +1094,6 @@ function BangTndn({ tndn }: { tndn: Tndn[] }) {
 type CachTra = '' | 'tien_mat' | 'ngan_hang';
 async function danhDauTra(khoa: string[], cach: CachTra) {
   return api<{ ok: boolean; n: number }>('/ke-toan/hoa-don/thanh-toan', { body: { khoa, cach } });
-}
-
-function BangCongNo({ thu, tra }: { thu: CongNo; tra: CongNo }) {
-  const [loai, setLoai] = useState<'thu' | 'tra'>('thu');
-  const [tim, setTim] = useState('');
-  const [trang, setTrang] = useState(1);
-  const cn = loai === 'thu' ? thu : tra;
-  const ds = cn.ds.filter((x) => !tim.trim() || `${x.ten} ${x.ma}`.toLowerCase().includes(tim.trim().toLowerCase()));
-  const CO = 15;
-  const t = Math.min(trang, Math.max(1, Math.ceil(ds.length / CO)));
-  return (
-    <div className="card overflow-x-auto">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <h2 className="mr-2 font-semibold">Công nợ các bên</h2>
-        {(['thu', 'tra'] as const).map((l) => (
-          <button
-            key={l}
-            className={`rounded-full px-3 py-1 text-sm ${loai === l ? 'bg-brand-600 text-ink' : 'bg-brand-50 text-ink-soft'}`}
-            onClick={() => {
-              setLoai(l);
-              setTrang(1);
-            }}
-          >
-            {l === 'thu' ? `Phải thu ${vnd(thu.phai)}` : `Phải trả ${vnd(tra.phai)}`}
-          </button>
-        ))}
-        <input className="input ml-auto w-48 py-1 text-sm" placeholder="Tìm đối tác…" value={tim} onChange={(e) => setTim(e.target.value)} />
-      </div>
-      <p className="mb-2 text-xs text-ink-muted">
-        {cn.ngayChot
-          ? `Số dư theo sổ kế toán chốt ngày ${ngayVN(cn.ngayChot)}, cộng hoá đơn ${loai === 'thu' ? 'bán ra' : 'mua vào'} sau ngày đó, trừ tiền đã ${loai === 'thu' ? 'thu' : 'trả'} sau ngày đó theo sao kê ngân hàng (khớp theo tên bên chuyển / MST / số hoá đơn trong nội dung chuyển khoản)${loai === 'tra' ? ' và hoá đơn đã trả tiền mặt (dưới 5 triệu không thấy chuyển khoản, hoặc anh đánh dấu)' : ''}.`
-          : `Chưa có sổ tổng hợp công nợ ${loai === 'thu' ? 'phải thu (TK 131)' : 'phải trả (TK 331)'} — tải file kế toán gửi.`}
-        {cn.truoc > 0 && ` Số âm = ${loai === 'thu' ? 'khách trả trước' : 'mình đã trả trước'}: tổng ${vnd(cn.truoc)}.`}
-      </p>
-      {ds.length === 0 ? (
-        <EmptyState icon="✅" text="Không có công nợ." />
-      ) : (
-        <table className="w-full min-w-[640px] text-sm">
-          <thead>
-            <tr className="text-left text-xs text-ink-muted">
-              <th className="py-1">Đối tác</th>
-              <th className="text-right">Số dư sổ</th>
-              <th className="text-right">HĐ sau ngày chốt</th>
-              <th className="text-right">{loai === 'thu' ? 'Đã thu sau chốt' : 'Đã trả sau chốt'}</th>
-              <th className="text-right">Còn lại</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {ds.slice((t - 1) * CO, t * CO).map((x) => (
-              <tr key={x.ma}>
-                <td className="py-1.5">
-                  <div className="font-medium">{x.ten}</div>
-                  <div className="text-xs text-ink-faint">{x.ma}</div>
-                </td>
-                <td className="text-right">{vnd(x.soDu)}</td>
-                <td className="text-right">{x.hoaDonSau ? vnd(x.hoaDonSau) : '—'}</td>
-                <td className="text-right">
-                  {x.thanhToanSau || x.tienMatSau ? (
-                    <>
-                      {x.thanhToanSau ? <div>−{vnd(x.thanhToanSau)}</div> : null}
-                      {x.tienMatSau ? <div className="text-xs text-ink-muted">💵 −{vnd(x.tienMatSau)}</div> : null}
-                    </>
-                  ) : (
-                    '—'
-                  )}
-                </td>
-                <td className={`text-right font-semibold ${x.tong < 0 ? 'text-emerald-700' : ''}`}>{vnd(x.tong)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      <PhanTrang trang={t} tong={ds.length} co={CO} onDoi={setTrang} />
-    </div>
-  );
 }
 
 function NganHang({ nh, lan, onDoi }: { nh: TongQuan['nganHang']; lan: number; onDoi: () => void }) {
