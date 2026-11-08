@@ -101,14 +101,58 @@ keToanRouter.get(
   }),
 );
 
+/** Đăng nhập: mật khẩu bỏ trống = dùng mật khẩu đã lưu (bản mã); `luu` = lưu mật khẩu (mã hoá) khi đăng nhập được. */
 keToanRouter.post(
   '/cong-thue/dang-nhap',
   asyncHandler(async (req, res) => {
     const b = z
-      .object({ username: z.string().min(5).max(20), password: z.string().min(1).max(100), cvalue: z.string().min(1).max(20), ckey: z.string().min(1).max(100) })
+      .object({
+        username: z.string().min(5).max(20),
+        password: z.string().max(100).default(''),
+        cvalue: z.string().min(1).max(20),
+        ckey: z.string().min(1).max(100),
+        luu: z.boolean().default(false),
+      })
       .parse(req.body);
-    const { dangNhap } = await import('./congThue.js');
-    res.json(await dangNhap({ username: b.username.trim(), password: b.password, cvalue: b.cvalue.trim(), ckey: b.ckey }));
+    const { dangNhapCongThue } = await import('./keToan.service.js');
+    res.json(await dangNhapCongThue({ username: b.username.trim(), password: b.password, cvalue: b.cvalue.trim(), ckey: b.ckey, luu: b.luu }));
+  }),
+);
+
+/** Tài khoản cổng thuế đã lưu — chỉ MST + có / không, KHÔNG trả mật khẩu. */
+keToanRouter.get(
+  '/cong-thue/tai-khoan',
+  asyncHandler(async (_req, res) => {
+    const { taiKhoanCongThue } = await import('./keToan.service.js');
+    res.json(await taiKhoanCongThue());
+  }),
+);
+
+keToanRouter.delete(
+  '/cong-thue/tai-khoan',
+  asyncHandler(async (_req, res) => {
+    const { xoaTaiKhoanCongThue } = await import('./keToan.service.js');
+    await xoaTaiKhoanCongThue();
+    res.json({ ok: true });
+  }),
+);
+
+/** Một trang hoá đơn máy tính tiền — cổng bắt captcha (anh gõ) cho mỗi lượt. */
+keToanRouter.post(
+  '/cong-thue/lay-mtt',
+  asyncHandler(async (req, res) => {
+    const b = z
+      .object({
+        token: z.string().min(10).max(4000),
+        thang: z.string().regex(/^\d{4}-\d{2}$/),
+        huong: z.enum(['ra', 'vao']),
+        ckey: z.string().min(1).max(100),
+        cvalue: z.string().min(1).max(20),
+        state: z.string().max(500).default(''),
+      })
+      .parse(req.body);
+    const { layMttTuCongThue } = await import('./keToan.service.js');
+    res.json(await layMttTuCongThue(b.token, b.thang, b.huong, { ckey: b.ckey, cvalue: b.cvalue.trim() }, b.state, req.user!.name));
   }),
 );
 

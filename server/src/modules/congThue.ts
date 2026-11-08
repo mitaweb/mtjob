@@ -114,41 +114,60 @@ export function tuDongCongThue(d: Record<string, unknown>, huong: 'ra' | 'vao'):
   };
 }
 
+export interface CaptchaCong {
+  ckey: string;
+  cvalue: string;
+}
+
 /**
- * Hoá đơn của MỘT tháng (`thang` "YYYY-MM"), một hướng: hoá đơn thường (query) + hoá đơn máy tính tiền (sco-query),
- * phân trang theo `state` (50 hoá đơn / trang). Dừng sớm khi gần hết giờ (`han`, ms).
+ * Đường dẫn tra danh sách hoá đơn một tháng (50 / trang, trang sau theo `state`). Danh sách chỉ nhận sắp theo MỘT trường
+ * (18/10/2026). Từ 11/2026 cổng bắt captcha cho hoá đơn MÁY TÍNH TIỀN (sco-query): ckey + cvalue trên đường dẫn — đúng
+ * như trang cổng gửi (axios `params`); hoá đơn thường (query) không cần.
  */
-export async function layHoaDonThang(token: string, thang: string, huong: 'ra' | 'vao', han: number): Promise<{ hoaDon: HoaDon[]; xong: boolean }> {
+export function urlTraCuu(nguon: 'query' | 'sco-query', huong: 'ra' | 'vao', thang: string, state = '', cap?: CaptchaCong): string {
   const m = /^(\d{4})-(\d{2})$/.exec(thang);
   if (!m) throw new ApiError(400, 'Tháng không hợp lệ');
   const cuoi = new Date(Date.UTC(Number(m[1]), Number(m[2]), 0)).getUTCDate();
   const tu = `01/${m[2]}/${m[1]}T00:00:00`;
   const den = `${String(cuoi).padStart(2, '0')}/${m[2]}/${m[1]}T23:59:59`;
   const loai = huong === 'vao' ? 'purchase' : 'sold';
+  const qs = `sort=tdlap:desc&size=50${state ? `&state=${encodeURIComponent(state)}` : ''}&search=tdlap=ge=${tu};tdlap=le=${den}`;
+  const capQs = cap ? `&ckey=${encodeURIComponent(cap.ckey)}&cvalue=${encodeURIComponent(cap.cvalue)}` : '';
+  return `${GOC}/${nguon}/invoices/${loai}?${qs}${capQs}`;
+}
+
+async function motTrang(token: string, url: string, huong: 'ra' | 'vao'): Promise<{ hoaDon: HoaDon[]; state: string; rong: boolean }> {
+  let r: Response | null = null;
+  for (let lan = 0; lan < 3; lan++) {
+    r = await fetch(url, { headers: dauGoi(token), signal: AbortSignal.timeout(15_000) });
+    if (r.status !== 429 && r.status < 500) break;
+    await new Promise((x) => setTimeout(x, 1200 * (lan + 1)));
+  }
+  const j = await docJson(r!, 'lấy hoá đơn');
+  const datas = Array.isArray(j.datas) ? (j.datas as Array<Record<string, unknown>>) : [];
+  const hoaDon = datas.map((d) => tuDongCongThue(d, huong)).filter((h): h is HoaDon => !!h);
+  return { hoaDon, state: j.state === null || j.state === undefined ? '' : String(j.state), rong: !datas.length };
+}
+
+/**
+ * Hoá đơn THƯỜNG của MỘT tháng (`thang` "YYYY-MM"), một hướng, mọi trang. Dừng sớm khi gần hết giờ (`han`, ms).
+ * Hoá đơn máy tính tiền lấy riêng (`layHoaDonMttTrang`) vì mỗi lượt cần anh gõ captcha.
+ */
+export async function layHoaDonThang(token: string, thang: string, huong: 'ra' | 'vao', han: number): Promise<{ hoaDon: HoaDon[]; xong: boolean }> {
   const ra: HoaDon[] = [];
-  for (const nguon of ['query', 'sco-query']) {
-    let state = '';
-    for (let trang = 0; trang < 60; trang++) {
-      if (Date.now() > han) return { hoaDon: ra, xong: false };
-      // Danh sách chỉ nhận sắp theo MỘT trường (sắp nhiều trường là của lệnh xuất Excel — cổng báo "Không hỗ trợ sắp xếp
-      // theo nhiều trường", 18/10/2026).
-      const qs = `sort=tdlap:desc&size=50${state ? `&state=${encodeURIComponent(state)}` : ''}&search=tdlap=ge=${tu};tdlap=le=${den}`;
-      let r: Response | null = null;
-      for (let lan = 0; lan < 3; lan++) {
-        r = await fetch(`${GOC}/${nguon}/invoices/${loai}?${qs}`, { headers: dauGoi(token), signal: AbortSignal.timeout(15_000) });
-        if (r.status !== 429 && r.status < 500) break;
-        await new Promise((x) => setTimeout(x, 1200 * (lan + 1)));
-      }
-      const j = await docJson(r!, 'lấy hoá đơn');
-      const datas = Array.isArray(j.datas) ? (j.datas as Array<Record<string, unknown>>) : [];
-      for (const d of datas) {
-        const h = tuDongCongThue(d, huong);
-        if (h) ra.push(h);
-      }
-      const tiep = j.state === null || j.state === undefined ? '' : String(j.state);
-      if (!datas.length || !tiep || tiep === state) break;
-      state = tiep;
-    }
+  let state = '';
+  for (let trang = 0; trang < 60; trang++) {
+    if (Date.now() > han) return { hoaDon: ra, xong: false };
+    const t = await motTrang(token, urlTraCuu('query', huong, thang, state), huong);
+    ra.push(...t.hoaDon);
+    if (t.rong || !t.state || t.state === state) break;
+    state = t.state;
   }
   return { hoaDon: ra, xong: true };
+}
+
+/** MỘT trang hoá đơn máy tính tiền (cần captcha anh gõ). `state` trả về ≠ '' = còn trang sau (cần captcha mới). */
+export async function layHoaDonMttTrang(token: string, thang: string, huong: 'ra' | 'vao', cap: CaptchaCong, state = ''): Promise<{ hoaDon: HoaDon[]; state: string }> {
+  const t = await motTrang(token, urlTraCuu('sco-query', huong, thang, state, cap), huong);
+  return { hoaDon: t.hoaDon, state: t.rong || t.state === state ? '' : t.state };
 }

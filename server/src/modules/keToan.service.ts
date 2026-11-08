@@ -70,6 +70,7 @@ import {
   type BanDoAi,
 } from '../lib/docAi.js';
 import { newId } from '../util/id.js';
+import { ApiError } from '../util/errors.js';
 import { nowTz } from '../lib/datetime.js';
 
 /** Anh Tâm: "3 năm 2024, 2025, 2026 anh được miễn thuế TNDN". Sửa được ở trang. */
@@ -269,6 +270,80 @@ export async function layTuCongThue(token: string, thang: string, huong: 'ra' | 
   const thongDiep = `${hoaDon.length} hoá đơn (VAT ${tien(vat)}) · ${ghi.moi} mới, ${ghi.capNhat} cập nhật${xong ? '' : ' · chưa hết, đang lấy tiếp'}`;
   if (hoaDon.length) await ghiTaiLen({ id, tenFile: ten, loai: 'Cổng thuế', ketQua: thongDiep, nguoi, luc });
   return { ten, loai: 'Cổng thuế', ok: true, thongDiep, xong, soHd: hoaDon.length };
+}
+
+/** Một trang hoá đơn MÁY TÍNH TIỀN (cổng bắt captcha từ 11/2026) rồi ghi. `state` ≠ '' = còn trang sau (cần captcha mới). */
+export async function layMttTuCongThue(
+  token: string,
+  thang: string,
+  huong: 'ra' | 'vao',
+  cap: { ckey: string; cvalue: string },
+  state: string,
+  nguoi: string,
+): Promise<KetQuaTep & { state: string; soHd: number }> {
+  const { layHoaDonMttTrang } = await import('./congThue.js');
+  const r = await layHoaDonMttTrang(token, thang, huong, cap, state);
+  const luc = nowTz().toISOString();
+  const id = newId('KT');
+  const ghi = r.hoaDon.length ? await ghiHoaDon(r.hoaDon, 'cong_thue', id, luc) : { moi: 0, capNhat: 0 };
+  const ten = `Cổng thuế · máy tính tiền ${huong === 'vao' ? 'mua vào' : 'bán ra'} tháng ${thang.slice(5)}/${thang.slice(0, 4)}`;
+  const thongDiep = `${r.hoaDon.length} hoá đơn · ${ghi.moi} mới, ${ghi.capNhat} cập nhật${r.state ? ' · còn trang sau' : ''}`;
+  if (r.hoaDon.length) await ghiTaiLen({ id, tenFile: ten, loai: 'Cổng thuế', ketQua: thongDiep, nguoi, luc });
+  return { ten, loai: 'Cổng thuế', ok: true, thongDiep, state: r.state, soHd: r.hoaDon.length };
+}
+
+// ── Lưu tài khoản cổng thuế (anh Tâm 8/11/2026: "anh muốn lưu thông tin đăng nhập luôn"). Mật khẩu lưu BẢN MÃ
+// (AES-256-GCM, lib/maHoa.ts), khoá ở biến môi trường Vercel (KT_SECRET_KEY, chưa có thì dùng ZALO_SESSION_KEY) — lộ DB
+// thôi chưa đọc được. Captcha vẫn anh tự gõ mỗi lần đăng nhập (app không tự giải captcha). ──
+
+const KHOA_TK_CONG_THUE = 'cong_thue_tk';
+
+function khoaBiMat(): string {
+  const k = process.env.KT_SECRET_KEY || process.env.ZALO_SESSION_KEY || '';
+  return k.length >= 32 ? k : '';
+}
+
+async function tkDaLuu(): Promise<{ username: string; password: string } | null> {
+  const ma = (await docCaiDat())[KHOA_TK_CONG_THUE];
+  const k = khoaBiMat();
+  if (!ma || !k) return null;
+  try {
+    const { giaiMa } = await import('../lib/maHoa.js');
+    const o = JSON.parse(giaiMa(ma, k)) as { username?: string; password?: string };
+    return o.username && o.password ? { username: o.username, password: o.password } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Tài khoản đã lưu (KHÔNG trả mật khẩu). */
+export async function taiKhoanCongThue(): Promise<{ mst: string; coLuu: boolean; luuDuoc: boolean }> {
+  const tk = await tkDaLuu();
+  return { mst: tk?.username || '', coLuu: !!tk, luuDuoc: !!khoaBiMat() };
+}
+
+export async function xoaTaiKhoanCongThue(): Promise<void> {
+  await ghiCaiDat(KHOA_TK_CONG_THUE, '');
+}
+
+/** Đăng nhập cổng thuế; bỏ trống mật khẩu = dùng mật khẩu đã lưu; `luu` = lưu (mã hoá) sau khi đăng nhập được. */
+export async function dangNhapCongThue(o: { username: string; password: string; cvalue: string; ckey: string; luu: boolean }): Promise<{ token: string; daLuu: boolean }> {
+  const { dangNhap } = await import('./congThue.js');
+  let password = o.password;
+  if (!password) {
+    const tk = await tkDaLuu();
+    if (!tk || tk.username !== o.username) throw new ApiError(400, 'Chưa có mật khẩu cổng thuế đã lưu cho MST này — nhập mật khẩu');
+    password = tk.password;
+  }
+  const r = await dangNhap({ username: o.username, password, cvalue: o.cvalue, ckey: o.ckey });
+  let daLuu = false;
+  const k = khoaBiMat();
+  if (o.luu && o.password && k) {
+    const { maHoa } = await import('../lib/maHoa.js');
+    await ghiCaiDat(KHOA_TK_CONG_THUE, maHoa(JSON.stringify({ username: o.username, password: o.password }), k));
+    daLuu = true;
+  }
+  return { token: r.token, daLuu };
 }
 
 /** Tổng quan một năm: VAT theo quý, TNDN các năm, công nợ, hạn nộp gần nhất. */
