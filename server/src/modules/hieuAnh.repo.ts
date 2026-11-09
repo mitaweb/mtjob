@@ -1,7 +1,17 @@
-// Bộ não hiểu anh Tâm (9/11/2026) — đọc / ghi bảng hieu_anh, con trỏ "đã học" trên tin Zalo + chat trợ lý.
+// Bộ não hiểu anh Tâm (9/11/2026) — đọc / ghi bảng hieu_anh, con trỏ "đã học" trên tin Zalo + chat trợ lý + kho.
 import { q } from '../db/client.js';
 import { newId } from '../util/id.js';
-import { KHIA_CANH_KEYS, type MucHieuAnh, type KhiaCanh, type ThemHieuAnh, type SuaHieuAnh, type NguonHieuAnh, type TrangThaiHieuAnh } from '../lib/hieuAnh.js';
+import {
+  KHIA_CANH_KEYS,
+  PHAM_VI_KEYS,
+  type MucHieuAnh,
+  type KhiaCanh,
+  type PhamVi,
+  type ThemHieuAnh,
+  type SuaHieuAnh,
+  type NguonHieuAnh,
+  type TrangThaiHieuAnh,
+} from '../lib/hieuAnh.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function rowToMuc(r: any): MucHieuAnh {
@@ -13,40 +23,34 @@ function rowToMuc(r: any): MucHieuAnh {
     /* hỏng thì bỏ */
   }
   const kc = String(r.khia_canh || '');
+  // Bản đầu (9/11) có khía cạnh 'nguoi' — nay là phạm vi.
+  const phamVi = (kc === 'nguoi' ? 'nguoi' : (PHAM_VI_KEYS as string[]).includes(r.pham_vi) ? r.pham_vi : 'chung') as PhamVi;
   return {
     id: String(r.id),
+    phamVi,
     khiaCanh: ((KHIA_CANH_KEYS as string[]).includes(kc) ? kc : 'nguyen_tac') as KhiaCanh,
     noiDung: String(r.noi_dung || ''),
-    doiTuong: String(r.doi_tuong || ''),
+    doiTuong: phamVi === 'chung' ? '' : String(r.doi_tuong || ''),
     bangChung,
     soLanThay: Number(r.so_lan_thay) || 1,
     trangThai: (['dung', 'anh_sua', 'anh_bo'].includes(r.trang_thai) ? r.trang_thai : 'dung') as TrangThaiHieuAnh,
-    nguon: (['zalo', 'chat', 'anh_day'].includes(r.nguon) ? r.nguon : 'zalo') as NguonHieuAnh,
+    nguon: (['zalo', 'chat', 'kho', 'anh_day'].includes(r.nguon) ? r.nguon : 'zalo') as NguonHieuAnh,
     capNhat: String(r.cap_nhat || ''),
   };
 }
 
-export async function dsHieuAnh(limit = 500): Promise<MucHieuAnh[]> {
+export async function dsHieuAnh(limit = 1000): Promise<MucHieuAnh[]> {
   return (await q('SELECT * FROM hieu_anh ORDER BY cap_nhat DESC LIMIT $1', [limit])).map(rowToMuc);
 }
 
-export async function timHieuAnh(id: string): Promise<MucHieuAnh | undefined> {
-  const r = await q('SELECT * FROM hieu_anh WHERE id = $1', [id]);
-  return r[0] ? rowToMuc(r[0]) : undefined;
-}
-
-export async function themHieuAnh(ds: ThemHieuAnh[], nguon: NguonHieuAnh, luc: string, trangThai: TrangThaiHieuAnh = 'dung'): Promise<string[]> {
-  const ids: string[] = [];
+export async function themHieuAnh(ds: ThemHieuAnh[], nguon: NguonHieuAnh, luc: string, trangThai: TrangThaiHieuAnh = 'dung'): Promise<void> {
   for (const m of ds) {
-    const id = newId('HA');
     await q(
-      `INSERT INTO hieu_anh (id, khia_canh, noi_dung, doi_tuong, bang_chung, so_lan_thay, trang_thai, nguon, tao_luc, cap_nhat)
-       VALUES ($1, $2, $3, $4, $5, 1, $6, $7, $8, $8)`,
-      [id, m.khiaCanh, m.noiDung, m.doiTuong, JSON.stringify(m.bangChung), trangThai, nguon, luc],
+      `INSERT INTO hieu_anh (id, pham_vi, khia_canh, noi_dung, doi_tuong, bang_chung, so_lan_thay, trang_thai, nguon, tao_luc, cap_nhat)
+       VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, $9, $9)`,
+      [newId('HA'), m.phamVi, m.khiaCanh, m.noiDung, m.doiTuong, JSON.stringify(m.bangChung), trangThai, nguon, luc],
     );
-    ids.push(id);
   }
-  return ids;
 }
 
 /** Ghi điều AI xác nhận / chỉnh. Chặn lần nữa ở SQL: chỉ điều đang 'dung' mới bị AI đổi. */
@@ -58,21 +62,6 @@ export async function suaHieuAnhAi(ds: SuaHieuAnh[], luc: string): Promise<void>
       [s.id, s.soLanThay, JSON.stringify(s.bangChung), s.noiDung ?? null, luc],
     );
   }
-}
-
-/** Anh sửa / duyệt / bỏ một điều. */
-export async function anhSuaHieuAnh(
-  id: string,
-  p: { noiDung?: string; khiaCanh?: KhiaCanh; doiTuong?: string; trangThai: TrangThaiHieuAnh },
-  luc: string,
-): Promise<boolean> {
-  const r = await q(
-    `UPDATE hieu_anh SET noi_dung = COALESCE($2, noi_dung), khia_canh = COALESCE($3, khia_canh),
-       doi_tuong = COALESCE($4, doi_tuong), trang_thai = $5, cap_nhat = $6
-     WHERE id = $1 RETURNING id`,
-    [id, p.noiDung ?? null, p.khiaCanh ?? null, p.doiTuong ?? null, p.trangThai, luc],
-  );
-  return r.length > 0;
 }
 
 // ── Tin Zalo của anh chưa học ──
@@ -114,12 +103,11 @@ export interface CauChat {
   text: string;
   /** Câu trả lời của trợ lý ngay trước (để hiểu anh đang sửa / phản hồi gì) */
   truoc: string;
-  createdAt: string;
 }
 
 export async function chatAnhChuaHoc(memberId: string, tuLuc: string, limit: number): Promise<CauChat[]> {
   const rows = await q(
-    `SELECT u.msg_id, u.text, u.created_at,
+    `SELECT u.msg_id, u.text,
        (SELECT m.text FROM chat_messages m WHERE m.member_id = u.member_id AND m.role = 'model' AND m.created_at < u.created_at
         ORDER BY m.created_at DESC LIMIT 1) AS truoc
      FROM chat_messages u
@@ -127,19 +115,39 @@ export async function chatAnhChuaHoc(memberId: string, tuLuc: string, limit: num
      ORDER BY u.created_at LIMIT $3`,
     [memberId, tuLuc, limit],
   );
-  return rows.map((r) => ({ id: String(r.msg_id), text: String(r.text || ''), truoc: String(r.truoc || ''), createdAt: String(r.created_at || '') }));
+  return rows.map((r) => ({ id: String(r.msg_id), text: String(r.text || ''), truoc: String(r.truoc || '') }));
 }
 
 export async function danhDauHocChat(ids: string[]): Promise<void> {
   if (ids.length) await q('UPDATE chat_messages SET hoc_anh = true WHERE msg_id = ANY($1::text[])', [ids]);
 }
 
-export async function demChatAnhChuaHoc(memberId: string, tuLuc: string): Promise<number> {
-  const r = await q(
-    `SELECT COUNT(*)::int AS n FROM chat_messages WHERE member_id = $1 AND role = 'user' AND NOT COALESCE(hoc_anh, false) AND created_at >= $2`,
-    [memberId, tuLuc],
+// ── Tri thức đã rút từ Zalo trước đây (tin Zalo chỉ giữ 30 ngày — phần cũ hơn nằm trong kho) ──
+
+export interface MucKhoCu {
+  id: string;
+  title: string;
+  body: string;
+  customer: string;
+  updatedAt: string;
+}
+
+/**
+ * Mục kho rút từ Zalo / do anh gửi, cập nhật SAU mốc `sauMs`, cũ trước. KHÔNG lấy mục do chính phần này viết. So theo
+ * THỜI GIAN (không so chữ: "…00Z" và "…00.000Z" là cùng lúc nhưng so chữ thì khác → đọc lại mãi).
+ */
+export async function khoChuaHoc(gdId: string, sauMs: number, limit: number): Promise<MucKhoCu[]> {
+  const rows = await q(
+    `SELECT item_id, title, body, customer, updated_at, lup FROM (
+       SELECT item_id, title, body, customer, updated_at,
+         CASE WHEN updated_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T' THEN updated_at::timestamptz END AS lup
+       FROM brain_items
+       WHERE status = 'published' AND source <> 'hieu_anh' AND (source = 'zalo' OR submitted_by = $1)
+     ) x WHERE lup > to_timestamp($2::double precision / 1000)
+     ORDER BY lup LIMIT $3`,
+    [gdId, sauMs, limit],
   );
-  return Number(r[0]?.n) || 0;
+  return rows.map((r) => ({ id: String(r.item_id), title: String(r.title || ''), body: String(r.body || ''), customer: String(r.customer || ''), updatedAt: String(r.updated_at || '') }));
 }
 
 // ── Khoá chạy + mốc ──

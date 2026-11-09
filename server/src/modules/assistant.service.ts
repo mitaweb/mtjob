@@ -258,27 +258,30 @@ function hieuAnhTool(): ToolDef {
     declaration: {
       name: 'save_ve_anh',
       description:
-        'Ghi nhớ một điều về CHÍNH GIÁM ĐỐC (cách anh muốn làm việc, nguyên tắc, ưu tiên, cách anh nói, điều anh không thích, ' +
-        'cách làm việc với một người / khách cụ thể). Gọi khi anh nói "nhớ là anh…", "lần sau…", "anh muốn em luôn…", ' +
-        '"anh không thích…", hoặc anh SỬA cách em trả lời / làm việc. Viết thành MỘT câu bắt đầu bằng "Anh …". ' +
-        'KHÔNG dùng cho tri thức về khách / quy trình công ty (dùng save_to_knowledge) hay nhắc hẹn (create_reminder).',
+        'Ghi nhớ điều GIÁM ĐỐC CẦN / MUỐN: với một khách (phamVi khach), ở một loại việc (viec), cách anh làm việc chung ' +
+        '(chung), với một nhân viên (nguoi). Gọi khi anh nói "nhớ là anh…", "lần sau…", "với khách X thì…", "làm việc Y phải…", ' +
+        '"anh không thích…", hoặc anh SỬA cách em trả lời / làm việc. Điều này tự vào kho tri thức để NHÂN SỰ tra. ' +
+        'Không dùng cho nhắc hẹn (create_reminder).',
       parameters: {
         type: 'OBJECT',
         properties: {
-          noiDung: { type: 'STRING', description: 'Một câu, vd "Anh không nhận gói SEO dưới 6 tháng".' },
+          noiDung: { type: 'STRING', description: 'Một câu viết như lời dặn nhân sự, vd "Bài đăng của Tín Đạt phải gửi chị Hồng duyệt trước 10h".' },
+          phamVi: { type: 'STRING', enum: ['chung', 'khach', 'viec', 'nguoi'], description: 'khach / viec / nguoi thì phải có doiTuong.' },
+          doiTuong: { type: 'STRING', description: 'Tên khách (doanh nghiệp) / tên việc / tên nhân viên.' },
           khiaCanh: {
             type: 'STRING',
-            enum: ['cach_noi', 'nguyen_tac', 'uu_tien', 'cach_quyet', 'nguoi', 'thoi_quen', 'khong_thich'],
-            description: 'cach_noi = cách nói / xưng hô; nguyen_tac; uu_tien; cach_quyet; nguoi = với một người cụ thể; thoi_quen; khong_thich.',
+            enum: ['cach_noi', 'nguyen_tac', 'uu_tien', 'cach_quyet', 'thoi_quen', 'khong_thich'],
+            description: 'cach_noi = cách nói / xưng hô; nguyen_tac; uu_tien; cach_quyet (giá, nhận / từ chối việc — chỉ anh xem); thoi_quen; khong_thich.',
           },
-          doiTuong: { type: 'STRING', description: 'Tên người / khách nếu điều này về một người cụ thể.' },
         },
-        required: ['noiDung', 'khiaCanh'],
+        required: ['noiDung', 'phamVi', 'khiaCanh'],
       },
     },
     run: async (a) => {
       const { anhDay } = await import('./hieuAnh.service.js');
-      return (await anhDay({ noiDung: String(a.noiDung || ''), khiaCanh: String(a.khiaCanh || ''), doiTuong: String(a.doiTuong || '') })).message;
+      return (
+        await anhDay({ noiDung: String(a.noiDung || ''), phamVi: String(a.phamVi || ''), khiaCanh: String(a.khiaCanh || ''), doiTuong: String(a.doiTuong || '') })
+      ).message;
     },
   };
 }

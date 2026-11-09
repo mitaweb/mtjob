@@ -344,6 +344,9 @@ CREATE TABLE IF NOT EXISTS hieu_anh_trang_thai (
   khoa    text PRIMARY KEY,
   gia_tri bigint DEFAULT 0
 );
+-- Phạm vi (anh Tâm 9/11/2026: "nhân sự hiểu được anh cần gì ở 1 job, 1 khách hàng"): chung | khach | viec | nguoi;
+-- doi_tuong = tên khách / việc / nhân viên. Điều hiểu được tự vào kho tri thức (brain_items source 'hieu_anh').
+ALTER TABLE hieu_anh ADD COLUMN IF NOT EXISTS pham_vi text DEFAULT 'chung';
 -- Câu anh nhắn trợ lý đã được học chưa (thêm cột — dữ liệu cũ giữ nguyên).
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS hoc_anh boolean DEFAULT false;
 

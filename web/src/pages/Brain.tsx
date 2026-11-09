@@ -18,7 +18,6 @@ import {
 } from '../components/BrainKho';
 import BrainZalo from '../components/BrainZalo';
 import ZaloGuiHangLoat from '../components/ZaloGuiHangLoat';
-import BrainHieuAnh from '../components/BrainHieuAnh';
 
 interface Chunk {
   id: string;
@@ -517,7 +516,7 @@ function DuLieuKho() {
 
 // ── Trang Kho tri thức: "bộ não thứ hai" của công ty (anh Tâm 4/10/2026) ──
 
-type TabKey = 'kho' | 'khach' | 'gop' | 'duyet' | 'hoi' | 'rieng' | 'hieu_anh' | 'zalo' | 'zalo_gui' | 'tailieu';
+type TabKey = 'kho' | 'khach' | 'gop' | 'duyet' | 'hoi' | 'rieng' | 'zalo' | 'zalo_gui' | 'tailieu';
 
 export default function Brain() {
   const { user } = useAuth();
@@ -550,7 +549,6 @@ export default function Brain() {
     { key: 'duyet', label: `⏳ Chờ duyệt${dem.pending ? ` (${dem.pending})` : ''}`, chiGd: true },
     { key: 'hoi', label: `❓ Câu hỏi${dem.openQuestions ? ` (${dem.openQuestions})` : ''}`, chiGd: true },
     { key: 'rieng', label: '🔒 Riêng anh', chiGd: true },
-    { key: 'hieu_anh', label: '🧠 Hiểu anh', chiGiamDoc: true },
     { key: 'zalo', label: '💬 Zalo', chiGiamDoc: true },
     { key: 'zalo_gui', label: '📣 Gửi Zalo', chiGiamDoc: true },
     { key: 'tailieu', label: '📎 Tài liệu & dữ liệu' },
@@ -608,7 +606,6 @@ export default function Brain() {
       {dangXem === 'rieng' && (
         <TabDanhSach status="published" category="rieng" nhomList={nhomList} rong="Chưa có mục riêng nào." onChanged={doi} />
       )}
-      {dangXem === 'hieu_anh' && laGiamDoc && <BrainHieuAnh />}
       {dangXem === 'zalo' && laGiamDoc && <BrainZalo />}
       {dangXem === 'zalo_gui' && laGiamDoc && <ZaloGuiHangLoat />}
       {dangXem === 'tailieu' && <DuLieuKho />}
