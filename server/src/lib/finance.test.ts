@@ -8,6 +8,7 @@ import {
   phanBoKhoanThu,
   luyKeLaiLo,
   congNoBen,
+  BO_NO_TRUOC,
   boSungNguon,
   mucTheoThang,
   doanhThuTheoNguon,
@@ -48,7 +49,7 @@ describe('debtMonths', () => {
   });
 
   it('bên mới vào sau thì tính từ tháng của bên đó', () => {
-    expect(debtMonths('2026-10', '2026-11')).toEqual(['2026-10', '2026-11']);
+    expect(debtMonths('2026-09', '2026-10')).toEqual(['2026-09', '2026-10']);
   });
 
   it('xem tháng trước mốc thì không có kỳ nào', () => {
@@ -386,7 +387,7 @@ describe('congNoBen', () => {
   });
 
   it('ngưng mà còn thiếu → vẫn hiện số nợ ở tháng sau, nhưng không cộng thêm kỳ mới', () => {
-    const c = congNoBen({ ...ben, endMonth: '2026-09' }, [], { '2026-08': 2_000_000 }, '2026-12');
+    const c = congNoBen({ ...ben, endMonth: '2026-09' }, [], { '2026-08': 2_000_000 }, '2026-10');
     expect(c).toMatchObject({ hien: true, daNgung: true, mucThang: 0, carryOver: 2_000_000, totalDue: 2_000_000 });
     expect(c.unpaidMonths).toEqual(['2026-09']);
   });
@@ -451,5 +452,28 @@ describe('phanBoKhoanThu', () => {
 
   it('số 0 hoặc âm → không chia gì', () => {
     expect(phanBoKhoanThu({ ...ben, paid: {} }, 0)).toEqual([]);
+  });
+});
+
+// Anh Tâm 9/11/2026: "anh cần xóa, bỏ toàn bộ công nợ cũ, coi như không thu nữa" → từ tháng 11/2026 các kỳ TRƯỚC không
+// còn là nợ; xem lại các tháng cũ vẫn y như trước (không xoá dữ liệu).
+describe('bỏ nợ cũ trước 11/2026', () => {
+  const ben = { kind: 'monthly' as const, receivable: 20_000_000, startDate: '2026-08-01', endMonth: '' };
+  it('từ tháng 11: nợ tháng 8–10 không còn, chỉ phải thu kỳ tháng 11', () => {
+    expect(BO_NO_TRUOC).toBe('2026-11');
+    const c = congNoBen(ben, [], { '2026-08': 20_000_000 }, '2026-11');
+    expect(c).toMatchObject({ hien: true, carryOver: 0, thisMonthRemaining: 20_000_000, totalDue: 20_000_000 });
+    expect(congNoBen(ben, [], { '2026-08': 20_000_000 }, '2026-12')).toMatchObject({ carryOver: 20_000_000, totalDue: 40_000_000 });
+  });
+  it('xem lại tháng 10 vẫn thấy nợ cũ như trước', () => {
+    expect(congNoBen(ben, [], { '2026-08': 20_000_000 }, '2026-10')).toMatchObject({ carryOver: 20_000_000, totalDue: 40_000_000 });
+  });
+  it('bên đã ngưng trước tháng 11 mà còn nợ → từ tháng 11 không hiện nữa', () => {
+    const p = { ...ben, endMonth: '2026-10' };
+    expect(congNoBen(p, [], {}, '2026-11').hien).toBe(false);
+    expect(congNoBen(p, [], {}, '2026-10')).toMatchObject({ hien: true, totalDue: 60_000_000 });
+  });
+  it('thu tiền ở tháng 11 không bị đem trừ vào nợ đã bỏ', () => {
+    expect(phanBoKhoanThu({ receivable: 20_000_000, startMonth: '2026-08', month: '2026-11', paid: {} }, 20_000_000)).toEqual([{ month: '2026-11', amount: 20_000_000 }]);
   });
 });

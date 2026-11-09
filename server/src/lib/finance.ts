@@ -28,9 +28,18 @@ export function daysUntil(targetIso: string, fromIso: string): number {
  */
 export const DEBT_TRACK_FROM = '2026-08';
 
+/**
+ * Anh Tâm 9/11/2026: "anh cần xóa, bỏ toàn bộ công nợ cũ, coi như không thu nữa". Từ tháng này trở đi, các kỳ TRƯỚC
+ * mốc không còn là nợ (không đòi, không đem tiền thu mới trừ vào). Xem lại tháng TRƯỚC mốc thì vẫn tính như cũ —
+ * không xoá dữ liệu nào.
+ */
+export const BO_NO_TRUOC = '2026-11';
+
 /** Danh sách kỳ (YYYY-MM) đã tới hạn, từ mốc theo dõi tới tháng đang xem — cũ trước. */
 export function debtMonths(fromMonth: string, toMonth: string): string[] {
-  const start = fromMonth > DEBT_TRACK_FROM ? fromMonth : DEBT_TRACK_FROM;
+  let start = fromMonth > DEBT_TRACK_FROM ? fromMonth : DEBT_TRACK_FROM;
+  // Đang xem từ mốc bỏ nợ trở đi → các kỳ trước mốc không tính nữa.
+  if (toMonth >= BO_NO_TRUOC && start < BO_NO_TRUOC) start = BO_NO_TRUOC;
   if (!/^\d{4}-\d{2}$/.test(start) || !/^\d{4}-\d{2}$/.test(toMonth) || start > toMonth) return [];
 
   const out: string[] = [];
@@ -415,6 +424,10 @@ export function congNoBen(
     };
   }
 
+  // Ngưng trước mốc bỏ nợ, đang xem từ mốc trở đi → nợ đã bỏ hết, không hiện nữa (anh Tâm 9/11/2026).
+  if (month >= BO_NO_TRUOC && p.endMonth < BO_NO_TRUOC) {
+    return { hien: false, daNgung: true, mucThang: 0, carryOver: 0, thisMonthRemaining: 0, paidToOld: 0, paidTotal: 0, totalDue: 0, credit: 0, unpaidMonths: [] };
+  }
   // Đã qua tháng cuối: chốt nợ tại tháng cuối, tiền trả SAU đó (tới tháng đang xem) dồn vào trừ nợ.
   const gop: Record<string, number> = {};
   let traSau = 0;
