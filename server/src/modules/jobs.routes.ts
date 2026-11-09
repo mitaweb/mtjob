@@ -57,7 +57,11 @@ jobsRouter.get(
         .catch((e) => console.warn('[reminders] quét:', (e as Error).message))
         .then(() => import('./zalo.client.js'))
         .then((z) => z.chayBanDem(batDau))
-        .catch((e) => console.warn('[zalo] lượt nền:', (e as Error).message)),
+        .catch((e) => console.warn('[zalo] lượt nền:', (e as Error).message))
+        // Bộ não hiểu anh Tâm (9/11/2026): học từ tin anh gửi + câu anh nói với trợ lý — tự giãn ≥ 30 phút / lượt.
+        .then(() => import('./hieuAnh.service.js'))
+        .then((h) => h.hocVeAnh(batDau + 200_000))
+        .catch((e) => console.warn('[hieu-anh] lượt học:', (e as Error).message)),
     );
   }),
 );

@@ -323,6 +323,30 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 );
 CREATE INDEX IF NOT EXISTS chat_messages_member_idx ON chat_messages (member_id, created_at DESC);
 
+-- Bộ não HIỂU ANH TÂM (anh Tâm 9/11/2026: "bộ não hiện tại phải hiểu được anh thông qua các đoạn chat của anh với
+-- nhân viên và khách hàng"). Mỗi dòng một điều về anh (cách nói, nguyên tắc, ưu tiên, cách quyết…), kèm bằng chứng.
+-- CHỈ giám đốc xem. trang_thai: dung (AI tự rút) | anh_sua (anh đã duyệt / sửa — AI không đụng) | anh_bo (anh bỏ —
+-- AI không thêm lại). nguon: zalo | chat | anh_day.
+CREATE TABLE IF NOT EXISTS hieu_anh (
+  id          text PRIMARY KEY,
+  khia_canh   text NOT NULL,
+  noi_dung    text NOT NULL,
+  doi_tuong   text DEFAULT '',
+  bang_chung  text DEFAULT '[]',        -- JSON: ≤ 3 trích ngắn
+  so_lan_thay integer DEFAULT 1,
+  trang_thai  text DEFAULT 'dung',
+  nguon       text DEFAULT 'zalo',
+  tao_luc     text DEFAULT '',
+  cap_nhat    text DEFAULT ''
+);
+-- Khoá chạy + mốc lần học cuối (một dòng mỗi khoá).
+CREATE TABLE IF NOT EXISTS hieu_anh_trang_thai (
+  khoa    text PRIMARY KEY,
+  gia_tri bigint DEFAULT 0
+);
+-- Câu anh nhắn trợ lý đã được học chưa (thêm cột — dữ liệu cũ giữ nguyên).
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS hoc_anh boolean DEFAULT false;
+
 -- Nhắc hẹn cá nhân: CHỈ người tạo nhận được thông báo.
 -- repeat: once | daily | weekly | monthly. at_time = "HH:mm" giờ VN.
 CREATE TABLE IF NOT EXISTS reminders (
@@ -778,6 +802,9 @@ CREATE INDEX IF NOT EXISTS zalo_messages_thread_idx ON zalo_messages (thread_id,
 CREATE INDEX IF NOT EXISTS zalo_messages_digest_idx ON zalo_messages (digested, ts);
 -- Tăng tốc (anh Tâm 12/10/2026): index cho truy vấn hay chạy. Tin AI chưa đọc theo cuộc (đếm ở danh sách Zalo, hàng đọc AI).
 CREATE INDEX IF NOT EXISTS zalo_messages_unread_idx ON zalo_messages (thread_id, ts) WHERE NOT digested;
+-- Hiểu anh Tâm (9/11/2026): tin ANH gửi đã được học về anh chưa.
+ALTER TABLE zalo_messages ADD COLUMN IF NOT EXISTS hoc_anh boolean DEFAULT false;
+CREATE INDEX IF NOT EXISTS zalo_messages_hoc_anh_idx ON zalo_messages (thread_id, ts) WHERE from_self AND NOT hoc_anh;
 -- Trạng thái worker (một dòng): đang chờ quét QR / đang chạy / mất kết nối.
 CREATE TABLE IF NOT EXISTS zalo_status (
   id        text PRIMARY KEY,

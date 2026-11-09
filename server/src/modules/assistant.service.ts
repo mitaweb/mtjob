@@ -250,6 +250,40 @@ function saveTool(nguoi: NguoiGui): ToolDef {
 }
 
 /**
+ * Anh dạy trợ lý về chính anh (anh Tâm 9/11/2026: bộ não phải hiểu anh). Tên bắt đầu "save_" → thuộc nhóm hàm GHI
+ * (`laHamGhi`): trợ lý không được nói "đã ghi nhớ" nếu chưa gọi hàm này.
+ */
+function hieuAnhTool(): ToolDef {
+  return {
+    declaration: {
+      name: 'save_ve_anh',
+      description:
+        'Ghi nhớ một điều về CHÍNH GIÁM ĐỐC (cách anh muốn làm việc, nguyên tắc, ưu tiên, cách anh nói, điều anh không thích, ' +
+        'cách làm việc với một người / khách cụ thể). Gọi khi anh nói "nhớ là anh…", "lần sau…", "anh muốn em luôn…", ' +
+        '"anh không thích…", hoặc anh SỬA cách em trả lời / làm việc. Viết thành MỘT câu bắt đầu bằng "Anh …". ' +
+        'KHÔNG dùng cho tri thức về khách / quy trình công ty (dùng save_to_knowledge) hay nhắc hẹn (create_reminder).',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          noiDung: { type: 'STRING', description: 'Một câu, vd "Anh không nhận gói SEO dưới 6 tháng".' },
+          khiaCanh: {
+            type: 'STRING',
+            enum: ['cach_noi', 'nguyen_tac', 'uu_tien', 'cach_quyet', 'nguoi', 'thoi_quen', 'khong_thich'],
+            description: 'cach_noi = cách nói / xưng hô; nguyen_tac; uu_tien; cach_quyet; nguoi = với một người cụ thể; thoi_quen; khong_thich.',
+          },
+          doiTuong: { type: 'STRING', description: 'Tên người / khách nếu điều này về một người cụ thể.' },
+        },
+        required: ['noiDung', 'khiaCanh'],
+      },
+    },
+    run: async (a) => {
+      const { anhDay } = await import('./hieuAnh.service.js');
+      return (await anhDay({ noiDung: String(a.noiDung || ''), khiaCanh: String(a.khiaCanh || ''), doiTuong: String(a.doiTuong || '') })).message;
+    },
+  };
+}
+
+/**
  * Tra kho tri thức THEO NHÃN — dùng chung cho cả hai vai, khác nhau ở phạm vi quyền xem.
  * Hỏi về một khách thì truyền `customer` để chỉ lấy đúng khách đó; hỏi quy định thì truyền `category`.
  */
@@ -912,7 +946,14 @@ export async function answerDataQuestion(
     ...pointAdjustTools(members.find((m) => m.id === memberId)?.fullName || ''),
   ];
 
-  const system = directorPrompt({ today, names });
+  // Bộ não hiểu anh Tâm (9/11/2026): CHỈ trợ lý của giám đốc đọc hồ sơ này (admin dùng chung hàm thì không).
+  const laGd = members.find((m) => m.id === memberId)?.role === 'director';
+  let hieuAnh = '';
+  if (laGd) {
+    tools.push(hieuAnhTool());
+    hieuAnh = await import('./hieuAnh.service.js').then((m) => m.loiNhacHieuAnh(question)).catch(() => '');
+  }
+  const system = hieuAnh ? `${directorPrompt({ today, names })}\n\n${hieuAnh}` : directorPrompt({ today, names });
 
   try {
     const answer = await runToolLoopChan({ system, question, history, tools, onEvent });
