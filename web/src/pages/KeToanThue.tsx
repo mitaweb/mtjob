@@ -518,6 +518,7 @@ function LayCongThue({ mstMacDinh, onXong }: { mstMacDinh: string; onXong: () =>
   const [mst, setMst] = useState('');
   const [matKhau, setMatKhau] = useState('');
   const [luu, setLuu] = useState(true);
+  const [doiMk, setDoiMk] = useState(false);
   const [cap, setCap] = useState<Captcha | null>(null);
   const [maCap, setMaCap] = useState('');
   const [dangLam, setDangLam] = useState('');
@@ -577,7 +578,10 @@ function LayCongThue({ mstMacDinh, onXong }: { mstMacDinh: string; onXong: () =>
       }
       setPhien(p);
       setMatKhau('');
-      if (r.daLuu) setTk({ mst: mst.trim(), coLuu: true, luuDuoc: true });
+      if (r.daLuu) {
+        setTk({ mst: mst.trim(), coLuu: true, luuDuoc: true });
+        setDoiMk(false);
+      }
       toast.success(r.daLuu ? 'Đã đăng nhập cổng thuế · đã lưu mật khẩu (mã hoá)' : 'Đã đăng nhập cổng thuế');
     } catch (e) {
       toast.error((e as Error).message);
@@ -728,30 +732,45 @@ function LayCongThue({ mstMacDinh, onXong }: { mstMacDinh: string; onXong: () =>
                   <span className="label">MST (tên đăng nhập)</span>
                   <input className="input" value={mst} onChange={(e) => setMst(e.target.value)} autoComplete="username" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
                 </label>
-                <label className="text-sm">
-                  <span className="label">Mật khẩu cổng thuế</span>
-                  <input
-                    className="input"
-                    type="password"
-                    value={matKhau}
-                    placeholder={tk?.coLuu && mst.trim() === tk.mst ? 'đã lưu — để trống' : ''}
-                    onChange={(e) => setMatKhau(e.target.value)}
-                    autoComplete="current-password"
-                  />
-                </label>
+                {tk?.coLuu && mst.trim() === tk.mst && !doiMk ? (
+                  // Đã lưu mật khẩu (anh Tâm 10/11/2026: "lưu pass để anh bấm đăng nhập là xong") — chỉ còn gõ captcha.
+                  <div className="text-sm">
+                    <span className="label">Mật khẩu cổng thuế</span>
+                    <div className="flex h-[46px] items-center gap-2">
+                      <span className="font-semibold text-emerald-700">🔒 Đã lưu</span>
+                      <button type="button" className="text-xs text-ink-muted underline" onClick={() => setDoiMk(true)}>
+                        đổi mật khẩu
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="text-sm">
+                    <span className="label">Mật khẩu cổng thuế</span>
+                    <input className="input" type="password" value={matKhau} onChange={(e) => setMatKhau(e.target.value)} autoComplete="current-password" />
+                  </label>
+                )}
                 <div className="text-sm">
                   <span className="label">Mã captcha</span>
                   <AnhCaptcha cap={cap} onMoi={moiCaptcha} />
                 </div>
                 <label className="text-sm">
                   <span className="label">Gõ mã captcha</span>
-                  <input className="input font-mono tracking-widest" value={maCap} onChange={(e) => setMaCap(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && dangNhap()} {...O_CAPTCHA} />
+                  <input
+                    className="input font-mono tracking-widest"
+                    value={maCap}
+                    autoFocus={!!tk?.coLuu}
+                    placeholder="gõ rồi Enter"
+                    onChange={(e) => setMaCap(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && dangNhap()}
+                    {...O_CAPTCHA}
+                  />
                 </label>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <button className="btn-primary" disabled={!!dangLam || !mst || (!matKhau && !dungMkLuu) || !maCap || !cap} onClick={dangNhap}>
                   {dangLam || 'Đăng nhập cổng thuế'}
                 </button>
+                {tk?.luuDuoc === false && <span className="text-xs text-rose-600">Máy chủ chưa có khoá mã hoá (KT_SECRET_KEY) — chưa lưu được mật khẩu</span>}
                 {tk?.luuDuoc !== false && matKhau && (
                   <label className="flex items-center gap-1.5 text-sm">
                     <input type="checkbox" checked={luu} onChange={(e) => setLuu(e.target.checked)} /> Lưu mật khẩu
