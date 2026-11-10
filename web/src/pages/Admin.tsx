@@ -8,6 +8,7 @@ import AdminBrainAi from '../components/AdminBrainAi';
 import AdminViTriChamCong from '../components/AdminViTriChamCong';
 import { useToast } from '../components/Toaster';
 import ModelPicker from '../components/ModelPicker';
+import OGap from '../components/OGap';
 
 export default function Admin() {
   const toast = useToast();
@@ -513,6 +514,7 @@ export default function Admin() {
         </div>
       )}
 
+      <OGap khoa="tro_ly_ai" tieuDe="🤖 Trợ lý AI" moTa={aiOn === null ? undefined : aiOn ? 'đang bật' : 'chưa bật'}>
       <div className="card">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
@@ -652,13 +654,22 @@ export default function Admin() {
           </div>
         )}
       </div>
+      </OGap>
 
-      <AdminViTriChamCong />
-      <AdminBrainAi />
+      <OGap khoa="vi_tri_cham_cong" tieuDe="📍 Vị trí chấm công">
+        <AdminViTriChamCong />
+      </OGap>
+      <OGap khoa="ai_kho" tieuDe="🧠 AI cho Kho tri thức" moTa="model phân loại tri thức, đọc tệp, Zalo">
+        <AdminBrainAi />
+      </OGap>
 
-      <AdminHolidays />
+      <OGap khoa="ngay_le" tieuDe="📅 Ngày lễ nghỉ">
+        <AdminHolidays />
+      </OGap>
 
-      <StorageCard />
+      <OGap khoa="dung_luong" tieuDe="💾 Dung lượng hệ thống">
+        <StorageCard />
+      </OGap>
 
       <MemberTable />
     </div>
