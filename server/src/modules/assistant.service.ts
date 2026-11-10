@@ -594,6 +594,9 @@ export interface ToolLoopOpts {
   goiHam?: string[];
 }
 
+/** Công cụ số liệu tài chính — chỉ trợ lý của GIÁM ĐỐC có (anh Tâm 10/11/2026). */
+const TAI_CHINH_CHI_GD = new Set(['get_finance_summary', 'add_finance_entry', 'collect_receivable', 'list_finance_entries', 'delete_finance_entry']);
+
 /** Hàm GHI = hàm làm đổi dữ liệu. Nói "đã ghi" mà không có hàm nào nhóm này chạy là bịa. */
 export function laHamGhi(name: string): boolean {
   return /^(add|create|collect|adjust|delete|cancel|save|import|dedupe|restore|answer|chuyen)_/.test(name);
@@ -954,9 +957,18 @@ export async function answerDataQuestion(
   let hieuAnh = '';
   if (laGd) {
     tools.push(hieuAnhTool());
+    // Kế toán thuế (anh Tâm 10/11/2026: "bộ não nắm toàn bộ phần mềm… tài chính chỉ giám đốc hỏi được").
+    tools.push(...(await import('./assistant.tools.keToan.js')).keToanTools());
     hieuAnh = await import('./hieuAnh.service.js').then((m) => m.loiNhacHieuAnh(question)).catch(() => '');
+  } else {
+    // Admin dùng chung trợ lý này nhưng KHÔNG được xem / ghi số liệu tài chính (chỉ giám đốc).
+    for (let i = tools.length - 1; i >= 0; i--) if (TAI_CHINH_CHI_GD.has(tools[i]!.declaration.name)) tools.splice(i, 1);
   }
-  const system = hieuAnh ? `${directorPrompt({ today, names })}\n\n${hieuAnh}` : directorPrompt({ today, names });
+  const ketoanGoiY = laGd
+    ? 'KẾ TOÁN THUẾ: hỏi khách đã chuyển tiền chưa, sao kê, hoá đơn, thuế, lãi lỗ, công nợ theo sao kê → tra_sao_ke, ' +
+      'tra_hoa_don, get_ke_toan_thue (tên trên sao kê thường là tên pháp nhân — không ra thì tra_hoa_don lấy tên công ty rồi tìm lại).'
+    : 'TÀI CHÍNH (thu chi, công nợ, sao kê, hoá đơn, thuế, lương người khác) CHỈ GIÁM ĐỐC xem — hỏi tới thì trả lời đúng một câu: "Em chưa có thông tin này."';
+  const system = [directorPrompt({ today, names }), ketoanGoiY, hieuAnh].filter(Boolean).join('\n\n');
 
   try {
     const answer = await runToolLoopChan({ system, question, history, tools, onEvent });
