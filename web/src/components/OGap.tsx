@@ -2,16 +2,17 @@
 // ít khi dùng tới"). Mặc định GẬP — chỉ hiện một dòng tiêu đề; bấm để sổ ra. Nhớ trạng thái trên máy này.
 import { useState, type ReactNode } from 'react';
 
-function doc(khoa: string): boolean {
+function doc(khoa: string, macDinh: boolean): boolean {
   try {
-    return localStorage.getItem(`o_gap:${khoa}`) === '1';
+    const v = localStorage.getItem(`o_gap:${khoa}`);
+    return v === null ? macDinh : v === '1';
   } catch {
-    return false;
+    return macDinh;
   }
 }
 
-export default function OGap({ khoa, tieuDe, moTa, children }: { khoa: string; tieuDe: ReactNode; moTa?: ReactNode; children: ReactNode }) {
-  const [mo, setMo] = useState(() => doc(khoa));
+export default function OGap({ khoa, tieuDe, moTa, macDinhMo = false, children }: { khoa: string; tieuDe: ReactNode; moTa?: ReactNode; macDinhMo?: boolean; children: ReactNode }) {
+  const [mo, setMo] = useState(() => doc(khoa, macDinhMo));
   const doi = () => {
     const x = !mo;
     setMo(x);

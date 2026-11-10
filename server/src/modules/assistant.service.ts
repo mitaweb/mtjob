@@ -959,6 +959,8 @@ export async function answerDataQuestion(
     tools.push(hieuAnhTool());
     // Kế toán thuế (anh Tâm 10/11/2026: "bộ não nắm toàn bộ phần mềm… tài chính chỉ giám đốc hỏi được").
     tools.push(...(await import('./assistant.tools.keToan.js')).keToanTools());
+    // MCP đã kết nối (Meta Ads chính thức, MCP trên máy Mac…) — chỉ đọc (anh Tâm 10/11/2026).
+    tools.push(...(await import('./assistant.tools.mcp.js').then((m) => m.mcpTools()).catch(() => [])));
     hieuAnh = await import('./hieuAnh.service.js').then((m) => m.loiNhacHieuAnh(question)).catch(() => '');
   } else {
     // Admin dùng chung trợ lý này nhưng KHÔNG được xem / ghi số liệu tài chính (chỉ giám đốc).

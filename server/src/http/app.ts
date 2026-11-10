@@ -19,6 +19,7 @@ import { customerNotesRouter } from '../modules/customerNotes.routes.js';
 import { brainRouter } from '../modules/brain.routes.js';
 import { zaloRouter } from '../modules/zalo.routes.js';
 import { keToanRouter } from '../modules/keToan.routes.js';
+import { ketNoiRouter } from '../modules/ketNoi.routes.js';
 import { remindersRouter } from '../modules/reminders.routes.js';
 import { calendarRouter } from '../modules/calendar.routes.js';
 import { projectsRouter } from '../modules/projects.routes.js';
@@ -96,6 +97,7 @@ export function createApp() {
   app.use('/api/zalo', zaloRouter);
   // Kế toán thuế (VAT, TNDN, công nợ theo sổ sách thuế) — chỉ giám đốc.
   app.use('/api/ke-toan', keToanRouter);
+  app.use('/api/ket-noi', ketNoiRouter);
   app.use('/api/reminders', remindersRouter);
   app.use('/api/calendar', calendarRouter);
   app.use('/api/projects', projectsRouter);

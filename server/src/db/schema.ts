@@ -347,6 +347,23 @@ CREATE TABLE IF NOT EXISTS hieu_anh_trang_thai (
 -- Phạm vi (anh Tâm 9/11/2026: "nhân sự hiểu được anh cần gì ở 1 job, 1 khách hàng"): chung | khach | viec | nguoi;
 -- doi_tuong = tên khách / việc / nhân viên. Điều hiểu được tự vào kho tri thức (brain_items source 'hieu_anh').
 ALTER TABLE hieu_anh ADD COLUMN IF NOT EXISTS pham_vi text DEFAULT 'chung';
+-- Kết nối nền tảng qua MCP (anh Tâm 10/11/2026: "Phần MCP ads anh chưa thấy ở đâu"). token_ma = BẢN MÃ (lib/maHoa.ts,
+-- khoá env KET_NOI_KEY, chưa có thì ZALO_SESSION_KEY) — lộ DB thôi chưa dùng được. cong_cu = JSON danh sách công cụ lần
+-- kiểm tra gần nhất (trợ lý đọc, khỏi gọi mạng mỗi câu hỏi).
+CREATE TABLE IF NOT EXISTS mcp_ket_noi (
+  id          text PRIMARY KEY,
+  nen_tang    text NOT NULL,           -- meta | mcp
+  ten         text DEFAULT '',
+  url         text DEFAULT '',
+  token_ma    text DEFAULT '',
+  tai_khoan   text DEFAULT '',         -- tên tài khoản đã đăng nhập
+  het_han     bigint DEFAULT 0,        -- ms; 0 = không rõ / không hết hạn
+  trang_thai  text DEFAULT 'ok',       -- ok | loi
+  ghi_chu     text DEFAULT '',
+  cong_cu     text DEFAULT '[]',
+  kiem_tra    text DEFAULT '',
+  cap_nhat    text DEFAULT ''
+);
 -- Câu anh nhắn trợ lý đã được học chưa (thêm cột — dữ liệu cũ giữ nguyên).
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS hoc_anh boolean DEFAULT false;
 

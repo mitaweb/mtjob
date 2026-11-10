@@ -9,8 +9,11 @@ import AdminViTriChamCong from '../components/AdminViTriChamCong';
 import { useToast } from '../components/Toaster';
 import ModelPicker from '../components/ModelPicker';
 import OGap from '../components/OGap';
+import AdminKetNoi from '../components/AdminKetNoi';
+import { useAuth } from '../lib/auth';
 
 export default function Admin() {
+  const { user } = useAuth();
   const toast = useToast();
   const [aiOn, setAiOn] = useState<boolean | null>(null);
   const [authUrl, setAuthUrl] = useState('');
@@ -317,6 +320,13 @@ export default function Admin() {
           </AsyncButton>
         </div>
       </div>
+
+      {/* Kết nối nền tảng (MCP) — chỉ giám đốc (anh Tâm 10/11/2026). */}
+      {user?.role === 'director' && (
+        <OGap khoa="ket_noi" tieuDe="🔌 Kết nối nền tảng (MCP)" moTa="Meta Ads, Google, MCP trên máy Mac" macDinhMo>
+          <AdminKetNoi />
+        </OGap>
+      )}
 
       {/* Kết quả áp bảng điểm mới lên việc cũ */}
       {pointSync && (
