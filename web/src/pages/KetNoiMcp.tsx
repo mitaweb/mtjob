@@ -200,7 +200,6 @@ function TabChiSo({ loai, laGd }: { loai: Loai; laGd: boolean }) {
           <thead className="bg-brand-50 text-left text-xs text-ink-muted">
             <tr>
               <th className="px-3 py-2">Tài khoản</th>
-              {laGd && <th className="px-3 py-2">Phòng</th>}
               {defs.slice(0, 4).map((c) => (
                 <th key={c.khoa} className="px-3 py-2 text-right">
                   {c.ten}
@@ -229,7 +228,6 @@ function TabChiSo({ loai, laGd }: { loai: Loai; laGd: boolean }) {
                     </button>
                   )}
                 </td>
-                {laGd && <td className="px-3 py-2 text-ink-soft">{tenTeam(x.teamId, d.teams)}</td>}
                 {defs.slice(0, 4).map((c) => (
                   <td key={c.khoa} className="px-3 py-2 text-right tabular-nums">
                     <p>{dinhDang(giaTri(x.tomTat.ky, c.khoa), c.kieu, x.tienTe)}</p>

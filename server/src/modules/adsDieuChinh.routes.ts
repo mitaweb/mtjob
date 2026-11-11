@@ -85,7 +85,7 @@ adsRouter.post(
   '/:ts/goi-y',
   asyncHandler(async (req, res) => {
     const b = z.object({ tuKhoa: z.array(z.string().max(80)).max(10).default([]), url: z.string().max(300).optional() }).parse(req.body);
-    res.json({ goiY: await goiYTuKhoa(await nguoiCua(req), ts(req), b) });
+    res.json(await goiYTuKhoa(await nguoiCua(req), ts(req), b));
   }),
 );
 

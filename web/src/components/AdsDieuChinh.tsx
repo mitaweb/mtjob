@@ -48,6 +48,7 @@ interface Cum {
 }
 interface GoiY {
   tuKhoa: string;
+  lyDo?: string;
   luongTim: number;
   canhTranh: string;
   giaThapNhat: number;
@@ -231,6 +232,7 @@ function NghienCuuTuKhoa({ taiSanId }: { taiSanId: string }) {
   const [goc, setGoc] = useState('');
   const [url, setUrl] = useState('');
   const [goiY, setGoiY] = useState<GoiY[] | null>(null);
+  const [nguonGoiY, setNguonGoiY] = useState<'planner' | 'ai'>('planner');
   const tai = () =>
     Promise.all([api<{ tuKhoa: TuKhoa[]; cum: Cum[] }>(`/ads/${id}/tu-khoa`), api<{ doiTuong: DoiTuong[] }>(`/ads/${id}/doi-tuong`)])
       .then(([a, b]) => {
@@ -265,8 +267,11 @@ function NghienCuuTuKhoa({ taiSanId }: { taiSanId: string }) {
     if (await guiThaoTac({ taiSanId, cap: 'keyword', doiTuongId: k.id, ten: k.tuKhoa, hanhDong: k.bat ? 'tat' : 'bat', giaTriCu: k.bat ? 'BẬT' : 'DỪNG' }, toast)) await tai();
   }
   async function layGoiY() {
-    const r = await api<{ goiY: GoiY[] }>(`/ads/${id}/goi-y`, { body: { tuKhoa: goc.split(/[,\n]/).map((x) => x.trim()).filter(Boolean), url: url.trim() || undefined } });
+    const r = await api<{ goiY: GoiY[]; nguon: 'planner' | 'ai' }>(`/ads/${id}/goi-y`, {
+      body: { tuKhoa: goc.split(/[,\n]/).map((x) => x.trim()).filter(Boolean), url: url.trim() || undefined },
+    });
     setGoiY(r.goiY);
+    setNguonGoiY(r.nguon);
   }
 
   const th = 'px-2 py-1.5 text-left';
@@ -388,6 +393,12 @@ function NghienCuuTuKhoa({ taiSanId }: { taiSanId: string }) {
               Gợi ý
             </AsyncButton>
           </div>
+          {goiY && nguonGoiY === 'ai' && (
+            <p className="rounded-xl bg-brand-50 p-2 text-xs">
+              🤖 AI gợi ý từ <b>bộ não</b> (ghi chú khách, kho tri thức, cụm khách gõ có chuyển đổi). Chưa có lượng tìm kiếm: Keyword Planner của Google cần
+              quyền API mức Basic.
+            </p>
+          )}
           {goiY && (
             <div className="max-h-[480px] overflow-auto">
               <table className="w-full min-w-[600px] text-sm">
@@ -403,7 +414,10 @@ function NghienCuuTuKhoa({ taiSanId }: { taiSanId: string }) {
                 <tbody className="divide-y divide-brand-100">
                   {goiY.map((g) => (
                     <tr key={g.tuKhoa}>
-                      <td className={td}>{g.tuKhoa}</td>
+                      <td className={td}>
+                        {g.tuKhoa}
+                        {g.lyDo && <span className="block text-xs text-ink-muted">{g.lyDo}</span>}
+                      </td>
                       <td className={`${td} text-right tabular-nums`}>{vn(g.luongTim)}</td>
                       <td className={`${td} text-xs`}>{{ LOW: 'thấp', MEDIUM: 'vừa', HIGH: 'cao' }[g.canhTranh] || '—'}</td>
                       <td className={`${td} text-right tabular-nums`}>{g.giaCaoNhat ? `${vn(g.giaThapNhat)}–${vn(g.giaCaoNhat)}đ` : '—'}</td>

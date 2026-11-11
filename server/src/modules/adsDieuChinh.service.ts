@@ -285,15 +285,59 @@ export async function goiYTuKhoa(nguoi: Nguoi, taiSanId: string, o: { tuKhoa: st
   if (!tu.length && !url) throw new ApiError(400, 'Nhập vài từ khoá gốc hoặc địa chỉ trang web');
   const seed = tu.length && url ? { keywordAndUrlSeed: { keywords: tu, url } } : tu.length ? { keywordSeed: { keywords: tu } } : { urlSeed: { url } };
   const k = await import('./ketNoi.service.js');
-  const j = await k.gadsGoi(`customers/${ts.maNgoai.replace(/\D/g, '')}:generateKeywordIdeas`, {
-    language: 'languageConstants/1040',
-    geoTargetConstants: ['geoTargetConstants/2704'],
-    keywordPlanNetwork: 'GOOGLE_SEARCH',
-    includeAdultKeywords: false,
-    pageSize: 200,
-    ...seed,
-  });
-  return dongGoiYTuKhoa(j).sort((a, b) => b.luongTim - a.luongTim);
+  try {
+    const j = await k.gadsGoi(`customers/${ts.maNgoai.replace(/\D/g, '')}:generateKeywordIdeas`, {
+      language: 'languageConstants/1040',
+      geoTargetConstants: ['geoTargetConstants/2704'],
+      keywordPlanNetwork: 'GOOGLE_SEARCH',
+      includeAdultKeywords: false,
+      pageSize: 200,
+      ...seed,
+    });
+    return { nguon: 'planner' as const, goiY: dongGoiYTuKhoa(j).sort((a, b) => b.luongTim - a.luongTim) };
+  } catch (e) {
+    // Keyword Planner cần mức Basic (Explorer bị chặn — kiểm thật 11/11/2026) → AI gợi ý từ bộ não + cụm khách gõ.
+    if (!/explorer access|DEVELOPER_TOKEN_NOT_APPROVED|basic or standard/i.test((e as Error).message)) throw e;
+    return { nguon: 'ai' as const, goiY: await goiYTuKhoaAi(nguoi, ts, tu, url) };
+  }
+}
+
+/** Gợi ý từ khoá bằng AI: đọc ghi chú quảng cáo + kho tri thức về khách + cụm khách gõ có chuyển đổi. Không có lượng tìm. */
+async function goiYTuKhoaAi(nguoi: Nguoi, ts: TaiSanNt, tu: string[], url: string): Promise<Array<{ tuKhoa: string; luongTim: number; canhTranh: string; giaThapNhat: number; giaCaoNhat: number; lyDo: string }>> {
+  const ten = ts.khach || ts.ten;
+  const [ghiChu, tk, { timTriThuc }] = await Promise.all([
+    docGhiChu(nguoi, ts.id).catch(() => ''),
+    tuKhoa(nguoi, ts.id).catch(() => ({ tuKhoa: [] as TuKhoaGads[], cum: [] as CumTimKiem[] })),
+    import('./brainItems.service.js'),
+  ]);
+  const kho = await timTriThuc(`${ten} sản phẩm dịch vụ khu vực khách hàng`, { directorScope: true, customer: ts.khach || undefined }).catch(() => '');
+  const daCo = new Set(tk.tuKhoa.map((x) => x.tuKhoa.toLowerCase()));
+  const { aiKhoJson } = await import('../ai/brainAi.js');
+  const r = (await aiKhoJson(
+    [
+      `Gợi ý 20–40 từ khoá Google Ads tiếng Việt cho khách «${ten}». Chỉ từ khoá ĐÚNG sản phẩm / dịch vụ / khu vực của khách theo ghi chú và kho`,
+      'tri thức; tránh mọi điều ghi chú nói KHÔNG nhận. Ưu tiên ý định mua / liên hệ. Không lặp từ khoá đã có. lyDo: vì sao hợp (≤ 15 chữ).',
+      tu.length ? `TỪ KHOÁ GỐC: ${tu.join(', ')}` : '',
+      url ? `TRANG WEB: ${url}` : '',
+      `\nGHI CHÚ QUẢNG CÁO VỀ KHÁCH:\n${ghiChu || '(chưa có)'}`,
+      `\nKHO TRI THỨC:\n${String(kho).slice(0, 3000) || '(không có)'}`,
+      `\nCỤM KHÁCH GÕ CÓ CHUYỂN ĐỔI:\n${tk.cum.filter((c) => c.chuyenDoi > 0).slice(0, 40).map((c) => `- ${c.cum} (${c.chuyenDoi.toFixed(1)} CĐ)`).join('\n') || '(không có)'}`,
+      `\nTỪ KHOÁ ĐÃ CÓ:\n${[...daCo].slice(0, 120).join(', ') || '(không có)'}`,
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    {
+      type: 'OBJECT',
+      properties: { goiY: { type: 'ARRAY', items: { type: 'OBJECT', properties: { tuKhoa: { type: 'STRING' }, lyDo: { type: 'STRING' } }, required: ['tuKhoa'] } } },
+      required: ['goiY'],
+    },
+  )) as { goiY?: Array<{ tuKhoa?: string; lyDo?: string }> };
+  const thay = new Set<string>();
+  return (r?.goiY || [])
+    .map((g) => ({ tuKhoa: String(g.tuKhoa || '').trim().toLowerCase(), lyDo: String(g.lyDo || '').slice(0, 120) }))
+    .filter((g) => g.tuKhoa && !daCo.has(g.tuKhoa) && !thay.has(g.tuKhoa) && thay.add(g.tuKhoa))
+    .slice(0, 40)
+    .map((g) => ({ ...g, luongTim: 0, canhTranh: '', giaThapNhat: 0, giaCaoNhat: 0 }));
 }
 
 // ── Ghi chú về khách → kho tri thức (bộ não thứ 2) ──

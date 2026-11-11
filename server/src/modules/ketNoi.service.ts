@@ -367,7 +367,9 @@ async function googleApi(url: string, init: RequestInit & { ads?: { loginCustome
     const msg = ct.cau || `HTTP ${r.status}`;
     const goiY = /USER_PERMISSION_DENIED/.test(ct.ma)
       ? ' — Gmail đang kết nối chưa được thêm vào tài khoản / MCC Google Ads này (Google Ads → Quản trị → Quyền truy cập và bảo mật → thêm Gmail), hoặc mã MCC sai'
-      : /DEVELOPER_TOKEN/.test(ct.ma)
+      : /explorer access/i.test(msg)
+        ? ' — tính năng này Google chỉ mở ở mức Basic (Google Cloud → Google Ads API → Access levels; cần xác minh thương hiệu)'
+        : /DEVELOPER_TOKEN/.test(ct.ma)
         ? ` — developer token: ${ct.ma} (lấy ở MCC → Công cụ → Trung tâm API; mức Test chỉ đọc được tài khoản thử nghiệm, cần xin mức Basic / Explorer)`
         : /CUSTOMER_NOT_ENABLED|NOT_ACTIVE/.test(ct.ma)
           ? ' — tài khoản Google Ads này đã huỷ / chưa kích hoạt'
