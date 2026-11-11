@@ -65,9 +65,20 @@ export async function dsKetNoi(): Promise<KetNoi[]> {
   return (await q('SELECT * FROM mcp_ket_noi ORDER BY nen_tang, cap_nhat')).map(rowTo);
 }
 
+/** Token của kết nối "không cần app" (MCP OAuth): mã truy cập + mã làm mới + client tự đăng ký. */
+interface GoiToken {
+  a: string;
+  r?: string;
+  cid: string;
+  tep: string;
+  res: string;
+}
+
+/** Kết nối + mã Bearer dùng được ngay (kết nối MCP OAuth sắp hết hạn thì tự làm mới bằng refresh token). */
 async function timKetNoi(id: string): Promise<(KetNoi & { token: string }) | null> {
   const r = (await q('SELECT * FROM mcp_ket_noi WHERE id = $1', [id]))[0];
   if (!r) return null;
+  const k = rowTo(r);
   let token = '';
   if (r.token_ma) {
     try {
@@ -76,7 +87,112 @@ async function timKetNoi(id: string): Promise<(KetNoi & { token: string }) | nul
       token = '';
     }
   }
-  return { ...rowTo(r), token };
+  if (!token.startsWith('{')) return { ...k, token };
+  let g: GoiToken;
+  try {
+    g = JSON.parse(token) as GoiToken;
+  } catch {
+    return { ...k, token: '' };
+  }
+  if (g.r && k.hetHan && k.hetHan - Date.now() < 5 * 60_000) {
+    try {
+      const moi = await doiToken(g.tep, { grant_type: 'refresh_token', refresh_token: g.r, client_id: g.cid, resource: g.res });
+      g = { ...g, a: moi.access, r: moi.refresh || g.r };
+      await ghi({ id: k.id, nenTang: k.nenTang, ten: k.ten, url: k.url, token: JSON.stringify(g), taiKhoan: k.taiKhoan, hetHan: moi.hetHan });
+    } catch (e) {
+      await q("UPDATE mcp_ket_noi SET trang_thai = 'loi', ghi_chu = $2 WHERE id = $1", [id, `Làm mới đăng nhập lỗi — bấm Kết nối lại: ${(e as Error).message}`.slice(0, 500)]);
+    }
+  }
+  return { ...k, token: g.a };
+}
+
+async function doiToken(tokenEndpoint: string, tham: Record<string, string>): Promise<{ access: string; refresh: string; hetHan: number }> {
+  const r = await fetch(tokenEndpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+    body: new URLSearchParams(tham).toString(),
+    signal: AbortSignal.timeout(20_000),
+  });
+  const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!r.ok || !j.access_token) {
+    const loi = (j.error as { message?: string } | undefined)?.message || String(j.error_description || j.error || `HTTP ${r.status}`);
+    throw new ApiError(400, `Facebook báo: ${loi}`);
+  }
+  const giay = Number(j.expires_in) || 0;
+  return { access: String(j.access_token), refresh: String(j.refresh_token || ''), hetHan: giay ? Date.now() + giay * 1000 : 0 };
+}
+
+// ── Meta KHÔNG cần tạo app (anh Tâm 11/11/2026 — xác minh BM bị lỗi): chuẩn MCP OAuth — tự đăng ký client với máy chủ
+//    MCP của Meta + PKCE, giống cách Claude / ChatGPT nối. Meta khai registration_endpoint + PKCE S256 + client công khai. ──
+
+async function layJson(url: string, init?: RequestInit): Promise<Record<string, unknown>> {
+  const r = await fetch(url, { ...init, signal: AbortSignal.timeout(20_000) });
+  const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!r.ok) throw new ApiError(502, `Meta báo (${r.status}): ${String((j.error as { message?: string })?.message || j.error_description || j.error || '').slice(0, 200)}`);
+  return j;
+}
+
+/** Đọc cấu hình đăng nhập do chính máy chủ MCP của Meta công bố (RFC 9728 → RFC 8414). */
+async function cauHinhMcpMeta() {
+  const pr = await layJson('https://mcp.facebook.com/.well-known/oauth-protected-resource/ads');
+  const issuer = String((pr.authorization_servers as string[] | undefined)?.[0] || 'https://www.facebook.com/ads');
+  const iu = new URL(issuer);
+  const as = await layJson(`${iu.origin}/.well-known/oauth-authorization-server${iu.pathname === '/' ? '' : iu.pathname}`);
+  return {
+    resource: String(pr.resource || META_MCP_URL),
+    authorizationEndpoint: String(as.authorization_endpoint),
+    tokenEndpoint: String(as.token_endpoint),
+    registrationEndpoint: String(as.registration_endpoint || ''),
+    scopes: (as.scopes_supported as string[] | undefined) || [],
+  };
+}
+
+const QUYEN_META = ['ads_mcp_management', 'ads_read', 'business_management', 'pages_show_list'];
+
+/** Bắt đầu đăng nhập không cần app → link Facebook. Trạng thái (client, PKCE) nằm trong `state` đã MÃ HOÁ, sống 10 phút. */
+export async function metaBatDauKhongApp(redirectUri: string, sub: string): Promise<string> {
+  const c = await cauHinhMcpMeta();
+  if (!c.registrationEndpoint) throw new ApiError(400, 'Máy chủ MCP của Meta không cho tự đăng ký — cần tạo app Meta (xem hướng dẫn)');
+  const reg = await layJson(c.registrationEndpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({
+      client_name: 'MTJOB — MT Digital',
+      redirect_uris: [redirectUri],
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+      token_endpoint_auth_method: 'none',
+    }),
+  }).catch((e) => {
+    throw new ApiError(400, `Meta chưa cho MTJOB tự đăng ký (${(e as Error).message}) — dùng cách tạo app Meta trong hướng dẫn`);
+  });
+  const cid = String(reg.client_id || '');
+  if (!cid) throw new ApiError(400, 'Meta không trả mã client khi tự đăng ký — dùng cách tạo app Meta');
+  const { taoPkce, urlDangNhapMcp } = await import('../lib/ketNoi.js');
+  const p = taoPkce();
+  const state = maHoa(JSON.stringify({ k: 'mcp-meta', sub, cid, cv: p.verifier, tep: c.tokenEndpoint, res: c.resource, het: Date.now() + 10 * 60_000 }), khoa());
+  const scopes = c.scopes.length ? QUYEN_META.filter((s) => c.scopes.includes(s)) : QUYEN_META;
+  return urlDangNhapMcp({ authorizationEndpoint: c.authorizationEndpoint, clientId: cid, redirectUri, state, challenge: p.challenge, scopes, resource: c.resource });
+}
+
+/** `state` của luồng không cần app (bản mã) — null nếu không phải luồng này. */
+export function laStateKhongApp(state: string): boolean {
+  return state.startsWith('v1.');
+}
+
+export async function metaNhanCodeKhongApp(code: string, state: string, redirectUri: string): Promise<string> {
+  let s: { k: string; cid: string; cv: string; tep: string; res: string; het: number };
+  try {
+    s = JSON.parse(giaiMa(state, khoa()));
+  } catch {
+    throw new ApiError(400, 'Phiên đăng nhập không hợp lệ — bấm Kết nối Facebook lại');
+  }
+  if (s.k !== 'mcp-meta' || Date.now() > s.het) throw new ApiError(400, 'Phiên đăng nhập đã quá 10 phút — bấm Kết nối Facebook lại');
+  const t = await doiToken(s.tep, { grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: s.cid, code_verifier: s.cv, resource: s.res });
+  const me = await graph('me', { fields: 'name', access_token: t.access }).catch(() => ({ name: '' }));
+  const goi: GoiToken = { a: t.access, r: t.refresh || undefined, cid: s.cid, tep: s.tep, res: s.res };
+  await ghi({ id: 'meta', nenTang: 'meta', ten: 'Meta Ads (MCP chính thức)', url: META_MCP_URL, token: JSON.stringify(goi), taiKhoan: String(me.name || ''), hetHan: t.hetHan });
+  return String(me.name || '');
 }
 
 async function ghi(o: { id: string; nenTang: string; ten: string; url: string; token: string; taiKhoan: string; hetHan: number }): Promise<void> {

@@ -1,3 +1,5 @@
+import { createHash, randomBytes } from 'node:crypto';
+
 // Kết nối nền tảng qua MCP (anh Tâm 9–10/11/2026: gom việc Agency vào MTJOB; "Phần MCP ads anh chưa thấy ở đâu").
 // Hàm THUẦN: link đăng nhập Facebook, nhận ra công cụ làm THAY ĐỔI tài khoản (bị chặn — thao tác phải qua anh duyệt),
 // đổi kết quả công cụ MCP thành chữ cho trợ lý đọc.
@@ -48,4 +50,37 @@ export function ketQuaThanhChu(
   if (!chu && r.structuredContent !== undefined) chu = JSON.stringify(r.structuredContent);
   if (r.isError) chu = `LỖI từ MCP: ${chu}`;
   return chu.length > toiDa ? `${chu.slice(0, toiDa)}… (đã cắt bớt)` : chu;
+}
+
+// ── Chuẩn MCP OAuth (tự đăng ký client + PKCE) — nối MCP chính thức của Meta KHÔNG cần tạo app (anh Tâm 11/11/2026) ──
+
+/** code_challenge S256 = base64url(sha256(verifier)) — RFC 7636. */
+export function thachThucPkce(verifier: string): string {
+  return createHash('sha256').update(verifier).digest('base64url');
+}
+
+export function taoPkce(): { verifier: string; challenge: string } {
+  const verifier = randomBytes(48).toString('base64url');
+  return { verifier, challenge: thachThucPkce(verifier) };
+}
+
+export function urlDangNhapMcp(o: {
+  authorizationEndpoint: string;
+  clientId: string;
+  redirectUri: string;
+  state: string;
+  challenge: string;
+  scopes: string[];
+  resource: string;
+}): string {
+  const u = new URL(o.authorizationEndpoint);
+  u.searchParams.set('response_type', 'code');
+  u.searchParams.set('client_id', o.clientId);
+  u.searchParams.set('redirect_uri', o.redirectUri);
+  u.searchParams.set('state', o.state);
+  u.searchParams.set('code_challenge', o.challenge);
+  u.searchParams.set('code_challenge_method', 'S256');
+  u.searchParams.set('scope', o.scopes.join(' '));
+  u.searchParams.set('resource', o.resource);
+  return u.toString();
 }

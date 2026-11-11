@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { urlDangNhapMeta, laCongCuGhi, ketQuaThanhChu, tomTatCongCu } from './ketNoi.js';
+import { urlDangNhapMeta, laCongCuGhi, ketQuaThanhChu, tomTatCongCu, taoPkce, thachThucPkce, urlDangNhapMcp } from './ketNoi.js';
 
 // Anh Tâm 10/11/2026: "Phần MCP ads anh chưa thấy ở đâu" — kết nối Meta Ads (MCP chính thức) bằng đăng nhập Facebook,
 // trợ lý gọi công cụ MCP CHỈ ĐỌC (thao tác thay đổi quảng cáo phải qua duyệt — đợt sau).
@@ -49,5 +49,39 @@ describe('tomTatCongCu', () => {
       { name: 'pause_campaign', description: 'Tạm dừng chiến dịch' },
     ]);
     expect(t).toBe('- get_insights: Lấy số liệu quảng cáo theo ngày.\n- pause_campaign (THAY ĐỔI — cần anh duyệt): Tạm dừng chiến dịch');
+  });
+});
+
+// Anh Tâm 10–11/11/2026: xác minh BM bị lỗi → nối MCP chính thức của Meta KHÔNG cần tạo app: chuẩn MCP OAuth (tự đăng
+// ký client + PKCE). Máy chủ Meta khai registration_endpoint, token_endpoint_auth_methods "none", PKCE S256.
+describe('PKCE + link đăng nhập MCP', () => {
+  it('code_challenge = base64url(sha256(verifier)) — ví dụ chuẩn RFC 7636', () => {
+    expect(thachThucPkce('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk')).toBe('E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
+    const p = taoPkce();
+    expect(p.verifier).toMatch(/^[A-Za-z0-9_-]{43,128}$/);
+    expect(p.challenge).toBe(thachThucPkce(p.verifier));
+  });
+  it('link đăng nhập: client tự đăng ký, PKCE S256, quyền cách nhau dấu cách, chỉ định tài nguyên MCP', () => {
+    const u = new URL(
+      urlDangNhapMcp({
+        authorizationEndpoint: 'https://www.facebook.com/v27.0/dialog/oauth',
+        clientId: 'C1',
+        redirectUri: 'https://job.mtdigital.vn/api/ket-noi/meta/callback',
+        state: 'S',
+        challenge: 'CH',
+        scopes: ['ads_mcp_management', 'ads_read'],
+        resource: 'https://mcp.facebook.com/ads',
+      }),
+    );
+    expect(Object.fromEntries(u.searchParams)).toEqual({
+      response_type: 'code',
+      client_id: 'C1',
+      redirect_uri: 'https://job.mtdigital.vn/api/ket-noi/meta/callback',
+      state: 'S',
+      code_challenge: 'CH',
+      code_challenge_method: 'S256',
+      scope: 'ads_mcp_management ads_read',
+      resource: 'https://mcp.facebook.com/ads',
+    });
   });
 });

@@ -5,7 +5,7 @@ import { asyncHandler } from '../util/errors.js';
 import { requireAuth, requireRole } from '../auth/middleware.js';
 import { signState, verifyState } from '../auth/jwt.js';
 import { urlDangNhapMeta } from '../lib/ketNoi.js';
-import { dsKetNoi, metaCauHinh, metaNhanCode, themMcp, kiemTra, xoaKetNoi } from './ketNoi.service.js';
+import { dsKetNoi, metaCauHinh, metaNhanCode, metaBatDauKhongApp, metaNhanCodeKhongApp, laStateKhongApp, themMcp, kiemTra, xoaKetNoi } from './ketNoi.service.js';
 
 export const ketNoiRouter = Router();
 
@@ -24,8 +24,15 @@ ketNoiRouter.get(
     const ve = (o: Record<string, string>) => res.redirect(`/admin?${new URLSearchParams(o).toString()}`);
     try {
       if (req.query.error) return ve({ ket_noi: 'loi', thong_bao: String(req.query.error_description || req.query.error).slice(0, 200) });
-      verifyState(String(req.query.state || ''), 'ket-noi-meta');
-      const ten = await metaNhanCode(String(req.query.code || ''), duongVeMeta(req));
+      const state = String(req.query.state || '');
+      let ten: string;
+      if (laStateKhongApp(state)) {
+        // Không cần app Meta: MCP OAuth (tự đăng ký + PKCE).
+        ten = await metaNhanCodeKhongApp(String(req.query.code || ''), state, duongVeMeta(req));
+      } else {
+        verifyState(state, 'ket-noi-meta');
+        ten = await metaNhanCode(String(req.query.code || ''), duongVeMeta(req));
+      }
       return ve({ ket_noi: 'meta_ok', ten });
     } catch (e) {
       return ve({ ket_noi: 'loi', thong_bao: (e as Error).message.slice(0, 200) });
@@ -48,6 +55,7 @@ ketNoiRouter.get(
     }
     res.json({
       ds: ds.map(({ congCu, ...x }) => ({ ...x, soCongCu: congCu.length, congCu: congCu.map((t) => ({ name: t.name, description: (t.description || '').split('\n')[0]!.slice(0, 160) })) })),
+      // daCauHinh = có app Meta riêng; không có thì vẫn kết nối được bằng cách không cần app.
       meta: { daCauHinh: !!(c.appId && c.secret), duongVe: duongVeMeta(req) },
       coKhoa: (process.env.KET_NOI_KEY || process.env.ZALO_SESSION_KEY || '').length >= 32,
       canCapNhatDb,
@@ -59,7 +67,8 @@ ketNoiRouter.get(
   '/meta/bat-dau',
   asyncHandler(async (req, res) => {
     const c = metaCauHinh();
-    if (!c.appId || !c.secret) return res.status(400).json({ error: 'Chưa cấu hình META_APP_ID / META_APP_SECRET trên Vercel' });
+    // Chưa có app Meta riêng → cách KHÔNG cần app (anh Tâm 11/11/2026: xác minh BM bị lỗi).
+    if (!c.appId || !c.secret) return res.json({ url: await metaBatDauKhongApp(duongVeMeta(req), req.user!.sub) });
     res.json({ url: urlDangNhapMeta({ appId: c.appId, configId: c.configId, version: c.version, redirectUri: duongVeMeta(req), state: signState({ sub: req.user!.sub, muc: 'ket-noi-meta' }) }) });
   }),
 );

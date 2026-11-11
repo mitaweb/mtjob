@@ -177,16 +177,24 @@ export default function AdminKetNoi() {
         <div className="font-semibold">📘 Meta Ads (Facebook / Instagram) — MCP chính thức của Meta</div>
         {meta ? (
           <DongKetNoi k={meta} onDoi={tai} />
-        ) : dl.meta.daCauHinh ? (
-          <p className="text-sm text-ink-muted">Chưa kết nối. Bấm nút dưới, đăng nhập Facebook bằng tài khoản quản trị Business Manager MT Digital.</p>
-        ) : null}
-        {dl.meta.daCauHinh ? (
-          <button className={meta ? 'btn-ghost' : 'btn-primary'} onClick={ketNoiFacebook}>
-            {meta ? '↻ Kết nối lại Facebook' : 'Kết nối Facebook'}
-          </button>
         ) : (
-          <div className="rounded-xl bg-brand-50 p-3 text-sm text-ink-soft">
-            <div className="mb-1 font-semibold">Chờ anh tạo app Meta (một lần, ~10 phút):</div>
+          <p className="text-sm text-ink-muted">
+            Chưa kết nối. Bấm nút dưới, đăng nhập Facebook bằng nick quản trị Business Manager MT Digital, chọn BM / các tài khoản quảng cáo cho
+            phép.{' '}
+            {!dl.meta.daCauHinh && (
+              <b>Không cần tạo app Meta, không cần xác minh BM</b>
+            )}
+            {!dl.meta.daCauHinh && ' (MTJOB tự đăng ký với máy chủ MCP của Meta, giống Claude / ChatGPT).'}
+          </p>
+        )}
+        <AsyncButton className={meta ? 'btn-ghost' : 'btn-primary'} busyLabel="Đang mở Facebook…" onClick={ketNoiFacebook}>
+          {meta ? '↻ Kết nối lại Facebook' : 'Kết nối Facebook'}
+        </AsyncButton>
+        {!dl.meta.daCauHinh && (
+          <details className="rounded-xl bg-brand-50 p-3 text-sm text-ink-soft">
+            <summary className="cursor-pointer select-none font-semibold">
+              Dự phòng — chỉ khi nút trên báo Meta không cho tự đăng ký: tạo app Meta (~10 phút, chế độ phát triển, không cần xác minh BM)
+            </summary>
             <ol className="list-decimal space-y-1 pl-5">
               <li>
                 Vào <b>developers.facebook.com</b> → My Apps → <b>Create App</b> → loại <b>Business</b>, gắn Business Manager MT Digital.
@@ -209,10 +217,10 @@ export default function AdminKetNoi() {
               </li>
               <li>
                 Vào Vercel → Project mtjob → Settings → Environment Variables: thêm <code>META_APP_ID</code>, <code>META_APP_SECRET</code>{' '}
-                (App settings → Basic), rồi <b>Redeploy</b>. Quay lại đây sẽ có nút <b>Kết nối Facebook</b>.
+                (App settings → Basic), rồi <b>Redeploy</b>. Nút <b>Kết nối Facebook</b> sẽ tự dùng app này.
               </li>
             </ol>
-          </div>
+          </details>
         )}
       </div>
 
