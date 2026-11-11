@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { gopChiSo, tinhThangDaLay } from './keToanGop.js';
+import { gopChiSo, tinhThangDaLay, quyetDinhCaKhoi, phangCongNo, khoaChiTieu, tomTatGop } from './keToanGop.js';
 
 // Anh Tâm 11/11/2026: "Phần kế toán thuế anh cần thông minh hơn, đọc và hiểu các báo cáo, ưu tiên báo cáo sau ghi đè báo cáo
 // cũ, các chỉ số có ngày cập nhật mới hơn phải được giữ lại, đánh giá giữ lại hay k, k hiểu thì hỏi". Số GIẢ.
@@ -73,5 +73,45 @@ describe('tinhThangDaLay — tháng nào đã lấy đủ từ cổng thuế', (
   it('tháng bị bỏ trống ở giữa → gợi ý tháng trống', () => {
     const r = tinhThangDaLay({ '2026-07': '2026-08-20T00:00:00.000Z', '2026-09': '2026-10-20T00:00:00.000Z' }, '2026-11-11');
     expect(r.goiY).toBe('2026-08');
+  });
+});
+
+describe('quyetDinhCaKhoi — bảng lương một tháng / sổ công nợ một ngày chốt: nhận cả khối hay giữ cả khối', () => {
+  it('chưa có → nhận; báo cáo mới hơn → nhận; cũ hơn → giữ; cùng ngày / không rõ mà khác → xét', () => {
+    expect(quyetDinhCaKhoi(gopChiSo(null, { giaTri: { a: 1 }, ngay: '' }), false)).toBe('moi');
+    const cu = { giaTri: { a: 1, b: 2 }, ngay: { a: '2026-09-01', b: '2026-09-01' } };
+    expect(quyetDinhCaKhoi(gopChiSo(cu, { giaTri: { a: 5, b: 2 }, ngay: '2026-10-01' }), true)).toBe('moi');
+    expect(quyetDinhCaKhoi(gopChiSo(cu, { giaTri: { a: 5 }, ngay: '2026-08-01' }), true)).toBe('cu');
+    expect(quyetDinhCaKhoi(gopChiSo(cu, { giaTri: { a: 5 }, ngay: '2026-09-01' }), true)).toBe('xet');
+    expect(quyetDinhCaKhoi(gopChiSo(cu, { giaTri: { a: 1, b: 2 }, ngay: '' }), true)).toBe('moi'); // y hệt — ghi lại không sao
+  });
+});
+
+describe('phangCongNo — sổ công nợ thành chỉ số để so', () => {
+  it('mỗi đối tác hai số dư cuối kỳ', () => {
+    expect(
+      phangCongNo({
+        loai: 'thu',
+        tuNgay: '2026-01-01',
+        ngayChot: '2026-09-30',
+        dong: [{ ma: 'KH1', ten: 'A', duNoDau: 0, duCoDau: 0, psNo: 0, psCo: 0, duNo: 500, duCo: 0 }],
+      }),
+    ).toEqual({ 'KH1|duNo': 500, 'KH1|duCo': 0 });
+  });
+});
+
+describe('khoaChiTieu — mã chỉ tiêu báo cáo bất kỳ', () => {
+  it('có mã số thì dùng mã; không thì tên bỏ dấu', () => {
+    expect(khoaChiTieu('110', 'Tiền và các khoản tương đương tiền')).toBe('110');
+    expect(khoaChiTieu('', 'Tiền và các khoản tương đương tiền')).toBe('tien_va_cac_khoan_tuong_duong_tien');
+  });
+});
+
+describe('tomTatGop — câu báo sau khi tải lên', () => {
+  it('nêu số cập nhật / giữ / hỏi', () => {
+    expect(tomTatGop({ ghiDe: 3, giuCu: 2, aiMoi: 1, aiCu: 0, hoi: 1 })).toBe(
+      ' · cập nhật 3 chỉ số theo báo cáo mới hơn · giữ 2 chỉ số (báo cáo này cũ hơn) · AI chọn số mới cho 1 chỗ · ❓ 1 chỗ cần anh quyết',
+    );
+    expect(tomTatGop({ ghiDe: 0, giuCu: 0, aiMoi: 0, aiCu: 0, hoi: 0 })).toBe('');
   });
 });

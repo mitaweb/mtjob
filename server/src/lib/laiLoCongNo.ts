@@ -158,12 +158,24 @@ export function congNoTheoSaoKe(o: { loai: 'thu' | 'tra'; hoaDon: HoaDon[]; giao
   // Phải trả: hoá đơn dưới 5 triệu coi như đã trả tiền mặt (anh Tâm: "các khoản dưới 5tr vẫn chi tiền mặt bình thường")
   // — trừ khi nhà cung cấp đó có nhận chuyển khoản (để sao kê trừ, tránh trừ hai lần); anh đánh dấu tiền mặt / chuyển
   // khoản trên hoá đơn thì theo anh.
+  // Anh Tâm 11/11/2026: "Mặc định các giao dịch phải trả dưới 5 triệu nếu k có trong sao kê thì anh đã trả tiền mặt".
+  // Trước đây nhà cung cấp có nhận chuyển khoản thì MỌI hoá đơn nhỏ của họ bị coi là còn nợ. Giờ: tiền sao kê trừ vào hoá
+  // đơn lớn trước (từ 5 triệu phải chuyển khoản), rồi hoá đơn nhỏ; hoá đơn nhỏ nào tiền sao kê không phủ tới = tiền mặt.
+  // Chuyển khoản gộp nhiều hoá đơn nhỏ vẫn được trừ đúng, không tính thêm tiền mặt (không trừ hai lần).
   if (o.loai === 'tra') {
-    const coCk = new Set([...theoMa.values()].filter((x) => x.daTra > 0).map((x) => x.ma));
-    for (const h of hd) {
-      if (h.thanhToan === 'ngan_hang') continue;
-      const ma = h.mstDoiTac || h.tenDoiTac;
-      if (h.thanhToan === 'tien_mat' || (h.tongTien < NGUONG_TIEN_MAT && !coCk.has(ma))) theoMa.get(ma)!.daTra += h.tongTien;
+    for (const x of theoMa.values()) {
+      const cua = hd.filter((h) => (h.mstDoiTac || h.tenDoiTac) === x.ma);
+      let nganHang = x.daTra;
+      let tienMat = 0;
+      const lon = (h: HoaDon) => h.thanhToan === 'ngan_hang' || h.tongTien >= NGUONG_TIEN_MAT;
+      const theoThuTu = [...cua.filter((h) => h.thanhToan !== 'tien_mat' && lon(h)), ...cua.filter((h) => h.thanhToan !== 'tien_mat' && !lon(h))];
+      for (const h of theoThuTu.sort((a, b) => Number(lon(b)) - Number(lon(a)) || a.ngay.localeCompare(b.ngay))) {
+        const tra = Math.min(nganHang, h.tongTien);
+        nganHang -= tra;
+        if (!lon(h)) tienMat += h.tongTien - tra;
+      }
+      for (const h of cua) if (h.thanhToan === 'tien_mat') tienMat += h.tongTien;
+      x.daTra += tienMat;
     }
   }
   const ds = [...theoMa.values()]

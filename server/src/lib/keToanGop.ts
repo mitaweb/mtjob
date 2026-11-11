@@ -123,3 +123,47 @@ export function tinhThangDaLay(daLay: Record<string, string>, homNay: string): T
   }
   return { duTu, duDen, canLayLai: thang.filter((t) => t < thangNay && daLay[t] && !du(t)), goiY };
 }
+
+// ── Bảng lương một tháng / sổ công nợ một ngày chốt: nhận hoặc giữ CẢ KHỐI (các số trong khối cùng một báo cáo) ──
+
+/** 'moi' = ghi cả khối mới; 'cu' = giữ khối đang có; 'xet' = cần AI đánh giá / hỏi anh. */
+export function quyetDinhCaKhoi(r: KetQuaGop, daCo: boolean): 'moi' | 'cu' | 'xet' {
+  if (!daCo) return 'moi';
+  if (r.canXet.length) return 'xet';
+  if (r.ghiDe.length) return 'moi';
+  if (r.giuCu.length) return 'cu';
+  return 'moi';
+}
+
+export function phangCongNo(so: { dong: ReadonlyArray<{ ma: string; duNo: number; duCo: number; [k: string]: unknown }>; [k: string]: unknown }): Record<string, number> {
+  const ra: Record<string, number> = {};
+  for (const d of so.dong) {
+    ra[`${d.ma}|duNo`] = d.duNo;
+    ra[`${d.ma}|duCo`] = d.duCo;
+  }
+  return ra;
+}
+
+/** Mã chỉ tiêu: mã số trong báo cáo nếu có, không thì tên bỏ dấu nối gạch dưới. */
+export function khoaChiTieu(ma: string, ten: string): string {
+  const m = String(ma || '').trim();
+  if (m) return m.slice(0, 20);
+  return String(ten || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/gi, 'd')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 60);
+}
+
+export function tomTatGop(t: { ghiDe: number; giuCu: number; aiMoi: number; aiCu: number; hoi: number }): string {
+  return [
+    t.ghiDe ? ` · cập nhật ${t.ghiDe} chỉ số theo báo cáo mới hơn` : '',
+    t.giuCu ? ` · giữ ${t.giuCu} chỉ số (báo cáo này cũ hơn)` : '',
+    t.aiMoi ? ` · AI chọn số mới cho ${t.aiMoi} chỗ` : '',
+    t.aiCu ? ` · AI giữ số cũ ${t.aiCu} chỗ` : '',
+    t.hoi ? ` · ❓ ${t.hoi} chỗ cần anh quyết` : '',
+  ].join('');
+}

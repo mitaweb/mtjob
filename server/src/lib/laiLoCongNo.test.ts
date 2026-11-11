@@ -186,6 +186,33 @@ describe('công nợ phải trả theo sao kê', () => {
     expect(r.ds.find((x) => x.mst === '0300000033')).toMatchObject({ daTra: 0, con: 9_720_000 });
     expect(r.phai).toBe(9_720_000);
   });
+
+  // Anh Tâm 11/11/2026: "Mặc định các giao dịch phải trả dưới 5 triệu nếu k có trong sao kê thì anh đã trả tiền mặt".
+  it('nhà cung cấp có chuyển khoản cho hoá đơn lớn — hoá đơn nhỏ không có trong sao kê vẫn là tiền mặt', () => {
+    const r = congNoTheoSaoKe({
+      loai: 'tra',
+      hoaDon: [
+        hd('vao', '2026-08-02', 20_000_000, { soHd: '21', tongTien: 21_600_000, tenDoiTac: 'CÔNG TY TNHH THIẾT BỊ VĂN PHÒNG LYVYSTAR', mstDoiTac: '0300000031' }),
+        hd('vao', '2026-08-20', 3_000_000, { soHd: '22', tongTien: 3_240_000, tenDoiTac: 'CÔNG TY TNHH THIẾT BỊ VĂN PHÒNG LYVYSTAR', mstDoiTac: '0300000031' }),
+      ],
+      giaoDich: [gd('2026-08-01', { ghiNo: 1, noiDung: 'phi' }), gd('2026-08-10', { ghiNo: 21_600_000, noiDung: 'MT Digital thanh toan HD 21 Lyvystar' })],
+    });
+    expect(r.ds.find((x) => x.mst === '0300000031')).toMatchObject({ con: 0 });
+    expect(r.phai).toBe(0);
+  });
+
+  it('chuyển khoản gộp nhiều hoá đơn nhỏ — không tính thêm tiền mặt (không trừ hai lần)', () => {
+    const r = congNoTheoSaoKe({
+      loai: 'tra',
+      hoaDon: [
+        hd('vao', '2026-08-02', 2_000_000, { soHd: '31', tongTien: 2_160_000, tenDoiTac: 'CÔNG TY TNHH IN ẤN HƯNG THỊNH', mstDoiTac: '0300000033' }),
+        hd('vao', '2026-08-03', 2_000_000, { soHd: '32', tongTien: 2_160_000, tenDoiTac: 'CÔNG TY TNHH IN ẤN HƯNG THỊNH', mstDoiTac: '0300000033' }),
+      ],
+      giaoDich: [gd('2026-08-01', { ghiNo: 1, noiDung: 'phi' }), gd('2026-08-10', { ghiNo: 4_320_000, noiDung: 'thanh toan in an Hung Thinh' })],
+    });
+    expect(r.ds.find((x) => x.mst === '0300000033')).toMatchObject({ daTra: 4_320_000, con: 0 });
+    expect(r.truoc).toBe(0);
+  });
 });
 
 describe('nhà thầu nước ngoài ĐÃ có hoá đơn đầu vào (Google, Meta) — không tính hai lần', () => {
