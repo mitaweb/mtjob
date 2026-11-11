@@ -132,7 +132,7 @@ async function soTaiKhoan(ts: TaiSanNt, thue: number, ky: Ky, tenRieng = ''): Pr
     const khoang = `segments.date BETWEEN '${ky.tu}' AND '${ky.den}'`;
     const [tong, cc] = await Promise.all([
       k.gadsTruyVan(ts.maNgoai, `SELECT metrics.impressions, metrics.clicks, metrics.conversions, metrics.cost_micros FROM customer WHERE ${khoang}`),
-      k.gadsTruyVan(ts.maNgoai, `SELECT segments.conversion_action_category, metrics.conversions FROM customer WHERE ${khoang}`),
+      k.gadsTruyVan(ts.maNgoai, `SELECT segments.conversion_action_category, segments.conversion_action_name, metrics.conversions FROM customer WHERE ${khoang}`),
     ]);
     const s = { hienThi: 0, click: 0, chuyenDoi: 0, chi: 0 };
     for (const r of (Array.isArray(tong) ? tong : []).flatMap((x: { results?: Array<{ metrics?: Record<string, unknown> }> }) => x.results || [])) {

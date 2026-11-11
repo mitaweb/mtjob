@@ -42,6 +42,18 @@ describe('coCauGads — chuyển đổi theo loại (tiếng Việt)', () => {
     ];
     expect(coCauGads(j)).toEqual({ 'Chỉ đường': 80, 'Cuộc gọi': 4, Khác: 1.5 });
   });
+  it('tên hành động có "gọi / call" → Cuộc gọi (Google xếp "nhấp để gọi" vào nhóm Liên hệ — Mịn Skinlab thật 11/11/2026)', () => {
+    const j = [
+      {
+        results: [
+          { segments: { conversionActionCategory: 'CONTACT', conversionActionName: 'Local actions - Click to call' }, metrics: { conversions: 5 } },
+          { segments: { conversionActionCategory: 'CONTACT', conversionActionName: 'Liên hệ qua form' }, metrics: { conversions: 2 } },
+          { segments: { conversionActionCategory: 'DEFAULT', conversionActionName: 'Local actions - Directions' }, metrics: { conversions: 7 } },
+        ],
+      },
+    ];
+    expect(coCauGads(j)).toEqual({ 'Cuộc gọi': 5, 'Liên hệ': 2, 'Chỉ đường': 7 });
+  });
 });
 
 describe('coCauMeta — kết quả Facebook theo loại', () => {

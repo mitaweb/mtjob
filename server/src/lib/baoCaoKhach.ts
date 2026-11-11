@@ -80,11 +80,18 @@ const cong = (m: Record<string, number>, k: string, v: number) => {
   if (v > 0) m[k] = (m[k] || 0) + v;
 };
 
-/** Google Ads searchStream `SELECT segments.conversion_action_category, metrics.conversions FROM customer …` */
+/** Tên hành động rõ nghĩa hơn nhóm: Google xếp "nhấp để gọi" (hành động địa phương) vào nhóm Liên hệ. */
+function nhanGads(loai: string, ten: string): string {
+  if (/\b(call|calls|phone)\b|gọi|điện thoại/i.test(ten)) return 'Cuộc gọi';
+  if (/direction|chỉ đường|đường đi/i.test(ten)) return 'Chỉ đường';
+  return LOAI_GADS[loai] || 'Khác';
+}
+
+/** Google Ads searchStream `SELECT segments.conversion_action_category, segments.conversion_action_name, metrics.conversions FROM customer …` */
 export function coCauGads(j: Json): Record<string, number> {
   const ra: Record<string, number> = {};
   for (const r of (Array.isArray(j) ? j : []).flatMap((x: Json) => (Array.isArray(x?.results) ? x.results : []))) {
-    cong(ra, LOAI_GADS[String(r?.segments?.conversionActionCategory || '')] || 'Khác', so(r?.metrics?.conversions));
+    cong(ra, nhanGads(String(r?.segments?.conversionActionCategory || ''), String(r?.segments?.conversionActionName || '')), so(r?.metrics?.conversions));
   }
   return ra;
 }
