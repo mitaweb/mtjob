@@ -59,7 +59,11 @@ jobsRouter.get(
         // AI đề xuất điều chỉnh quảng cáo (11/11/2026): từ 7h, mỗi lượt một tài khoản có chi tiêu, mỗi ngày một lần.
         .then(() => import('./adsDieuChinh.service.js'))
         .then((a) => a.aiDeXuatHangNgay())
-        .catch((e) => console.warn('[ads] AI đề xuất:', (e as Error).message)),
+        .catch((e) => console.warn('[ads] AI đề xuất:', (e as Error).message))
+        // Báo cáo gửi khách (11/11/2026): kỳ tuần / tháng vừa kết thúc → lấy số + AI nhận xét → chờ người phụ trách duyệt.
+        .then(() => import('./baoCaoKhach.service.js'))
+        .then((b) => b.chayBaoCaoKhach(batDau + 270_000))
+        .catch((e) => console.warn('[bao-cao-khach] lượt:', (e as Error).message)),
     );
     // Nhắc hẹn rồi Zalo → kho tri thức, chạy nền nối tiếp nhau.
     runInBackground(

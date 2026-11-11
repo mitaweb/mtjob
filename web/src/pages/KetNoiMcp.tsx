@@ -11,6 +11,7 @@ import AsyncButton from '../components/AsyncButton';
 import AdminKetNoi from '../components/AdminKetNoi';
 import AdminFanpage from '../components/AdminFanpage';
 import AdsDieuChinh from '../components/AdsDieuChinh';
+import BaoCaoKhach from '../components/BaoCaoKhach';
 import AdsNhatKy from '../components/AdsNhatKy';
 import ChonKhoang, { thamSoKhoang, type KhoangChon } from '../components/ChonKhoang';
 import { useToast } from '../components/Toaster';
@@ -420,7 +421,7 @@ function TabTaiKhoan() {
 
 // ── Trang ──
 
-type Tab = Loai | 'nhat_ky' | 'tai_khoan' | 'fanpage' | 'ket_noi';
+type Tab = Loai | 'nhat_ky' | 'bao_cao' | 'tai_khoan' | 'fanpage' | 'ket_noi';
 
 export default function KetNoiMcp() {
   const { user } = useAuth();
@@ -432,6 +433,7 @@ export default function KetNoiMcp() {
     { key: 'ga4', label: 'GA4' },
     { key: 'gsc', label: 'Search Console' },
     { key: 'nhat_ky', label: '📝 Nhật ký & đề xuất' },
+    { key: 'bao_cao', label: '📊 Báo cáo khách' },
     ...(laGd
       ? ([
           { key: 'tai_khoan', label: '⚙️ Tài khoản' },
@@ -468,6 +470,7 @@ export default function KetNoiMcp() {
       {tab === 'fanpage' && laGd && <AdminFanpage />}
       {tab === 'ket_noi' && laGd && <AdminKetNoi />}
       {tab === 'nhat_ky' && <AdsNhatKy />}
+      {tab === 'bao_cao' && <BaoCaoKhach />}
     </div>
   );
 }

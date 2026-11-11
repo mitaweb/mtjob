@@ -724,3 +724,26 @@ export async function guiTheoLo(han: number): Promise<string> {
     guiTu = 0;
   }
 }
+
+/**
+ * Gửi MỘT ảnh (kèm lời nhắn) vào một cuộc Zalo — báo cáo quảng cáo gửi khách (anh Tâm 11/11/2026). Người phụ trách bấm
+ * Gửi mới chạy; ảnh giữ trong bộ nhớ, không ghi đĩa.
+ */
+export async function guiAnhZalo(
+  threadId: string,
+  laNhom: boolean,
+  anh: { data: Buffer; duoi: 'png' | 'jpg'; rong: number; cao: number },
+  loiNhan: string,
+): Promise<void> {
+  const p = await moPhien();
+  if ('loi' in p) throw new Error(`Zalo: ${p.loi}`);
+  const { ThreadType } = p.zca;
+  await p.api.sendMessage(
+    {
+      msg: loiNhan,
+      attachments: [{ data: anh.data, filename: `bao-cao.${anh.duoi}` as `${string}.${string}`, metadata: { totalSize: anh.data.length, width: anh.rong || undefined, height: anh.cao || undefined } }],
+    },
+    threadId,
+    laNhom ? ThreadType.Group : ThreadType.User,
+  );
+}

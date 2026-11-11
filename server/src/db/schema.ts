@@ -653,6 +653,43 @@ ALTER TABLE point_bonus_lines ADD COLUMN IF NOT EXISTS ly_do text DEFAULT '';
 
 -- Kế toán thuế (anh Tâm 18/10/2026) — CHỈ giám đốc. Số liệu theo sổ sách thuế: hoá đơn đầu ra / đầu vào, tờ khai GTGT,
 -- công nợ 131/331, báo cáo kết quả kinh doanh. Tải lại file trùng không nhân đôi (khoá theo hoá đơn / kỳ / ngày chốt).
+-- Báo cáo quảng cáo gửi khách (anh Tâm 11/11/2026: "báo cáo hàng tuần, tháng cho các bên chạy ads, GG và FB… chi phí
+-- tổng cả thuế"). Mỗi khách một cấu hình; mỗi kỳ × nền tảng một báo cáo chờ người phụ trách duyệt rồi gửi Zalo.
+CREATE TABLE IF NOT EXISTS bao_cao_kh_cau_hinh (
+  id           text PRIMARY KEY,
+  ten          text NOT NULL,
+  logo         text DEFAULT '',            -- ảnh nhỏ (data URL ≤ 300 KB)
+  mau          text DEFAULT '',            -- màu chủ đạo #rrggbb
+  tai_khoan    text DEFAULT '[]',          -- [{id: 'gads:123' | 'meta:act_1', thue: 10}]
+  ngay_chu_ky  integer DEFAULT 0,          -- 1–28; 0 = tháng dương lịch
+  tuan         boolean DEFAULT true,
+  thang        boolean DEFAULT true,
+  zalo_thread  text DEFAULT '',
+  zalo_nhom    boolean DEFAULT false,
+  zalo_ten     text DEFAULT '',
+  bat          boolean DEFAULT true,
+  nguoi_tao    text DEFAULT '',
+  cap_nhat     text DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS bao_cao_kh (
+  id           text PRIMARY KEY,
+  cau_hinh_id  text NOT NULL,
+  ky           text NOT NULL,              -- tuan | thang | tuy_chon
+  nen_tang     text NOT NULL,              -- gads | meta
+  tu           text NOT NULL,
+  den          text NOT NULL,
+  so_lieu      text DEFAULT '{}',          -- TongHop (chi phí đã cộng thuế)
+  truoc        text DEFAULT '{}',          -- tổng kỳ trước (so sánh)
+  danh_gia     text DEFAULT '[]',
+  de_xuat      text DEFAULT '[]',
+  trang_thai   text DEFAULT 'cho',         -- cho | da_gui | bo | loi
+  loi          text DEFAULT '',
+  nguoi_gui    text DEFAULT '',
+  gui_luc      text DEFAULT '',
+  tao_luc      text DEFAULT ''
+);
+CREATE UNIQUE INDEX IF NOT EXISTS bao_cao_kh_ky_uq ON bao_cao_kh (cau_hinh_id, ky, nen_tang, tu, den);
+CREATE INDEX IF NOT EXISTS bao_cao_kh_tt_idx ON bao_cao_kh (trang_thai, tao_luc DESC);
 CREATE TABLE IF NOT EXISTS kt_hoa_don (
   khoa         text PRIMARY KEY,
   huong        text NOT NULL,          -- ra | vao
