@@ -105,9 +105,9 @@ export default function AdminFanpage() {
     await tai();
   }
   async function quet() {
-    const r = await api<{ moi: number; boQua: number; loi: string[] }>('/fanpage/quet', { method: 'POST' });
+    const r = await api<{ moi: number; boQua: number; loi: string[]; baiDoc: number; binhLuanDoc: number }>('/fanpage/quet', { method: 'POST' });
     if (r.loi.length) toast.error(r.loi.join(' · '));
-    else toast.success(`${r.moi} trả lời mới chờ duyệt${r.boQua ? ` · ${r.boQua} bình luận AI thấy không cần trả lời` : ''}`);
+    else toast.success(`Đọc ${r.baiDoc} bài, ${r.binhLuanDoc} bình luận gần đây · ${r.moi} trả lời mới chờ duyệt${r.boQua ? ` · ${r.boQua} bình luận AI thấy không cần trả lời` : ''}`);
     await tai();
   }
   async function vietAi() {
@@ -136,6 +136,9 @@ export default function AdminFanpage() {
 
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span>Trang: {d.trang.length ? d.trang.map((t) => t.ten).join(', ') : <b>chưa có</b>}</span>
+        <AsyncButton className="btn-ghost py-1 text-sm" onClick={ketNoiFanpage} busyLabel="Đang mở Facebook…">
+          🔑 Cấp quyền Fanpage
+        </AsyncButton>
         <AsyncButton className="btn-ghost py-1 text-sm" onClick={layTrang} busyLabel="Đang lấy…">
           ↻ Lấy lại danh sách Trang
         </AsyncButton>

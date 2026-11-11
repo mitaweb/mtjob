@@ -225,9 +225,9 @@ const NGAY_XET = 7;
  * Đọc bình luận mới trên mọi Trang → AI xét + soạn trả lời → chờ anh duyệt. `ep` = anh bấm "Quét ngay" (bỏ qua giãn
  * 15 phút). Trả số đề xuất mới.
  */
-export async function quetBinhLuan(o: { ep?: boolean } = {}): Promise<{ moi: number; boQua: number; loi: string[] }> {
+export async function quetBinhLuan(o: { ep?: boolean } = {}): Promise<{ moi: number; boQua: number; loi: string[]; baiDoc: number; binhLuanDoc: number }> {
   const { docMoc, ghiMoc } = await import('./hieuAnh.repo.js');
-  const kq = { moi: 0, boQua: 0, loi: [] as string[] };
+  const kq = { moi: 0, boQua: 0, loi: [] as string[], baiDoc: 0, binhLuanDoc: 0 };
   if (!o.ep && Date.now() < (await docMoc(MOC_QUET).catch(() => Number.MAX_SAFE_INTEGER))) return kq;
   const trang = await dsTrang().catch(() => []);
   if (!trang.length) return kq;
@@ -246,6 +246,8 @@ export async function quetBinhLuan(o: { ep?: boolean } = {}): Promise<{ moi: num
         access_token: token,
       });
       const ids = ((feed.data as Array<{ comments?: { data?: Array<{ id?: string }> } }>) || []).flatMap((p) => (p.comments?.data || []).map((c) => String(c.id || '')));
+      kq.baiDoc += ((feed.data as unknown[]) || []).length;
+      kq.binhLuanDoc += ids.length;
       const da = new Set((await q('SELECT binh_luan_id FROM fanpage_de_xuat WHERE binh_luan_id = ANY($1::text[])', [ids])).map((r) => String(r.binh_luan_id)));
       for (const b of binhLuanCanXet(feed, t.pageId, da, sau)) {
         if (daXet >= TOI_DA_MOT_LUOT) break;
