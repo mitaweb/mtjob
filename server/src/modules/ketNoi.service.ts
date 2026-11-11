@@ -11,7 +11,7 @@ import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
 import { ApiError } from '../util/errors.js';
 import { maHoa, giaiMa } from '../lib/maHoa.js';
-import { laCongCuGhi, ketQuaThanhChu, type CongCuMcp } from '../lib/ketNoi.js';
+import { laCongCuGhi, ketQuaThanhChu, chiTietLoiGoogle, type CongCuMcp } from '../lib/ketNoi.js';
 
 export const META_MCP_URL = 'https://mcp.facebook.com/ads';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -326,7 +326,7 @@ export async function googleNhanCode(code: string, redirectUri: string): Promise
 }
 
 /** Gọi API Google bằng kết nối đã lưu. Lỗi → câu dễ hiểu (thường gặp: chưa bật API trong project, chưa đủ quyền). */
-async function googleApi(url: string, init: RequestInit & { ads?: { loginCustomerId?: string } } = {}): Promise<unknown> {
+async function googleApi(url: string, init: RequestInit & { ads?: { loginCustomerId?: string; boMcc?: boolean } } = {}): Promise<unknown> {
   const k = await timKetNoi('google');
   if (!k?.token) throw new ApiError(400, 'Chưa kết nối Google — vào trang Kết nối MCP → tab Kết nối bấm Kết nối Google');
   const headers: Record<string, string> = { Authorization: `Bearer ${k.token}`, accept: 'application/json' };
@@ -334,22 +334,28 @@ async function googleApi(url: string, init: RequestInit & { ads?: { loginCustome
   if (init.ads) {
     const c = await googleCauHinh();
     if (c.devToken) headers['developer-token'] = c.devToken;
-    const login = String(init.ads.loginCustomerId || c.mcc || '').replace(/\D/g, '');
+    const login = init.ads.boMcc ? '' : String(init.ads.loginCustomerId || c.mcc || '').replace(/\D/g, '');
     if (login) headers['login-customer-id'] = login;
   }
   const r = await fetch(url, { method: init.method || 'GET', body: init.body, headers, signal: AbortSignal.timeout(60_000) });
   const j = (await r.json().catch(() => ({}))) as unknown;
   if (!r.ok) {
-    const e = (Array.isArray(j) ? j[0] : j) as { error?: { message?: string; status?: string } };
-    const msg = e?.error?.message || `HTTP ${r.status}`;
-    const goiY = /has not been used|is disabled|SERVICE_DISABLED/i.test(msg)
+    const ct = chiTietLoiGoogle(j);
+    const msg = ct.cau || `HTTP ${r.status}`;
+    const goiY = /USER_PERMISSION_DENIED/.test(ct.ma)
+      ? ' — Gmail đang kết nối chưa được thêm vào tài khoản / MCC Google Ads này (Google Ads → Quản trị → Quyền truy cập và bảo mật → thêm Gmail), hoặc mã MCC sai'
+      : /DEVELOPER_TOKEN/.test(ct.ma)
+        ? ` — developer token: ${ct.ma} (lấy ở MCC → Công cụ → Trung tâm API; mức Test chỉ đọc được tài khoản thử nghiệm, cần xin mức Basic / Explorer)`
+        : /CUSTOMER_NOT_ENABLED|NOT_ACTIVE/.test(ct.ma)
+          ? ' — tài khoản Google Ads này đã huỷ / chưa kích hoạt'
+          : /has not been used|is disabled|SERVICE_DISABLED/i.test(msg)
       ? ' — vào console.cloud.google.com bật API này cho project rồi thử lại'
       : /developer.token|DEVELOPER_TOKEN/i.test(msg)
         ? ' — project chưa được duyệt truy cập Google Ads API (xin mức Explorer), hoặc cần dán developer token'
         : r.status === 403
           ? ' — tài khoản Google đã kết nối chưa có quyền với mục này'
           : '';
-    throw new ApiError(400, `Google báo: ${msg.slice(0, 300)}${goiY}`);
+    throw new ApiError(400, `Google báo: ${msg.slice(0, 300)}${ct.ma ? ` [${ct.ma}]` : ''}${goiY}`);
   }
   return j;
 }
@@ -358,14 +364,29 @@ export async function gadsTaiKhoan(): Promise<TaiSan[]> {
   const c = await googleCauHinh();
   // Có MCC: liệt kê tài khoản con của MCC (agency) — kèm tên; không thì danh sách tài khoản đăng nhập thấy được.
   if (c.mcc) {
-    const lo = (await googleApi(`https://googleads.googleapis.com/${c.adsVersion}/customers/${c.mcc}/googleAds:searchStream`, {
-      method: 'POST',
-      body: JSON.stringify({
-        query:
-          'SELECT customer_client.id, customer_client.descriptive_name, customer_client.manager, customer_client.status, customer_client.currency_code FROM customer_client WHERE customer_client.level <= 1',
-      }),
-      ads: { loginCustomerId: c.mcc },
-    })) as Array<{ results?: Array<{ customerClient?: Record<string, unknown> }> }>;
+    let lo: Array<{ results?: Array<{ customerClient?: Record<string, unknown> }> }>;
+    try {
+      lo = (await googleApi(`https://googleads.googleapis.com/${c.adsVersion}/customers/${c.mcc}/googleAds:searchStream`, {
+        method: 'POST',
+        body: JSON.stringify({
+          query:
+            'SELECT customer_client.id, customer_client.descriptive_name, customer_client.manager, customer_client.status, customer_client.currency_code FROM customer_client WHERE customer_client.level <= 1',
+        }),
+        ads: { loginCustomerId: c.mcc },
+      })) as typeof lo;
+    } catch (e) {
+      // MCC lỗi (anh Tâm 11/11/2026: "kết nối rồi mà chưa có gg ads") → xem Gmail này thực sự vào được tài khoản Ads nào,
+      // để báo rõ: chưa được thêm vào MCC, hay mã MCC sai.
+      const thay = await googleApi(`https://googleads.googleapis.com/${c.adsVersion}/customers:listAccessibleCustomers`, { ads: { boMcc: true } })
+        .then((j) => ((j as { resourceNames?: string[] }).resourceNames || []).map((x) => x.replace('customers/', '')))
+        .catch(() => null);
+      if (thay === null) throw e;
+      throw new ApiError(
+        400,
+        `${(e as Error).message}. Gmail đang kết nối vào được ${thay.length} tài khoản Google Ads${thay.length ? `: ${thay.slice(0, 15).join(', ')}` : ''}` +
+          `${thay.includes(c.mcc) ? '' : ` — KHÔNG có MCC ${c.mcc}: thêm Gmail này vào MCC, hoặc sửa mã MCC`}.`,
+      );
+    }
     return lo
       .flatMap((x) => x.results || [])
       .map((x) => x.customerClient || {})

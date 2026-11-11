@@ -128,3 +128,17 @@ export function tomTatGaql(lo: Array<{ results?: Array<Record<string, unknown>> 
   );
   return [...dong, `(${kq.length} dòng${kq.length > TOI_DA_DONG ? `, hiện ${TOI_DA_DONG}` : ''})`].join('\n');
 }
+
+/** Lỗi Google API → mã lỗi cụ thể (Google Ads để trong details[].errors[].errorCode) + câu lỗi đầy đủ. */
+export function chiTietLoiGoogle(j: unknown): { ma: string; cau: string } {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const e = (Array.isArray(j) ? j[0] : j) as any;
+  const err = e?.error;
+  if (!err) return { ma: '', cau: '' };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const loi = (Array.isArray(err.details) ? err.details : []).flatMap((d: any) => (Array.isArray(d?.errors) ? d.errors : []));
+  const ma = loi.map((x: { errorCode?: Record<string, string> }) => Object.values(x?.errorCode || {})[0]).find(Boolean) || '';
+  const them = loi.map((x: { message?: string }) => String(x?.message || '')).filter(Boolean)[0] || '';
+  const cau = [String(err.message || ''), them].filter(Boolean).join(' — ');
+  return { ma: String(ma), cau };
+}

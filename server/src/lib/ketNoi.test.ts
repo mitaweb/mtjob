@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { urlDangNhapMeta, laCongCuGhi, ketQuaThanhChu, tomTatCongCu, urlDangNhapGoogle, tomTatGa4, tomTatGsc, tomTatGaql } from './ketNoi.js';
+import { urlDangNhapMeta, laCongCuGhi, ketQuaThanhChu, tomTatCongCu, urlDangNhapGoogle, tomTatGa4, tomTatGsc, tomTatGaql, chiTietLoiGoogle } from './ketNoi.js';
 
 // Anh Tâm 10/11/2026: "Phần MCP ads anh chưa thấy ở đâu" — kết nối Meta Ads (MCP chính thức) bằng đăng nhập Facebook,
 // trợ lý gọi công cụ MCP CHỈ ĐỌC (thao tác thay đổi quảng cáo phải qua duyệt — đợt sau).
@@ -98,5 +98,30 @@ describe('Google', () => {
     ]);
     expect(t).toBe('campaign.name=Search VN · campaign.status=ENABLED · metrics.clicks=15 · metrics.cost=2.500.000 · metrics.conversions=3\n(1 dòng)');
     expect(tomTatGaql([])).toBe('Không có dòng nào.');
+  });
+});
+
+describe('chiTietLoiGoogle — mã lỗi Google Ads cụ thể (anh Tâm 11/11/2026: "kết nối rồi mà chưa có gg ads")', () => {
+  it('lấy mã lỗi + câu lỗi trong details của Google Ads', () => {
+    const j = [
+      {
+        error: {
+          code: 403,
+          message: 'The caller does not have permission',
+          status: 'PERMISSION_DENIED',
+          details: [
+            {
+              '@type': 'type.googleapis.com/google.ads.googleads.v26.errors.GoogleAdsFailure',
+              errors: [{ errorCode: { authorizationError: 'USER_PERMISSION_DENIED' }, message: "User doesn't have permission to access customer." }],
+            },
+          ],
+        },
+      },
+    ];
+    expect(chiTietLoiGoogle(j)).toEqual({ ma: 'USER_PERMISSION_DENIED', cau: "The caller does not have permission — User doesn't have permission to access customer." });
+  });
+  it('lỗi thường (không có details)', () => {
+    expect(chiTietLoiGoogle({ error: { message: 'API disabled' } })).toEqual({ ma: '', cau: 'API disabled' });
+    expect(chiTietLoiGoogle(null)).toEqual({ ma: '', cau: '' });
   });
 });
