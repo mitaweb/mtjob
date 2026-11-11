@@ -143,7 +143,7 @@ export default function AdminFanpage() {
       </div>
       {!d.trang.length && (
         <p className="rounded-xl bg-brand-50 p-3 text-sm">
-          Chưa có Trang: ở mục <b>🔌 Kết nối nền tảng</b> bấm <b>Kết nối Facebook</b> lại (lần này Facebook hỏi thêm quyền Trang — chọn
+          Chưa có Trang: ở tab <b>🔌 Kết nối</b> bấm <b>Kết nối Facebook</b> lại (lần này Facebook hỏi thêm quyền Trang — chọn
           các Trang của công ty), rồi bấm “Lấy lại danh sách Trang”.
         </p>
       )}

@@ -15,6 +15,7 @@ const Payroll = lazy(() => import('./pages/Payroll'));
 const AdminPayroll = lazy(() => import('./pages/AdminPayroll'));
 const Finance = lazy(() => import('./pages/Finance'));
 const KeToanThue = lazy(() => import('./pages/KeToanThue'));
+const KetNoiMcp = lazy(() => import('./pages/KetNoiMcp'));
 const CRM = lazy(() => import('./pages/CRM'));
 const Projects = lazy(() => import('./pages/Projects'));
 const Brain = lazy(() => import('./pages/Brain'));
@@ -80,6 +81,15 @@ export default function App() {
           element={
             <Protected roles={['director', 'admin']}>
               <AdminPayroll />
+            </Protected>
+          }
+        />
+        {/* Kết nối MCP (11/11/2026): mọi người xem chỉ số phòng mình; giám đốc thêm tab cài đặt. */}
+        <Route
+          path="/ket-noi-mcp"
+          element={
+            <Protected>
+              <KetNoiMcp />
             </Protected>
           }
         />

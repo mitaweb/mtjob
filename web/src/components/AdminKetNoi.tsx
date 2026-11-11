@@ -209,13 +209,13 @@ export default function AdminKetNoi() {
     setDl(await api<DuLieu>('/ket-noi'));
   }
   useEffect(() => {
-    // Facebook / Google đăng nhập xong chuyển về /admin?ket_noi=…
+    // Facebook / Google đăng nhập xong chuyển về /ket-noi-mcp?tab=ket_noi&ket_noi=…
     const p = new URLSearchParams(window.location.search);
     const kn = p.get('ket_noi');
     if (kn === 'meta_ok' || kn === 'google_ok')
       toast.success(`Đã kết nối ${kn === 'meta_ok' ? 'Meta Ads' : 'Google'}${p.get('ten') ? ` — ${p.get('ten')}` : ''}. Bấm "Kiểm tra" để xem tài khoản thấy được.`);
     else if (kn === 'loi') toast.error(`Kết nối chưa được: ${p.get('thong_bao') || 'lỗi không rõ'}`);
-    if (kn) window.history.replaceState({}, '', window.location.pathname);
+    if (kn) window.history.replaceState({}, '', `${window.location.pathname}?tab=ket_noi`);
     tai().catch((e) => toast.error((e as Error).message));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

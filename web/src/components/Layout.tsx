@@ -9,6 +9,7 @@ import {
   FileText,
   FolderKanban,
   Landmark,
+  Plug,
   LayoutDashboard,
   MessageCircle,
   Receipt,
@@ -47,6 +48,8 @@ const NAV: NavItem[] = [
   { to: '/projects', label: 'Dự án', icon: FolderKanban, roles: ['member', 'leader', 'director', 'admin', 'sale'] },
   // Lưu ý KH đã gộp vào Kho tri thức (tab Khách hàng) — anh Tâm 4/10/2026.
   { to: '/brain', label: 'Kho tri thức', icon: Brain },
+  // Kết nối MCP (11/11/2026): chỉ số Ads / SEO theo phòng; giám đốc cài kết nối ở đây.
+  { to: '/ket-noi-mcp', label: 'Kết nối MCP', icon: Plug },
   // Giám đốc không nộp đơn cho ai duyệt → ẩn Đơn từ, chỉ giữ Duyệt đơn.
   { to: '/requests', label: 'Đơn từ', icon: FileText, roles: ['member', 'leader', 'sale', 'accountant', 'admin'] },
   { to: '/approvals', label: 'Duyệt đơn', icon: CheckSquare, roles: ['leader', 'director', 'admin'] },

@@ -36,7 +36,7 @@ for (const nen of ['meta', 'google'] as const) {
   ketNoiRouter.get(
     `/${nen}/callback`,
     asyncHandler(async (req, res) => {
-      const ve = (o: Record<string, string>) => res.redirect(`/admin?${new URLSearchParams(o).toString()}`);
+      const ve = (o: Record<string, string>) => res.redirect(`/ket-noi-mcp?${new URLSearchParams({ tab: 'ket_noi', ...o }).toString()}`);
       try {
         if (req.query.error) return ve({ ket_noi: 'loi', thong_bao: String(req.query.error_description || req.query.error).slice(0, 200) });
         verifyState(String(req.query.state || ''), `ket-noi-${nen}`);
@@ -90,7 +90,7 @@ ketNoiRouter.get(
   '/meta/bat-dau',
   asyncHandler(async (req, res) => {
     const c = await metaCauHinh();
-    if (!c.appId || !c.secret) throw new ApiError(400, 'Chưa có App ID / App Secret của app Meta — dán ở mục Kết nối nền tảng');
+    if (!c.appId || !c.secret) throw new ApiError(400, 'Chưa có App ID / App Secret của app Meta — dán ở trang Kết nối MCP → tab Kết nối');
     res.json({
       url: urlDangNhapMeta({ appId: c.appId, configId: c.configId, version: c.version, redirectUri: duongVe(req, 'meta'), state: signState({ sub: req.user!.sub, muc: 'ket-noi-meta' }) }),
     });
@@ -101,7 +101,7 @@ ketNoiRouter.get(
   '/google/bat-dau',
   asyncHandler(async (req, res) => {
     const c = await googleCauHinh();
-    if (!c.clientId || !c.secret) throw new ApiError(400, 'Chưa có Client ID / Client Secret Google — dán ở mục Kết nối nền tảng');
+    if (!c.clientId || !c.secret) throw new ApiError(400, 'Chưa có Client ID / Client Secret Google — dán ở trang Kết nối MCP → tab Kết nối');
     res.json({ url: urlDangNhapGoogle({ clientId: c.clientId, redirectUri: duongVe(req, 'google'), state: signState({ sub: req.user!.sub, muc: 'ket-noi-google' }) }) });
   }),
 );

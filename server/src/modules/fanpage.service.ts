@@ -40,7 +40,7 @@ export interface Trang {
 /** Lấy các Trang anh quản trị (me/accounts) + token Trang (không hết hạn khi lấy từ token dài hạn) → lưu bản mã. */
 export async function luuTrang(tokenNguoiDung?: string): Promise<number> {
   const token = tokenNguoiDung || (await tokenMeta());
-  if (!token) throw new ApiError(400, 'Chưa kết nối Facebook — bấm Kết nối Facebook ở mục Kết nối nền tảng');
+  if (!token) throw new ApiError(400, 'Chưa kết nối Facebook — bấm Kết nối Facebook ở trang Kết nối MCP → tab Kết nối');
   const j = await fb('GET', 'me/accounts', { fields: 'id,name,access_token', limit: '100', access_token: token });
   const ds = (j.data as Array<Record<string, unknown>>) || [];
   const luc = nowTz().toISOString();
@@ -267,7 +267,7 @@ export async function quetBinhLuan(o: { ep?: boolean } = {}): Promise<{ moi: num
   if (daXet >= TOI_DA_MOT_LUOT) await ghiMoc(MOC_QUET, Date.now() + 60_000);
   if (kq.moi) {
     const gd = (await getDirectors().catch(() => []))[0];
-    if (gd?.id) await notify(gd.id, { type: 'fanpage', title: `💬 ${kq.moi} trả lời bình luận Fanpage chờ anh duyệt`, body: 'AI đã soạn sẵn — anh xem, sửa rồi bấm Đăng.', url: '/admin' });
+    if (gd?.id) await notify(gd.id, { type: 'fanpage', title: `💬 ${kq.moi} trả lời bình luận Fanpage chờ anh duyệt`, body: 'AI đã soạn sẵn — anh xem, sửa rồi bấm Đăng.', url: '/ket-noi-mcp?tab=fanpage' });
   }
   return kq;
 }
@@ -283,7 +283,7 @@ export async function fanpageTools(): Promise<ToolDef[]> {
       declaration: {
         name: 'create_bai_fanpage',
         description:
-          `Soạn BÀI NHÁP cho Fanpage (${trang.map((t) => t.ten).join(', ')}) — KHÔNG đăng; anh duyệt ở Quản trị → Fanpage mới đăng. ` +
+          `Soạn BÀI NHÁP cho Fanpage (${trang.map((t) => t.ten).join(', ')}) — KHÔNG đăng; anh duyệt ở trang Kết nối MCP → tab Fanpage mới đăng. ` +
           'Truyền noiDung (anh đọc sẵn nội dung) HOẶC yeuCau (để AI viết từ tri thức công khai trong kho).',
         parameters: {
           type: 'OBJECT',
@@ -303,7 +303,7 @@ export async function fanpageTools(): Promise<ToolDef[]> {
         if (!nd && String(a.yeuCau || '').trim()) nd = await vietBaiAi(t.pageId, String(a.yeuCau));
         if (!nd) return 'CHƯA SOẠN: thiếu nội dung hoặc yêu cầu.';
         await taoBai(t.pageId, nd, 'ai');
-        return `ĐÃ SOẠN bản nháp cho «${t.ten}» — CHƯA đăng. Anh vào Quản trị → 📣 Fanpage sửa rồi bấm Đăng.\n\n${nd}`;
+        return `ĐÃ SOẠN bản nháp cho «${t.ten}» — CHƯA đăng. Anh vào trang Kết nối MCP → tab 📣 Fanpage sửa rồi bấm Đăng.\n\n${nd}`;
       },
     },
   ];

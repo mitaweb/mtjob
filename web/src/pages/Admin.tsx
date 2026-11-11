@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import AsyncButton from '../components/AsyncButton';
 import MemberTable from '../components/MemberTable';
@@ -9,10 +10,8 @@ import AdminViTriChamCong from '../components/AdminViTriChamCong';
 import { useToast } from '../components/Toaster';
 import ModelPicker from '../components/ModelPicker';
 import OGap from '../components/OGap';
-import AdminKetNoi from '../components/AdminKetNoi';
 import AdminMucDoThongBao from '../components/AdminMucDoThongBao';
 import AdminViecTuDong from '../components/AdminViecTuDong';
-import AdminFanpage from '../components/AdminFanpage';
 import { useAuth } from '../lib/auth';
 
 export default function Admin() {
@@ -326,9 +325,13 @@ export default function Admin() {
 
       {/* Kết nối nền tảng (MCP) — chỉ giám đốc (anh Tâm 10/11/2026). */}
       {user?.role === 'director' && (
-        <OGap khoa="ket_noi" tieuDe="🔌 Kết nối nền tảng" moTa="Meta Ads, Google Ads · GA4 · Search Console, n8n" macDinhMo>
-          <AdminKetNoi />
-        </OGap>
+        <Link to="/ket-noi-mcp?tab=ket_noi" className="card flex items-center justify-between gap-3 py-3 hover:bg-brand-50">
+          <span>
+            <span className="font-semibold">🔌 Kết nối nền tảng, Fanpage</span>
+            <span className="ml-2 text-sm text-ink-muted">đã chuyển sang trang Kết nối MCP</span>
+          </span>
+          <span className="text-sm text-ocean-700">Mở →</span>
+        </Link>
       )}
       {user?.role === 'director' && (
         <OGap khoa="muc_do_thong_bao" tieuDe="🔔 Mức độ thông báo" moTa="chỉ việc khẩn mới đổ chuông">
@@ -338,11 +341,6 @@ export default function Admin() {
       {user?.role === 'director' && (
         <OGap khoa="viec_tu_dong" tieuDe="🔁 Việc tự động" moTa="báo cáo định kỳ, tự kiểm lại, sai 3 lần tự dừng">
           <AdminViecTuDong />
-        </OGap>
-      )}
-      {user?.role === 'director' && (
-        <OGap khoa="fanpage" tieuDe="📣 Fanpage" moTa="AI soạn bài / trả lời bình luận — anh duyệt mới đăng">
-          <AdminFanpage />
         </OGap>
       )}
 

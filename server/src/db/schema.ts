@@ -444,6 +444,36 @@ CREATE TABLE IF NOT EXISTS fanpage_de_xuat (
 CREATE UNIQUE INDEX IF NOT EXISTS fanpage_de_xuat_bl_idx ON fanpage_de_xuat (binh_luan_id) WHERE binh_luan_id <> '';
 CREATE INDEX IF NOT EXISTS fanpage_de_xuat_tt_idx ON fanpage_de_xuat (trang_thai, tao_luc DESC);
 
+-- Chỉ số nền tảng (anh Tâm 11/11/2026: "đưa riêng phần MCP, kết nối nền tảng ra riêng để các phòng ban có thể sử
+-- dụng, xem đc các chỉ số cơ bản"). Tài sản = tài khoản Meta Ads / Google Ads, property GA4, site Search Console.
+-- team_id: '' = chỉ giám đốc, '*' = mọi phòng, còn lại = mã team. Số liệu đồng bộ theo ngày (cron) để trang mở nhanh.
+CREATE TABLE IF NOT EXISTS nen_tang_tai_san (
+  id           text PRIMARY KEY,           -- <loai>:<mã ngoài>
+  loai         text NOT NULL,              -- meta | gads | ga4 | gsc
+  ma_ngoai     text NOT NULL,
+  ten          text DEFAULT '',
+  ghi_chu      text DEFAULT '',
+  tien_te      text DEFAULT '',
+  team_id      text DEFAULT '',
+  khach        text DEFAULT '',
+  theo_doi     boolean DEFAULT false,
+  dong_bo_cuoi bigint DEFAULT 0,           -- ms
+  loi          text DEFAULT '',
+  cap_nhat     text DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS nen_tang_so_lieu (
+  tai_san_id  text NOT NULL,
+  ngay        text NOT NULL,               -- YYYY-MM-DD
+  chi_tieu    double precision DEFAULT 0,
+  hien_thi    double precision DEFAULT 0,
+  click       double precision DEFAULT 0,
+  ket_qua     double precision DEFAULT 0,
+  phien       double precision DEFAULT 0,
+  nguoi_dung  double precision DEFAULT 0,
+  vi_tri      double precision DEFAULT 0,
+  PRIMARY KEY (tai_san_id, ngay)
+);
+
 -- Dự án: theo dõi KẾT QUẢ cam kết với khách (bao nhiêu tin nhắn, bao nhiêu khách mới),
 -- khác với bảng tasks vốn đo công sức bỏ ra. Khách hàng là tuỳ chọn — có dự án nội bộ.
 CREATE TABLE IF NOT EXISTS projects (

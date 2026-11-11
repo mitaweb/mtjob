@@ -51,7 +51,11 @@ jobsRouter.get(
     runInBackground(
       import('./viecTuDong.service.js')
         .then((m) => m.chayViecTuDong())
-        .catch((e) => console.warn('[viec-tu-dong] lượt:', (e as Error).message)),
+        .catch((e) => console.warn('[viec-tu-dong] lượt:', (e as Error).message))
+        // Kết nối MCP (11/11/2026): số Meta / Google Ads / GA4 / Search Console của tài sản đang theo dõi, 6 tiếng / lần.
+        .then(() => import('./nenTang.service.js'))
+        .then((n) => n.dongBoNenTang(batDau + 240_000))
+        .catch((e) => console.warn('[nen-tang] đồng bộ:', (e as Error).message)),
     );
     // Nhắc hẹn rồi Zalo → kho tri thức, chạy nền nối tiếp nhau.
     runInBackground(

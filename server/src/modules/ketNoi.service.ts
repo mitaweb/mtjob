@@ -231,7 +231,7 @@ async function graph(duongDan: string, tham: Record<string, string>): Promise<Re
 
 export async function metaNhanCode(code: string, redirectUri: string): Promise<string> {
   const c = await metaCauHinh();
-  if (!c.appId || !c.secret) throw new ApiError(400, 'Chưa có App ID / App Secret của app Meta — dán ở mục Kết nối nền tảng');
+  if (!c.appId || !c.secret) throw new ApiError(400, 'Chưa có App ID / App Secret của app Meta — dán ở trang Kết nối MCP → tab Kết nối');
   const ngan = await graph('oauth/access_token', { client_id: c.appId, client_secret: c.secret, redirect_uri: redirectUri, code });
   const dai = await graph('oauth/access_token', {
     grant_type: 'fb_exchange_token',
@@ -267,11 +267,33 @@ async function metaTaiKhoanQc(token: string): Promise<TaiSan[]> {
   }));
 }
 
+/** Tài khoản quảng cáo Meta mà kết nối Facebook thấy được (trang Kết nối MCP). */
+export async function metaTaiSan(): Promise<TaiSan[]> {
+  const k = await timKetNoi('meta');
+  if (!k?.token) throw new ApiError(400, 'Chưa kết nối Facebook');
+  return metaTaiKhoanQc(k.token);
+}
+
+/** Số theo ngày của một tài khoản quảng cáo Meta (Graph API insights, cấp tài khoản). */
+export async function metaInsights(accountId: string, tu: string, den: string): Promise<unknown> {
+  const k = await timKetNoi('meta');
+  if (!k?.token) throw new ApiError(400, 'Chưa kết nối Facebook');
+  const id = String(accountId).replace(/^act_/, '').replace(/\D/g, '');
+  return graph(`act_${id}/insights`, {
+    level: 'account',
+    time_increment: '1',
+    time_range: JSON.stringify({ since: tu, until: den }),
+    fields: 'spend,impressions,clicks,actions',
+    limit: '100',
+    access_token: k.token,
+  });
+}
+
 // ── Google: OAuth của chính công ty → gọi thẳng API ──
 
 export async function googleNhanCode(code: string, redirectUri: string): Promise<string> {
   const c = await googleCauHinh();
-  if (!c.clientId || !c.secret) throw new ApiError(400, 'Chưa có Client ID / Client Secret Google — dán ở mục Kết nối nền tảng');
+  if (!c.clientId || !c.secret) throw new ApiError(400, 'Chưa có Client ID / Client Secret Google — dán ở trang Kết nối MCP → tab Kết nối');
   const t = await doiToken(GOOGLE_TOKEN_URL, { grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: c.clientId, client_secret: c.secret }, 'Google');
   if (!t.refresh) throw new ApiError(400, 'Google không trả mã làm mới — vào myaccount.google.com/permissions gỡ quyền app rồi kết nối lại');
   let email = '';
@@ -288,7 +310,7 @@ export async function googleNhanCode(code: string, redirectUri: string): Promise
 /** Gọi API Google bằng kết nối đã lưu. Lỗi → câu dễ hiểu (thường gặp: chưa bật API trong project, chưa đủ quyền). */
 async function googleApi(url: string, init: RequestInit & { ads?: { loginCustomerId?: string } } = {}): Promise<unknown> {
   const k = await timKetNoi('google');
-  if (!k?.token) throw new ApiError(400, 'Chưa kết nối Google — vào Quản trị → Kết nối nền tảng bấm Kết nối Google');
+  if (!k?.token) throw new ApiError(400, 'Chưa kết nối Google — vào trang Kết nối MCP → tab Kết nối bấm Kết nối Google');
   const headers: Record<string, string> = { Authorization: `Bearer ${k.token}`, accept: 'application/json' };
   if (init.body) headers['content-type'] = 'application/json';
   if (init.ads) {
@@ -486,7 +508,7 @@ export async function goiCongCu(id: string, ten: string, thamSo: Record<string, 
   const k = await timKetNoi(id);
   if (!k) return `Không có kết nối "${id}".`;
   const cc = k.congCu.find((c) => c.name === ten);
-  if (!cc) return `Kết nối "${k.ten}" không có công cụ "${ten}". Các công cụ: ${k.congCu.map((c) => c.name).join(', ') || '(chưa kiểm tra — vào Quản trị → Kết nối nền tảng bấm Kiểm tra)'}.`;
+  if (!cc) return `Kết nối "${k.ten}" không có công cụ "${ten}". Các công cụ: ${k.congCu.map((c) => c.name).join(', ') || '(chưa kiểm tra — vào trang Kết nối MCP → tab Kết nối bấm Kiểm tra)'}.`;
   if (laCongCuGhi(cc)) return `CHƯA LÀM: "${ten}" làm THAY ĐỔI tài khoản — trợ lý chỉ được đọc. Thao tác này anh làm trực tiếp (đợt sau sẽ có đề xuất → anh duyệt).`;
   const c = await moMcp(k);
   try {
