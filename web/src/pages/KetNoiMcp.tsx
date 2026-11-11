@@ -344,6 +344,7 @@ interface TaiSan {
 function TabTaiKhoan() {
   const toast = useToast();
   const [d, setD] = useState<{ ds: TaiSan[]; teams: Team[]; canCapNhatDb: boolean } | null>(null);
+  const [loai, setLoai] = useState<Loai | null>(null);
   const tai = () => api<{ ds: TaiSan[]; teams: Team[]; canCapNhatDb: boolean }>('/nen-tang/tai-san').then(setD);
   useEffect(() => {
     tai().catch(() => undefined);
@@ -361,6 +362,8 @@ function TabTaiKhoan() {
   }
 
   if (!d) return <div className="card text-sm text-ink-muted">Đang tải…</div>;
+  const coLoai = (['meta', 'gads', 'ga4', 'gsc'] as Loai[]).filter((l) => d.ds.some((t) => t.loai === l));
+  const loaiChon = loai && coLoai.includes(loai) ? loai : coLoai[0];
   return (
     <div className="card space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -374,12 +377,33 @@ function TabTaiKhoan() {
       </div>
       {d.canCapNhatDb && <p className="rounded-xl bg-amber-50 p-3 text-sm">Cần bấm <b>Quản trị → 🛠 Cập nhật cấu trúc DB</b> trước.</p>}
       {!d.ds.length && !d.canCapNhatDb && <p className="text-sm text-ink-muted">Chưa có tài khoản — kết nối Facebook / Google ở tab 🔌 Kết nối rồi bấm “Lấy danh sách”.</p>}
-      {(['meta', 'gads', 'ga4', 'gsc'] as Loai[]).map((loai) => {
+      {/* Anh Tâm 11/11/2026: mỗi nền tảng một tab cho gọn (trước xếp chồng Meta → Google → GA4 → GSC, cuộn rất dài). */}
+      {coLoai.length > 0 && (
+        <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Nền tảng">
+          {coLoai.map((l) => {
+            const ds = d.ds.filter((t) => t.loai === l);
+            return (
+              <button
+                key={l}
+                role="tab"
+                aria-selected={loaiChon === l}
+                className={`whitespace-nowrap rounded-lg border px-3 py-1 text-sm ${loaiChon === l ? 'border-ink bg-ink text-white' : 'border-brand-200 bg-white text-ink-soft'}`}
+                onClick={() => setLoai(l)}
+              >
+                {TEN_LOAI[l]}{' '}
+                <span className={loaiChon === l ? 'text-white/70' : 'text-ink-muted'}>
+                  {ds.filter((t) => t.theoDoi).length}/{ds.length}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {coLoai.filter((l) => l === loaiChon).map((loai) => {
         const ds = d.ds.filter((t) => t.loai === loai);
-        if (!ds.length) return null;
         return (
           <div key={loai}>
-            <p className="mb-1 font-medium">{TEN_LOAI[loai]}</p>
+            <p className="mb-1 text-xs text-ink-muted">Đang theo dõi / tổng số tài khoản</p>
             <ul className="divide-y divide-brand-100">
               {ds.map((t) => (
                 <li key={t.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
