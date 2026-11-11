@@ -160,9 +160,9 @@ const tenTeam = (id: string, teams: Team[]) => (id === '*' ? 'Mọi phòng' : id
 function TabChiSo({ loai, laGd }: { loai: Loai; laGd: boolean }) {
   const toast = useToast();
   const [team, setTeam] = useState('');
-  const [d, setD] = useState<{ taiSan: ChiSoTaiSan[]; tong: TomTat | null; teams: Team[]; canCapNhatDb: boolean } | null>(null);
+  const [d, setD] = useState<{ taiSan: ChiSoTaiSan[]; tong: TomTat | null; tongTien?: TomTat; tienTeTong?: string; boQuaTien?: number; teams: Team[]; canCapNhatDb: boolean } | null>(null);
   const tai = () =>
-    api<{ taiSan: ChiSoTaiSan[]; tong: TomTat | null; teams: Team[]; canCapNhatDb: boolean }>(`/nen-tang/chi-so?loai=${loai}${team ? `&team=${encodeURIComponent(team)}` : ''}`)
+    api<{ taiSan: ChiSoTaiSan[]; tong: TomTat | null; tongTien?: TomTat; tienTeTong?: string; boQuaTien?: number; teams: Team[]; canCapNhatDb: boolean }>(`/nen-tang/chi-so?loai=${loai}${team ? `&team=${encodeURIComponent(team)}` : ''}`)
       .then(setD)
       .catch(() => setD({ taiSan: [], tong: null, teams: [], canCapNhatDb: false }));
   useEffect(() => {
@@ -180,9 +180,12 @@ function TabChiSo({ loai, laGd }: { loai: Loai; laGd: boolean }) {
 
   if (!d) return <div className="card text-sm text-ink-muted">Đang tải…</div>;
   const defs = CHI_SO[loai];
-  const tienTe = [...new Set(d.taiSan.map((t) => t.tienTe || 'VND'))];
-  const motTienTe = tienTe.length <= 1;
   const t = d.tong;
+  // Tiền / chi phí mỗi kết quả: chỉ cộng tài khoản cùng loại tiền đa số (máy chủ tính sẵn).
+  const tt = d.tongTien || d.tong;
+  const tienTeTong = d.tienTeTong || 'VND';
+  // Bảng: tài khoản có số lớn nhất lên đầu (chỉ số chính của nền tảng).
+  const xep = [...d.taiSan].sort((a, b) => (giaTri(b.tomTat.ky, defs[0]!.khoa) || 0) - (giaTri(a.tomTat.ky, defs[0]!.khoa) || 0));
 
   return (
     <div className="space-y-4">
@@ -227,14 +230,16 @@ function TabChiSo({ loai, laGd }: { loai: Loai; laGd: boolean }) {
           {t && (
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
               {defs.map((c) => {
-                const nay = giaTri(t.ky, c.khoa);
-                const an = c.kieu === 'tien' && !motTienTe;
+                const laTien = c.kieu === 'tien';
+                const nguon = laTien && tt ? tt : t;
+                const nay = giaTri(nguon.ky, c.khoa);
                 return (
                   <div key={c.khoa} className="card space-y-1 p-3">
                     <p className="text-xs text-ink-muted">{c.ten}</p>
-                    <p className="text-xl font-bold tabular-nums">{an ? '—' : dinhDang(nay, c.kieu, tienTe[0])}</p>
-                    {an ? <span className="text-xs text-ink-muted">nhiều loại tiền — xem bảng</span> : <ThayDoi nay={nay} truoc={giaTri(t.truoc, c.khoa)} tangTot={c.tangTot} />}
-                    <BieuDoNho chuoi={t.chuoi} khoa={c.khoa} ten={c.ten} />
+                    <p className="text-xl font-bold tabular-nums">{dinhDang(nay, c.kieu, tienTeTong)}</p>
+                    <ThayDoi nay={nay} truoc={giaTri(nguon.truoc, c.khoa)} tangTot={c.tangTot} />
+                    {laTien && !!d.boQuaTien && <span className="block text-xs text-ink-muted">không gồm {d.boQuaTien} tài khoản khác loại tiền</span>}
+                    <BieuDoNho chuoi={nguon.chuoi} khoa={c.khoa} ten={c.ten} />
                   </div>
                 );
               })}
@@ -255,7 +260,7 @@ function TabChiSo({ loai, laGd }: { loai: Loai; laGd: boolean }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-brand-100">
-                {d.taiSan.map((x) => (
+                {xep.map((x) => (
                   <tr key={x.id}>
                     <td className="px-3 py-2">
                       <p className="font-medium">{x.khach || x.ten}</p>

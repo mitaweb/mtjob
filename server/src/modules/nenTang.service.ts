@@ -193,7 +193,11 @@ export interface ChiSoTaiSan {
 }
 
 /** Chỉ số một loại nền tảng mà người này xem được: từng tài sản + tổng. */
-export async function chiSo(nguoi: { role: string; teamId: string }, loai: LoaiTaiSan, locTeam?: string): Promise<{ taiSan: ChiSoTaiSan[]; tong: TomTat | null }> {
+export async function chiSo(
+  nguoi: { role: string; teamId: string },
+  loai: LoaiTaiSan,
+  locTeam?: string,
+): Promise<{ taiSan: ChiSoTaiSan[]; tong: TomTat | null; tongTien?: TomTat; tienTeTong?: string; boQuaTien?: number }> {
   const homNay = todayIso();
   const ts = (await dsTaiSan()).filter((t) => t.loai === loai && t.theoDoi && xemDuoc(nguoi, t.teamId) && (!locTeam || t.teamId === locTeam || t.teamId === '*'));
   if (!ts.length) return { taiSan: [], tong: null };
@@ -225,5 +229,16 @@ export async function chiSo(nguoi: { role: string; teamId: string }, loai: LoaiT
     dongBoCuoi: t.dongBoCuoi,
     tomTat: tomTatChiSo(theoTs.get(t.id) || [], homNay),
   }));
-  return { taiSan, tong: tomTatChiSo(gopTheoNgay([...theoTs.values()].flat()), homNay) };
+  // Tiền: chỉ cộng tài khoản cùng loại tiền đa số (anh Tâm 11/11/2026: một tài khoản USD làm ô Chi phí tổng thành "—").
+  const demTien = new Map<string, number>();
+  for (const t of ts) demTien.set(t.tienTe || 'VND', (demTien.get(t.tienTe || 'VND') || 0) + 1);
+  const tienTeTong = [...demTien.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || 'VND';
+  const cungTien = ts.filter((t) => (t.tienTe || 'VND') === tienTeTong);
+  return {
+    taiSan,
+    tong: tomTatChiSo(gopTheoNgay([...theoTs.values()].flat()), homNay),
+    tongTien: tomTatChiSo(gopTheoNgay(cungTien.flatMap((t) => theoTs.get(t.id) || [])), homNay),
+    tienTeTong,
+    boQuaTien: ts.length - cungTien.length,
+  };
 }
