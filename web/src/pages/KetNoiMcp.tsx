@@ -96,7 +96,8 @@ const CHI_SO: Record<Loai, ChiSoDef[]> = {
 };
 const TEN_LOAI: Record<Loai, string> = { meta: 'Meta Ads', gads: 'Google Ads', ga4: 'Google Analytics 4', gsc: 'Search Console' };
 
-const giaTri = (t: TongKy, k: KhoaSo): number => (k === 'cpa' ? (t.ketQua ? t.chiTieu / t.ketQua : 0) : t[k]);
+// Chưa có kết quả thì chi phí / kết quả không xác định (NaN → hiện —), không phải 0đ.
+const giaTri = (t: TongKy, k: KhoaSo): number => (k === 'cpa' ? (t.ketQua ? t.chiTieu / t.ketQua : Number.NaN) : t[k]);
 const giaTriNgay = (d: DongSo, k: KhoaSo): number => {
   if (k === 'cpa') return d.ketQua ? (d.chiTieu || 0) / d.ketQua : 0;
   if (k === 'ctr') return d.hienThi ? (d.click || 0) / d.hienThi : 0;
@@ -104,6 +105,7 @@ const giaTriNgay = (d: DongSo, k: KhoaSo): number => {
 };
 
 function dinhDang(v: number, kieu: ChiSoDef['kieu'], tienTe = 'VND'): string {
+  if (!Number.isFinite(v)) return '—';
   if (kieu === 'pt') return `${(v * 100).toLocaleString('vi-VN', { maximumFractionDigits: 2 })}%`;
   if (kieu === 'vitri') return v ? v.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) : '—';
   if (kieu === 'tien') {
@@ -115,7 +117,8 @@ function dinhDang(v: number, kieu: ChiSoDef['kieu'], tienTe = 'VND'): string {
 
 /** Mức thay đổi so kỳ trước: mũi tên + phần trăm + chữ (không chỉ dựa vào màu). */
 function ThayDoi({ nay, truoc, tangTot }: { nay: number; truoc: number; tangTot: boolean | null }) {
-  if (!truoc) return <span className="text-xs text-ink-muted">{nay ? 'chưa có số tuần trước' : '—'}</span>;
+  if (!Number.isFinite(nay)) return <span className="text-xs text-ink-muted">—</span>;
+  if (!truoc || !Number.isFinite(truoc)) return <span className="text-xs text-ink-muted">{nay ? 'chưa có số tuần trước' : '—'}</span>;
   const pt = ((nay - truoc) / truoc) * 100;
   if (Math.abs(pt) < 0.5) return <span className="text-xs text-ink-muted">→ như tuần trước</span>;
   const tang = pt > 0;
