@@ -341,10 +341,13 @@ interface TaiSan {
   loi: string;
 }
 
+const MOI_TRANG = 15;
+
 function TabTaiKhoan() {
   const toast = useToast();
   const [d, setD] = useState<{ ds: TaiSan[]; teams: Team[]; canCapNhatDb: boolean } | null>(null);
   const [loai, setLoai] = useState<Loai | null>(null);
+  const [trang, setTrang] = useState(1);
   const tai = () => api<{ ds: TaiSan[]; teams: Team[]; canCapNhatDb: boolean }>('/nen-tang/tai-san').then(setD);
   useEffect(() => {
     tai().catch(() => undefined);
@@ -419,7 +422,10 @@ function TabTaiKhoan() {
                 role="tab"
                 aria-selected={loaiChon === l}
                 className={`whitespace-nowrap rounded-lg border px-3 py-1 text-sm ${loaiChon === l ? 'border-ink bg-ink text-white' : 'border-brand-200 bg-white text-ink-soft'}`}
-                onClick={() => setLoai(l)}
+                onClick={() => {
+                  setLoai(l);
+                  setTrang(1);
+                }}
               >
                 {TEN_LOAI[l]}{' '}
                 <span className={loaiChon === l ? 'text-white/70' : 'text-ink-muted'}>
@@ -433,6 +439,9 @@ function TabTaiKhoan() {
       {coLoai.filter((l) => l === loaiChon).map((loai) => {
         const ds = d.ds.filter((t) => t.loai === loai);
         const soTich = ds.filter((t) => t.theoDoi).length;
+        // Anh Tâm 11/11/2026: "cho phân trang, hiện dài quá" — 15 tài khoản / trang; tích tất cả / đổi phòng vẫn áp cả tab.
+        const soTrang = Math.max(1, Math.ceil(ds.length / MOI_TRANG));
+        const trangChon = Math.min(trang, soTrang);
         return (
           <div key={loai}>
             <div className="flex flex-wrap items-center gap-2 rounded-xl bg-brand-50 px-2 py-2 text-sm">
@@ -474,7 +483,7 @@ function TabTaiKhoan() {
               )}
             </div>
             <ul className="divide-y divide-brand-100">
-              {ds.map((t) => (
+              {ds.slice((trangChon - 1) * MOI_TRANG, trangChon * MOI_TRANG).map((t) => (
                 <li key={t.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
                   <label className="flex min-w-0 flex-1 items-center gap-2">
                     <input type="checkbox" className="h-5 w-5" checked={t.theoDoi} onChange={(e) => sua(t.id, { theoDoi: e.target.checked })} />
@@ -505,6 +514,29 @@ function TabTaiKhoan() {
                 </li>
               ))}
             </ul>
+            {soTrang > 1 && (
+              <nav className="flex flex-wrap items-center justify-center gap-1.5 border-t border-brand-100 pt-3 text-sm" aria-label="Phân trang">
+                <button className="rounded-lg border border-brand-200 bg-white px-2.5 py-1 disabled:opacity-40" disabled={trangChon <= 1} onClick={() => setTrang(trangChon - 1)}>
+                  ‹ Trước
+                </button>
+                {Array.from({ length: soTrang }, (_, i) => i + 1).map((n) => (
+                  <button
+                    key={n}
+                    aria-current={n === trangChon ? 'page' : undefined}
+                    className={`min-w-[2rem] rounded-lg border px-2.5 py-1 ${n === trangChon ? 'border-ink bg-ink text-white' : 'border-brand-200 bg-white text-ink-soft'}`}
+                    onClick={() => setTrang(n)}
+                  >
+                    {n}
+                  </button>
+                ))}
+                <button className="rounded-lg border border-brand-200 bg-white px-2.5 py-1 disabled:opacity-40" disabled={trangChon >= soTrang} onClick={() => setTrang(trangChon + 1)}>
+                  Sau ›
+                </button>
+                <span className="w-full text-center text-xs text-ink-muted">
+                  {(trangChon - 1) * MOI_TRANG + 1}–{Math.min(trangChon * MOI_TRANG, ds.length)} / {ds.length} tài khoản
+                </span>
+              </nav>
+            )}
           </div>
         );
       })}
