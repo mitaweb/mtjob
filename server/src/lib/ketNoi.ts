@@ -2,7 +2,8 @@
 // Hàm THUẦN: link đăng nhập Facebook, nhận ra công cụ làm THAY ĐỔI tài khoản (bị chặn — thao tác phải qua anh duyệt),
 // đổi kết quả công cụ MCP thành chữ cho trợ lý đọc.
 
-const QUYEN_META_ADS = 'ads_mcp_management,ads_read,business_management,pages_show_list,pages_read_engagement';
+// ads_management: bật / tạm dừng / đổi ngân sách ngay trên MTJOB (anh Tâm 11/11/2026).
+const QUYEN_META_ADS = 'ads_mcp_management,ads_read,ads_management,business_management,pages_show_list,pages_read_engagement';
 /** Quyền Fanpage — app Meta phải bật nhóm quyền Trang (use case Quản lý mọi thứ trên Trang), không thì Facebook báo Invalid Scopes. */
 const QUYEN_META_FANPAGE = 'pages_read_user_content,pages_manage_posts,pages_manage_engagement';
 

@@ -474,6 +474,29 @@ CREATE TABLE IF NOT EXISTS nen_tang_so_lieu (
   PRIMARY KEY (tai_san_id, ngay)
 );
 
+-- Điều chỉnh quảng cáo trên MTJOB (anh Tâm 11/11/2026): mỗi thao tác (bật / tắt / đổi ngân sách / thêm từ khoá / từ khoá
+-- phủ định) MỘT dòng — vừa là NHẬT KÝ (giám đốc xem) vừa là ĐỀ XUẤT của AI chờ người trong phòng duyệt.
+-- trang_thai: de_xuat | da_lam | loi | bo. nguoi_tao: mã nhân sự hoặc 'ai'.
+CREATE TABLE IF NOT EXISTS ads_thao_tac (
+  id           text PRIMARY KEY,
+  tai_san_id   text NOT NULL,              -- nen_tang_tai_san.id (meta:… | gads:…)
+  cap          text NOT NULL,              -- campaign | adgroup | ad | keyword
+  doi_tuong_id text NOT NULL,
+  ten          text DEFAULT '',
+  hanh_dong    text NOT NULL,              -- bat | tat | ngan_sach | tu_khoa_am | them_tu_khoa
+  gia_tri_cu   text DEFAULT '',
+  gia_tri_moi  text DEFAULT '',
+  ly_do        text DEFAULT '',
+  trang_thai   text DEFAULT 'da_lam',
+  ket_qua      text DEFAULT '',
+  nguoi_tao    text DEFAULT '',
+  nguoi_lam    text DEFAULT '',
+  tao_luc      text DEFAULT '',
+  lam_luc      text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS ads_thao_tac_ts_idx ON ads_thao_tac (tai_san_id, tao_luc DESC);
+CREATE INDEX IF NOT EXISTS ads_thao_tac_tt_idx ON ads_thao_tac (trang_thai, tao_luc DESC);
+
 -- Dự án: theo dõi KẾT QUẢ cam kết với khách (bao nhiêu tin nhắn, bao nhiêu khách mới),
 -- khác với bảng tasks vốn đo công sức bỏ ra. Khách hàng là tuỳ chọn — có dự án nội bộ.
 CREATE TABLE IF NOT EXISTS projects (

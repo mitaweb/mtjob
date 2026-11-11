@@ -289,6 +289,29 @@ export async function metaInsights(accountId: string, tu: string, den: string): 
   });
 }
 
+/** Gọi Graph API bằng mã Facebook của kết nối (đọc danh sách chiến dịch / sửa trạng thái, ngân sách — anh Tâm 11/11/2026). */
+export async function metaGraph(duongDan: string, tham: Record<string, string>, method: 'GET' | 'POST' = 'GET'): Promise<Record<string, unknown>> {
+  const k = await timKetNoi('meta');
+  if (!k?.token) throw new ApiError(400, 'Chưa kết nối Facebook');
+  if (method === 'GET') return graph(duongDan, { ...tham, access_token: k.token });
+  const { version } = await metaCauHinh();
+  const r = await fetch(`https://graph.facebook.com/${version}/${duongDan}`, {
+    method: 'POST',
+    body: new URLSearchParams({ ...tham, access_token: k.token }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!r.ok) {
+    const e = j.error as { message?: string; error_user_msg?: string } | undefined;
+    const loi = e?.error_user_msg || e?.message || `HTTP ${r.status}`;
+    const goiY = /permission|ads_management|\(#200\)|\(#10\)/i.test(loi)
+      ? ' — kết nối Facebook chưa có quyền sửa quảng cáo: vào trang Kết nối MCP → tab Kết nối bấm Kết nối lại Facebook'
+      : '';
+    throw new ApiError(400, `Facebook báo: ${loi}${goiY}`);
+  }
+  return j;
+}
+
 /**
  * Số theo CHIẾN DỊCH của một tài khoản Meta (trợ lý đọc — anh Tâm 11/11/2026: MCP Meta có 100 công cụ, trợ lý dò tham
  * số hết lượt mà chưa ra số).
@@ -399,6 +422,16 @@ export async function gadsTaiKhoan(): Promise<TaiSan[]> {
   }
   const j = (await googleApi(`https://googleads.googleapis.com/${c.adsVersion}/customers:listAccessibleCustomers`, { ads: {} })) as { resourceNames?: string[] };
   return (j.resourceNames || []).map((r) => ({ loai: 'Google Ads', id: r.replace('customers/', ''), ten: '' }));
+}
+
+/**
+ * Gửi lệnh POST tới Google Ads (mutate, generateKeywordIdeas…) — `duongDan` dạng "customers/123/campaigns:mutate".
+ * Dùng MCC đã cài làm login-customer-id. CHỈ module điều chỉnh quảng cáo gọi (có quyền + nhật ký); trợ lý không gọi.
+ */
+export async function gadsGoi(duongDan: string, body: unknown): Promise<unknown> {
+  const c = await googleCauHinh();
+  if (!/^customers\/\d+(\/[A-Za-z]+:[a-zA-Z]+|:[a-zA-Z]+)$/.test(duongDan)) throw new ApiError(400, 'Lệnh Google Ads không hợp lệ');
+  return googleApi(`https://googleads.googleapis.com/${c.adsVersion}/${duongDan}`, { method: 'POST', body: JSON.stringify(body), ads: {} });
 }
 
 export async function gadsTruyVan(customerId: string, query: string, loginCustomerId?: string): Promise<unknown> {

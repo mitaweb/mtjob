@@ -10,6 +10,8 @@ import { PageHeader } from '../components/ui';
 import AsyncButton from '../components/AsyncButton';
 import AdminKetNoi from '../components/AdminKetNoi';
 import AdminFanpage from '../components/AdminFanpage';
+import AdsDieuChinh from '../components/AdsDieuChinh';
+import AdsNhatKy from '../components/AdsNhatKy';
 import { useToast } from '../components/Toaster';
 import { MAU } from '../components/charts/mau';
 
@@ -160,6 +162,7 @@ const tenTeam = (id: string, teams: Team[]) => (id === '*' ? 'Mọi phòng' : id
 function TabChiSo({ loai, laGd }: { loai: Loai; laGd: boolean }) {
   const toast = useToast();
   const [team, setTeam] = useState('');
+  const [dieuChinh, setDieuChinh] = useState<ChiSoTaiSan | null>(null);
   const [d, setD] = useState<{ taiSan: ChiSoTaiSan[]; tong: TomTat | null; tongTien?: TomTat; tienTeTong?: string; boQuaTien?: number; teams: Team[]; canCapNhatDb: boolean } | null>(null);
   const tai = () =>
     api<{ taiSan: ChiSoTaiSan[]; tong: TomTat | null; tongTien?: TomTat; tienTeTong?: string; boQuaTien?: number; teams: Team[]; canCapNhatDb: boolean }>(`/nen-tang/chi-so?loai=${loai}${team ? `&team=${encodeURIComponent(team)}` : ''}`)
@@ -186,6 +189,59 @@ function TabChiSo({ loai, laGd }: { loai: Loai; laGd: boolean }) {
   const tienTeTong = d.tienTeTong || 'VND';
   // Bảng: tài khoản có số lớn nhất lên đầu (chỉ số chính của nền tảng).
   const xep = [...d.taiSan].sort((a, b) => (giaTri(b.tomTat.ky, defs[0]!.khoa) || 0) - (giaTri(a.tomTat.ky, defs[0]!.khoa) || 0));
+  const coSo = xep.filter((x) => (giaTri(x.tomTat.ky, defs[0]!.khoa) || 0) > 0);
+  const khongSo = xep.filter((x) => !((giaTri(x.tomTat.ky, defs[0]!.khoa) || 0) > 0));
+  const laAds = loai === 'meta' || loai === 'gads';
+
+  const bang = (ds: ChiSoTaiSan[], gon = false) =>
+    ds.length > 0 && (
+      <div className={gon ? 'overflow-x-auto' : 'card overflow-x-auto p-0'}>
+        <table className="w-full min-w-[640px] text-sm">
+          <thead className="bg-brand-50 text-left text-xs text-ink-muted">
+            <tr>
+              <th className="px-3 py-2">Tài khoản</th>
+              {laGd && <th className="px-3 py-2">Phòng</th>}
+              {defs.slice(0, 4).map((c) => (
+                <th key={c.khoa} className="px-3 py-2 text-right">
+                  {c.ten}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-brand-100">
+            {ds.map((x) => (
+              <tr key={x.id} className={dieuChinh?.id === x.id ? 'bg-brand-50' : ''}>
+                <td className="px-3 py-2">
+                  <p className="font-medium">{x.khach || x.ten}</p>
+                  {x.khach && <p className="text-xs text-ink-muted">{x.ten}</p>}
+                  {x.loi && <p className="text-xs text-red-700">⚠ {x.loi}</p>}
+                  {!x.dongBoCuoi && <p className="text-xs text-ink-muted">chưa lấy số — chờ vài phút</p>}
+                  {laAds && (
+                    <button
+                      type="button"
+                      className="mt-1 text-xs text-ocean-700 hover:underline"
+                      onClick={() => {
+                        setDieuChinh(x);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                    >
+                      🛠 Điều chỉnh{loai === 'gads' ? ' · từ khoá' : ''}
+                    </button>
+                  )}
+                </td>
+                {laGd && <td className="px-3 py-2 text-ink-soft">{tenTeam(x.teamId, d.teams)}</td>}
+                {defs.slice(0, 4).map((c) => (
+                  <td key={c.khoa} className="px-3 py-2 text-right tabular-nums">
+                    <p>{dinhDang(giaTri(x.tomTat.ky, c.khoa), c.kieu, x.tienTe)}</p>
+                    <ThayDoi nay={giaTri(x.tomTat.ky, c.khoa)} truoc={giaTri(x.tomTat.truoc, c.khoa)} tangTot={c.tangTot} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
 
   return (
     <div className="space-y-4">
@@ -246,40 +302,20 @@ function TabChiSo({ loai, laGd }: { loai: Loai; laGd: boolean }) {
             </div>
           )}
 
-          <div className="card overflow-x-auto p-0">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead className="bg-brand-50 text-left text-xs text-ink-muted">
-                <tr>
-                  <th className="px-3 py-2">Tài khoản</th>
-                  {laGd && <th className="px-3 py-2">Phòng</th>}
-                  {defs.slice(0, 4).map((c) => (
-                    <th key={c.khoa} className="px-3 py-2 text-right">
-                      {c.ten}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-brand-100">
-                {xep.map((x) => (
-                  <tr key={x.id}>
-                    <td className="px-3 py-2">
-                      <p className="font-medium">{x.khach || x.ten}</p>
-                      {x.khach && <p className="text-xs text-ink-muted">{x.ten}</p>}
-                      {x.loi && <p className="text-xs text-red-700">⚠ {x.loi}</p>}
-                      {!x.dongBoCuoi && <p className="text-xs text-ink-muted">chưa lấy số — chờ vài phút</p>}
-                    </td>
-                    {laGd && <td className="px-3 py-2 text-ink-soft">{tenTeam(x.teamId, d.teams)}</td>}
-                    {defs.slice(0, 4).map((c) => (
-                      <td key={c.khoa} className="px-3 py-2 text-right tabular-nums">
-                        <p>{dinhDang(giaTri(x.tomTat.ky, c.khoa), c.kieu, x.tienTe)}</p>
-                        <ThayDoi nay={giaTri(x.tomTat.ky, c.khoa)} truoc={giaTri(x.tomTat.truoc, c.khoa)} tangTot={c.tangTot} />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {dieuChinh && (loai === 'meta' || loai === 'gads') && (
+            <AdsDieuChinh key={dieuChinh.id} taiSanId={dieuChinh.id} ten={dieuChinh.khach || dieuChinh.ten} loai={loai} dong={() => setDieuChinh(null)} />
+          )}
+
+          {bang(coSo)}
+          {/* Anh Tâm 11/11/2026: tài khoản không chi tiêu 7 ngày thì không cần hiện — gom vào mục mở ra được. */}
+          {khongSo.length > 0 && (
+            <details className="card p-0">
+              <summary className="cursor-pointer px-3 py-2 text-sm text-ocean-700">
+                {loai === 'meta' || loai === 'gads' ? 'Tài khoản không chi tiêu' : 'Không có số'} 7 ngày qua ({khongSo.length})
+              </summary>
+              {bang(khongSo, true)}
+            </details>
+          )}
         </>
       )}
     </div>
@@ -380,7 +416,7 @@ function TabTaiKhoan() {
 
 // ── Trang ──
 
-type Tab = Loai | 'tai_khoan' | 'fanpage' | 'ket_noi';
+type Tab = Loai | 'nhat_ky' | 'tai_khoan' | 'fanpage' | 'ket_noi';
 
 export default function KetNoiMcp() {
   const { user } = useAuth();
@@ -391,6 +427,7 @@ export default function KetNoiMcp() {
     { key: 'gads', label: 'Google Ads' },
     { key: 'ga4', label: 'GA4' },
     { key: 'gsc', label: 'Search Console' },
+    { key: 'nhat_ky', label: '📝 Nhật ký & đề xuất' },
     ...(laGd
       ? ([
           { key: 'tai_khoan', label: '⚙️ Tài khoản' },
@@ -426,6 +463,7 @@ export default function KetNoiMcp() {
       {tab === 'tai_khoan' && laGd && <TabTaiKhoan />}
       {tab === 'fanpage' && laGd && <AdminFanpage />}
       {tab === 'ket_noi' && laGd && <AdminKetNoi />}
+      {tab === 'nhat_ky' && <AdsNhatKy />}
     </div>
   );
 }

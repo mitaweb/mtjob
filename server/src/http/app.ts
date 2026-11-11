@@ -23,6 +23,7 @@ import { ketNoiRouter } from '../modules/ketNoi.routes.js';
 import { viecTuDongRouter } from '../modules/viecTuDong.routes.js';
 import { fanpageRouter } from '../modules/fanpage.routes.js';
 import { nenTangRouter } from '../modules/nenTang.routes.js';
+import { adsRouter } from '../modules/adsDieuChinh.routes.js';
 import { remindersRouter } from '../modules/reminders.routes.js';
 import { calendarRouter } from '../modules/calendar.routes.js';
 import { projectsRouter } from '../modules/projects.routes.js';
@@ -104,6 +105,7 @@ export function createApp() {
   app.use('/api/viec-tu-dong', viecTuDongRouter);
   app.use('/api/fanpage', fanpageRouter);
   app.use('/api/nen-tang', nenTangRouter);
+  app.use('/api/ads', adsRouter);
   app.use('/api/reminders', remindersRouter);
   app.use('/api/calendar', calendarRouter);
   app.use('/api/projects', projectsRouter);

@@ -55,7 +55,11 @@ jobsRouter.get(
         // Kết nối MCP (11/11/2026): số Meta / Google Ads / GA4 / Search Console của tài sản đang theo dõi, 6 tiếng / lần.
         .then(() => import('./nenTang.service.js'))
         .then((n) => n.dongBoNenTang(batDau + 240_000))
-        .catch((e) => console.warn('[nen-tang] đồng bộ:', (e as Error).message)),
+        .catch((e) => console.warn('[nen-tang] đồng bộ:', (e as Error).message))
+        // AI đề xuất điều chỉnh quảng cáo (11/11/2026): từ 7h, mỗi lượt một tài khoản có chi tiêu, mỗi ngày một lần.
+        .then(() => import('./adsDieuChinh.service.js'))
+        .then((a) => a.aiDeXuatHangNgay())
+        .catch((e) => console.warn('[ads] AI đề xuất:', (e as Error).message)),
     );
     // Nhắc hẹn rồi Zalo → kho tri thức, chạy nền nối tiếp nhau.
     runInBackground(

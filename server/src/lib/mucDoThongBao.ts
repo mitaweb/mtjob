@@ -27,6 +27,7 @@ export const LOAI_THONG_BAO: Record<string, { ten: string; macDinh: MucDo }> = {
   zalo_hoi: { ten: 'Zalo cần anh xem', macDinh: 'thuong' },
   fanpage: { ten: 'Fanpage: bài / trả lời bình luận chờ duyệt', macDinh: 'thuong' },
   viec_tu_dong: { ten: 'Kết quả việc tự động', macDinh: 'thuong' },
+  ads_thao_tac: { ten: 'Nhân sự chỉnh quảng cáo / AI đề xuất (gửi trưởng phòng)', macDinh: 'thuong' },
   daily: { ten: 'Báo cáo ngày (cá nhân)', macDinh: 'thuong' },
   daily_team: { ten: 'Báo cáo ngày (team)', macDinh: 'thuong' },
   daily_all: { ten: 'Báo cáo ngày (toàn công ty)', macDinh: 'thuong' },
