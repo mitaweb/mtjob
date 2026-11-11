@@ -143,7 +143,7 @@ export default function BaoCaoKhach() {
                     </p>
                     <p className="text-xs text-ink-muted">
                       {c.taiKhoan.length} tài khoản · {[c.tuan && 'tuần', c.thang && `tháng${c.ngayChuKy ? ` (chu kỳ ngày ${c.ngayChuKy})` : ''}`].filter(Boolean).join(' + ') || 'không tự gửi'} ·{' '}
-                      {c.zaloTen ? `Zalo: ${c.zaloTen}` : <span className="text-rose-600">chưa chọn Zalo nhận</span>}
+                      {c.zaloTen ? `Zalo: ${c.zaloTen}` : 'chưa chọn Zalo (chỉ tải ảnh)'}
                     </p>
                   </div>
                 </div>
@@ -296,12 +296,11 @@ function XemBaoCao({ b, dong, doi }: { b: BaoCao; dong: () => void; doi: () => P
       )}
 
       <div className="flex flex-wrap gap-2">
-        {!daGui && (
+        {!daGui && b.zaloTen && (
           <button
             className="btn-primary"
             disabled={!!dang}
             onClick={() => {
-              if (!b.zaloTen) return toast.error('Khách này chưa chọn Zalo nhận báo cáo — bấm Sửa ở danh sách khách');
               if (!window.confirm(`Gửi ảnh báo cáo vào Zalo "${b.zaloTen}"?`)) return;
               lam(
                 'gui',
@@ -314,7 +313,7 @@ function XemBaoCao({ b, dong, doi }: { b: BaoCao; dong: () => void; doi: () => P
               );
             }}
           >
-            {dang === 'gui' ? 'Đang gửi…' : `📤 Gửi Zalo${b.zaloTen ? ` · ${b.zaloTen}` : ''}`}
+            {dang === 'gui' ? 'Đang gửi…' : '📤 Gửi Zalo'}
           </button>
         )}
         <button
@@ -514,7 +513,17 @@ function SuaCauHinh({ c, dong, luu }: { c: CauHinh; dong: () => void; luu: () =>
 
       <div>
         <p className="text-sm font-medium">
-          Zalo nhận báo cáo: {f.zaloTen ? <b>{f.zaloTen}</b> : <span className="text-rose-600">chưa chọn</span>}
+          Zalo nhận báo cáo:{' '}
+          {f.zaloTen ? (
+            <>
+              <b>{f.zaloTen}</b>{' '}
+              <button className="text-xs text-rose-600" onClick={() => setF({ ...f, zaloThread: '', zaloNhom: false, zaloTen: '' })}>
+                Bỏ chọn
+              </button>
+            </>
+          ) : (
+            <span className="text-ink-muted">chưa chọn (chỉ tải ảnh, không gửi Zalo)</span>
+          )}
         </p>
         <input className="input mt-1 py-1 text-sm" placeholder="Tìm nhóm / người trên Zalo…" value={timZalo} onChange={(e) => setTimZalo(e.target.value)} />
         <div className="mt-1 flex flex-wrap gap-1.5">
