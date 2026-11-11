@@ -423,6 +423,19 @@ const vn = (n: number) => Math.round(n).toLocaleString('vi-VN');
  */
 export async function aiDeXuat(taiSanId: string, nguoi?: Nguoi): Promise<number> {
   const he: Nguoi = nguoi || { sub: 'ai', role: 'director', teamId: '', ten: 'AI' };
+  await taiSanCo(he, taiSanId);
+  // Mỗi tài khoản một lượt AI tại một thời điểm (cron + người bấm tay chạy chồng → đề xuất trùng, kiểm thật 11/11/2026).
+  const { layKhoa, thaKhoa } = await import('./hieuAnh.repo.js');
+  const khoa = `ads_ai:${taiSanId}`;
+  if (!(await layKhoa(khoa, 3 * 60_000))) throw new ApiError(409, 'AI đang xét tài khoản này — thử lại sau 1–2 phút');
+  try {
+    return await aiDeXuatKhongKhoa(taiSanId, he);
+  } finally {
+    await thaKhoa(khoa).catch(() => undefined);
+  }
+}
+
+async function aiDeXuatKhongKhoa(taiSanId: string, he: Nguoi): Promise<number> {
   const ts = await taiSanCo(he, taiSanId);
   const { doiTuong, so7, tienTe } = await dsDoiTuong(he, taiSanId);
   const camp = doiTuong.filter((d) => d.cap === 'campaign');
@@ -503,9 +516,10 @@ export async function aiDeXuat(taiSanId: string, nguoi?: Nguoi): Promise<number>
     if (dangCho.has(`${hanhDong}|${id}|${moi}`)) continue;
     dangCho.add(`${hanhDong}|${id}|${moi}`);
     const cu = hanhDong === 'ngan_sach' ? String(dt?.nganSach || '') : dt ? (dt.bat ? 'BẬT' : 'DỪNG') : '';
-    await q(
+    // ON CONFLICT: index duy nhất cho đề xuất đang chờ — hai lượt AI song song không tạo trùng.
+    const vao = await q(
       `INSERT INTO ads_thao_tac (id, tai_san_id, cap, doi_tuong_id, ten, hanh_dong, gia_tri_cu, gia_tri_moi, ly_do, trang_thai, ket_qua, nguoi_tao, tao_luc)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'de_xuat',$10,'ai',$11)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'de_xuat',$10,'ai',$11) ON CONFLICT DO NOTHING RETURNING id`,
       [
         newId('AT-'),
         ts.id,
@@ -520,7 +534,7 @@ export async function aiDeXuat(taiSanId: string, nguoi?: Nguoi): Promise<number>
         nowTz().toISOString(),
       ],
     );
-    n++;
+    if (vao.length) n++;
   }
   if (n && ts.teamId && ts.teamId !== '*') {
     const { teamLeaderId } = await import('./teams.repo.js');

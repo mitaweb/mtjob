@@ -496,6 +496,14 @@ CREATE TABLE IF NOT EXISTS ads_thao_tac (
 );
 CREATE INDEX IF NOT EXISTS ads_thao_tac_ts_idx ON ads_thao_tac (tai_san_id, tao_luc DESC);
 CREATE INDEX IF NOT EXISTS ads_thao_tac_tt_idx ON ads_thao_tac (trang_thai, tao_luc DESC);
+-- Đề xuất trùng (hai lượt AI chạy cùng lúc — kiểm thật 11/11/2026): giữ bản đầu, bản sau thành 'bo'; rồi chặn trùng bằng index.
+UPDATE ads_thao_tac SET trang_thai = 'bo', nguoi_lam = 'trùng' WHERE id IN (
+  SELECT id FROM (
+    SELECT id, row_number() OVER (PARTITION BY tai_san_id, hanh_dong, doi_tuong_id, gia_tri_moi ORDER BY tao_luc) AS rn
+    FROM ads_thao_tac WHERE trang_thai = 'de_xuat'
+  ) x WHERE rn > 1
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ads_thao_tac_de_xuat_uq ON ads_thao_tac (tai_san_id, hanh_dong, doi_tuong_id, gia_tri_moi) WHERE trang_thai = 'de_xuat';
 
 -- Dự án: theo dõi KẾT QUẢ cam kết với khách (bao nhiêu tin nhắn, bao nhiêu khách mới),
 -- khác với bảng tasks vốn đo công sức bỏ ra. Khách hàng là tuỳ chọn — có dự án nội bộ.
