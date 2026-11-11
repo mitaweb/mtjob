@@ -28,9 +28,11 @@ self.addEventListener('push', (event) => {
     badge: '/icon.svg',
     data: { url: data.url || '/' },
     tag: data.tag,
-    renotify: !!data.tag,
-    vibrate: VIBRATE[data.tag] || VIBRATE_MAC_DINH,
+    // Mức "thường" (anh Tâm 11/11/2026): hiện trên máy nhưng không kêu, không rung — chỉ việc khẩn mới đổ chuông.
+    renotify: !!data.tag && !data.silent,
+    silent: !!data.silent,
   };
+  if (!data.silent) options.vibrate = VIBRATE[data.tag] || VIBRATE_MAC_DINH;
   event.waitUntil(self.registration.showNotification(title, options));
 });
 

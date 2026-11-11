@@ -10,6 +10,7 @@ import { useToast } from '../components/Toaster';
 import ModelPicker from '../components/ModelPicker';
 import OGap from '../components/OGap';
 import AdminKetNoi from '../components/AdminKetNoi';
+import AdminMucDoThongBao from '../components/AdminMucDoThongBao';
 import { useAuth } from '../lib/auth';
 
 export default function Admin() {
@@ -325,6 +326,11 @@ export default function Admin() {
       {user?.role === 'director' && (
         <OGap khoa="ket_noi" tieuDe="🔌 Kết nối nền tảng" moTa="Meta Ads, Google Ads · GA4 · Search Console, n8n" macDinhMo>
           <AdminKetNoi />
+        </OGap>
+      )}
+      {user?.role === 'director' && (
+        <OGap khoa="muc_do_thong_bao" tieuDe="🔔 Mức độ thông báo" moTa="chỉ việc khẩn mới đổ chuông">
+          <AdminMucDoThongBao />
         </OGap>
       )}
 

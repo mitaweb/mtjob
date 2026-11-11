@@ -3,6 +3,8 @@ import { sendPush } from '../push/webpush.js';
 import { newId } from '../util/id.js';
 import { runInBackground } from '../util/background.js';
 import { nowTz } from '../lib/datetime.js';
+import { q } from '../db/client.js';
+import { mucDoCua, chuanCaiDat, type MucDo } from '../lib/mucDoThongBao.js';
 
 export interface NotifyInput {
   type: string;
@@ -11,16 +13,45 @@ export interface NotifyInput {
   url?: string;
   /** Mã của thứ được nhắc tới (vd mã đơn) — để xử lý xong thì tự đánh dấu đã đọc. */
   refId?: string;
+  /** Ép mức (bỏ qua cài đặt giám đốc) — vd việc tự động bị dừng vì lỗi luôn khẩn. */
+  mucDo?: MucDo;
+}
+
+const KHOA_MUC_DO = 'muc_do_thong_bao';
+let caiDatNho: { luc: number; v: Record<string, MucDo> } | null = null;
+
+/** Mức từng loại giám đốc đã chỉnh (bảng config, JSON) — nhớ 60 giây. */
+export async function caiDatMucDo(moi = false): Promise<Record<string, MucDo>> {
+  if (!moi && caiDatNho && Date.now() - caiDatNho.luc < 60_000) return caiDatNho.v;
+  let v: Record<string, MucDo> = {};
+  try {
+    const r = await q('SELECT value FROM config WHERE key = $1', [KHOA_MUC_DO]);
+    v = chuanCaiDat(JSON.parse(String(r[0]?.value || '{}')));
+  } catch {
+    v = {};
+  }
+  caiDatNho = { luc: Date.now(), v };
+  return v;
+}
+
+export async function luuCaiDatMucDo(x: unknown): Promise<Record<string, MucDo>> {
+  const v = chuanCaiDat(x);
+  await q('INSERT INTO config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', [KHOA_MUC_DO, JSON.stringify(v)]);
+  caiDatNho = { luc: Date.now(), v };
+  return v;
 }
 
 /** Fan-out một notification tới mọi push subscription của thành viên. */
 async function pushToMember(memberId: string, n: NotifyInput): Promise<void> {
+  // Mức độ (anh Tâm 11/11/2026): 'im' = chỉ nằm trong chuông app, không đẩy ra máy; 'thuong' = hiện nhưng không kêu.
+  const muc = mucDoCua(n.type, await caiDatMucDo().catch(() => ({})), n.mucDo);
+  if (muc === 'im') return;
   const subs = await getSubscriptions(memberId);
   await Promise.all(
     subs.map(async (s) => {
       const r = await sendPush(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-        { title: n.title, body: n.body, url: n.url, tag: n.type },
+        { title: n.title, body: n.body, url: n.url, tag: n.type, ...(muc === 'thuong' ? { silent: true } : {}) },
       );
       // Trình duyệt đã huỷ đăng ký → dọn luôn cho gọn DB.
       if (r.gone) await deleteSubscription(s.endpoint).catch(() => undefined);

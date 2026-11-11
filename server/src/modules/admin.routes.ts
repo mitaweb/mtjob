@@ -43,6 +43,24 @@ adminRouter.get(
   }),
 );
 
+/** Mức độ thông báo từng loại (học Javis, anh Tâm 11/11/2026) — chỉ giám đốc chỉnh, áp cho mọi người. */
+adminRouter.get(
+  '/muc-do-thong-bao',
+  requireRole('director'),
+  asyncHandler(async (_req, res) => {
+    const [{ LOAI_THONG_BAO, MUC_DO }, { caiDatMucDo }] = await Promise.all([import('../lib/mucDoThongBao.js'), import('./notifications.service.js')]);
+    res.json({ loai: LOAI_THONG_BAO, mucDo: MUC_DO, caiDat: await caiDatMucDo(true) });
+  }),
+);
+adminRouter.post(
+  '/muc-do-thong-bao',
+  requireRole('director'),
+  asyncHandler(async (req, res) => {
+    const { luuCaiDatMucDo } = await import('./notifications.service.js');
+    res.json({ ok: true, caiDat: await luuCaiDatMucDo(req.body?.caiDat) });
+  }),
+);
+
 /** Vị trí chấm công: toạ độ đang cài + gợi ý theo các lần chấm thật ở văn phòng (anh Tâm 22/10/2026). */
 adminRouter.get(
   '/vi-tri-cham-cong',

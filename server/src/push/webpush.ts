@@ -65,6 +65,8 @@ export interface PushPayload {
   body: string;
   url?: string;
   tag?: string;
+  /** Hiện thông báo nhưng không kêu / rung (mức "thường"). */
+  silent?: boolean;
 }
 
 export interface PushResult {
