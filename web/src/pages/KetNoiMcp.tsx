@@ -361,21 +361,35 @@ function TabTaiKhoan() {
     setD((x) => (x ? { ...x, ds: x.ds.map((t) => (t.id === id ? { ...t, ...patch } : t)) } : x));
   }
   const [dangTichHet, setDangTichHet] = useState(false);
-  /** Tích / bỏ tích mọi tài khoản của tab đang mở — lưu từng tài khoản, mỗi lượt 6 cái. */
-  async function tichHet(ds: TaiSan[], bat: boolean) {
-    const can = ds.filter((t) => t.theoDoi !== bat);
+  /** Sửa nhiều tài khoản một lần (tích tất cả, đổi phòng hàng loạt) — lưu từng tài khoản, mỗi lượt 6 cái. */
+  async function suaHangLoat(can: TaiSan[], patch: Partial<Pick<TaiSan, 'teamId' | 'theoDoi'>>, xong: string) {
     setDangTichHet(true);
     let loi = 0;
     try {
       for (let i = 0; i < can.length; i += 6) {
-        const r = await Promise.allSettled(can.slice(i, i + 6).map((t) => sua(t.id, { theoDoi: bat })));
+        const r = await Promise.allSettled(can.slice(i, i + 6).map((t) => sua(t.id, patch)));
         loi += r.filter((x) => x.status === 'rejected').length;
       }
     } finally {
       setDangTichHet(false);
     }
     if (loi) toast.error(`${loi} tài khoản chưa lưu được — anh bấm lại`);
-    else toast.success(`${bat ? 'Đã bật theo dõi' : 'Đã tắt theo dõi'} ${can.length} tài khoản`);
+    else toast.success(`${xong} ${can.length} tài khoản`);
+  }
+  const tichHet = (ds: TaiSan[], bat: boolean) =>
+    suaHangLoat(
+      ds.filter((t) => t.theoDoi !== bat),
+      { theoDoi: bat },
+      bat ? 'Đã bật theo dõi' : 'Đã tắt theo dõi',
+    );
+  const tenPhong = (id: string) => (id === '' ? 'Chỉ giám đốc' : id === '*' ? 'Mọi phòng' : d?.teams.find((x) => x.id === id)?.name || id);
+  /** Anh Tâm 11/11/2026: "tích tất cả thì sửa được tất cả" — đổi phòng một lần cho mọi tài khoản đang tích trong tab. */
+  function doiPhongHangLoat(ds: TaiSan[], teamId: string) {
+    const tich = ds.filter((t) => t.theoDoi);
+    const can = tich.filter((t) => t.teamId !== teamId);
+    if (!can.length) return toast.success(`Cả ${tich.length} tài khoản đã ở “${tenPhong(teamId)}”`);
+    if (!confirm(`Đổi phòng xem thành “${tenPhong(teamId)}” cho ${can.length} tài khoản đang tích?`)) return;
+    return suaHangLoat(can, { teamId }, `Đã đổi phòng “${tenPhong(teamId)}” cho`);
   }
 
   if (!d) return <div className="card text-sm text-ink-muted">Đang tải…</div>;
@@ -421,22 +435,44 @@ function TabTaiKhoan() {
         const soTich = ds.filter((t) => t.theoDoi).length;
         return (
           <div key={loai}>
-            <label className="flex items-center gap-2 border-b border-brand-100 pb-2 text-sm font-medium">
-              <input
-                type="checkbox"
-                className="h-5 w-5"
-                checked={soTich === ds.length}
-                ref={(el) => {
-                  if (el) el.indeterminate = soTich > 0 && soTich < ds.length;
-                }}
-                disabled={dangTichHet}
-                onChange={() => tichHet(ds, soTich < ds.length)}
-              />
-              {dangTichHet ? 'Đang lưu…' : soTich < ds.length ? `Tích tất cả ${TEN_LOAI[loai]}` : 'Bỏ tích tất cả'}
-              <span className="font-normal text-ink-muted">
-                ({soTich}/{ds.length} đang theo dõi)
-              </span>
-            </label>
+            <div className="flex flex-wrap items-center gap-2 rounded-xl bg-brand-50 px-2 py-2 text-sm">
+              <label className="flex min-w-0 flex-1 items-center gap-2 font-medium">
+                <input
+                  type="checkbox"
+                  className="h-5 w-5"
+                  checked={soTich === ds.length}
+                  ref={(el) => {
+                    if (el) el.indeterminate = soTich > 0 && soTich < ds.length;
+                  }}
+                  disabled={dangTichHet}
+                  onChange={() => tichHet(ds, soTich < ds.length)}
+                />
+                {dangTichHet ? 'Đang lưu…' : soTich < ds.length ? `Tích tất cả ${TEN_LOAI[loai]}` : 'Bỏ tích tất cả'}
+                <span className="font-normal text-ink-muted">
+                  ({soTich}/{ds.length} đang theo dõi)
+                </span>
+              </label>
+              {soTich > 0 && (
+                <select
+                  className="input w-auto py-1"
+                  value="__"
+                  disabled={dangTichHet}
+                  onChange={(e) => doiPhongHangLoat(ds, e.target.value)}
+                  aria-label="Đổi phòng xem cho mọi tài khoản đang tích"
+                >
+                  <option value="__" disabled>
+                    Phòng cho {soTich === ds.length ? 'tất cả' : `${soTich} TK đã tích`}…
+                  </option>
+                  <option value="">Chỉ giám đốc</option>
+                  <option value="*">Mọi phòng</option>
+                  {d.teams.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
             <ul className="divide-y divide-brand-100">
               {ds.map((t) => (
                 <li key={t.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
