@@ -204,8 +204,8 @@ async function aiNhanXet(ch: CauHinh, nenTang: NenTang, ky: Ky, loai: string, th
       `Bạn là chuyên viên quảng cáo của MT Digital, viết phần nhận xét cho BÁO CÁO ${TEN_NEN_TANG[nenTang].toUpperCase()} ${loai === 'tuan' ? 'TUẦN' : 'THÁNG'} gửi KHÁCH HÀNG «${ch.ten}» (${ky.tu} → ${ky.den}).`,
       'Viết tiếng Việt, lịch sự, ngắn gọn, đúng số liệu, KHÔNG bịa số. Tích cực nhưng trung thực: kết quả giảm thì nói rõ và nêu hướng xử lý.',
       'KHÔNG nhắc tới giá dịch vụ, phí quản lý, lợi nhuận của MT Digital, tên công cụ nội bộ hay thông tin của khách khác.',
-      '- danhGia: 2–4 câu, mỗi câu ≤ 25 chữ, dựa trên số kỳ này (so kỳ trước nếu có).',
-      '- deXuat: 1–3 việc cụ thể sẽ làm kỳ tới, mỗi câu ≤ 25 chữ.',
+      '- danhGia: 2–3 câu NGẮN (mỗi câu ≤ 18 chữ, kiểu "Đạt 84 chuyển đổi, chi phí 1.981.609đ."), dựa trên số kỳ này (so kỳ trước nếu có).',
+      '- deXuat: 1–2 việc cụ thể sẽ làm kỳ tới, mỗi câu ≤ 20 chữ.',
       '',
       `KỲ NÀY: ${dong(th.tong)}.`,
       truoc && truoc.chiSauThue > 0 ? `KỲ TRƯỚC: ${dong(truoc)}.` : 'KỲ TRƯỚC: không có số.',
@@ -221,7 +221,7 @@ async function aiNhanXet(ch: CauHinh, nenTang: NenTang, ky: Ky, loai: string, th
       .filter(Boolean)
       .slice(0, toiDa)
       .map((x) => x.slice(0, 220));
-  return { danhGia: sach(r?.danhGia, 4), deXuat: sach(r?.deXuat, 3) };
+  return { danhGia: sach(r?.danhGia, 3), deXuat: sach(r?.deXuat, 2) };
 }
 
 // ── Tạo báo cáo ──

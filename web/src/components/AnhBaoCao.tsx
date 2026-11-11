@@ -162,11 +162,11 @@ const AnhBaoCao = forwardRef<HTMLDivElement, { d: DuLieuAnh }>(function AnhBaoCa
       <div style={{ display: 'grid', gridTemplateColumns: d.soLieu.coCau.length ? '1.75fr 1fr' : '1fr', gap: 20, marginTop: 30 }}>
         <div style={{ ...the1, padding: '26px 24px 22px' }}>
           <div style={{ ...tieuDe, fontSize: 30, marginBottom: 18 }}>📊 Hiệu quả theo tài khoản</div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 21 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 20, whiteSpace: 'nowrap' }}>
             <thead>
               <tr style={{ background: mau, color: '#fff' }}>
                 {['Tài khoản', 'Hiển thị', 'Lượt nhấp', nhanCd, 'Chi phí', `Chi phí/${nhanCd.toLowerCase()}`].map((h, i) => (
-                  <th key={h} style={{ padding: '15px 12px', textAlign: i ? 'right' : 'left', fontWeight: 500, borderRadius: i === 0 ? '10px 0 0 10px' : i === 5 ? '0 10px 10px 0' : 0 }}>
+                  <th key={h} style={{ padding: '15px 10px', textAlign: i ? 'right' : 'left', fontWeight: 500, borderRadius: i === 0 ? '10px 0 0 10px' : i === 5 ? '0 10px 10px 0' : 0 }}>
                     {h}
                   </th>
                 ))}
@@ -231,9 +231,9 @@ const AnhBaoCao = forwardRef<HTMLDivElement, { d: DuLieuAnh }>(function AnhBaoCa
                 <div style={{ width: 58, height: 58, borderRadius: 999, background: mau, display: 'grid', placeItems: 'center', fontSize: 28 }}>{icon as string}</div>
                 <div style={{ ...tieuDe, fontSize: 30 }}>{nhan as string}</div>
               </div>
-              <ul style={{ margin: '14px 0 0', paddingLeft: 30, fontSize: 23, lineHeight: 1.55 }}>
+              <ul style={{ margin: '14px 0 0', paddingLeft: 30, fontSize: 23, lineHeight: 1.55, listStyle: 'disc' }}>
                 {(ds as string[]).map((x, j) => (
-                  <li key={j}>{x}</li>
+                  <li key={j} style={{ marginBottom: 6 }}>{x}</li>
                 ))}
               </ul>
             </div>
