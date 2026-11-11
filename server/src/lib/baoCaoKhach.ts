@@ -159,10 +159,12 @@ export function tongHop(ds: SoTaiKhoan[]): TongHop {
 
 // ── Khách nhận báo cáo lấy từ tài khoản ĐANG CHẠY (anh Tâm 11/11/2026: "căn cứ vào các khách đang có chạy") ──
 
-/** Bỏ đuôi đại lý ("- MT Digital") khỏi tên tài khoản để hiện cho khách. */
+/** Bỏ tên đại lý khỏi tên tài khoản để hiện cho khách: "X - MT Digital", "MT DIGITAL - X", "X - MT". */
 export const tenGon = (ten: string) =>
   String(ten || '')
-    .replace(/\s*[-–|·]?\s*mt\s*digital\s*$/i, '')
+    .replace(/\s*[-–|·]\s*mt(\s*digital)?\s*$/i, '')
+    .replace(/\s+mt\s*digital\s*$/i, '')
+    .replace(/^\s*mt\s*digital\s*[-–|·:]\s*/i, '')
     .trim() || String(ten || '').trim();
 
 /** Khoá gom: không dấu, chữ thường, bỏ "MT Digital" và số thứ tự cuối ("X Salon 2" = "X Salon"). */

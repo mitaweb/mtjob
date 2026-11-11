@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { kyBaoCao, nenTao, coCauGads, coCauMeta, tongHop, nhomKhachDangChay } from './baoCaoKhach.js';
+import { kyBaoCao, nenTao, coCauGads, coCauMeta, tongHop, nhomKhachDangChay, tenGon } from './baoCaoKhach.js';
 
 // Anh Tâm 11/11/2026: "agent để báo cáo hàng tuần cho khách hàng… chi phí sẽ tổng cả thuế vào… báo cáo hàng tuần, tháng cho
 // các bên chạy ads, GG và FB". Kỳ tháng theo chu kỳ từng khách (mẫu anh gửi 11/10 → 09/11). Số GIẢ.
@@ -108,5 +108,15 @@ describe('nhomKhachDangChay — khách nhận báo cáo lấy từ tài khoản 
   });
   it('không còn tài khoản mới → rỗng', () => {
     expect(nhomKhachDangChay(ts, new Set(ts.map((t) => t.id)))).toEqual([]);
+  });
+});
+
+describe('tenGon — bỏ tên đại lý khỏi tên tài khoản (tên thật trên Google Ads 11/11/2026)', () => {
+  it('', () => {
+    expect(tenGon('NHA KHOA MINH CHÂU - MT DIGITAL')).toBe('NHA KHOA MINH CHÂU');
+    expect(tenGon('MT DIGITAL - TOPAZ')).toBe('TOPAZ');
+    expect(tenGon('Yose - MT')).toBe('Yose');
+    expect(tenGon('MT Digital')).toBe('MT Digital');
+    expect(tenGon('MTV Store')).toBe('MTV Store');
   });
 });
