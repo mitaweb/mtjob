@@ -130,10 +130,10 @@ const AnhBaoCao = forwardRef<HTMLDivElement, { d: DuLieuAnh }>(function AnhBaoCa
         </div>
         <div style={{ width: 2, alignSelf: 'stretch', background: nhat(mau, 0.55) }} />
         <div>
-          <div style={{ ...tieuDe, fontSize: 46, letterSpacing: 0.5 }}>
+          <div style={{ ...tieuDe, fontSize: 46, letterSpacing: 0.5, lineHeight: 1.2, whiteSpace: 'nowrap' }}>
             BÁO CÁO {gg ? 'GOOGLE ADS' : 'FACEBOOK ADS'} {d.ky === 'tuan' ? 'TUẦN' : d.ky === 'thang' ? 'THÁNG' : ''}
           </div>
-          <div style={{ ...tieuDe, fontSize: 32, fontWeight: 600, marginTop: 4 }}>{d.tenKhach}</div>
+          <div style={{ ...tieuDe, fontSize: 32, fontWeight: 600, marginTop: 4, lineHeight: 1.25 }}>{d.tenKhach}</div>
           <div
             style={{ display: 'inline-flex', alignItems: 'center', gap: 12, marginTop: 14, background: nhat(mau, 0.8), borderRadius: 999, padding: '9px 26px', fontSize: 24 }}
           >

@@ -209,6 +209,39 @@ function DongBaoCao({ b, chon }: { b: BaoCao; chon: () => void }) {
 
 // ── Xem ảnh, sửa nhận xét, gửi ──
 
+/**
+ * Phông của ảnh (Lora tiêu đề, Be Vietnam Pro nội dung) nhúng sẵn dạng data URL. html-to-image không tự đọc được stylesheet
+ * Google Fonts khác nguồn → ảnh chụp rơi về Times / Arial, tiêu đề tràn dòng (thử thật 11/11/2026).
+ */
+const URL_PHONG = 'https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Lora:wght@600;700&display=swap';
+let phong: Promise<string> | null = null;
+function cssPhong(): Promise<string> {
+  if (!phong)
+    phong = (async () => {
+      const css = await fetch(URL_PHONG).then((r) => r.text());
+      const urls = [...new Set(css.match(/https:\/\/fonts\.gstatic\.com\/[^)'"]+/g) || [])];
+      const daNhung = new Map(
+        await Promise.all(
+          urls.map(async (u) => {
+            const blob = await fetch(u).then((r) => r.blob());
+            const data = await new Promise<string>((ok, loi) => {
+              const fr = new FileReader();
+              fr.onload = () => ok(String(fr.result));
+              fr.onerror = () => loi(fr.error);
+              fr.readAsDataURL(blob);
+            });
+            return [u, data] as const;
+          }),
+        ),
+      );
+      return css.replace(/https:\/\/fonts\.gstatic\.com\/[^)'"]+/g, (u) => daNhung.get(u) || u);
+    })().catch(() => {
+      phong = null;
+      return '';
+    });
+  return phong;
+}
+
 function XemBaoCao({ b, dong, doi }: { b: BaoCao; dong: () => void; doi: () => Promise<void> }) {
   const toast = useToast();
   const anh = useRef<HTMLDivElement>(null);
@@ -242,7 +275,7 @@ function XemBaoCao({ b, dong, doi }: { b: BaoCao; dong: () => void; doi: () => P
   const chup = async () => {
     if (!anh.current) throw new Error('Chưa dựng xong ảnh');
     await document.fonts.ready;
-    return toJpeg(anh.current, { quality: 0.93, pixelRatio: 1, backgroundColor: '#ffffff', cacheBust: true });
+    return toJpeg(anh.current, { quality: 0.93, pixelRatio: 1, backgroundColor: '#ffffff', cacheBust: true, fontEmbedCSS: await cssPhong() });
   };
   const luuNhanXet = () => api(`/bao-cao-khach/${b.id}/nhan-xet`, { body: { danhGia: duLieu.danhGia, deXuat: duLieu.deXuat } });
 
