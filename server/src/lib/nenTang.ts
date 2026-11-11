@@ -96,6 +96,8 @@ export interface TongKy {
 }
 
 export interface TomTat {
+  /** Ngày đầu của kỳ */
+  tuNgay: string;
   /** Ngày cuối của kỳ (hôm qua, hoặc ngày cuối có số nếu nền tảng trễ) */
   denNgay: string;
   ky: TongKy;
@@ -128,16 +130,33 @@ export function tong(ds: DongSo[]): TongKy {
 }
 
 /** 7 ngày tới mốc (hôm qua — hôm nay chưa đủ ngày; nền tảng trễ thì ngày cuối có số) so với 7 ngày trước đó. */
-export function tomTatChiSo(ds: DongSo[], homNay: string, o: { treToiDa?: number } = {}): TomTat {
+export function tomTatChiSo(ds: DongSo[], homNay: string, o: { treToiDa?: number; tu?: string; den?: string } = {}): TomTat {
+  const trong = (tu: string, den: string) => ds.filter((d) => d.ngay >= tu && d.ngay <= den);
+  const theoNgay = new Map(ds.map((d) => [d.ngay, d]));
+  // Khoảng tuỳ chọn (như Facebook — anh Tâm 11/11/2026): so với khoảng liền trước cùng độ dài; biểu đồ đúng khoảng (≤ 90 ngày).
+  if (o.tu && o.den) {
+    const den = o.den;
+    const soNgay = Math.round((Date.parse(o.den) - Date.parse(o.tu)) / 86_400_000) + 1;
+    const ve = Math.min(soNgay, 90);
+    return {
+      tuNgay: o.tu,
+      denNgay: o.den,
+      ky: tong(trong(o.tu, o.den)),
+      truoc: tong(trong(congNgay(o.tu, -soNgay), congNgay(o.tu, -1))),
+      chuoi: Array.from({ length: ve }, (_, i) => {
+        const ngay = congNgay(den, i - ve + 1);
+        return { ...(theoNgay.get(ngay) || {}), ngay };
+      }),
+    };
+  }
   const homQua = congNgay(homNay, -1);
   // Mặc định tính tới HÔM QUA (quảng cáo ngừng tiêu thì tuần này = 0, không lùi về tuần cũ — TOPAZ 11/11/2026). Chỉ nền tảng
   // báo số trễ (Search Console 2–3 ngày) mới được lùi về ngày cuối có số, tối đa `treToiDa` ngày.
   const sauNhat = congNgay(homQua, -(o.treToiDa || 0));
   const cuoi = ds.reduce((m, d) => (d.ngay <= homQua && d.ngay >= sauNhat && d.ngay > m ? d.ngay : m), '');
   const denNgay = cuoi || homQua;
-  const trong = (tu: string, den: string) => ds.filter((d) => d.ngay >= tu && d.ngay <= den);
-  const theoNgay = new Map(ds.map((d) => [d.ngay, d]));
   return {
+    tuNgay: congNgay(denNgay, -6),
     denNgay,
     ky: tong(trong(congNgay(denNgay, -6), denNgay)),
     truoc: tong(trong(congNgay(denNgay, -13), congNgay(denNgay, -7))),

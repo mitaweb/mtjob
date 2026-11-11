@@ -12,6 +12,7 @@ import AdminKetNoi from '../components/AdminKetNoi';
 import AdminFanpage from '../components/AdminFanpage';
 import AdsDieuChinh from '../components/AdsDieuChinh';
 import AdsNhatKy from '../components/AdsNhatKy';
+import ChonKhoang, { thamSoKhoang, type KhoangChon } from '../components/ChonKhoang';
 import { useToast } from '../components/Toaster';
 import { MAU } from '../components/charts/mau';
 
@@ -37,6 +38,7 @@ interface TongKy {
   viTri: number;
 }
 interface TomTat {
+  tuNgay?: string;
   denNgay: string;
   ky: TongKy;
   truoc: TongKy;
@@ -162,17 +164,20 @@ const tenTeam = (id: string, teams: Team[]) => (id === '*' ? 'Mọi phòng' : id
 function TabChiSo({ loai, laGd }: { loai: Loai; laGd: boolean }) {
   const toast = useToast();
   const [team, setTeam] = useState('');
+  // Khoảng ngày như Facebook (anh Tâm 11/11/2026: 'xem theo ngày tuần tháng... như fb').
+  const [kh, setKh] = useState<KhoangChon>({ mau: '7', tu: '', den: '' });
+  const tsKh = thamSoKhoang(kh);
   const [dieuChinh, setDieuChinh] = useState<ChiSoTaiSan | null>(null);
   const [d, setD] = useState<{ taiSan: ChiSoTaiSan[]; tong: TomTat | null; tongTien?: TomTat; tienTeTong?: string; boQuaTien?: number; teams: Team[]; canCapNhatDb: boolean } | null>(null);
   const tai = () =>
-    api<{ taiSan: ChiSoTaiSan[]; tong: TomTat | null; tongTien?: TomTat; tienTeTong?: string; boQuaTien?: number; teams: Team[]; canCapNhatDb: boolean }>(`/nen-tang/chi-so?loai=${loai}${team ? `&team=${encodeURIComponent(team)}` : ''}`)
+    api<{ taiSan: ChiSoTaiSan[]; tong: TomTat | null; tongTien?: TomTat; tienTeTong?: string; boQuaTien?: number; teams: Team[]; canCapNhatDb: boolean }>(`/nen-tang/chi-so?loai=${loai}&${tsKh}${team ? `&team=${encodeURIComponent(team)}` : ''}`)
       .then(setD)
       .catch(() => setD({ taiSan: [], tong: null, teams: [], canCapNhatDb: false }));
   useEffect(() => {
     setD(null);
     void tai();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loai, team]);
+  }, [loai, team, tsKh]);
 
   async function dongBo() {
     const r = await api<{ so: number; loi: string[] }>('/nen-tang/dong-bo', { body: { loai } });
@@ -254,9 +259,10 @@ function TabChiSo({ loai, laGd }: { loai: Loai; laGd: boolean }) {
             ))}
           </select>
         )}
+        <ChonKhoang gia={kh} doi={setKh} />
         {t && (
           <span className="text-ink-muted">
-            7 ngày {ngayVn(truNgay(t.denNgay, 6))}–{ngayVn(t.denNgay)} so với 7 ngày trước
+            {ngayVn(t.tuNgay || truNgay(t.denNgay, 6))}–{ngayVn(t.denNgay)} so với cùng số ngày liền trước
             {loai === 'gsc' ? ' · Search Console trễ 2–3 ngày' : ''}
           </span>
         )}
@@ -309,7 +315,7 @@ function TabChiSo({ loai, laGd }: { loai: Loai; laGd: boolean }) {
           {khongSo.length > 0 && (
             <details className="card p-0">
               <summary className="cursor-pointer px-3 py-2 text-sm text-ocean-700">
-                {loai === 'meta' || loai === 'gads' ? 'Tài khoản không chi tiêu' : 'Không có số'} 7 ngày qua ({khongSo.length})
+                {loai === 'meta' || loai === 'gads' ? 'Tài khoản không chi tiêu' : 'Không có số'} trong khoảng này ({khongSo.length})
               </summary>
               {bang(khongSo, true)}
             </details>

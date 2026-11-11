@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import AsyncButton from './AsyncButton';
 import { useToast } from './Toaster';
+import ChonKhoang, { MAU, thamSoKhoang, type KhoangChon } from './ChonKhoang';
 
 type Cap = 'campaign' | 'adgroup' | 'ad' | 'keyword';
 interface DoiTuong {
@@ -191,7 +192,12 @@ function ChienDich({ taiSanId, loai }: { taiSanId: string; loai: 'meta' | 'gads'
   const id = encodeURIComponent(taiSanId);
   const [d, setD] = useState<{ doiTuong: DoiTuong[]; tienTe: string } | null>(null);
   const [cs, setCs] = useState<Record<string, Record<string, ChiSo>>>({});
-  const [ky, setKy] = useState<'7' | '14' | '30'>('7');
+  // Khoảng ngày + chia theo thời gian như Facebook (anh Tâm 11/11/2026).
+  const [kh, setKh] = useState<KhoangChon>({ mau: '7', tu: '', den: '' });
+  const [chia, setChia] = useState<'' | 'ngay' | 'tuan' | 'thang'>('');
+  const [theoTg, setTheoTg] = useState<Array<{ ky: string; nhan: string; chiSo: ChiSo }> | null>(null);
+  const tsKh = thamSoKhoang(kh);
+  const nhanKh = kh.mau === 'tuy_chon' ? `${kh.tu} → ${kh.den}` : MAU.find(([k]) => k === kh.mau)?.[1] || '';
   const [loi, setLoi] = useState('');
   const [mo, setMo] = useState<Record<string, boolean>>({});
   const [ns, setNs] = useState<Record<string, string>>({});
@@ -206,7 +212,7 @@ function ChienDich({ taiSanId, loai }: { taiSanId: string; loai: 'meta' | 'gads'
   const taiChiSo = () =>
     Promise.all(
       ['campaign', 'adgroup', 'ad'].map((cap) =>
-        api<{ chiSo: Record<string, ChiSo> }>(`/ads/${id}/chi-tiet?cap=${cap}&ky=${ky}`)
+        api<{ chiSo: Record<string, ChiSo> }>(`/ads/${id}/chi-tiet?cap=${cap}&${tsKh}`)
           .then((r) => [cap, r.chiSo] as const)
           .catch(() => [cap, {}] as const),
       ),
@@ -218,7 +224,15 @@ function ChienDich({ taiSanId, loai }: { taiSanId: string; loai: 'meta' | 'gads'
   useEffect(() => {
     void taiChiSo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taiSanId, ky]);
+  }, [taiSanId, tsKh]);
+  useEffect(() => {
+    setTheoTg(null);
+    if (!chia) return;
+    api<{ dong: Array<{ ky: string; nhan: string; chiSo: ChiSo }> }>(`/ads/${id}/theo-thoi-gian?nhom=${chia}&${tsKh}`)
+      .then((r) => setTheoTg(r.dong))
+      .catch(() => setTheoTg([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taiSanId, tsKh, chia]);
 
   if (loi) return <p className="text-sm text-red-700">⚠ {loi}</p>;
   if (!d) return <p className="text-sm text-ink-muted">Đang tải chiến dịch…</p>;
@@ -324,15 +338,62 @@ function ChienDich({ taiSanId, loai }: { taiSanId: string; loai: 'meta' | 'gads'
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        {(['7', '14', '30'] as const).map((k) => (
-          <button key={k} type="button" className={`rounded-lg px-2.5 py-1 ${ky === k ? 'bg-ocean-700 text-white' : 'bg-brand-50'}`} onClick={() => setKy(k)}>
-            {k} ngày
-          </button>
-        ))}
+        <ChonKhoang gia={kh} doi={setKh} />
+        <span className="flex items-center gap-1 text-xs">
+          Chia theo:
+          {(
+            [
+              ['', 'Không'],
+              ['ngay', 'Ngày'],
+              ['tuan', 'Tuần'],
+              ['thang', 'Tháng'],
+            ] as const
+          ).map(([k, l]) => (
+            <button key={k} type="button" className={`rounded-lg px-2 py-1 ${chia === k ? 'bg-ocean-700 text-white' : 'bg-brand-50'}`} onClick={() => setChia(k)}>
+              {l}
+            </button>
+          ))}
+        </span>
         <label className="ml-auto flex items-center gap-1.5 text-xs">
           <input type="checkbox" checked={anTat} onChange={(e) => setAnTat(e.target.checked)} /> Ẩn chiến dịch đang dừng và không tiêu ({tatCa.length - camp.length})
         </label>
       </div>
+      {chia && (
+        <div className="max-h-[420px] overflow-auto rounded-xl border border-brand-100">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 z-20 bg-brand-50 text-xs text-ink-muted">
+              <tr>
+                <th className="sticky left-0 z-30 bg-brand-50 px-2 py-2 text-left">{chia === 'ngay' ? 'Ngày' : chia === 'tuan' ? 'Tuần' : 'Tháng'} (cả tài khoản)</th>
+                {cot.map((c) => (
+                  <th key={c.k} className="whitespace-nowrap px-2 py-2 text-right">
+                    {c.ten}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-brand-100">
+              {theoTg === null ? (
+                <tr>
+                  <td className="px-2 py-2 text-ink-muted" colSpan={cot.length + 1}>
+                    Đang tải…
+                  </td>
+                </tr>
+              ) : (
+                theoTg.map((r) => (
+                  <tr key={r.ky}>
+                    <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-2 py-1.5 font-medium">{r.nhan}</td>
+                    {cot.map((c) => (
+                      <td key={c.k} className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums">
+                        {fmt(r.chiSo[c.k], c.kieu)}
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
       <div className="max-h-[640px] overflow-auto rounded-xl border border-brand-100">
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-20 bg-brand-50 text-xs text-ink-muted">
@@ -349,7 +410,7 @@ function ChienDich({ taiSanId, loai }: { taiSanId: string; loai: 'meta' | 'gads'
           </thead>
           <tbody className="divide-y divide-brand-100">
             <tr className="bg-amber-50 font-semibold">
-              <td className="sticky left-0 z-10 bg-amber-50 px-2 py-1.5">Tổng tài khoản ({ky} ngày)</td>
+              <td className="sticky left-0 z-10 bg-amber-50 px-2 py-1.5">Tổng tài khoản ({nhanKh})</td>
               <td />
               {cot.map((c) => (
                 <td key={c.k} className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums">

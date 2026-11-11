@@ -22,7 +22,11 @@ nenTangRouter.get(
     const nguoi = { role: req.user!.role, teamId: String(me?.teamId || '') };
     const locTeam = nguoi.role === 'director' ? String(req.query.team || '') || undefined : undefined;
     try {
-      const [kq, teams] = await Promise.all([chiSo(nguoi, loai, locTeam), getTeams().catch(() => [])]);
+      // Khoảng như Facebook: ?mau=7|hom_qua|tuan_truoc|thang_nay|tuy_chon&tu=&den= (mặc định 7 ngày qua).
+      const { khoangNgay } = await import('../lib/khoangNgay.js');
+      const { todayIso } = await import('../lib/datetime.js');
+      const kh = req.query.mau ? khoangNgay(String(req.query.mau), todayIso(), String(req.query.tu || ''), String(req.query.den || '')) : undefined;
+      const [kq, teams] = await Promise.all([chiSo(nguoi, loai, locTeam, kh), getTeams().catch(() => [])]);
       res.json({ ...kq, teams: teams.map((t) => ({ id: t.id, name: t.name })), laGd: nguoi.role === 'director', canCapNhatDb: false });
     } catch {
       res.json({ taiSan: [], tong: null, teams: [], laGd: nguoi.role === 'director', canCapNhatDb: true });

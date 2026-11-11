@@ -572,31 +572,70 @@ export async function aiDeXuatHangNgay(): Promise<number> {
 
 // ── Chỉ số chi tiết như Trình quản lý quảng cáo (anh Tâm 11/11/2026) ──
 
-export type KyNgay = '7' | '14' | '30';
+/** Khoảng ngày (YYYY-MM-DD) — như Trình quản lý quảng cáo (anh Tâm 11/11/2026: "xem theo ngày tuần tháng... như fb"). */
+export interface Khoang {
+  tu: string;
+  den: string;
+}
 
-export async function chiTiet(nguoi: Nguoi, taiSanId: string, cap: CapQc, ky: KyNgay): Promise<Record<string, unknown>> {
+const COT_META = 'spend,impressions,reach,frequency,clicks,inline_link_clicks,actions,action_values';
+const COT_GADS = 'metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.conversions_value';
+const COT_GADS_IS =
+  'metrics.search_impression_share, metrics.search_budget_lost_impression_share, metrics.search_rank_lost_impression_share, ' +
+  'metrics.search_top_impression_share, metrics.search_absolute_top_impression_share';
+const actCua = (ts: TaiSanNt) => `act_${ts.maNgoai.replace(/\D/g, '')}`;
+
+export async function chiTiet(nguoi: Nguoi, taiSanId: string, cap: CapQc, kh: Khoang): Promise<Record<string, unknown>> {
   const ts = await taiSanCo(nguoi, taiSanId);
   const k = await import('./ketNoi.service.js');
   const { chiTietGads, chiTietMeta } = await import('../lib/adsDieuChinh.js');
   if (ts.loai === 'meta') {
     const level = cap === 'campaign' ? 'campaign' : cap === 'adgroup' ? 'adset' : 'ad';
-    const j = await k.metaGraph(`act_${ts.maNgoai.replace(/\D/g, '')}/insights`, {
+    const j = await k.metaGraph(`${actCua(ts)}/insights`, {
       level,
-      date_preset: `last_${ky}d`,
-      fields: `${level}_id,spend,impressions,reach,frequency,clicks,inline_link_clicks,actions,action_values`,
+      time_range: JSON.stringify({ since: kh.tu, until: kh.den }),
+      fields: `${level}_id,${COT_META}`,
       limit: '500',
     });
     return chiTietMeta(j, cap);
   }
-  const khoang = `segments.date DURING LAST_${ky}_DAYS`;
-  const coBan = 'metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.conversions_value';
+  const khoang = `segments.date BETWEEN '${kh.tu}' AND '${kh.den}'`;
   const q2 =
     cap === 'campaign'
-      ? `SELECT campaign.id, ${coBan}, metrics.search_impression_share, metrics.search_budget_lost_impression_share, metrics.search_rank_lost_impression_share, ` +
-        `metrics.search_top_impression_share, metrics.search_absolute_top_impression_share FROM campaign WHERE ${khoang}`
+      ? `SELECT campaign.id, ${COT_GADS}, ${COT_GADS_IS} FROM campaign WHERE ${khoang}`
       : cap === 'adgroup'
-        ? `SELECT ad_group.id, ${coBan}, metrics.search_impression_share, metrics.search_rank_lost_impression_share, metrics.search_top_impression_share, ` +
+        ? `SELECT ad_group.id, ${COT_GADS}, metrics.search_impression_share, metrics.search_rank_lost_impression_share, metrics.search_top_impression_share, ` +
           `metrics.search_absolute_top_impression_share FROM ad_group WHERE ${khoang}`
-        : `SELECT ad_group.id, ad_group_ad.ad.id, ${coBan} FROM ad_group_ad WHERE ${khoang}`;
+        : `SELECT ad_group.id, ad_group_ad.ad.id, ${COT_GADS} FROM ad_group_ad WHERE ${khoang}`;
   return chiTietGads(await k.gadsTruyVan(ts.maNgoai, q2), cap);
+}
+
+/** Cả tài khoản chia theo ngày / tuần / tháng (như "Chia nhỏ → Theo thời gian" của Facebook). */
+export async function theoThoiGian(nguoi: Nguoi, taiSanId: string, kh: Khoang, nhom: 'ngay' | 'tuan' | 'thang') {
+  const ts = await taiSanCo(nguoi, taiSanId);
+  const k = await import('./ketNoi.service.js');
+  const { chiTietGads, chiTietMeta } = await import('../lib/adsDieuChinh.js');
+  const { nhomThoiGian } = await import('../lib/khoangNgay.js');
+  const ngay: Array<{ ngay: string; chiSo: Record<string, number | undefined> }> = [];
+  if (ts.loai === 'meta') {
+    const j = (await k.metaGraph(`${actCua(ts)}/insights`, {
+      level: 'account',
+      time_increment: '1',
+      time_range: JSON.stringify({ since: kh.tu, until: kh.den }),
+      fields: COT_META,
+      limit: '500',
+    })) as { data?: Array<Record<string, unknown>> };
+    // chiTietMeta gom theo mã đối tượng → dùng ngày làm "mã chiến dịch".
+    const cs = chiTietMeta({ data: (j.data || []).map((r) => ({ ...r, campaign_id: r.date_start })) }, 'campaign');
+    for (const [d, c] of Object.entries(cs)) ngay.push({ ngay: d, chiSo: c as unknown as Record<string, number> });
+  } else {
+    const j = (await k.gadsTruyVan(
+      ts.maNgoai,
+      `SELECT segments.date, ${COT_GADS}, ${COT_GADS_IS} FROM customer WHERE segments.date BETWEEN '${kh.tu}' AND '${kh.den}'`,
+    )) as Array<{ results?: Array<Record<string, Record<string, unknown>>> }>;
+    const hang = (j || []).flatMap((x) => x.results || []).map((r) => ({ ...r, campaign: { id: String(r.segments?.date || '') } }));
+    const cs = chiTietGads([{ results: hang }], 'campaign');
+    for (const [d, c] of Object.entries(cs)) ngay.push({ ngay: d, chiSo: c as unknown as Record<string, number> });
+  }
+  return nhomThoiGian(ngay, nhom);
 }

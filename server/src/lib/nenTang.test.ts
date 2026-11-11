@@ -138,3 +138,15 @@ describe('tomTatMetaChienDich — số chiến dịch Meta cho trợ lý đọc'
     expect(tomTatMetaChienDich({ data: [] })).toBe('Không có số liệu trong khoảng này.');
   });
 });
+
+describe('tomTatChiSo — khoảng tuỳ chọn (anh Tâm 11/11/2026: "xem theo ngày tuần tháng... như fb")', () => {
+  const ds = Array.from({ length: 20 }, (_, i) => ({ ngay: `2026-11-${String(i + 1).padStart(2, '0')}`, chiTieu: 10 }));
+  it('kỳ = khoảng chọn, so với khoảng liền trước cùng độ dài; biểu đồ theo đúng khoảng', () => {
+    const t = tomTatChiSo(ds, '2026-11-21', { tu: '2026-11-08', den: '2026-11-10' });
+    expect(t.tuNgay).toBe('2026-11-08');
+    expect(t.denNgay).toBe('2026-11-10');
+    expect(t.ky.chiTieu).toBe(30);
+    expect(t.truoc.chiTieu).toBe(30); // 05–07/11
+    expect(t.chuoi.map((d) => d.ngay)).toEqual(['2026-11-08', '2026-11-09', '2026-11-10']);
+  });
+});

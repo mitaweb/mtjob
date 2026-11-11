@@ -117,8 +117,27 @@ adsRouter.get(
   '/:ts/chi-tiet',
   asyncHandler(async (req, res) => {
     const cap = z.enum(['campaign', 'adgroup', 'ad']).parse(req.query.cap || 'campaign');
-    const ky = z.enum(['7', '14', '30']).parse(String(req.query.ky || '7'));
+    const kh = await khoangCua(req);
     const { chiTiet } = await import('./adsDieuChinh.service.js');
-    res.json({ cap, ky, chiSo: await chiTiet(await nguoiCua(req), ts(req), cap, ky) });
+    res.json({ cap, ...kh, chiSo: await chiTiet(await nguoiCua(req), ts(req), cap, kh) });
   }),
 );
+
+/** Cả tài khoản chia theo ngày / tuần / tháng trong khoảng đã chọn (anh Tâm 11/11/2026: "như fb"). */
+adsRouter.get(
+  '/:ts/theo-thoi-gian',
+  asyncHandler(async (req, res) => {
+    const nhom = z.enum(['ngay', 'tuan', 'thang']).parse(req.query.nhom || 'ngay');
+    const kh = await khoangCua(req);
+    const { theoThoiGian } = await import('./adsDieuChinh.service.js');
+    res.json({ nhom, ...kh, dong: await theoThoiGian(await nguoiCua(req), ts(req), kh, nhom) });
+  }),
+);
+
+/** ?mau=7|hom_qua|tuan_truoc|thang_nay|tuy_chon&tu=&den= — như bộ chọn ngày của Trình quản lý quảng cáo. */
+async function khoangCua(req: Request) {
+  const { khoangNgay } = await import('../lib/khoangNgay.js');
+  const { todayIso } = await import('../lib/datetime.js');
+  const mau = String(req.query.mau || req.query.ky || '7');
+  return khoangNgay(mau, todayIso(), String(req.query.tu || ''), String(req.query.den || ''));
+}

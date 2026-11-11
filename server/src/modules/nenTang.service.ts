@@ -92,7 +92,8 @@ export async function suaTaiSan(id: string, o: { teamId?: string; khach?: string
 }
 
 const congNgay = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
-const NGAY_DONG_BO = 35;
+// 190 ngày: đủ so "90 ngày qua" với 90 ngày trước (anh Tâm 11/11/2026: "xem theo ngày tuần tháng... như fb").
+const NGAY_DONG_BO = 190;
 
 async function laySo(ts: TaiSanNt, tu: string, den: string): Promise<DongSo[]> {
   const k = await import('./ketNoi.service.js');
@@ -112,11 +113,11 @@ async function laySo(ts: TaiSanNt, tu: string, den: string): Promise<DongSo[]> {
           dateRanges: [{ startDate: tu, endDate: den }],
           dimensions: [{ name: 'date' }],
           metrics: [{ name: 'sessions' }, { name: 'activeUsers' }, { name: 'keyEvents' }],
-          limit: '100',
+          limit: '500',
         }),
       );
     case 'gsc':
-      return dongGsc(await k.gscTruyVan(ts.maNgoai, { startDate: tu, endDate: den, dimensions: ['date'], rowLimit: 100 }));
+      return dongGsc(await k.gscTruyVan(ts.maNgoai, { startDate: tu, endDate: den, dimensions: ['date'], rowLimit: 500 }));
   }
 }
 
@@ -197,15 +198,17 @@ export async function chiSo(
   nguoi: { role: string; teamId: string },
   loai: LoaiTaiSan,
   locTeam?: string,
+  kh?: { tu: string; den: string },
 ): Promise<{ taiSan: ChiSoTaiSan[]; tong: TomTat | null; tongTien?: TomTat; tienTeTong?: string; boQuaTien?: number }> {
   const homNay = todayIso();
+  const soNgay = kh ? Math.round((Date.parse(kh.den) - Date.parse(kh.tu)) / 86_400_000) + 1 : 7;
   // Search Console báo số trễ 2–3 ngày → được lùi mốc; Ads / GA4 luôn tính tới hôm qua.
   const tre = loai === 'gsc' ? 3 : 0;
   const ts = (await dsTaiSan()).filter((t) => t.loai === loai && t.theoDoi && xemDuoc(nguoi, t.teamId) && (!locTeam || t.teamId === locTeam || t.teamId === '*'));
   if (!ts.length) return { taiSan: [], tong: null };
   const rows = await q(
     `SELECT * FROM nen_tang_so_lieu WHERE tai_san_id = ANY($1::text[]) AND ngay >= $2 ORDER BY ngay`,
-    [ts.map((t) => t.id), congNgay(homNay, -45)],
+    [ts.map((t) => t.id), kh ? congNgay(kh.tu, -soNgay) : congNgay(homNay, -45)],
   );
   const theoTs = new Map<string, DongSo[]>();
   for (const r of rows) {
@@ -229,7 +232,7 @@ export async function chiSo(
     tienTe: t.tienTe,
     loi: t.loi,
     dongBoCuoi: t.dongBoCuoi,
-    tomTat: tomTatChiSo(theoTs.get(t.id) || [], homNay, { treToiDa: tre }),
+    tomTat: tomTatChiSo(theoTs.get(t.id) || [], homNay, { treToiDa: tre, ...(kh || {}) }),
   }));
   // Tiền: chỉ cộng tài khoản cùng loại tiền đa số (anh Tâm 11/11/2026: một tài khoản USD làm ô Chi phí tổng thành "—").
   const demTien = new Map<string, number>();
@@ -238,8 +241,8 @@ export async function chiSo(
   const cungTien = ts.filter((t) => (t.tienTe || 'VND') === tienTeTong);
   return {
     taiSan,
-    tong: tomTatChiSo(gopTheoNgay([...theoTs.values()].flat()), homNay, { treToiDa: tre }),
-    tongTien: tomTatChiSo(gopTheoNgay(cungTien.flatMap((t) => theoTs.get(t.id) || [])), homNay, { treToiDa: tre }),
+    tong: tomTatChiSo(gopTheoNgay([...theoTs.values()].flat()), homNay, { treToiDa: tre, ...(kh || {}) }),
+    tongTien: tomTatChiSo(gopTheoNgay(cungTien.flatMap((t) => theoTs.get(t.id) || [])), homNay, { treToiDa: tre, ...(kh || {}) }),
     tienTeTong,
     boQuaTien: ts.length - cungTien.length,
   };

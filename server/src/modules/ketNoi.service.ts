@@ -284,7 +284,7 @@ export async function metaInsights(accountId: string, tu: string, den: string): 
     time_increment: '1',
     time_range: JSON.stringify({ since: tu, until: den }),
     fields: 'spend,impressions,clicks,actions',
-    limit: '100',
+    limit: '500',
     access_token: k.token,
   });
 }
