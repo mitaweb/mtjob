@@ -224,15 +224,49 @@ export default function AdminKetNoi() {
         </p>
       </div>
 
+      {/* n8n (anh Tâm 11/11/2026: "kết hợp n8n đi, anh đã có sẵn kinh nghiệm n8n") */}
+      <div className="space-y-1">
+        <div className="font-semibold">⚙️ n8n — nối mọi thứ còn lại (Sheets, Drive, Zalo OA, Lark…)</div>
+        <p className="text-sm text-ink-muted">
+          n8n tự cài là "Composio miễn phí": workflow nào anh cho phép thì trợ lý gọi được. Dán địa chỉ + mã vào ô <b>MCP khác</b> bên dưới.
+        </p>
+        <details className="rounded-xl bg-brand-50 p-3 text-sm text-ink-soft">
+          <summary className="cursor-pointer select-none font-semibold">Cách nối n8n (chọn 1 trong 2)</summary>
+          <div className="mt-2 space-y-2">
+            <div>
+              <b>Cách 1 — cả n8n (n8n ≥ 2.2, khuyên dùng):</b>
+              <ol className="list-decimal space-y-0.5 pl-5">
+                <li>n8n → Settings → <b>Instance-level MCP</b> → bật <b>Enable MCP access</b>.</li>
+                <li>
+                  Bấm <b>Connect a client</b> → tab <b>API key</b> → chép <b>Server URL</b> (đuôi <code>/mcp-server/http</code>) và mã token (chỉ chép được lúc đang mở
+                  tab đó).
+                </li>
+                <li>
+                  Workflow nào muốn trợ lý dùng: Settings của workflow → bật <b>Available in MCP</b>, rồi <b>Publish</b>.
+                </li>
+              </ol>
+            </div>
+            <div>
+              <b>Cách 2 — từng workflow:</b> tạo workflow bắt đầu bằng nút <b>MCP Server Trigger</b>, Authentication = <b>Bearer Auth</b>, gắn các
+              tool (Google Sheets, HTTP Request…), Publish → chép <b>Production URL</b> + mã Bearer.
+            </div>
+            <div className="text-xs text-ink-muted">
+              n8n trên máy Mac / máy nhà: mở ra Internet bằng Cloudflare Tunnel (https). Có Nginx thì tắt proxy buffering cho đường <code>/mcp</code>. Workflow
+              anh cho phép là trợ lý được chạy — chỉ bật những workflow an toàn (đọc số, gửi báo cáo cho anh…).
+            </div>
+          </div>
+        </details>
+      </div>
+
       {/* MCP khác */}
       <div className="space-y-2">
-        <div className="font-semibold">🧩 MCP khác (máy Mac / máy chủ riêng)</div>
+        <div className="font-semibold">🧩 MCP khác (n8n / máy Mac / máy chủ riêng)</div>
         {khac.map((k) => (
           <DongKetNoi key={k.id} k={k} onDoi={tai} />
         ))}
         <div className="grid gap-2 sm:grid-cols-[1fr_2fr_1.5fr_auto]">
-          <input className="input" placeholder="Tên (vd Google Ads – Mac)" value={moi.ten} onChange={(e) => setMoi({ ...moi, ten: e.target.value })} />
-          <input className="input" placeholder="https://…/mcp" value={moi.url} onChange={(e) => setMoi({ ...moi, url: e.target.value })} autoCapitalize="off" spellCheck={false} />
+          <input className="input" placeholder="Tên (vd n8n công ty)" value={moi.ten} onChange={(e) => setMoi({ ...moi, ten: e.target.value })} />
+          <input className="input" placeholder="https://n8n…/mcp-server/http" value={moi.url} onChange={(e) => setMoi({ ...moi, url: e.target.value })} autoCapitalize="off" spellCheck={false} />
           <input className="input" type="password" placeholder="Mã bí mật (nếu có)" value={moi.token} onChange={(e) => setMoi({ ...moi, token: e.target.value })} autoComplete="off" />
           <AsyncButton busyLabel="Đang nối…" disabled={!/^https:\/\/.+/.test(moi.url.trim())} onClick={themMcp}>
             Thêm

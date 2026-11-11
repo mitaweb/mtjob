@@ -31,8 +31,9 @@ export async function mcpTools(): Promise<ToolDef[]> {
       declaration: {
         name: 'goi_mcp',
         description:
-          'Gọi công cụ của MCP đã kết nối để lấy SỐ LIỆU THẬT (quảng cáo Meta: tài khoản, chiến dịch, chi tiêu, kết quả…). ' +
-          'CHỈ ĐỌC — công cụ làm thay đổi tài khoản (tạo / sửa / tạm dừng / đổi ngân sách) sẽ bị chặn. Các kết nối và công cụ:\n' +
+          'Gọi công cụ của MCP đã kết nối: lấy SỐ LIỆU THẬT (quảng cáo Meta: tài khoản, chiến dịch, chi tiêu, kết quả…) hoặc chạy ' +
+          'WORKFLOW n8n anh đã cho phép (n8n: search_workflows tìm workflow, get_workflow_details xem đầu vào, execute_workflow để chạy). ' +
+          'Công cụ làm thay đổi tài khoản quảng cáo / sửa workflow (tạo / sửa / tạm dừng / đổi ngân sách / publish) bị chặn. Các kết nối và công cụ:\n' +
           moTa,
         parameters: {
           type: 'OBJECT',

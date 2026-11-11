@@ -155,16 +155,36 @@ export async function themMcp(o: { ten: string; url: string; token: string }): P
 
 // ── Gọi MCP ──
 
+/**
+ * Mở phiên MCP: Streamable HTTP trước; máy chủ chỉ nói SSE (n8n bản cũ, địa chỉ kết thúc /sse…) thì thử lại bằng SSE
+ * (anh Tâm 11/11/2026: "kết hợp n8n"). Mã bí mật gửi `Authorization: Bearer` ở cả hai kiểu.
+ */
 async function moMcp(k: { url: string; token: string }) {
   const [{ Client }, { StreamableHTTPClientTransport }] = await Promise.all([
     import('@modelcontextprotocol/sdk/client/index.js'),
     import('@modelcontextprotocol/sdk/client/streamableHttp.js'),
   ]);
+  const headers: Record<string, string> = k.token ? { Authorization: `Bearer ${k.token}` } : {};
+  const url = new URL(k.url);
+  const chiSse = /\/sse\/?$/.test(url.pathname);
+  if (!chiSse) {
+    const client = new Client({ name: 'mtjob', version: '1.0.0' });
+    try {
+      await client.connect(new StreamableHTTPClientTransport(url, { requestInit: { headers } }));
+      return client;
+    } catch (e) {
+      // Sai mã bí mật thì báo luôn, khỏi thử SSE.
+      if (/\b401\b|unauthori[sz]ed|forbidden|\b403\b/i.test((e as Error).message)) throw e;
+    }
+  }
+  const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse.js');
   const client = new Client({ name: 'mtjob', version: '1.0.0' });
-  const transport = new StreamableHTTPClientTransport(new URL(k.url), {
-    requestInit: k.token ? { headers: { Authorization: `Bearer ${k.token}` } } : undefined,
-  });
-  await client.connect(transport);
+  await client.connect(
+    new SSEClientTransport(url, {
+      requestInit: { headers },
+      eventSourceInit: { fetch: (u, init) => fetch(u, { ...init, headers: { ...(init?.headers as Record<string, string>), ...headers } }) },
+    }),
+  );
   return client;
 }
 
