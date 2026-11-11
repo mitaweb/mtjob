@@ -47,6 +47,12 @@ jobsRouter.get(
     // Trả lời cron NGAY rồi mới làm (18/10/2026): dịch vụ cron ngoài (cron-job.org — dùng lại nếu không còn gói Vercel
     // Pro) chỉ chờ ~30 giây, trả chậm bị tính lỗi, lỗi nhiều lần nó tự tắt job — nghi là lý do nó ngừng gọi từ 15/10.
     res.json({ ok: true, job: 'reminders' });
+    // Việc tự động (học Javis, 11/11/2026): chạy SONG SONG chuỗi dưới — một việc có thể mất vài phút (AI tra nhiều hàm).
+    runInBackground(
+      import('./viecTuDong.service.js')
+        .then((m) => m.chayViecTuDong())
+        .catch((e) => console.warn('[viec-tu-dong] lượt:', (e as Error).message)),
+    );
     // Nhắc hẹn rồi Zalo → kho tri thức, chạy nền nối tiếp nhau.
     runInBackground(
       // Nhắc chấm giờ ra sau giờ tan ca (anh Tâm 22/10/2026) — mỗi người mỗi ngày một lần.

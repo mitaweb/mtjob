@@ -393,6 +393,28 @@ CREATE INDEX IF NOT EXISTS reminders_member_idx ON reminders (member_id, active)
 -- Tăng tốc (anh Tâm 12/10/2026): index cho truy vấn hay chạy. Quét nhắc đang bật (cron 5 phút).
 CREATE INDEX IF NOT EXISTS reminders_active_idx ON reminders (rem_id) WHERE active;
 
+-- Việc tự động (học Javis, anh Tâm 11/11/2026): việc lặp theo lịch do trợ lý CHỈ ĐỌC chạy, kết quả qua bước kiểm lại,
+-- sai 3 lần liền thì tự dừng. Lịch giống nhắc hẹn. trang_thai: chay | dung (anh tắt) | tu_dung (sai 3 lần).
+CREATE TABLE IF NOT EXISTS viec_tu_dong (
+  id           text PRIMARY KEY,
+  member_id    text NOT NULL,
+  ten          text NOT NULL,
+  yeu_cau      text NOT NULL,
+  at_time      text NOT NULL DEFAULT '08:00',
+  repeat_kind  text NOT NULL DEFAULT 'daily',
+  on_date      text DEFAULT '',
+  weekday      integer DEFAULT 1,
+  day_of_month integer DEFAULT 1,
+  trang_thai   text DEFAULT 'chay',
+  so_lan_loi   integer DEFAULT 0,
+  last_fired   text DEFAULT '',
+  thu_lai_luc  bigint DEFAULT 0,       -- ms: sai thì lượt thử lại không sớm hơn mốc này
+  ket_qua      text DEFAULT '',        -- kết quả lượt gần nhất
+  ly_do        text DEFAULT '',        -- lý do bước kiểm lại đánh trượt
+  lan_chay     text DEFAULT '',        -- ISO lượt gần nhất
+  tao_luc      text DEFAULT ''
+);
+
 -- Dự án: theo dõi KẾT QUẢ cam kết với khách (bao nhiêu tin nhắn, bao nhiêu khách mới),
 -- khác với bảng tasks vốn đo công sức bỏ ra. Khách hàng là tuỳ chọn — có dự án nội bộ.
 CREATE TABLE IF NOT EXISTS projects (

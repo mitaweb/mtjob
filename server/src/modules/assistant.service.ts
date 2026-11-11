@@ -883,6 +883,8 @@ export async function answerDataQuestion(
   question: string,
   history: ChatTurn[] = [],
   onEvent?: OnAssistantEvent,
+  /** chiDoc: việc tự động chạy nền — bỏ mọi hàm ghi (anh Tâm 11/11/2026). */
+  opts: { chiDoc?: boolean } = {},
 ): Promise<string> {
   if (!(await aiAvailable())) {
     return 'Tính năng hỏi dữ liệu cần bật Trợ lý AI. Vào Quản trị → chọn nhà cung cấp và dán API key là dùng được ngay.';
@@ -1029,6 +1031,8 @@ export async function answerDataQuestion(
     tools.push(...(await import('./assistant.tools.mcp.js').then((m) => m.mcpTools()).catch(() => [])));
     // Google Ads / GA4 / Search Console qua kết nối Google của công ty (anh Tâm 11/11/2026).
     tools.push(...(await import('./assistant.tools.google.js').then((m) => m.googleTools()).catch(() => [])));
+    // Việc tự động lặp theo lịch (học Javis, anh Tâm 11/11/2026).
+    tools.push(...(await import('./viecTuDong.service.js')).viecTuDongTools(memberId));
     hieuAnh = await import('./hieuAnh.service.js').then((m) => m.loiNhacHieuAnh(question)).catch(() => '');
     // Anh đang SỬA trợ lý (học Javis 11/11/2026) → nhắc trợ lý ghi nhớ điều dùng lại được; lượt học kế tiếp chạy ngay.
     if (laLoiSua(question)) {
@@ -1041,6 +1045,8 @@ export async function answerDataQuestion(
     // Admin dùng chung trợ lý này nhưng KHÔNG được xem / ghi số liệu tài chính (chỉ giám đốc).
     for (let i = tools.length - 1; i >= 0; i--) if (TAI_CHINH_CHI_GD.has(tools[i]!.declaration.name)) tools.splice(i, 1);
   }
+  // Chạy nền (việc tự động): CHỈ ĐỌC — gỡ mọi hàm ghi, kể cả đặt nhắc / tạo việc.
+  if (opts.chiDoc) for (let i = tools.length - 1; i >= 0; i--) if (laHamGhi(tools[i]!.declaration.name)) tools.splice(i, 1);
   const ketoanGoiY = laGd
     ? 'KẾ TOÁN THUẾ: hỏi khách đã chuyển tiền chưa, sao kê, hoá đơn, thuế, lãi lỗ, công nợ theo sao kê → tra_sao_ke, ' +
       'tra_hoa_don, get_ke_toan_thue (tên trên sao kê thường là tên pháp nhân — không ra thì tra_hoa_don lấy tên công ty rồi tìm lại).'
