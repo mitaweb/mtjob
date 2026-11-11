@@ -583,6 +583,8 @@ const COT_GADS = 'metrics.impressions, metrics.clicks, metrics.cost_micros, metr
 const COT_GADS_IS =
   'metrics.search_impression_share, metrics.search_budget_lost_impression_share, metrics.search_rank_lost_impression_share, ' +
   'metrics.search_top_impression_share, metrics.search_absolute_top_impression_share';
+// Cấp tài khoản (FROM customer) Google KHÔNG cho lấy tỷ lệ hiển thị đầu trang (PROHIBITED_METRIC — thử thật 11/11/2026).
+const COT_GADS_IS_TK = 'metrics.search_impression_share, metrics.search_budget_lost_impression_share, metrics.search_rank_lost_impression_share';
 const actCua = (ts: TaiSanNt) => `act_${ts.maNgoai.replace(/\D/g, '')}`;
 
 export async function chiTiet(nguoi: Nguoi, taiSanId: string, cap: CapQc, kh: Khoang): Promise<Record<string, unknown>> {
@@ -631,7 +633,7 @@ export async function theoThoiGian(nguoi: Nguoi, taiSanId: string, kh: Khoang, n
   } else {
     const j = (await k.gadsTruyVan(
       ts.maNgoai,
-      `SELECT segments.date, ${COT_GADS}, ${COT_GADS_IS} FROM customer WHERE segments.date BETWEEN '${kh.tu}' AND '${kh.den}'`,
+      `SELECT segments.date, ${COT_GADS}, ${COT_GADS_IS_TK} FROM customer WHERE segments.date BETWEEN '${kh.tu}' AND '${kh.den}'`,
     )) as Array<{ results?: Array<Record<string, Record<string, unknown>>> }>;
     const hang = (j || []).flatMap((x) => x.results || []).map((r) => ({ ...r, campaign: { id: String(r.segments?.date || '') } }));
     const cs = chiTietGads([{ results: hang }], 'campaign');
