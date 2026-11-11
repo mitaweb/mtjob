@@ -156,6 +156,15 @@ keToanRouter.post(
   }),
 );
 
+/** Tháng đã lấy từ cổng thuế: đủ tới tháng nào, tháng nào nên lấy lại, gợi ý tháng tiếp (anh Tâm 11/11/2026). */
+keToanRouter.get(
+  '/cong-thue/da-lay',
+  asyncHandler(async (_req, res) => {
+    const { thangDaLayCongThue } = await import('./keToan.service.js');
+    res.json(await thangDaLayCongThue());
+  }),
+);
+
 keToanRouter.post(
   '/cong-thue/lay',
   asyncHandler(async (req, res) => {

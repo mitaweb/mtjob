@@ -255,6 +255,52 @@ export async function nhapXml(files: Array<{ ten: string; noiDung: string }>, ng
   return ketQua;
 }
 
+// ── Tháng đã lấy từ cổng thuế (anh Tâm 11/11/2026: "tháng nào mà đã cập nhật từ cổng thuế có trên hệ thống rồi thì note
+// lại, đã cập nhật từ tháng... để cập nhật tiếp mà k phải lấy nhiều") ──
+
+const KHOA_DA_LAY = 'cong_thue_da_lay';
+export type LoaiLay = 'ra' | 'vao' | 'mtt_ra' | 'mtt_vao';
+const LOAI_LAY: LoaiLay[] = ['ra', 'vao', 'mtt_ra', 'mtt_vao'];
+
+async function docDaLay(): Promise<Record<LoaiLay, Record<string, string>>> {
+  const rong = { ra: {}, vao: {}, mtt_ra: {}, mtt_vao: {} } as Record<LoaiLay, Record<string, string>>;
+  const cd = await docCaiDat().catch(() => ({}) as Record<string, string>);
+  if (cd[KHOA_DA_LAY]) {
+    try {
+      return { ...rong, ...JSON.parse(cd[KHOA_DA_LAY]!) };
+    } catch {
+      /* hỏng → dựng lại */
+    }
+  }
+  // Lần đầu: suy ra từ lịch sử tải lên cũ ("Cổng thuế · mua vào tháng 10/2026").
+  const { q } = await import('../db/client.js');
+  const rows = await q(`SELECT ten_file, luc FROM kt_tai_len WHERE loai = 'Cổng thuế' ORDER BY luc`).catch(() => []);
+  for (const r of rows) {
+    const m = /Cổng thuế · (máy tính tiền )?(mua vào|bán ra) tháng (\d{2})\/(\d{4})/.exec(String(r.ten_file || ''));
+    if (!m) continue;
+    const loai = `${m[1] ? 'mtt_' : ''}${m[2] === 'mua vào' ? 'vao' : 'ra'}` as LoaiLay;
+    rong[loai][`${m[4]}-${m[3]}`] = String(r.luc || '');
+  }
+  return rong;
+}
+
+async function ghiDaLay(loai: LoaiLay, thang: string, luc: string): Promise<void> {
+  const d = await docDaLay();
+  d[loai][thang] = luc;
+  await ghiCaiDat(KHOA_DA_LAY, JSON.stringify(d));
+}
+
+/** Tình trạng từng loại: đã lấy đủ tới tháng nào, tháng nào nên lấy lại, gợi ý tháng tiếp. */
+export async function thangDaLayCongThue() {
+  const { tinhThangDaLay } = await import('../lib/keToanGop.js');
+  const d = await docDaLay();
+  const homNay = nowTz().format('YYYY-MM-DD');
+  return Object.fromEntries(LOAI_LAY.map((l) => [l, { ...tinhThangDaLay(d[l], homNay), thang: d[l] }])) as Record<
+    LoaiLay,
+    ReturnType<typeof tinhThangDaLay> & { thang: Record<string, string> }
+  >;
+}
+
 /**
  * Lấy hoá đơn MỘT tháng, một hướng từ cổng thuế (anh Tâm 18/10/2026: "các hóa đơn đầu vào sẽ tìm cách lấy từ cổng
  * thuế") rồi ghi. `xong` = false khi tháng quá nhiều hoá đơn, chưa lấy hết trong một lượt (trang gọi lại).
@@ -269,6 +315,7 @@ export async function layTuCongThue(token: string, thang: string, huong: 'ra' | 
   const vat = hoaDon.reduce((s, h) => s + h.tienThue, 0);
   const thongDiep = `${hoaDon.length} hoá đơn (VAT ${tien(vat)}) · ${ghi.moi} mới, ${ghi.capNhat} cập nhật${xong ? '' : ' · chưa hết, đang lấy tiếp'}`;
   if (hoaDon.length) await ghiTaiLen({ id, tenFile: ten, loai: 'Cổng thuế', ketQua: thongDiep, nguoi, luc });
+  if (xong) await ghiDaLay(huong, thang, luc).catch((e) => console.warn('[ke-toan] ghi tháng đã lấy:', (e as Error).message));
   return { ten, loai: 'Cổng thuế', ok: true, thongDiep, xong, soHd: hoaDon.length };
 }
 
@@ -289,6 +336,7 @@ export async function layMttTuCongThue(
   const ten = `Cổng thuế · máy tính tiền ${huong === 'vao' ? 'mua vào' : 'bán ra'} tháng ${thang.slice(5)}/${thang.slice(0, 4)}`;
   const thongDiep = `${r.hoaDon.length} hoá đơn · ${ghi.moi} mới, ${ghi.capNhat} cập nhật${r.state ? ' · còn trang sau' : ''}`;
   if (r.hoaDon.length) await ghiTaiLen({ id, tenFile: ten, loai: 'Cổng thuế', ketQua: thongDiep, nguoi, luc });
+  if (!r.state) await ghiDaLay(huong === 'vao' ? 'mtt_vao' : 'mtt_ra', thang, luc).catch(() => undefined);
   return { ten, loai: 'Cổng thuế', ok: true, thongDiep, state: r.state, soHd: r.hoaDon.length };
 }
 

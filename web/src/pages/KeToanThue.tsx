@@ -491,6 +491,17 @@ function cacThang(tu: string, den: string): string[] {
 }
 
 type Captcha = { key: string; svg: string };
+type TinhTrangLay = { duTu: string; duDen: string; canLayLai: string[]; goiY: string; thang: Record<string, string> };
+type DaLay = { ra: TinhTrangLay; vao: TinhTrangLay; mtt_ra: TinhTrangLay; mtt_vao: TinhTrangLay };
+const tThang = (t: string) => (t ? `${t.slice(5)}/${t.slice(0, 4)}` : '');
+/** Tháng đã lấy ĐỦ: lấy sau ngày 5 tháng sau (giống máy chủ — lib/keToanGop.ts). */
+function thangDu(tt: TinhTrangLay, thang: string): boolean {
+  const luc = tt.thang[thang];
+  if (!luc) return false;
+  const [y, m] = thang.split('-').map(Number) as [number, number];
+  const sau = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+  return luc.slice(0, 10) >= `${sau}-05`;
+}
 type TaiKhoanLuu = { mst: string; coLuu: boolean; luuDuoc: boolean };
 
 function AnhCaptcha({ cap, onMoi }: { cap: Captcha | null; onMoi: () => void }) {
@@ -527,6 +538,22 @@ function LayCongThue({ mstMacDinh, onXong }: { mstMacDinh: string; onXong: () =>
   const [vao, setVao] = useState(true);
   const [ra, setRa] = useState(true);
   const [mtt, setMtt] = useState(false);
+  // Tháng đã lấy từ cổng thuế (anh Tâm 11/11/2026: 'note lại, đã cập nhật từ tháng... để cập nhật tiếp mà k phải lấy nhiều')
+  const [daLay, setDaLay] = useState<DaLay | null>(null);
+  const [boQuaDu, setBoQuaDu] = useState(true);
+  const taiDaLay = () =>
+    api<DaLay>('/ke-toan/cong-thue/da-lay')
+      .then((d) => {
+        setDaLay(d);
+        // Từ tháng = tháng sớm nhất còn thiếu của mua vào / bán ra.
+        const g = [d.vao.goiY, d.ra.goiY].filter(Boolean).sort()[0];
+        if (g) setTu(g);
+      })
+      .catch(() => undefined);
+  useEffect(() => {
+    if (mo && !daLay) void taiDaLay();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mo]);
   const [nhatKy, setNhatKy] = useState<string[]>([]);
   // Hỏi captcha giữa lúc lấy hoá đơn máy tính tiền
   const [hoi, setHoi] = useState<{ nhan: string; cap: Captcha | null; ma: string } | null>(null);
@@ -682,6 +709,10 @@ function LayCongThue({ mstMacDinh, onXong }: { mstMacDinh: string; onXong: () =>
       for (const thang of ds) {
         for (const huong of huongs) {
           if (dung.current) throw new Error('Đã dừng theo yêu cầu');
+          if (boQuaDu && daLay && thangDu(daLay[huong], thang)) {
+            ghi(`– Bỏ qua ${huong === 'vao' ? 'mua vào' : 'bán ra'} tháng ${thang.slice(5)}/${thang.slice(0, 4)}: đã lấy đủ`);
+            continue;
+          }
           for (let lan = 0; lan < 3; lan++) {
             setDangLam(`Đang lấy ${huong === 'vao' ? 'mua vào' : 'bán ra'} tháng ${thang.slice(5)}/${thang.slice(0, 4)}…`);
             const r = await api<{ ten: string; thongDiep: string; xong: boolean; soHd: number }>('/ke-toan/cong-thue/lay', {
@@ -691,7 +722,7 @@ function LayCongThue({ mstMacDinh, onXong }: { mstMacDinh: string; onXong: () =>
             tong += r.soHd;
             if (r.xong) break;
           }
-          if (mtt) tong += await layMtt(thang, huong, ghi);
+          if (mtt && !(boQuaDu && daLay && thangDu(daLay[huong === 'vao' ? 'mtt_vao' : 'mtt_ra'], thang))) tong += await layMtt(thang, huong, ghi);
         }
       }
       toast.success(`Đã lấy ${tong} hoá đơn từ cổng thuế`);
@@ -705,6 +736,7 @@ function LayCongThue({ mstMacDinh, onXong }: { mstMacDinh: string; onXong: () =>
       setHoi(null);
       traLoi.current = null;
       await onXong().catch(() => undefined);
+      void taiDaLay();
     }
   }
 
@@ -785,6 +817,27 @@ function LayCongThue({ mstMacDinh, onXong }: { mstMacDinh: string; onXong: () =>
             </>
           ) : (
             <>
+              {daLay && (
+                <div className="mb-3 space-y-0.5 rounded-xl bg-brand-50 p-2.5 text-sm">
+                  {(
+                    [
+                      ['vao', 'Mua vào'],
+                      ['ra', 'Bán ra'],
+                      ['mtt_vao', 'Máy tính tiền mua vào'],
+                      ['mtt_ra', 'Máy tính tiền bán ra'],
+                    ] as Array<[keyof DaLay, string]>
+                  )
+                    .filter(([k]) => !k.startsWith('mtt') || Object.keys(daLay[k].thang).length > 0)
+                    .map(([k, nhan]) => (
+                      <p key={k}>
+                        <b>{nhan}:</b>{' '}
+                        {daLay[k].duDen ? `đã lấy đủ ${tThang(daLay[k].duTu)} → ${tThang(daLay[k].duDen)}` : 'chưa có tháng nào lấy đủ'}
+                        {daLay[k].canLayLai.length > 0 && <span className="text-amber-700"> · nên lấy lại {daLay[k].canLayLai.map(tThang).join(', ')} (lấy khi tháng chưa chốt)</span>}
+                        <span className="text-ink-muted"> · lấy tiếp từ {tThang(daLay[k].goiY)}</span>
+                      </p>
+                    ))}
+                </div>
+              )}
               <div className="flex flex-wrap items-end gap-3">
                 <label className="text-sm">
                   <span className="label">Từ tháng</span>
@@ -802,6 +855,9 @@ function LayCongThue({ mstMacDinh, onXong }: { mstMacDinh: string; onXong: () =>
                 </label>
                 <label className="flex items-center gap-1.5 pb-2 text-sm" title="Cổng bắt gõ captcha cho mỗi tháng / mỗi 50 hoá đơn">
                   <input type="checkbox" checked={mtt} onChange={(e) => setMtt(e.target.checked)} /> Máy tính tiền
+                </label>
+                <label className="flex items-center gap-1.5 pb-2 text-sm" title="Tháng đã lấy sau khi chốt tháng (≥ 5 ngày) thì không lấy lại">
+                  <input type="checkbox" checked={boQuaDu} onChange={(e) => setBoQuaDu(e.target.checked)} /> Bỏ qua tháng đã lấy đủ
                 </label>
                 {dangLam ? (
                   <button
