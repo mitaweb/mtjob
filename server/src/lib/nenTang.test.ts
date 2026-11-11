@@ -70,9 +70,18 @@ describe('tomTatChiSo — 7 ngày gần nhất so 7 ngày trước', () => {
     expect(t.chuoi.length).toBe(30);
     expect(t.chuoi.at(-1)).toMatchObject({ ngay: '2026-11-10', chiTieu: 150 });
   });
-  it('Search Console trễ vài ngày → mốc là ngày cuối có số', () => {
-    const t = tomTatChiSo(ds.filter((x) => x.ngay <= '2026-11-08'), '2026-11-11');
+  it('Search Console trễ vài ngày (cho lùi tối đa 3 ngày) → mốc là ngày cuối có số', () => {
+    const t = tomTatChiSo(ds.filter((x) => x.ngay <= '2026-11-08'), '2026-11-11', { treToiDa: 3 });
     expect(t.denNgay).toBe('2026-11-08');
+  });
+  it('Quảng cáo ngừng tiêu từ 8/11 → vẫn tính tới hôm qua, không lùi về tuần cũ (anh Tâm 11/11/2026: TOPAZ hiện 2,7tr thay vì 1,2tr)', () => {
+    const t = tomTatChiSo(ds.filter((x) => x.ngay <= '2026-11-07'), '2026-11-11');
+    expect(t.denNgay).toBe('2026-11-10');
+    expect(t.ky.chiTieu).toBe(4 * 150);
+  });
+  it('Search Console trễ quá 3 ngày → không lùi thêm, tính tới hôm qua', () => {
+    const t = tomTatChiSo(ds.filter((x) => x.ngay <= '2026-11-05'), '2026-11-11', { treToiDa: 3 });
+    expect(t.denNgay).toBe('2026-11-10');
   });
 });
 

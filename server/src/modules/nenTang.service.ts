@@ -199,6 +199,8 @@ export async function chiSo(
   locTeam?: string,
 ): Promise<{ taiSan: ChiSoTaiSan[]; tong: TomTat | null; tongTien?: TomTat; tienTeTong?: string; boQuaTien?: number }> {
   const homNay = todayIso();
+  // Search Console báo số trễ 2–3 ngày → được lùi mốc; Ads / GA4 luôn tính tới hôm qua.
+  const tre = loai === 'gsc' ? 3 : 0;
   const ts = (await dsTaiSan()).filter((t) => t.loai === loai && t.theoDoi && xemDuoc(nguoi, t.teamId) && (!locTeam || t.teamId === locTeam || t.teamId === '*'));
   if (!ts.length) return { taiSan: [], tong: null };
   const rows = await q(
@@ -227,7 +229,7 @@ export async function chiSo(
     tienTe: t.tienTe,
     loi: t.loi,
     dongBoCuoi: t.dongBoCuoi,
-    tomTat: tomTatChiSo(theoTs.get(t.id) || [], homNay),
+    tomTat: tomTatChiSo(theoTs.get(t.id) || [], homNay, { treToiDa: tre }),
   }));
   // Tiền: chỉ cộng tài khoản cùng loại tiền đa số (anh Tâm 11/11/2026: một tài khoản USD làm ô Chi phí tổng thành "—").
   const demTien = new Map<string, number>();
@@ -236,8 +238,8 @@ export async function chiSo(
   const cungTien = ts.filter((t) => (t.tienTe || 'VND') === tienTeTong);
   return {
     taiSan,
-    tong: tomTatChiSo(gopTheoNgay([...theoTs.values()].flat()), homNay),
-    tongTien: tomTatChiSo(gopTheoNgay(cungTien.flatMap((t) => theoTs.get(t.id) || [])), homNay),
+    tong: tomTatChiSo(gopTheoNgay([...theoTs.values()].flat()), homNay, { treToiDa: tre }),
+    tongTien: tomTatChiSo(gopTheoNgay(cungTien.flatMap((t) => theoTs.get(t.id) || [])), homNay, { treToiDa: tre }),
     tienTeTong,
     boQuaTien: ts.length - cungTien.length,
   };

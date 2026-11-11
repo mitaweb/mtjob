@@ -128,9 +128,12 @@ export function tong(ds: DongSo[]): TongKy {
 }
 
 /** 7 ngày tới mốc (hôm qua — hôm nay chưa đủ ngày; nền tảng trễ thì ngày cuối có số) so với 7 ngày trước đó. */
-export function tomTatChiSo(ds: DongSo[], homNay: string): TomTat {
+export function tomTatChiSo(ds: DongSo[], homNay: string, o: { treToiDa?: number } = {}): TomTat {
   const homQua = congNgay(homNay, -1);
-  const cuoi = ds.reduce((m, d) => (d.ngay <= homQua && d.ngay > m ? d.ngay : m), '');
+  // Mặc định tính tới HÔM QUA (quảng cáo ngừng tiêu thì tuần này = 0, không lùi về tuần cũ — TOPAZ 11/11/2026). Chỉ nền tảng
+  // báo số trễ (Search Console 2–3 ngày) mới được lùi về ngày cuối có số, tối đa `treToiDa` ngày.
+  const sauNhat = congNgay(homQua, -(o.treToiDa || 0));
+  const cuoi = ds.reduce((m, d) => (d.ngay <= homQua && d.ngay >= sauNhat && d.ngay > m ? d.ngay : m), '');
   const denNgay = cuoi || homQua;
   const trong = (tu: string, den: string) => ds.filter((d) => d.ngay >= tu && d.ngay <= den);
   const theoNgay = new Map(ds.map((d) => [d.ngay, d]));

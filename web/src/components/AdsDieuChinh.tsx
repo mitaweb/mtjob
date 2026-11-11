@@ -70,7 +70,7 @@ export default function AdsDieuChinh({ taiSanId, ten, loai, dong }: { taiSanId: 
   }
 
   return (
-    <div className="card space-y-3 border-2 border-brand-600">
+    <div id="bang-dieu-chinh" className="card scroll-mt-4 space-y-3 border-2 border-brand-600">
       <div className="flex flex-wrap items-center gap-2">
         <p className="font-semibold">🛠 Điều chỉnh: {ten}</p>
         <div className="ml-auto flex flex-wrap gap-2">

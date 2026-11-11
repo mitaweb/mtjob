@@ -221,7 +221,7 @@ function TabChiSo({ loai, laGd }: { loai: Loai; laGd: boolean }) {
                       className="mt-1 text-xs text-ocean-700 hover:underline"
                       onClick={() => {
                         setDieuChinh(x);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                        setTimeout(() => document.getElementById('bang-dieu-chinh')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
                       }}
                     >
                       🛠 Điều chỉnh{loai === 'gads' ? ' · từ khoá' : ''}
