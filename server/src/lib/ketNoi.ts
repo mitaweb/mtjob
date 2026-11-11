@@ -2,7 +2,11 @@
 // Hàm THUẦN: link đăng nhập Facebook, nhận ra công cụ làm THAY ĐỔI tài khoản (bị chặn — thao tác phải qua anh duyệt),
 // đổi kết quả công cụ MCP thành chữ cho trợ lý đọc.
 
-export function urlDangNhapMeta(o: { appId: string; redirectUri: string; state: string; version: string; configId?: string }): string {
+const QUYEN_META_ADS = 'ads_mcp_management,ads_read,business_management,pages_show_list,pages_read_engagement';
+/** Quyền Fanpage — app Meta phải bật nhóm quyền Trang (use case Quản lý mọi thứ trên Trang), không thì Facebook báo Invalid Scopes. */
+const QUYEN_META_FANPAGE = 'pages_read_user_content,pages_manage_posts,pages_manage_engagement';
+
+export function urlDangNhapMeta(o: { appId: string; redirectUri: string; state: string; version: string; configId?: string; fanpage?: boolean }): string {
   const u = new URL(`https://www.facebook.com/${o.version}/dialog/oauth`);
   u.searchParams.set('client_id', o.appId);
   u.searchParams.set('redirect_uri', o.redirectUri);
@@ -10,9 +14,10 @@ export function urlDangNhapMeta(o: { appId: string; redirectUri: string; state: 
   u.searchParams.set('response_type', 'code');
   // Facebook Login for Business: quyền khai trong "cấu hình" (config_id); app thường thì xin quyền bằng scope.
   if (o.configId) u.searchParams.set('config_id', o.configId);
-  // Fanpage (11/11/2026): đọc bài + bình luận, đăng bài, trả lời bình luận — app chế độ phát triển dùng được ngay cho
-  // Trang mà anh là quản trị, không cần Meta duyệt app.
-  else u.searchParams.set('scope', 'ads_mcp_management,ads_read,business_management,pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_posts,pages_manage_engagement');
+  // Mặc định CHỈ quyền quảng cáo (anh Tâm 11/11/2026: thêm quyền Trang vào đây làm Facebook báo Invalid Scopes khi app
+  // chưa bật nhóm quyền Trang). Nút Kết nối Fanpage mới xin thêm — token Facebook giữ mọi quyền đã cấp nên không mất quyền
+  // quảng cáo.
+  else u.searchParams.set('scope', o.fanpage ? `${QUYEN_META_ADS},${QUYEN_META_FANPAGE}` : QUYEN_META_ADS);
   return u.toString();
 }
 

@@ -95,6 +95,10 @@ export default function AdminFanpage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  async function ketNoiFanpage() {
+    const r = await api<{ url: string }>('/ket-noi/meta/bat-dau?fanpage=1');
+    window.location.href = r.url;
+  }
   async function layTrang() {
     const r = await api<{ so: number }>('/fanpage/lay-trang', { method: 'POST' });
     toast.success(`Thấy ${r.so} Trang`);
@@ -143,8 +147,14 @@ export default function AdminFanpage() {
       </div>
       {!d.trang.length && (
         <p className="rounded-xl bg-brand-50 p-3 text-sm">
-          Chưa có Trang: ở tab <b>🔌 Kết nối</b> bấm <b>Kết nối Facebook</b> lại (lần này Facebook hỏi thêm quyền Trang — chọn
-          các Trang của công ty), rồi bấm “Lấy lại danh sách Trang”.
+          Chưa có Trang. Làm 2 bước:
+          <br />1. Vào <b>developers.facebook.com</b> → app Meta của MTJOB → <b>Trường hợp sử dụng</b> (Use cases) → <b>Thêm</b> →
+          chọn <b>“Quản lý mọi thứ trên Trang”</b> (Manage everything on your Page). Thiếu bước này Facebook báo “Invalid Scopes”.
+          <br />2. Bấm nút <b>Kết nối Fanpage</b> bên dưới, chọn các Trang của công ty.
+          <br />
+          <AsyncButton className="btn-primary mt-2 py-1 text-sm" onClick={ketNoiFanpage} busyLabel="Đang mở Facebook…">
+            Kết nối Fanpage
+          </AsyncButton>
         </p>
       )}
 

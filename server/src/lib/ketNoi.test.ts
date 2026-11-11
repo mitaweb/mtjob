@@ -11,8 +11,13 @@ describe('urlDangNhapMeta', () => {
     expect(u.searchParams.get('client_id')).toBe('123');
     expect(u.searchParams.get('redirect_uri')).toBe('https://job.mtdigital.vn/api/ket-noi/meta/callback');
     expect(u.searchParams.get('state')).toBe('S1');
-    expect(u.searchParams.get('scope')).toBe('ads_mcp_management,ads_read,business_management,pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_posts,pages_manage_engagement');
+    // Chỉ quyền quảng cáo: app Meta chưa bật nhóm quyền Trang thì Facebook báo Invalid Scopes (anh Tâm 11/11/2026).
+    expect(u.searchParams.get('scope')).toBe('ads_mcp_management,ads_read,business_management,pages_show_list,pages_read_engagement');
     expect(u.searchParams.get('response_type')).toBe('code');
+  });
+  it('Fanpage: xin thêm quyền đọc bình luận, đăng bài, trả lời bình luận', () => {
+    const u = new URL(urlDangNhapMeta({ appId: '1', redirectUri: 'https://x/cb', state: 's', version: 'v26.0', fanpage: true }));
+    expect(u.searchParams.get('scope')).toBe('ads_mcp_management,ads_read,business_management,pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_posts,pages_manage_engagement');
   });
   it('có cấu hình Facebook Login for Business (config_id) thì dùng config_id thay scope', () => {
     const u = new URL(urlDangNhapMeta({ appId: '1', redirectUri: 'https://x/cb', state: 's', version: 'v26.0', configId: '999' }));

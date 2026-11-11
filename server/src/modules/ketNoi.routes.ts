@@ -92,7 +92,15 @@ ketNoiRouter.get(
     const c = await metaCauHinh();
     if (!c.appId || !c.secret) throw new ApiError(400, 'Chưa có App ID / App Secret của app Meta — dán ở trang Kết nối MCP → tab Kết nối');
     res.json({
-      url: urlDangNhapMeta({ appId: c.appId, configId: c.configId, version: c.version, redirectUri: duongVe(req, 'meta'), state: signState({ sub: req.user!.sub, muc: 'ket-noi-meta' }) }),
+      url: urlDangNhapMeta({
+        appId: c.appId,
+        configId: c.configId,
+        version: c.version,
+        redirectUri: duongVe(req, 'meta'),
+        state: signState({ sub: req.user!.sub, muc: 'ket-noi-meta' }),
+        // ?fanpage=1: nút Kết nối Fanpage (tab Fanpage) — xin thêm quyền Trang.
+        fanpage: req.query.fanpage === '1',
+      }),
     });
   }),
 );
