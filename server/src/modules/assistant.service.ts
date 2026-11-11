@@ -37,6 +37,7 @@ import { formatVnd } from '../lib/money.js';
 import { formatMinutes } from '../lib/worktime.js';
 import { removeAccents } from '../lib/people.js';
 import { directorPrompt, memberPrompt } from './assistant.prompts.js';
+import { laLoiSua } from '../lib/hieuAnh.js';
 
 export interface ChatTurn {
   role: 'user' | 'model';
@@ -283,6 +284,24 @@ function hieuAnhTool(): ToolDef {
         await anhDay({ noiDung: String(a.noiDung || ''), phamVi: String(a.phamVi || ''), khiaCanh: String(a.khiaCanh || ''), doiTuong: String(a.doiTuong || '') })
       ).message;
     },
+  };
+}
+
+/** "Quên điều X" (học Javis, anh Tâm 11/11/2026) — CHỈ giám đốc. Điều đã quên không học lại. */
+function quenVeAnhTool(): ToolDef {
+  return {
+    declaration: {
+      name: 'delete_ve_anh',
+      description:
+        'Anh bảo QUÊN / BỎ một điều em đã hiểu về anh ("quên chuyện…", "bỏ điều…", "cái đó sai, đừng nhớ nữa"). ' +
+        'Truyền nội dung điều cần quên (kèm tên khách / việc nếu có). Điều đã quên không học lại, gỡ khỏi kho tri thức.',
+      parameters: {
+        type: 'OBJECT',
+        properties: { dieu: { type: 'STRING', description: 'Điều cần quên, càng sát lời đã ghi càng tốt.' } },
+        required: ['dieu'],
+      },
+    },
+    run: async (a) => (await import('./hieuAnh.service.js')).quenVeAnh(String(a.dieu || '').trim()),
   };
 }
 
@@ -688,6 +707,53 @@ const CANH_BAO_CHUA_GHI =
  */
 export async function runToolLoopChan(opts: ToolLoopOpts): Promise<string> {
   const goiHam: string[] = [];
+  const answer = await chanBia(opts, goiHam);
+  return answer === CANH_BAO_CHUA_GHI ? answer : chanHuaSuong(opts, answer, goiHam);
+}
+
+/** Hàm HẸN việc chạy về sau — có gọi thì lời "em sẽ nhắc / báo anh" là thật. */
+const HAM_HEN = new Set(['create_reminder', 'create_appointment', 'create_viec_tu_dong']);
+
+/**
+ * Câu trả lời có HỨA tự làm gì SAU lượt này không ("em sẽ theo dõi và báo lại", "lát nữa em gửi", "khi có số em báo").
+ * Câu mời ("nếu anh muốn em sẽ…"), câu hỏi, lời của người khác ("khách nói sẽ báo lại") không tính.
+ */
+export function huaSuong(text: string): boolean {
+  const dongTu = '(báo|nhắc|gửi|theo dõi|kiểm tra lại|cập nhật|thông báo|tổng hợp|liên hệ|gọi|để ý|check)';
+  const hua = new RegExp(`(?<!\\p{L})(em|mình|tôi)\\s+(sẽ|xin)\\s+(tiếp tục\\s+)?${dongTu}(?!\\p{L})`, 'iu');
+  const sau = new RegExp(`(?<!\\p{L})(lát( nữa)?|chút nữa|tí nữa|khi nào có|khi có|có gì)(?!\\p{L}).*(?<!\\p{L})em\\s+(sẽ\\s+)?${dongTu}(?!\\p{L})`, 'iu');
+  return String(text || '')
+    .split(/(?<=[.!?\n])/)
+    .some((c) => !/\?\s*$/.test(c) && !/(?<!\p{L})(nếu|muốn)(?!\p{L})/iu.test(c) && (hua.test(c) || sau.test(c)));
+}
+
+const DINH_CHINH_HUA =
+  '\n\n_(Lưu ý: em không tự báo lại được nếu chưa hẹn — anh muốn em nhắc thì nói "nhắc anh lúc …", muốn em làm định kỳ thì nói "mỗi sáng 8h …".)_';
+
+/**
+ * Chốt chặn LỜI HỨA SUÔNG (học Javis, anh Tâm 11/11/2026): trả lời xong là trợ lý không tự làm gì nữa, nên hứa "em sẽ
+ * báo lại" mà không đặt nhắc / việc tự động nào là hứa suông → bắt làm lại một lần; vẫn vậy thì giữ câu trả lời và
+ * tự đính chính ở cuối.
+ */
+async function chanHuaSuong(opts: ToolLoopOpts, answer: string, goiHam: string[]): Promise<string> {
+  if (!huaSuong(answer) || goiHam.some((h) => HAM_HEN.has(h))) return answer;
+  console.warn('[assistant] hứa báo lại mà không hẹn gì — bắt làm lại');
+  opts.onEvent?.({ type: 'reset' });
+  const nhac =
+    '\n\n[HỆ THỐNG] Câu trả lời trước của bạn hứa sẽ tự báo lại / theo dõi / gửi sau, nhưng KHÔNG có việc nào được hẹn ' +
+    'chạy — sau lượt này bạn không tự làm gì được nữa. Làm lại: nếu cần báo / kiểm tra lại vào lúc khác thì GỌI ' +
+    'create_reminder (hoặc create_viec_tu_dong cho việc lặp) ngay; nếu không thì bỏ lời hứa đó.';
+  const lai = await runToolLoop({ ...opts, question: opts.question + nhac, goiHam });
+  if (nhanLaDaGhi(lai) && !goiHam.some(laHamGhi)) {
+    opts.onEvent?.({ type: 'reset' });
+    return CANH_BAO_CHUA_GHI;
+  }
+  if (!huaSuong(lai) || goiHam.some((h) => HAM_HEN.has(h))) return lai;
+  return lai + DINH_CHINH_HUA;
+}
+
+/** Chốt chặn "nói đã làm mà không làm" (xem runToolLoopChan). */
+async function chanBia(opts: ToolLoopOpts, goiHam: string[]): Promise<string> {
   let answer = await runToolLoop({ ...opts, goiHam });
   if (!nhanLaDaGhi(answer) || goiHam.some(laHamGhi)) return answer;
 
@@ -956,7 +1022,7 @@ export async function answerDataQuestion(
   const laGd = members.find((m) => m.id === memberId)?.role === 'director';
   let hieuAnh = '';
   if (laGd) {
-    tools.push(hieuAnhTool());
+    tools.push(hieuAnhTool(), quenVeAnhTool());
     // Kế toán thuế (anh Tâm 10/11/2026: "bộ não nắm toàn bộ phần mềm… tài chính chỉ giám đốc hỏi được").
     tools.push(...(await import('./assistant.tools.keToan.js')).keToanTools());
     // MCP đã kết nối (Meta Ads chính thức, MCP trên máy Mac…) — chỉ đọc (anh Tâm 10/11/2026).
@@ -964,6 +1030,13 @@ export async function answerDataQuestion(
     // Google Ads / GA4 / Search Console qua kết nối Google của công ty (anh Tâm 11/11/2026).
     tools.push(...(await import('./assistant.tools.google.js').then((m) => m.googleTools()).catch(() => [])));
     hieuAnh = await import('./hieuAnh.service.js').then((m) => m.loiNhacHieuAnh(question)).catch(() => '');
+    // Anh đang SỬA trợ lý (học Javis 11/11/2026) → nhắc trợ lý ghi nhớ điều dùng lại được; lượt học kế tiếp chạy ngay.
+    if (laLoiSua(question)) {
+      hieuAnh +=
+        '\n\nCÂU NÀY ANH ĐANG SỬA / DẶN LẠI EM. Làm lại cho đúng ý anh. Nếu đó là cách anh muốn cho LẦN SAU (không phải ' +
+        'việc một lần), gọi save_ve_anh để nhớ; nếu anh bảo một điều em hiểu trước đây là sai, gọi delete_ve_anh để quên nó.';
+      void import('./hieuAnh.service.js').then((m) => m.hocSom()).catch(() => undefined);
+    }
   } else {
     // Admin dùng chung trợ lý này nhưng KHÔNG được xem / ghi số liệu tài chính (chỉ giám đốc).
     for (let i = tools.length - 1; i >= 0; i--) if (TAI_CHINH_CHI_GD.has(tools[i]!.declaration.name)) tools.splice(i, 1);

@@ -253,3 +253,33 @@ export function chonDieuChoLoiNhac(ds: MucHieuAnh[], o: { toiDa?: number; cauHoi
     ...chon.map((m) => `- [${m.phamVi === 'chung' ? KHIA_CANH[m.khiaCanh] : `${PHAM_VI[m.phamVi]}: ${m.doiTuong}`}] ${m.noiDung}`),
   ].join('\n');
 }
+
+// Từ không mang ý (xưng hô, từ nối, chữ của chính lệnh "quên") — không dùng để khớp điều cần quên.
+const TU_BO_QUA = new Set(['anh', 'tam', 'em', 'chi', 'cua', 'la', 'va', 'cho', 'thi', 'nay', 'do', 'chuyen', 'dieu', 'quen', 'cai', 'nhe', 'di', 'voi', 've', 'minh', 'ay', 'kia', 'nua', 'luon', 'giup', 'hay', 'viec']);
+const tuY = (s: string) => new Set(chuan(s).split(' ').filter((w) => w.length >= 2 && !TU_BO_QUA.has(w)));
+
+/**
+ * Anh bảo "quên điều X" → các điều (chưa quên) khớp ý X: ≥ 60% từ mang ý của X có trong điều đó (kể cả tên khách / việc
+ * / người), tối thiểu 2 từ. Không khớp thì rỗng — không quên bừa. Khớp nhất trước.
+ */
+export function timDieuCanQuen(ds: MucHieuAnh[], cau: string): MucHieuAnh[] {
+  const can = tuY(cau);
+  if (can.size === 0) return [];
+  return ds
+    .filter((m) => m.trangThai !== 'anh_bo')
+    .map((m) => {
+      const co = tuY(`${m.doiTuong} ${m.noiDung}`);
+      const chung = [...can].filter((w) => co.has(w)).length;
+      return { m, chung, diem: chung / can.size };
+    })
+    .filter((x) => x.chung >= Math.min(2, can.size) && x.diem >= 0.6)
+    .sort((a, b) => b.diem - a.diem)
+    .map((x) => x.m);
+}
+
+/** Anh đang SỬA trợ lý ("không phải", "sai rồi", "ý anh là", "lần sau…", "đừng…") — đáng học ngay. */
+export function laLoiSua(text: string): boolean {
+  return /(?<!\p{L})(không phải|sai rồi|nhầm rồi|chưa đúng|không đúng|ý anh là|anh bảo là|anh đã bảo|lần sau|từ nay|đừng|không được)(?!\p{L})/iu.test(
+    String(text || ''),
+  );
+}

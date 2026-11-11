@@ -131,7 +131,7 @@ describe('runToolLoop', () => {
 });
 
 // Anh Tâm 17/9/2026: trợ lý báo "đã đặt" mà không gọi hàm nào — chốt chặn ở máy chủ.
-const { runToolLoopChan, nhanLaDaGhi, laHamGhi } = await import('./assistant.service.js');
+const { runToolLoopChan, nhanLaDaGhi, laHamGhi, huaSuong } = await import('./assistant.service.js');
 
 const GHI = {
   declaration: { name: 'create_reminder', description: 'đặt nhắc' },
@@ -309,5 +309,52 @@ describe('runToolLoop — chặn làm lại việc của lượt trước', () =
     expect(String(contents[0].parts[0].text).startsWith('[Lượt trước — đã xử lý xong')).toBe(true);
     expect(contents[1].parts[0].text).toBe(history[1].text); // câu của model giữ nguyên
     expect(contents[2].parts[0].text).toBe('câu mới');
+  });
+});
+
+// Javis (anh Tâm 11/11/2026 chọn mục 3): trợ lý hứa "em sẽ báo lại / theo dõi" mà không hẹn việc nào chạy thật — sau lượt
+// trả lời trợ lý KHÔNG tự làm gì được nữa, lời hứa đó là suông.
+describe('huaSuong', () => {
+  it('bắt lời hứa tự làm sau', () => {
+    expect(huaSuong('Em sẽ theo dõi và báo lại anh khi khách chuyển tiền.')).toBe(true);
+    expect(huaSuong('Doanh thu 120tr. Khi nào có số mới em sẽ báo anh nhé.')).toBe(true);
+    expect(huaSuong('Lát nữa em gửi anh bản tổng hợp.')).toBe(true);
+    expect(huaSuong('Em sẽ nhắc anh vào sáng mai.')).toBe(true);
+  });
+  it('không bắt câu mời, câu hỏi, lời của người khác', () => {
+    expect(huaSuong('Nếu anh muốn, em sẽ đặt nhắc lúc 8h.')).toBe(false);
+    expect(huaSuong('Anh muốn em nhắc lúc mấy giờ?')).toBe(false);
+    expect(huaSuong('Khách nói sẽ báo lại vào thứ 6.')).toBe(false);
+    expect(huaSuong('Doanh thu tháng 10 là 120 triệu.')).toBe(false);
+  });
+});
+
+describe('runToolLoopChan — lời hứa suông', () => {
+  it('hứa báo lại mà không hẹn gì → bắt làm lại; lần hai đặt nhắc thật thì nhận', async () => {
+    generateContentStream
+      .mockImplementationOnce(luot('Em sẽ theo dõi và báo lại anh khi khách chuyển tiền.'))
+      .mockImplementationOnce(luot('', 'create_reminder'))
+      .mockImplementationOnce(luot('Em đã đặt nhắc 17h kiểm tra tiền khách.'));
+    const answer = await runToolLoopChan({ system: 's', question: 'khách X chuyển tiền chưa', history: [], tools: [GHI], onEvent: () => undefined });
+    expect(answer).toContain('đặt nhắc');
+    expect(JSON.stringify(generateContentStream.mock.calls[1][0].contents)).toContain('hứa');
+  });
+
+  it('vẫn hứa suông lần hai → giữ câu trả lời nhưng tự đính chính', async () => {
+    generateContentStream
+      .mockImplementationOnce(luot('Em sẽ báo lại anh sau.'))
+      .mockImplementationOnce(luot('Có gì em sẽ báo anh ngay.'));
+    const answer = await runToolLoopChan({ system: 's', question: 'q', history: [], tools: [GHI], onEvent: () => undefined });
+    expect(answer).toContain('Có gì em sẽ báo anh ngay.');
+    expect(answer).toContain('không tự báo lại được');
+  });
+
+  it('hứa nhắc mà ĐÃ gọi create_reminder thì không làm lại', async () => {
+    generateContentStream
+      .mockImplementationOnce(luot('', 'create_reminder'))
+      .mockImplementationOnce(luot('Em sẽ nhắc anh lúc 8h sáng mai.'));
+    const answer = await runToolLoopChan({ system: 's', question: 'nhắc anh 8h mai gọi khách', history: [], tools: [GHI], onEvent: () => undefined });
+    expect(answer).toBe('Em sẽ nhắc anh lúc 8h sáng mai.');
+    expect(generateContentStream).toHaveBeenCalledTimes(2);
   });
 });

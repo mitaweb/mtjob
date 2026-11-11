@@ -26,8 +26,10 @@ import {
   docMoc,
   ghiMoc,
   demTinAnhChuaHoc,
+  quenHieuAnh,
 } from './hieuAnh.repo.js';
 import {
+  timDieuCanQuen,
   chonDoanHoc,
   gopHieuAnh,
   chonDieuChoLoiNhac,
@@ -135,6 +137,13 @@ export function loiNhacHoc(o: { goi: string; nhanSu: string[]; viec: string[]; h
           .map((m) => `[${m.id}] (${m.phamVi}${m.doiTuong ? `: ${m.doiTuong}` : ''} · ${m.khiaCanh}) ${m.noiDung}`)
           .join('\n')
       : '(chưa có)',
+    // Anh bảo QUÊN (11/11/2026) — không ghi lại dưới bất kỳ cách diễn đạt nào.
+    ...(() => {
+      const quen = o.hoSo.filter((m) => m.trangThai === 'anh_bo').slice(0, 80);
+      return quen.length
+        ? ['', `ĐIỀU ${o.goi.toUpperCase()} ĐÃ BẢO QUÊN / BỎ — TUYỆT ĐỐI không ghi lại, kể cả viết khác đi:`, ...quen.map((m) => `- (${m.phamVi}${m.doiTuong ? `: ${m.doiTuong}` : ''}) ${m.noiDung}`)]
+        : [];
+    })(),
     o.zalo ? `\nCHAT ZALO:\n${o.zalo}` : '',
     o.chat ? `\n${o.goi.toUpperCase()} NÓI VỚI TRỢ LÝ AI (dòng "Trợ lý:" là câu trả lời trước đó — anh có thể đang sửa nó):\n${o.chat}` : '',
     o.kho ? `\nTRI THỨC ĐÃ RÚT TỪ ZALO TRƯỚC ĐÂY (trong kho):\n${o.kho}` : '',
@@ -252,8 +261,23 @@ export async function dongBoKho(goi?: string): Promise<number> {
   const khach = await getCustomers().catch(() => []);
   const luc = nowTz().toISOString();
   let n = 0;
-  for (const b of baiKhoHieuAnh(ds, goi || (await giamDoc()).goi)) {
-    const id = `HA-${createHash('sha1').update(b.khoa).digest('hex').slice(0, 16)}`;
+  const bai = baiKhoHieuAnh(ds, goi || (await giamDoc()).goi).map((b) => ({ ...b, id: `HA-${createHash('sha1').update(b.khoa).digest('hex').slice(0, 16)}` }));
+  // Mục kho mà mọi điều trong đó anh đã bảo quên → lưu trữ (anh Tâm 11/11/2026). Mục anh tự sửa thì để anh quyết.
+  const conDung = new Set(bai.map((b) => b.id));
+  const { q } = await import('../db/client.js');
+  const { itemsByIds } = await import('./brainItems.repo.js');
+  const cuHa = await itemsByIds(
+    (await q(`SELECT item_id FROM brain_items WHERE source = 'hieu_anh' AND status = 'published'`)).map((r) => String(r.item_id)).filter((id) => !conDung.has(id)),
+  );
+  for (const cu of cuHa) {
+    if (cu.aiReason !== dauVet(cu.body)) continue;
+    const item = { ...cu, status: 'archived' as const, updatedAt: luc };
+    await upsertItem(item);
+    await dongBoDoan(item).catch(() => undefined);
+    n++;
+  }
+  for (const b of bai) {
+    const id = b.id;
     const cu = await findItem(id);
     if (cu && (cu.status === 'archived' || cu.status === 'rejected')) continue;
     if (cu && cu.aiReason !== dauVet(cu.body)) continue; // anh đã tự sửa mục này
@@ -312,4 +336,31 @@ export async function anhDay(o: { noiDung: string; khiaCanh?: string; phamVi?: s
   await dongBoKho().catch(() => 0);
   const t = gop.them[0]!;
   return { ok: true, message: `ĐÃ GHI NHỚ${t.phamVi !== 'chung' ? ` (${t.phamVi === 'khach' ? 'khách' : t.phamVi === 'viec' ? 'việc' : 'nhân viên'} ${t.doiTuong})` : ''}: "${noiDung}" — nhân sự tra được trong kho tri thức.` };
+}
+
+/**
+ * Anh bảo "quên điều X" (học Javis, anh Tâm 11/11/2026): điều khớp → 'anh_bo' (AI không học lại, không còn trong lời
+ * dặn / kho). Khớp quá nhiều thì không quên, liệt kê để anh nói rõ hơn.
+ */
+export async function quenVeAnh(cau: string): Promise<string> {
+  const ds = await dsHieuAnh();
+  const khop = timDieuCanQuen(ds, cau);
+  if (!khop.length) {
+    return `CHƯA QUÊN: không thấy điều nào em hiểu về anh khớp "${cau.slice(0, 120)}". Anh nói rõ hơn (vd tên khách / việc + nội dung).`;
+  }
+  const ke = (m: MucHieuAnh) => `- ${m.doiTuong ? `[${m.doiTuong}] ` : ''}${m.noiDung}`;
+  if (khop.length > 5) {
+    return `CHƯA QUÊN: có ${khop.length} điều khớp, anh nói rõ điều nào:\n${khop.slice(0, 10).map(ke).join('\n')}`;
+  }
+  await quenHieuAnh(
+    khop.map((m) => m.id),
+    nowTz().toISOString(),
+  );
+  await dongBoKho().catch((e) => console.warn('[hieu-anh] quên → kho:', (e as Error).message));
+  return `ĐÃ QUÊN ${khop.length} điều (không học lại nữa, đã gỡ khỏi kho tri thức):\n${khop.map(ke).join('\n')}`;
+}
+
+/** Anh vừa sửa trợ lý → lượt học kế tiếp chạy ngay (khỏi chờ 30 phút). */
+export async function hocSom(): Promise<void> {
+  await ghiMoc(MOC, Date.now()).catch(() => undefined);
 }

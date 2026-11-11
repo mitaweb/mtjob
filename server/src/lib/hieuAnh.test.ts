@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chonDoanHoc, gopHieuAnh, chonDieuChoLoiNhac, baiKhoHieuAnh, type MucHieuAnh } from './hieuAnh.js';
+import { chonDoanHoc, gopHieuAnh, chonDieuChoLoiNhac, baiKhoHieuAnh, timDieuCanQuen, laLoiSua, type MucHieuAnh } from './hieuAnh.js';
 import type { TinZalo } from './zalo.js';
 
 // Anh Tâm 9/11/2026: "bộ não hiện tại phải hiểu được anh thông qua các đoạn chat của anh với nhân viên và khách hàng".
@@ -157,5 +157,35 @@ describe('baiKhoHieuAnh — mục kho tri thức cho nhân sự', () => {
   it('điều anh đã bỏ không thành mục', () => {
     expect(r.some((x) => x.title.includes('Welllife'))).toBe(false);
     expect(r).toHaveLength(5);
+  });
+});
+
+// Javis mục 2 (anh Tâm 11/11/2026): "quên điều X" — điều đã quên không học lại; học từ lời anh sửa trợ lý.
+describe('timDieuCanQuen — anh bảo quên điều gì', () => {
+  const ds = [
+    muc('A', { noiDung: 'Anh Tâm không nhận gói SEO dưới 6 tháng' }),
+    muc('B', { phamVi: 'khach', doiTuong: 'X Salon', noiDung: 'Bài đăng phải gửi chị Hồng duyệt trước 10h' }),
+    muc('C', { noiDung: 'Anh Tâm muốn báo cáo Ads có so sánh tuần trước' }),
+    muc('D', { noiDung: 'Anh Tâm không nhận gói SEO giá rẻ', trangThai: 'anh_bo' }),
+  ];
+  it('tìm đúng điều theo ý anh nói, bỏ qua điều đã quên', () => {
+    expect(timDieuCanQuen(ds, 'không nhận gói SEO dưới 6 tháng').map((m) => m.id)).toEqual(['A']);
+    expect(timDieuCanQuen(ds, 'chuyện X Salon gửi chị Hồng duyệt').map((m) => m.id)).toEqual(['B']);
+  });
+  it('không khớp gì thì trả rỗng — không quên bừa', () => {
+    expect(timDieuCanQuen(ds, 'khách thích màu xanh')).toEqual([]);
+    expect(timDieuCanQuen(ds, 'đó')).toEqual([]);
+  });
+});
+
+describe('laLoiSua — anh đang sửa câu trả lời của trợ lý', () => {
+  it('nhận ra lời sửa', () => {
+    expect(laLoiSua('Không phải, anh muốn báo cáo theo tuần')).toBe(true);
+    expect(laLoiSua('sai rồi em, khách đó là của team Ads')).toBe(true);
+    expect(laLoiSua('Lần sau gặp khách kiểu này thì báo anh trước')).toBe(true);
+  });
+  it('câu hỏi thường không phải lời sửa', () => {
+    expect(laLoiSua('Doanh thu tháng 10 bao nhiêu')).toBe(false);
+    expect(laLoiSua('nhắc anh 8h mai gọi khách')).toBe(false);
   });
 });

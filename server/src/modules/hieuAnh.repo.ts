@@ -179,3 +179,8 @@ export async function ghiMoc(khoa: string, giaTri: number): Promise<void> {
     [khoa, giaTri],
   );
 }
+
+/** Anh bảo quên → 'anh_bo': AI không đụng, không thêm lại, không đưa vào kho / lời dặn. */
+export async function quenHieuAnh(ids: string[], luc: string): Promise<void> {
+  if (ids.length) await q(`UPDATE hieu_anh SET trang_thai = 'anh_bo', cap_nhat = $2 WHERE id = ANY($1::text[])`, [ids, luc]);
+}
