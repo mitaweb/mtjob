@@ -269,3 +269,125 @@ export function dongGoiYTuKhoa(j: Json): GoiYTuKhoa[] {
     };
   });
 }
+
+// ── Chỉ số chi tiết như Trình quản lý quảng cáo (anh Tâm 11/11/2026: "lấy đc càng nhiều chỉ số về để tối ưu càng tốt") ──
+
+export interface ChiTietGads {
+  hienThi: number;
+  click: number;
+  ctr: number;
+  cpc: number;
+  chi: number;
+  chuyenDoi: number;
+  tyLeCD: number;
+  cpa: number;
+  giaTriCD: number;
+  roas: number;
+  /** Tỷ lệ hiển thị trên mạng tìm kiếm (0–1); undefined = không có (vd quảng cáo) */
+  tyLeHienThi?: number;
+  matNganSach?: number;
+  matXepHang?: number;
+  dauTrang?: number;
+  dauTrangTuyetDoi?: number;
+}
+
+const idGads = (r: Json, cap: CapQc) =>
+  cap === 'campaign' ? String(r.campaign?.id || '') : cap === 'adgroup' ? String(r.adGroup?.id || '') : `${r.adGroup?.id}~${r.adGroupAd?.ad?.id}`;
+const tyLe = (x: unknown) => (x === undefined || x === null || x === '' ? undefined : so(x));
+
+/** GAQL (không chia ngày) → chỉ số theo mã đối tượng; tỷ lệ tính lại từ tổng. */
+export function chiTietGads(j: Json, cap: CapQc): Record<string, ChiTietGads> {
+  const ra: Record<string, ChiTietGads> = {};
+  for (const r of hang(j)) {
+    const id = idGads(r, cap);
+    if (!id || id.includes('undefined')) continue;
+    const m = r.metrics || {};
+    const cu = ra[id] || { hienThi: 0, click: 0, ctr: 0, cpc: 0, chi: 0, chuyenDoi: 0, tyLeCD: 0, cpa: 0, giaTriCD: 0, roas: 0 };
+    cu.hienThi += so(m.impressions);
+    cu.click += so(m.clicks);
+    cu.chi += tienMicros(m.costMicros);
+    cu.chuyenDoi += so(m.conversions);
+    cu.giaTriCD += so(m.conversionsValue);
+    for (const [k, f] of [
+      ['tyLeHienThi', 'searchImpressionShare'],
+      ['matNganSach', 'searchBudgetLostImpressionShare'],
+      ['matXepHang', 'searchRankLostImpressionShare'],
+      ['dauTrang', 'searchTopImpressionShare'],
+      ['dauTrangTuyetDoi', 'searchAbsoluteTopImpressionShare'],
+    ] as const) {
+      const v = tyLe(m[f]);
+      if (v !== undefined) cu[k] = v;
+    }
+    ra[id] = cu;
+  }
+  for (const c of Object.values(ra)) {
+    c.ctr = c.hienThi ? c.click / c.hienThi : 0;
+    c.cpc = c.click ? c.chi / c.click : 0;
+    c.tyLeCD = c.click ? c.chuyenDoi / c.click : 0;
+    c.cpa = c.chuyenDoi ? c.chi / c.chuyenDoi : 0;
+    c.roas = c.chi ? c.giaTriCD / c.chi : 0;
+  }
+  return ra;
+}
+
+export interface ChiTietMeta {
+  chi: number;
+  hienThi: number;
+  tiepCan: number;
+  tanSuat: number;
+  click: number;
+  clickLink: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+  tinNhan: number;
+  lead: number;
+  mua: number;
+  giaTriMua: number;
+  roas: number;
+  /** tin nhắn + lead + mua (như ô Kết quả) */
+  ketQua: number;
+  cpa: number;
+}
+
+const lonNhat = (ds: Json, ten: string[]) => {
+  const m = new Map((Array.isArray(ds) ? ds : []).map((a: Json) => [String(a?.action_type || ''), so(a?.value)]));
+  return Math.max(0, ...ten.map((t) => (m.get(t) as number) || 0));
+};
+
+/** Meta insights (level campaign / adset / ad) → chỉ số theo mã đối tượng. */
+export function chiTietMeta(j: Json, cap: CapQc): Record<string, ChiTietMeta> {
+  const truong = cap === 'campaign' ? 'campaign_id' : cap === 'adgroup' ? 'adset_id' : 'ad_id';
+  const ra: Record<string, ChiTietMeta> = {};
+  for (const r of Array.isArray(j?.data) ? j.data : []) {
+    const id = String(r?.[truong] || '');
+    if (!id) continue;
+    const chi = so(r.spend);
+    const hienThi = so(r.impressions);
+    const click = so(r.clicks);
+    const tinNhan = lonNhat(r.actions, ['onsite_conversion.messaging_conversation_started_7d']);
+    const lead = lonNhat(r.actions, ['lead', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead']);
+    const mua = lonNhat(r.actions, ['purchase', 'offsite_conversion.fb_pixel_purchase', 'omni_purchase']);
+    const giaTriMua = lonNhat(r.action_values, ['purchase', 'offsite_conversion.fb_pixel_purchase', 'omni_purchase']);
+    const ketQua = tinNhan + lead + mua;
+    ra[id] = {
+      chi,
+      hienThi,
+      tiepCan: so(r.reach),
+      tanSuat: so(r.frequency),
+      click,
+      clickLink: so(r.inline_link_clicks),
+      ctr: hienThi ? click / hienThi : 0,
+      cpc: click ? chi / click : 0,
+      cpm: hienThi ? (chi / hienThi) * 1000 : 0,
+      tinNhan,
+      lead,
+      mua,
+      giaTriMua,
+      roas: chi ? giaTriMua / chi : 0,
+      ketQua,
+      cpa: ketQua ? chi / ketQua : 0,
+    };
+  }
+  return ra;
+}

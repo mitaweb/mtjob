@@ -111,3 +111,14 @@ adsRouter.post(
     res.json({ so: await aiDeXuat(ts(req), await nguoiCua(req)) });
   }),
 );
+
+/** Chỉ số chi tiết theo cấp (campaign | adgroup | ad) và khoảng 7 / 14 / 30 ngày. */
+adsRouter.get(
+  '/:ts/chi-tiet',
+  asyncHandler(async (req, res) => {
+    const cap = z.enum(['campaign', 'adgroup', 'ad']).parse(req.query.cap || 'campaign');
+    const ky = z.enum(['7', '14', '30']).parse(String(req.query.ky || '7'));
+    const { chiTiet } = await import('./adsDieuChinh.service.js');
+    res.json({ cap, ky, chiSo: await chiTiet(await nguoiCua(req), ts(req), cap, ky) });
+  }),
+);

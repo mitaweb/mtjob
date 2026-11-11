@@ -555,3 +555,34 @@ export async function aiDeXuatHangNgay(): Promise<number> {
   }
   return 0;
 }
+
+// ── Chỉ số chi tiết như Trình quản lý quảng cáo (anh Tâm 11/11/2026) ──
+
+export type KyNgay = '7' | '14' | '30';
+
+export async function chiTiet(nguoi: Nguoi, taiSanId: string, cap: CapQc, ky: KyNgay): Promise<Record<string, unknown>> {
+  const ts = await taiSanCo(nguoi, taiSanId);
+  const k = await import('./ketNoi.service.js');
+  const { chiTietGads, chiTietMeta } = await import('../lib/adsDieuChinh.js');
+  if (ts.loai === 'meta') {
+    const level = cap === 'campaign' ? 'campaign' : cap === 'adgroup' ? 'adset' : 'ad';
+    const j = await k.metaGraph(`act_${ts.maNgoai.replace(/\D/g, '')}/insights`, {
+      level,
+      date_preset: `last_${ky}d`,
+      fields: `${level}_id,spend,impressions,reach,frequency,clicks,inline_link_clicks,actions,action_values`,
+      limit: '500',
+    });
+    return chiTietMeta(j, cap);
+  }
+  const khoang = `segments.date DURING LAST_${ky}_DAYS`;
+  const coBan = 'metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.conversions_value';
+  const q2 =
+    cap === 'campaign'
+      ? `SELECT campaign.id, ${coBan}, metrics.search_impression_share, metrics.search_budget_lost_impression_share, metrics.search_rank_lost_impression_share, ` +
+        `metrics.search_top_impression_share, metrics.search_absolute_top_impression_share FROM campaign WHERE ${khoang}`
+      : cap === 'adgroup'
+        ? `SELECT ad_group.id, ${coBan}, metrics.search_impression_share, metrics.search_rank_lost_impression_share, metrics.search_top_impression_share, ` +
+          `metrics.search_absolute_top_impression_share FROM ad_group WHERE ${khoang}`
+        : `SELECT ad_group.id, ad_group_ad.ad.id, ${coBan} FROM ad_group_ad WHERE ${khoang}`;
+  return chiTietGads(await k.gadsTruyVan(ts.maNgoai, q2), cap);
+}

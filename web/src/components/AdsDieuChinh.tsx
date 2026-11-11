@@ -121,102 +121,253 @@ async function guiThaoTac(body: Record<string, unknown>, toast: ReturnType<typeo
   }
 }
 
+type ChiSo = Record<string, number | undefined>;
+type Cot = { k: string; ten: string; kieu: 'tien' | 'so' | 'pt' | 'lan' | 'x' };
+// Cột như Trình quản lý quảng cáo (anh Tâm 11/11/2026: "lấy đc càng nhiều chỉ số về để tối ưu càng tốt").
+const COT: Record<'meta' | 'gads', Cot[]> = {
+  gads: [
+    { k: 'chi', ten: 'Chi phí', kieu: 'tien' },
+    { k: 'hienThi', ten: 'Hiển thị', kieu: 'so' },
+    { k: 'click', ten: 'Click', kieu: 'so' },
+    { k: 'ctr', ten: 'CTR', kieu: 'pt' },
+    { k: 'cpc', ten: 'CPC TB', kieu: 'tien' },
+    { k: 'chuyenDoi', ten: 'Chuyển đổi', kieu: 'lan' },
+    { k: 'tyLeCD', ten: 'Tỷ lệ CĐ', kieu: 'pt' },
+    { k: 'cpa', ten: 'Chi phí / CĐ', kieu: 'tien' },
+    { k: 'giaTriCD', ten: 'Giá trị CĐ', kieu: 'tien' },
+    { k: 'roas', ten: 'ROAS', kieu: 'x' },
+    { k: 'tyLeHienThi', ten: 'Tỷ lệ hiển thị', kieu: 'pt' },
+    { k: 'matNganSach', ten: 'Mất HT do NS', kieu: 'pt' },
+    { k: 'matXepHang', ten: 'Mất HT do xếp hạng', kieu: 'pt' },
+    { k: 'dauTrang', ten: '% đầu trang', kieu: 'pt' },
+    { k: 'dauTrangTuyetDoi', ten: '% đầu trang tuyệt đối', kieu: 'pt' },
+  ],
+  meta: [
+    { k: 'chi', ten: 'Chi tiêu', kieu: 'tien' },
+    { k: 'ketQua', ten: 'Kết quả', kieu: 'so' },
+    { k: 'cpa', ten: 'Chi phí / KQ', kieu: 'tien' },
+    { k: 'tiepCan', ten: 'Tiếp cận', kieu: 'so' },
+    { k: 'hienThi', ten: 'Hiển thị', kieu: 'so' },
+    { k: 'tanSuat', ten: 'Tần suất', kieu: 'lan' },
+    { k: 'cpm', ten: 'CPM', kieu: 'tien' },
+    { k: 'clickLink', ten: 'Click liên kết', kieu: 'so' },
+    { k: 'click', ten: 'Click (tất cả)', kieu: 'so' },
+    { k: 'ctr', ten: 'CTR', kieu: 'pt' },
+    { k: 'cpc', ten: 'CPC', kieu: 'tien' },
+    { k: 'tinNhan', ten: 'Tin nhắn', kieu: 'so' },
+    { k: 'lead', ten: 'Lead', kieu: 'so' },
+    { k: 'mua', ten: 'Lượt mua', kieu: 'so' },
+    { k: 'giaTriMua', ten: 'Giá trị mua', kieu: 'tien' },
+    { k: 'roas', ten: 'ROAS', kieu: 'x' },
+  ],
+};
+const fmt = (v: number | undefined, kieu: Cot['kieu']) => {
+  if (v === undefined || !Number.isFinite(v)) return '—';
+  if (kieu === 'pt') return `${(v * 100).toLocaleString('vi-VN', { maximumFractionDigits: 1 })}%`;
+  if (kieu === 'x') return v ? `${v.toLocaleString('vi-VN', { maximumFractionDigits: 2 })}x` : '—';
+  if (kieu === 'lan') return v.toLocaleString('vi-VN', { maximumFractionDigits: 1 });
+  if (kieu === 'tien') return v ? `${vn(v)}đ` : '—';
+  return vn(v);
+};
+/** Dòng tổng: cộng số tuyệt đối, tính lại tỷ lệ; tỷ lệ hiển thị không cộng được → —. */
+function tongCong(ds: ChiSo[]): ChiSo {
+  const t: Record<string, number> = {};
+  for (const c of ds) for (const k of ['chi', 'hienThi', 'click', 'chuyenDoi', 'giaTriCD', 'tiepCan', 'clickLink', 'tinNhan', 'lead', 'mua', 'giaTriMua', 'ketQua']) t[k] = (t[k] || 0) + (c[k] || 0);
+  const kq = t.chuyenDoi || t.ketQua || 0;
+  return {
+    ...t,
+    ctr: t.hienThi ? t.click / t.hienThi : 0,
+    cpc: t.click ? t.chi / t.click : 0,
+    tyLeCD: t.click ? (t.chuyenDoi || 0) / t.click : 0,
+    cpa: kq ? t.chi / kq : undefined,
+    roas: t.chi ? (t.giaTriCD || t.giaTriMua || 0) / t.chi : 0,
+    cpm: t.hienThi ? (t.chi / t.hienThi) * 1000 : 0,
+    tanSuat: undefined,
+  };
+}
+
 function ChienDich({ taiSanId, loai }: { taiSanId: string; loai: 'meta' | 'gads' }) {
   const toast = useToast();
-  const [d, setD] = useState<{ doiTuong: DoiTuong[]; so7: Record<string, SoNgan>; tienTe: string } | null>(null);
+  const id = encodeURIComponent(taiSanId);
+  const [d, setD] = useState<{ doiTuong: DoiTuong[]; tienTe: string } | null>(null);
+  const [cs, setCs] = useState<Record<string, Record<string, ChiSo>>>({});
+  const [ky, setKy] = useState<'7' | '14' | '30'>('7');
   const [loi, setLoi] = useState('');
   const [mo, setMo] = useState<Record<string, boolean>>({});
   const [ns, setNs] = useState<Record<string, string>>({});
-  const tai = () =>
-    api<{ doiTuong: DoiTuong[]; so7: Record<string, SoNgan>; tienTe: string }>(`/ads/${encodeURIComponent(taiSanId)}/doi-tuong`)
+  const [anTat, setAnTat] = useState(true);
+  const taiDoiTuong = () =>
+    api<{ doiTuong: DoiTuong[]; tienTe: string }>(`/ads/${id}/doi-tuong`)
       .then((x) => {
         setD(x);
         setLoi('');
       })
       .catch((e) => setLoi((e as Error).message));
+  const taiChiSo = () =>
+    Promise.all(
+      ['campaign', 'adgroup', 'ad'].map((cap) =>
+        api<{ chiSo: Record<string, ChiSo> }>(`/ads/${id}/chi-tiet?cap=${cap}&ky=${ky}`)
+          .then((r) => [cap, r.chiSo] as const)
+          .catch(() => [cap, {}] as const),
+      ),
+    ).then((ds) => setCs(Object.fromEntries(ds)));
   useEffect(() => {
-    void tai();
+    void taiDoiTuong();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taiSanId]);
+  useEffect(() => {
+    void taiChiSo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taiSanId, ky]);
 
   if (loi) return <p className="text-sm text-red-700">⚠ {loi}</p>;
   if (!d) return <p className="text-sm text-ink-muted">Đang tải chiến dịch…</p>;
-  const camp = d.doiTuong.filter((x) => x.cap === 'campaign').sort((a, b) => (d.so7[b.id]?.chi || 0) - (d.so7[a.id]?.chi || 0) || Number(b.bat) - Number(a.bat));
-  const con = (cap: Cap, cha: string) => d.doiTuong.filter((x) => x.cap === cap && x.cha === cha);
+  const cot = COT[loai];
+  const so = (x: DoiTuong): ChiSo => cs[x.cap]?.[x.id] || {};
+  const chiCua = (x: DoiTuong) => so(x).chi || 0;
+  const tatCa = d.doiTuong.filter((x) => x.cap === 'campaign').sort((a, b) => chiCua(b) - chiCua(a) || Number(b.bat) - Number(a.bat));
+  // Chiến dịch đang dừng và không tiêu trong kỳ: ẩn mặc định cho gọn.
+  const camp = anTat ? tatCa.filter((c) => c.bat || chiCua(c) > 0) : tatCa;
+  const con = (cap: Cap, cha: string) => d.doiTuong.filter((x) => x.cap === cap && x.cha === cha).sort((a, b) => chiCua(b) - chiCua(a));
+  const tong = tongCong(tatCa.map(so));
 
   async function doiTrangThai(x: DoiTuong) {
     const moi = !x.bat;
     if (!confirm(`${moi ? 'BẬT' : 'TẠM DỪNG'} ${TEN_CAP[x.cap]} «${x.ten}»?`)) return;
-    if (await guiThaoTac({ taiSanId, cap: x.cap, doiTuongId: x.id, ten: x.ten, hanhDong: moi ? 'bat' : 'tat', giaTriCu: x.bat ? 'BẬT' : 'DỪNG' }, toast)) await tai();
+    if (await guiThaoTac({ taiSanId, cap: x.cap, doiTuongId: x.id, ten: x.ten, hanhDong: moi ? 'bat' : 'tat', giaTriCu: x.bat ? 'BẬT' : 'DỪNG' }, toast)) await taiDoiTuong();
   }
   async function doiNganSach(x: DoiTuong) {
-    const so = Number(String(ns[x.id] || '').replace(/[^\d.]/g, ''));
-    if (!(so > 0)) return toast.error('Nhập ngân sách ngày mới');
+    const moi = Number(String(ns[x.id] || '').replace(/[^\d.]/g, ''));
+    if (!(moi > 0)) return toast.error('Nhập ngân sách ngày mới');
     const canh = x.nganSachChung ? '\n⚠ Ngân sách này DÙNG CHUNG với chiến dịch khác — đổi là đổi cả các chiến dịch đó.' : '';
-    if (!confirm(`Đổi ngân sách ngày ${TEN_CAP[x.cap]} «${x.ten}»\n${vn(x.nganSach)} → ${vn(so)} ${d!.tienTe}?${canh}`)) return;
-    if (await guiThaoTac({ taiSanId, cap: x.cap, doiTuongId: x.id, ten: x.ten, hanhDong: 'ngan_sach', nganSach: so, giaTriCu: String(x.nganSach), budgetResource: x.budgetResource }, toast)) {
+    if (!confirm(`Đổi ngân sách ngày ${TEN_CAP[x.cap]} «${x.ten}»\n${vn(x.nganSach)} → ${vn(moi)} ${d!.tienTe}?${canh}`)) return;
+    if (await guiThaoTac({ taiSanId, cap: x.cap, doiTuongId: x.id, ten: x.ten, hanhDong: 'ngan_sach', nganSach: moi, giaTriCu: String(x.nganSach), budgetResource: x.budgetResource }, toast)) {
       setNs({ ...ns, [x.id]: '' });
-      await tai();
+      await taiDoiTuong();
     }
   }
 
-  const Dong = ({ x, lui }: { x: DoiTuong; lui: number }) => {
-    const s = x.cap === 'campaign' ? d.so7[x.id] : undefined;
-    const coCon = x.cap !== 'ad' && con(x.cap === 'campaign' ? 'adgroup' : 'ad', x.id).length > 0;
+  const dong = (x: DoiTuong, lui: number) => {
+    const capCon: Cap | null = x.cap === 'campaign' ? 'adgroup' : x.cap === 'adgroup' ? 'ad' : null;
+    const coCon = !!capCon && con(capCon, x.id).length > 0;
+    const coNs = x.nganSach > 0 || (loai === 'gads' && x.cap === 'campaign' && !!x.budgetResource);
+    const s = so(x);
+    const nen = x.cap === 'campaign' ? 'bg-white' : 'bg-[#fffaf0]';
     return (
-      <div className="flex flex-wrap items-center gap-2 border-b border-brand-100 py-2 text-sm" style={{ paddingLeft: lui * 20 }}>
-        {coCon ? (
-          <button type="button" className="w-6 text-ocean-700" aria-label={mo[x.id] ? 'Thu gọn' : 'Mở'} onClick={() => setMo({ ...mo, [x.id]: !mo[x.id] })}>
-            {mo[x.id] ? '▾' : '▸'}
-          </button>
-        ) : (
-          <span className="w-6" />
-        )}
-        <span className={`rounded-full px-2 py-0.5 text-xs ${x.bat ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>{x.bat ? 'Đang bật' : 'Tạm dừng'}</span>
-        <span className="min-w-0 flex-1 font-medium">{x.ten}</span>
-        {s && (
-          <span className="text-xs text-ink-muted">
-            7 ngày: {vn(s.chi)}đ · {s.click} click · {s.ketQua.toFixed(s.ketQua % 1 ? 1 : 0)} kết quả
-          </span>
-        )}
-        {(x.nganSach > 0 || (loai === 'gads' && x.cap === 'campaign' && x.budgetResource)) && (
-          <span className="flex items-center gap-1">
-            <span className="text-xs text-ink-muted">NS ngày {vn(x.nganSach)}</span>
-            <input
-              className="input w-28 py-1 text-sm"
-              inputMode="numeric"
-              placeholder="NS mới"
-              aria-label={`Ngân sách ngày mới cho ${x.ten}`}
-              value={ns[x.id] || ''}
-              onChange={(e) => setNs({ ...ns, [x.id]: e.target.value })}
-            />
-            <AsyncButton className="btn-ghost py-1 text-xs" onClick={() => doiNganSach(x)}>
-              Lưu
-            </AsyncButton>
-          </span>
-        )}
-        <AsyncButton className="btn-ghost py-1 text-xs" onClick={() => doiTrangThai(x)}>
-          {x.bat ? '⏸ Tạm dừng' : '▶ Bật'}
-        </AsyncButton>
-      </div>
+      <tr key={`${x.cap}:${x.id}`} className={`${nen} ${!x.bat ? 'text-ink-muted' : ''}`}>
+        <td className={`sticky left-0 z-10 min-w-[260px] max-w-[320px] px-2 py-1.5 ${nen}`} style={{ paddingLeft: 8 + lui * 18 }}>
+          <div className="flex items-start gap-1">
+            {coCon ? (
+              <button type="button" className="w-5 shrink-0 text-ocean-700" aria-label={mo[x.id] ? 'Thu gọn' : 'Mở'} onClick={() => setMo({ ...mo, [x.id]: !mo[x.id] })}>
+                {mo[x.id] ? '▾' : '▸'}
+              </button>
+            ) : (
+              <span className="w-5 shrink-0" />
+            )}
+            <div className="min-w-0">
+              <p className="truncate font-medium" title={x.ten}>
+                {x.ten}
+              </p>
+              <p className="text-xs">
+                <span className={x.bat ? 'text-green-700' : ''}>{x.bat ? '● Đang bật' : '○ Tạm dừng'}</span>
+                {x.trangThai && !['ACTIVE', 'ENABLED', 'PAUSED'].includes(x.trangThai) && <span className="ml-1 text-amber-700">· {x.trangThai}</span>}
+              </p>
+            </div>
+          </div>
+        </td>
+        <td className="whitespace-nowrap px-2 py-1.5 text-right">
+          {coNs ? (
+            <div className="flex items-center justify-end gap-1">
+              <span title={x.nganSachChung ? 'Ngân sách dùng chung' : ''}>
+                {vn(x.nganSach)}đ{x.nganSachChung ? '*' : ''}
+              </span>
+              <input
+                className="input w-24 px-1.5 py-0.5 text-xs"
+                inputMode="numeric"
+                placeholder="mới"
+                aria-label={`Ngân sách ngày mới cho ${x.ten}`}
+                value={ns[x.id] || ''}
+                onChange={(e) => setNs({ ...ns, [x.id]: e.target.value })}
+              />
+              <AsyncButton className="btn-ghost px-1.5 py-0.5 text-xs" onClick={() => doiNganSach(x)}>
+                Lưu
+              </AsyncButton>
+            </div>
+          ) : (
+            <span className="text-xs">—</span>
+          )}
+        </td>
+        {cot.map((c) => (
+          <td key={c.k} className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums">
+            {fmt(s[c.k], c.kieu)}
+          </td>
+        ))}
+        <td className="whitespace-nowrap px-2 py-1.5 text-right">
+          <AsyncButton className="btn-ghost px-2 py-0.5 text-xs" onClick={() => doiTrangThai(x)}>
+            {x.bat ? '⏸ Dừng' : '▶ Bật'}
+          </AsyncButton>
+        </td>
+      </tr>
     );
   };
 
+  const hang: JSX.Element[] = [];
+  for (const c of camp) {
+    hang.push(dong(c, 0));
+    if (!mo[c.id]) continue;
+    for (const g of con('adgroup', c.id)) {
+      hang.push(dong(g, 1));
+      if (mo[g.id]) for (const a of con('ad', g.id)) hang.push(dong(a, 2));
+    }
+  }
+
   return (
-    <div>
-      {!camp.length && <p className="text-sm text-ink-muted">Không có chiến dịch.</p>}
-      {camp.map((c) => (
-        <div key={c.id}>
-          <Dong x={c} lui={0} />
-          {mo[c.id] &&
-            con('adgroup', c.id).map((g) => (
-              <div key={g.id}>
-                <Dong x={g} lui={1} />
-                {mo[g.id] && con('ad', g.id).map((a) => <Dong key={a.id} x={a} lui={2} />)}
-              </div>
-            ))}
-        </div>
-      ))}
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        {(['7', '14', '30'] as const).map((k) => (
+          <button key={k} type="button" className={`rounded-lg px-2.5 py-1 ${ky === k ? 'bg-ocean-700 text-white' : 'bg-brand-50'}`} onClick={() => setKy(k)}>
+            {k} ngày
+          </button>
+        ))}
+        <label className="ml-auto flex items-center gap-1.5 text-xs">
+          <input type="checkbox" checked={anTat} onChange={(e) => setAnTat(e.target.checked)} /> Ẩn chiến dịch đang dừng và không tiêu ({tatCa.length - camp.length})
+        </label>
+      </div>
+      <div className="max-h-[640px] overflow-auto rounded-xl border border-brand-100">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 z-20 bg-brand-50 text-xs text-ink-muted">
+            <tr>
+              <th className="sticky left-0 z-30 bg-brand-50 px-2 py-2 text-left">Chiến dịch / nhóm / quảng cáo</th>
+              <th className="px-2 py-2 text-right">Ngân sách ngày</th>
+              {cot.map((c) => (
+                <th key={c.k} className="whitespace-nowrap px-2 py-2 text-right">
+                  {c.ten}
+                </th>
+              ))}
+              <th className="px-2 py-2" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-brand-100">
+            <tr className="bg-amber-50 font-semibold">
+              <td className="sticky left-0 z-10 bg-amber-50 px-2 py-1.5">Tổng tài khoản ({ky} ngày)</td>
+              <td />
+              {cot.map((c) => (
+                <td key={c.k} className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums">
+                  {fmt(tong[c.k], c.kieu)}
+                </td>
+              ))}
+              <td />
+            </tr>
+            {hang}
+          </tbody>
+        </table>
+      </div>
+      {!camp.length && <p className="text-sm text-ink-muted">Không có chiến dịch nào đang chạy / có chi tiêu trong kỳ.</p>}
+      <p className="text-xs text-ink-muted">
+        {loai === 'gads'
+          ? 'Tỷ lệ hiển thị / mất hiển thị chỉ có ở chiến dịch tìm kiếm. * = ngân sách dùng chung nhiều chiến dịch.'
+          : 'Kết quả = tin nhắn + lead + lượt mua. Số Meta có thể còn thay đổi 1–2 ngày gần nhất.'}
+      </p>
     </div>
   );
 }

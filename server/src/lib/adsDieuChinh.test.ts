@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { metaRaTien, metaVaoDonVi, lenhGads, duocThaoTac, kiemThaoTac, dongMetaDoiTuong, dongGadsDoiTuong, dongTuKhoa, dongCumTimKiem, dongGoiYTuKhoa } from './adsDieuChinh.js';
+import { metaRaTien, metaVaoDonVi, lenhGads, duocThaoTac, kiemThaoTac, dongMetaDoiTuong, dongGadsDoiTuong, dongTuKhoa, dongCumTimKiem, dongGoiYTuKhoa, chiTietGads, chiTietMeta } from './adsDieuChinh.js';
 
 // Điều chỉnh quảng cáo ngay trên MTJOB (anh Tâm 11/11/2026). Số liệu GIẢ.
 
@@ -143,5 +143,100 @@ describe('thêm từ khoá vào nhóm quảng cáo', () => {
     });
     expect(kiemThaoTac({ hanhDong: 'them_tu_khoa', cap: 'campaign', tuKhoa: 'x' })).toMatch(/nhóm quảng cáo/);
     expect(kiemThaoTac({ hanhDong: 'them_tu_khoa', cap: 'adgroup', tuKhoa: 'tiệm nail' })).toBeNull();
+  });
+});
+
+// Anh Tâm 11/11/2026: "click vào từng tài khoản sẽ ra thông tin chi tiết giống như ở trong tài khoản quảng cáo, lấy đc càng nhiều
+// chỉ số về để tối ưu càng tốt".
+describe('chỉ số chi tiết như Trình quản lý quảng cáo', () => {
+  it('Google Ads: đủ chỉ số + tỷ lệ hiển thị, mất do ngân sách / xếp hạng', () => {
+    const r = chiTietGads(
+      [
+        {
+          results: [
+            {
+              campaign: { id: '111' },
+              metrics: {
+                impressions: '2000',
+                clicks: '100',
+                ctr: 0.05,
+                averageCpc: '5000000000',
+                costMicros: '500000000000',
+                conversions: 10,
+                conversionsValue: 2000000,
+                searchImpressionShare: 0.42,
+                searchBudgetLostImpressionShare: 0.3,
+                searchRankLostImpressionShare: 0.28,
+                searchTopImpressionShare: 0.6,
+                searchAbsoluteTopImpressionShare: 0.2,
+              },
+            },
+          ],
+        },
+      ],
+      'campaign',
+    );
+    expect(r['111']).toEqual({
+      hienThi: 2000,
+      click: 100,
+      ctr: 0.05,
+      cpc: 5000,
+      chi: 500000,
+      chuyenDoi: 10,
+      tyLeCD: 0.1,
+      cpa: 50000,
+      giaTriCD: 2000000,
+      roas: 4,
+      tyLeHienThi: 0.42,
+      matNganSach: 0.3,
+      matXepHang: 0.28,
+      dauTrang: 0.6,
+      dauTrangTuyetDoi: 0.2,
+    });
+  });
+  it('Meta: tiếp cận, tần suất, CPM, click liên kết, tin nhắn, lead, mua, ROAS', () => {
+    const r = chiTietMeta(
+      {
+        data: [
+          {
+            campaign_id: '9',
+            spend: '1000000',
+            impressions: '50000',
+            reach: '20000',
+            frequency: '2.5',
+            clicks: '800',
+            inline_link_clicks: '600',
+            ctr: '1.6',
+            cpc: '1250',
+            cpm: '20000',
+            actions: [
+              { action_type: 'onsite_conversion.messaging_conversation_started_7d', value: '40' },
+              { action_type: 'lead', value: '5' },
+              { action_type: 'purchase', value: '2' },
+            ],
+            action_values: [{ action_type: 'purchase', value: '3000000' }],
+          },
+        ],
+      },
+      'campaign',
+    );
+    expect(r['9']).toEqual({
+      chi: 1000000,
+      hienThi: 50000,
+      tiepCan: 20000,
+      tanSuat: 2.5,
+      click: 800,
+      clickLink: 600,
+      ctr: 0.016,
+      cpc: 1250,
+      cpm: 20000,
+      tinNhan: 40,
+      lead: 5,
+      mua: 2,
+      giaTriMua: 3000000,
+      roas: 3,
+      ketQua: 47,
+      cpa: 1000000 / 47,
+    });
   });
 });
