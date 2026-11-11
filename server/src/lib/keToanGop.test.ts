@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { gopChiSo, tinhThangDaLay, quyetDinhCaKhoi, phangCongNo, khoaChiTieu, tomTatGop } from './keToanGop.js';
+import { gopChiSo, tinhThangDaLay, quyetDinhCaKhoi, phangCongNo, khoaChiTieu, tomTatGop, ngayLapTrongFile } from './keToanGop.js';
 
 // Anh Tâm 11/11/2026: "Phần kế toán thuế anh cần thông minh hơn, đọc và hiểu các báo cáo, ưu tiên báo cáo sau ghi đè báo cáo
 // cũ, các chỉ số có ngày cập nhật mới hơn phải được giữ lại, đánh giá giữ lại hay k, k hiểu thì hỏi". Số GIẢ.
@@ -113,5 +113,18 @@ describe('tomTatGop — câu báo sau khi tải lên', () => {
       ' · cập nhật 3 chỉ số theo báo cáo mới hơn · giữ 2 chỉ số (báo cáo này cũ hơn) · AI chọn số mới cho 1 chỗ · ❓ 1 chỗ cần anh quyết',
     );
     expect(tomTatGop({ ghiDe: 0, giuCu: 0, aiMoi: 0, aiCu: 0, hoi: 0 })).toBe('');
+  });
+});
+
+describe('ngayLapTrongFile — ngày lập báo cáo ghi ở dòng ký', () => {
+  const sh = (rows: string[][]) => [{ ten: 'S1', rows }];
+  it('đọc "Lập, ngày 15 tháng 01 năm 2026" ở cuối file', () => {
+    expect(ngayLapTrongFile(sh([['BÁO CÁO KẾT QUẢ KINH DOANH'], ['Năm 2025'], ['', 'Hà Nội, ngày 15 tháng 01 năm 2026']]))).toBe('2026-01-15');
+  });
+  it('nhiều ngày → lấy ngày muộn nhất (ngày ký sau ngày kỳ)', () => {
+    expect(ngayLapTrongFile(sh([['Từ ngày 01 tháng 01 năm 2025'], ['Ngày 3 tháng 2 năm 2026']]))).toBe('2026-02-03');
+  });
+  it('không có / ngày vô lý → rỗng', () => {
+    expect(ngayLapTrongFile(sh([['Ngày ... tháng ... năm ...'], ['ngày 40 tháng 13 năm 2026']]))).toBe('');
   });
 });

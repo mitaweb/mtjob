@@ -776,6 +776,30 @@ CREATE TABLE IF NOT EXISTS kt_viec (
   xong         boolean DEFAULT false,
   tao_luc      text DEFAULT ''
 );
+-- Ngày CỦA SỐ LIỆU (ngày lập / ngày chốt / ngày gửi báo cáo — không phải ngày tải lên). Anh Tâm 11/11/2026: "ưu tiên báo cáo
+-- sau ghi đè báo cáo cũ, các chỉ số có ngày cập nhật mới hơn phải được giữ lại, đánh giá giữ lại hay k, k hiểu thì hỏi".
+ALTER TABLE kt_bao_cao ADD COLUMN IF NOT EXISTS ngay_chi_tieu text DEFAULT '{}';
+ALTER TABLE kt_bao_cao ADD COLUMN IF NOT EXISTS ten_bao_cao text DEFAULT '';
+ALTER TABLE kt_bao_cao ADD COLUMN IF NOT EXISTS ten_chi_tieu text DEFAULT '{}';
+ALTER TABLE kt_luong ADD COLUMN IF NOT EXISTS ngay_so_lieu text DEFAULT '';
+ALTER TABLE kt_cong_no ADD COLUMN IF NOT EXISTS ngay_so_lieu text DEFAULT '';
+-- Chỗ số liệu mới KHÁC số đang lưu mà không phân định được bằng ngày, AI cũng không chắc → hỏi giám đốc.
+-- bang: bao_cao | luong | cong_no. du_lieu = JSON đủ để áp khi anh chọn số mới. trang_thai: cho | moi | cu.
+CREATE TABLE IF NOT EXISTS kt_hoi (
+  id           text PRIMARY KEY,
+  bang         text NOT NULL,
+  khoa         text NOT NULL,
+  tieu_de      text DEFAULT '',
+  chi_tiet     text DEFAULT '[]',       -- [{khoa, ten, cu, moi, ngayCu, ngayMoi}]
+  ten_file     text DEFAULT '',
+  ly_do        text DEFAULT '',
+  du_lieu      text DEFAULT '{}',
+  trang_thai   text DEFAULT 'cho',
+  tao_luc      text DEFAULT '',
+  tra_loi_luc  text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS kt_hoi_tt_idx ON kt_hoi (trang_thai, tao_luc DESC);
+
 CREATE TABLE IF NOT EXISTS kt_cai_dat (
   khoa         text PRIMARY KEY,
   gia_tri      text DEFAULT ''

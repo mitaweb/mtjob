@@ -167,3 +167,25 @@ export function tomTatGop(t: { ghiDe: number; giuCu: number; aiMoi: number; aiCu
     t.hoi ? ` · ❓ ${t.hoi} chỗ cần anh quyết` : '',
   ].join('');
 }
+
+/**
+ * Ngày lập báo cáo theo dòng ký kiểu Việt Nam ("Hà Nội, ngày 15 tháng 01 năm 2026"). Nhiều ngày (kỳ báo cáo, ngày ký) →
+ * lấy ngày muộn nhất. Không thấy → ''.
+ */
+export function ngayLapTrongFile(sheets: ReadonlyArray<{ rows: ReadonlyArray<ReadonlyArray<unknown>> }>): string {
+  let max = '';
+  const re = /ng[aà]y\s+(\d{1,2})\s+th[aá]ng\s+(\d{1,2})\s+n[aă]m\s+(\d{4})/gi;
+  for (const s of sheets)
+    for (const r of s.rows)
+      for (const o of r) {
+        for (const m of String(o ?? '').matchAll(re)) {
+          const d = Number(m[1]);
+          const t = Number(m[2]);
+          const n = Number(m[3]);
+          if (d < 1 || d > 31 || t < 1 || t > 12 || n < 2000 || n > 2100) continue;
+          const iso = `${n}-${String(t).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          if (iso > max) max = iso;
+        }
+      }
+  return max;
+}

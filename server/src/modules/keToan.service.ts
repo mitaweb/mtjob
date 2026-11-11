@@ -22,9 +22,7 @@ import {
   tatCaHoaDon,
   ghiToKhai,
   tatCaToKhai,
-  ghiCongNo,
   soCongNoMoiNhat,
-  ghiBaoCao,
   tatCaBaoCao,
   ghiTaiLen,
   docCaiDat,
@@ -32,9 +30,7 @@ import {
   ghiGiaoDich,
   idGiaoDichDaCo,
   tatCaGiaoDich,
-  ghiLuong,
   tatCaLuong,
-  ghiLuongNv,
   tatCaLuongNv,
   ghiViec,
 } from './keToan.repo.js';
@@ -54,6 +50,8 @@ import {
 } from '../lib/saoKe.js';
 import { hoaDonHieuLuc, ketQuaTheoThang, ngayISO, chuanChu, type SoCongNo, type ThanhToanDoiTac } from '../lib/keToan.js';
 import { createHash } from 'node:crypto';
+import { ngayLapTrongFile, khoaChiTieu } from '../lib/keToanGop.js';
+import { luuBaoCao, luuLuong, luuCongNo, type NguCanh } from './keToanGop.service.js';
 import { laiLoTheoThang, congNoTheoSaoKe } from '../lib/laiLoCongNo.js';
 import {
   xemTruoc,
@@ -133,6 +131,7 @@ async function nhapBangTheoMau(ten: string, sheets: SheetDuLieu[], nguoi: string
   const loai = nhanDangBang(sheets);
   const id = newId('KT');
   const luc = nowTz().toISOString();
+  const ctx: NguCanh = { tenFile: ten, moTa: '', ngay: ngayLapTrongFile(sheets), taiLenId: id, luc };
   let kq: KetQuaTep;
   if (loai === 'bang_ke') {
     const { hoaDon, boQua } = docBangKe(sheets);
@@ -152,15 +151,15 @@ async function nhapBangTheoMau(ten: string, sheets: SheetDuLieu[], nguoi: string
     const l = loai === 'cong_no_thu' ? 'thu' : 'tra';
     const so = docCongNo(sheets, l, ten);
     if (so) {
-      const n = await ghiCongNo(so, id);
+      const gop = await luuCongNo(so, ctx);
       const tong = so.dong.reduce((s, d) => s + (l === 'thu' ? d.duNo - d.duCo : d.duCo - d.duNo), 0);
-      kq = { ten, loai: l === 'thu' ? 'Công nợ phải thu (131)' : 'Công nợ phải trả (331)', ok: true, thongDiep: `${n} đối tác, chốt ngày ${so.ngayChot} · tổng ${tien(tong)}` };
+      kq = { ten, loai: l === 'thu' ? 'Công nợ phải thu (131)' : 'Công nợ phải trả (331)', ok: true, thongDiep: `${so.dong.length} đối tác, chốt ngày ${so.ngayChot} · tổng ${tien(tong)}${gop}` };
     } else kq = { ten, loai: 'Công nợ', ok: false, thongDiep: 'Không đọc được ngày chốt / bảng số dư' };
   } else if (loai === 'kqkd') {
     const b = docKqkd(sheets);
     if (b) {
-      await ghiBaoCao(b, id, luc);
-      kq = { ten, loai: 'Báo cáo kết quả kinh doanh', ok: true, thongDiep: `Kỳ ${b.tuNgay} → ${b.denNgay} · doanh thu ${tien(b.chiTieu['01'] ?? 0)}, LN trước thuế ${tien(b.chiTieu['50'] ?? 0)}` };
+      const gop = await luuBaoCao(b, ctx);
+      kq = { ten, loai: 'Báo cáo kết quả kinh doanh', ok: true, thongDiep: `Kỳ ${b.tuNgay} → ${b.denNgay} · doanh thu ${tien(b.chiTieu['01'] ?? 0)}, LN trước thuế ${tien(b.chiTieu['50'] ?? 0)}${gop}` };
     } else kq = { ten, loai: 'Báo cáo KQKD', ok: false, thongDiep: 'Không đọc được kỳ / các chỉ tiêu' };
   } else if (laSaoKe(sheets)) {
     const sk = docSaoKe(sheets, ten);
@@ -568,8 +567,9 @@ const NHIEU_COT = { type: 'ARRAY', items: { type: 'INTEGER' } };
 const SCHEMA_BAN_DO = {
   type: 'OBJECT',
   properties: {
-    loai: { type: 'STRING', enum: ['hoa_don', 'sao_ke', 'cong_no', 'kqkd', 'bang_luong', 'khac'] },
+    loai: { type: 'STRING', enum: ['hoa_don', 'sao_ke', 'cong_no', 'kqkd', 'bang_luong', 'bao_cao', 'khac'] },
     moTa: { type: 'STRING' },
+    ngayLap: { type: 'STRING' },
     bang: {
       type: 'ARRAY',
       items: {
@@ -627,7 +627,12 @@ function loiNhacBanDo(ten: string, xem: string, mst: string): string {
     '  1%, 0,5%), bhxhNld (các cột phần NGƯỜI LAO ĐỘNG đóng — thường 8%, 1,5%, 1%), tncn (thuế TNCN), thucNhan (TỔNG',
     '  thực lãnh), tienMat (phần thực lãnh trả TIỀN MẶT / đợt 1), chuyenKhoan (phần CHUYỂN KHOẢN / đợt 2). Ghi nam',
     '  nếu cột tháng không có năm (lấy từ tên sheet / cột kỳ kê khai).',
+    '- "bao_cao": báo cáo kế toán / tài chính KHÁC có số liệu theo chỉ tiêu (bảng cân đối kế toán, lưu chuyển tiền tệ,',
+    '  cân đối số phát sinh, báo cáo thuế, thuyết minh…) — không cần cột, để bang = [].',
     '- "khac": không phải các loại trên (danh sách nhân viên, quy định KPI…).',
+    '',
+    'ngayLap: ngày LẬP / KÝ / gửi của file (dòng "…, ngày 15 tháng 01 năm 2026", ô "Ngày lập", tên file có ngày) —',
+    'KHÔNG phải ngày kỳ báo cáo. Không thấy thì để trống. Dùng để báo cáo lập sau thay số của báo cáo lập trước.',
     '',
     'bang: các sheet chứa dữ liệu chính (bỏ sheet phụ / trống). dongDuLieu = số dòng (theo "dòng i") của DÒNG DỮ LIỆU ĐẦU',
     'TIÊN, sau mọi dòng tiêu đề / dòng tổng / dòng tỉ lệ %. Cột ghi bằng chỉ số [j]; cột không có thì bỏ trống.',
@@ -645,12 +650,66 @@ async function banDoAi(ten: string, sheets: SheetDuLieu[]): Promise<BanDoAi> {
   return bd;
 }
 
+const SCHEMA_BAO_CAO_KHAC = {
+  type: 'OBJECT',
+  properties: {
+    tenBaoCao: { type: 'STRING' },
+    tuNgay: { type: 'STRING' },
+    denNgay: { type: 'STRING' },
+    ngayLap: { type: 'STRING' },
+    chiTieu: {
+      type: 'ARRAY',
+      items: { type: 'OBJECT', properties: { ma: { type: 'STRING' }, ten: { type: 'STRING' }, giaTri: { type: 'NUMBER' } }, required: ['ten', 'giaTri'] },
+    },
+  },
+  required: ['tenBaoCao', 'denNgay', 'chiTieu'],
+};
+
+/** Báo cáo khác (cân đối kế toán, lưu chuyển tiền tệ…): AI chép từng chỉ tiêu của cột KỲ NÀY / số cuối kỳ. */
+async function docBaoCaoKhac(
+  ten: string,
+  sheets: SheetDuLieu[],
+): Promise<{ tenBaoCao: string; tuNgay: string; denNgay: string; ngayLap: string; chiTieu: Record<string, number>; tenChiTieu: Record<string, string> } | null> {
+  const { aiKhoJson } = await import('../ai/brainAi.js');
+  const r = (await aiKhoJson(
+    [
+      `Bạn là kế toán của công ty TNHH DỊCH VỤ MT DIGITAL. File "${ten}" là một báo cáo kế toán / tài chính (mỗi ô ghi`,
+      '[chỉ số cột]giá trị; số dài đã che bằng #). Đọc:',
+      '- tenBaoCao: tên báo cáo ngắn gọn (vd "Bảng cân đối kế toán", "Lưu chuyển tiền tệ", "Cân đối số phát sinh").',
+      '- tuNgay, denNgay: kỳ báo cáo (YYYY-MM-DD; báo cáo tại một thời điểm thì tuNgay = denNgay = ngày đó).',
+      '- ngayLap: ngày lập / ký (dòng "…, ngày … tháng … năm …"); không có để trống.',
+      '- chiTieu: MỖI dòng chỉ tiêu có số — ma (mã số chỉ tiêu / số hiệu tài khoản nếu có), ten (tên chỉ tiêu), giaTri =',
+      '  số của cột KỲ NÀY / SỐ CUỐI KỲ (âm nếu ghi trong ngoặc). Số kiểu Việt Nam: 1.234.567 = 1234567. Chép ĐÚNG, không',
+      '  tự tính; tối đa 150 chỉ tiêu.',
+      '',
+      xemTruoc(sheets, 400),
+    ].join('\n'),
+    SCHEMA_BAO_CAO_KHAC,
+  )) as { tenBaoCao?: string; tuNgay?: string; denNgay?: string; ngayLap?: string; chiTieu?: Array<{ ma?: string; ten?: string; giaTri?: number }> };
+  const denNgay = ngayISO(String(r?.denNgay || ''));
+  const tuNgay = ngayISO(String(r?.tuNgay || '')) || denNgay;
+  if (!denNgay || !Array.isArray(r?.chiTieu)) return null;
+  const chiTieu: Record<string, number> = {};
+  const tenChiTieu: Record<string, string> = {};
+  for (const c of r.chiTieu.slice(0, 150)) {
+    const v = Number(c?.giaTri);
+    const k = khoaChiTieu(String(c?.ma || ''), String(c?.ten || ''));
+    if (!k || !Number.isFinite(v) || k in chiTieu) continue;
+    chiTieu[k] = Math.round(v);
+    tenChiTieu[k] = String(c?.ten || c?.ma || k).slice(0, 200);
+  }
+  if (!Object.keys(chiTieu).length) return null;
+  return { tenBaoCao: String(r.tenBaoCao || 'Báo cáo').slice(0, 120), tuNgay, denNgay, ngayLap: ngayISO(String(r.ngayLap || '')), chiTieu, tenChiTieu };
+}
+
 /** Ghi file theo bản đồ AI. null = AI cho là file không dùng cho số liệu thuế (để bộ đọc mẫu thử lại). */
 async function nhapTheoBanDo(ten: string, sheets: SheetDuLieu[], bd: BanDoAi, nguoi: string): Promise<KetQuaTep | null> {
   const id = newId('KT');
   const luc = nowTz().toISOString();
   const nhan = (l: string) => `${l} (AI đọc)`;
   const loaiMau = nhanDangBang(sheets);
+  // Ngày CỦA SỐ LIỆU (ngày lập / ký) — để báo cáo sau ghi đè báo cáo trước, không theo thứ tự tải lên.
+  const ctx: NguCanh = { tenFile: ten, moTa: bd.moTa || '', ngay: ngayISO(String(bd.ngayLap || '')) || ngayLapTrongFile(sheets), taiLenId: id, luc };
   let kq: KetQuaTep;
   if (bd.loai === 'hoa_don') {
     const mau = loaiMau === 'bang_ke' ? docBangKe(sheets).hoaDon : null;
@@ -705,25 +764,33 @@ async function nhapTheoBanDo(ten: string, sheets: SheetDuLieu[], bd: BanDoAi, ng
     const theoMau = loaiMau === 'cong_no_thu' || loaiMau === 'cong_no_tra' ? docCongNo(sheets, loaiMau === 'cong_no_thu' ? 'thu' : 'tra', ten) : null;
     const so = theoMau || congNoTheoBanDo(sheets, bd);
     if (!so) throw new Error(`AI nhận là công nợ ("${bd.moTa}") nhưng thiếu loại (thu / trả) hoặc ngày chốt`);
-    const n = await ghiCongNo(so, id);
-    kq = { ten, loai: nhan(so.loai === 'thu' ? 'Công nợ phải thu' : 'Công nợ phải trả'), ok: true, thongDiep: `${n} đối tác, chốt ngày ${so.ngayChot}` };
+    const gop = await luuCongNo(so, ctx);
+    kq = { ten, loai: nhan(so.loai === 'thu' ? 'Công nợ phải thu' : 'Công nợ phải trả'), ok: true, thongDiep: `${so.dong.length} đối tác, chốt ngày ${so.ngayChot}${gop}` };
   } else if (bd.loai === 'kqkd') {
     // Báo cáo theo mẫu: số chỉ tiêu đọc thẳng từ file; AI chỉ chép 2 con số chính nên chỉ dùng khi mẫu không đọc được.
     const b = (loaiMau === 'kqkd' ? docKqkd(sheets) : null) || kqkdTheoBanDo(bd);
     if (!b) throw new Error('AI nhận là báo cáo kết quả kinh doanh nhưng thiếu kỳ / lợi nhuận');
-    await ghiBaoCao(b, id, luc);
+    const gop = await luuBaoCao(b, ctx);
     kq = {
       ten,
       loai: nhan('Báo cáo kết quả kinh doanh'),
       ok: true,
-      thongDiep: `Kỳ ${b.tuNgay} → ${b.denNgay} · doanh thu ${tien(b.chiTieu['01'] ?? 0)}, LN trước thuế ${tien(b.chiTieu['50'] ?? 0)}`,
+      thongDiep: `Kỳ ${b.tuNgay} → ${b.denNgay} · doanh thu ${tien(b.chiTieu['01'] ?? 0)}, LN trước thuế ${tien(b.chiTieu['50'] ?? 0)}${gop}`,
     };
+  } else if (bd.loai === 'bao_cao') {
+    // Báo cáo khác (cân đối kế toán, lưu chuyển tiền tệ, cân đối phát sinh…): AI đọc từng chỉ tiêu, lưu theo tên báo cáo + kỳ.
+    const bc = await docBaoCaoKhac(ten, sheets);
+    if (!bc) throw new Error(`AI nhận là báo cáo ("${bd.moTa}") nhưng không đọc ra kỳ / chỉ tiêu nào`);
+    const gop = await luuBaoCao(
+      { tuNgay: bc.tuNgay, denNgay: bc.denNgay, chiTieu: bc.chiTieu, loai: `bc:${khoaChiTieu('', bc.tenBaoCao)}`, tenBaoCao: bc.tenBaoCao, tenChiTieu: bc.tenChiTieu },
+      { ...ctx, ngay: bc.ngayLap || ctx.ngay },
+    );
+    kq = { ten, loai: nhan(bc.tenBaoCao), ok: true, thongDiep: `Kỳ ${bc.tuNgay} → ${bc.denNgay} · ${Object.keys(bc.chiTieu).length} chỉ tiêu${bc.ngayLap ? ` · lập ngày ${bc.ngayLap}` : ''}${gop}` };
   } else if (bd.loai === 'bang_luong') {
     const nv = luongNvTheoBanDo(sheets, bd);
     const luong = congLuongTheoThang(nv);
     if (!luong.length) throw new Error(`AI nhận là bảng lương ("${bd.moTa}") nhưng không cộng được tháng nào`);
-    await ghiLuong(luong, id, luc);
-    await ghiLuongNv(nv, id, luc).catch(() => undefined); // bảng mới — chưa "Cập nhật cấu trúc DB" thì bỏ qua phần đối chiếu
+    const gop = await luuLuong(luong, nv, ctx);
     const tong = luong.reduce((s, x) => s + x.tongThuNhap, 0);
     const bh = luong.reduce((s, x) => s + x.bhxhCty, 0);
     const tm = luong.reduce((s, x) => s + x.tienMat, 0);
@@ -732,7 +799,7 @@ async function nhapTheoBanDo(ten: string, sheets: SheetDuLieu[], bd: BanDoAi, ng
       ten,
       loai: nhan('Bảng lương'),
       ok: true,
-      thongDiep: `${luong.length} tháng (${luong.map((x) => `${x.thang.slice(5)}/${x.thang.slice(0, 4)}`).join(', ')}) · tổng thu nhập ${tien(tong)}, BHXH công ty đóng ${tien(bh)}${ck ? ` · thực lãnh: tiền mặt ${tien(tm)}, chuyển khoản ${tien(ck)}` : ''}`,
+      thongDiep: `${luong.length} tháng (${luong.map((x) => `${x.thang.slice(5)}/${x.thang.slice(0, 4)}`).join(', ')}) · tổng thu nhập ${tien(tong)}, BHXH công ty đóng ${tien(bh)}${ck ? ` · thực lãnh: tiền mặt ${tien(tm)}, chuyển khoản ${tien(ck)}` : ''}${gop}`,
     };
   } else {
     return null;
@@ -749,6 +816,7 @@ const SCHEMA_BAO_CAO_KT = {
   type: 'OBJECT',
   properties: {
     coKetQua: { type: 'BOOLEAN' },
+    ngayBaoCao: { type: 'STRING' },
     tuNgay: { type: 'STRING' },
     denNgay: { type: 'STRING' },
     doanhThu: { type: 'NUMBER' },
@@ -788,6 +856,8 @@ export interface KetQuaBaoCaoKeToan {
     ghiChu: string;
   };
   soViec: number;
+  /** Gộp với số đang lưu: cập nhật / giữ / chờ anh quyết */
+  gop: string;
   viecMoi: number;
 }
 
@@ -802,6 +872,7 @@ export async function nhanBaoCaoKeToan(o: { noiDung?: string; anh?: { mimeType: 
     '   chiPhiKhongDuocTru = chi phí loại không được trừ khi tính thuế TNDN (số dương), loiNhuanTinhThue = lãi / lỗ tính thuế',
     '   / lũy kế kế toán ghi sau khi loại chi phí không được trừ (LỖ ghi số ÂM; không có thì bỏ trống), ghiChuKetQua = lý do',
     '   chi phí không được trừ (ngắn gọn). Số kiểu Việt Nam: 100.865.882 = 100865882. Chép ĐÚNG con số trong thư, không tự tính.',
+    '   ngayBaoCao = ngày gửi / ngày lập thư (YYYY-MM-DD) nếu thư ghi; không ghi thì để trống.',
     '2) VIỆC kế toán nhờ giám đốc làm: mỗi việc một mục — loai: xac_nhan_cong_no (xác nhận công nợ phải thu / phải trả),',
     '   bo_sung_hoa_don (hoá đơn gốc, biên bản thay thế…), xac_nhan_giao_dich (khoản tiền vào / ra cần xác nhận), khac.',
     '   noiDung: câu ngắn nói rõ cần làm gì; soTien, doiTac, ngay (YYYY-MM-DD) nếu có. KHÔNG đưa mục chỉ để thông báo',
@@ -812,6 +883,7 @@ export async function nhanBaoCaoKeToan(o: { noiDung?: string; anh?: { mimeType: 
   const r = (await aiKhoJson(prompt, SCHEMA_BAO_CAO_KT, them)) as Record<string, unknown>;
   const luc = nowTz().toISOString();
   let ketQua: KetQuaBaoCaoKeToan['ketQua'] = null;
+  let gopKetQua = '';
   const tuNgay = ngayISO(String(r.tuNgay || ''));
   const denNgay = ngayISO(String(r.denNgay || ''));
   const lnkt = Number(r.loiNhuanKeToan);
@@ -823,7 +895,9 @@ export async function nhanBaoCaoKeToan(o: { noiDung?: string; anh?: { mimeType: 
     if (ghi !== null) chiTieu.lntt = ghi;
     if (dt) chiTieu['01'] = dt;
     const id = newId('KT');
-    await ghiBaoCao({ tuNgay, denNgay, chiTieu, nguon: 'ke_toan' }, id, luc);
+    // Thư không ghi ngày → coi là ngày nhận (hôm nay): thư gửi sau thay số thư gửi trước.
+    const ngay = ngayISO(String(r.ngayBaoCao || '')) || homNay;
+    gopKetQua = await luuBaoCao({ tuNgay, denNgay, chiTieu, nguon: 'ke_toan' }, { tenFile: 'Báo cáo kế toán gửi', moTa: 'Thư / ảnh báo cáo của kế toán', ngay, taiLenId: id, luc });
     ketQua = {
       tuNgay,
       denNgay,
@@ -838,7 +912,7 @@ export async function nhanBaoCaoKeToan(o: { noiDung?: string; anh?: { mimeType: 
       id,
       tenFile: 'Báo cáo kế toán gửi',
       loai: 'Báo cáo kế toán (AI đọc)',
-      ketQua: `Đến ${denNgay}: lãi/lỗ kế toán ${tien(ketQua.loiNhuanKeToan)}, chi phí không được trừ ${tien(cpktd)}`,
+      ketQua: `Đến ${denNgay}: lãi/lỗ kế toán ${tien(ketQua.loiNhuanKeToan)}, chi phí không được trừ ${tien(cpktd)}${gopKetQua}`,
       nguoi,
       luc,
     });
@@ -859,5 +933,5 @@ export async function nhanBaoCaoKeToan(o: { noiDung?: string; anh?: { mimeType: 
     .filter((v) => v.noiDung.length >= 5)
     .slice(0, 30);
   const viecMoi = viec.length ? await ghiViec(viec, luc) : 0;
-  return { ketQua, soViec: viec.length, viecMoi };
+  return { ketQua, soViec: viec.length, viecMoi, gop: gopKetQua.replace(/^ · /, '') };
 }

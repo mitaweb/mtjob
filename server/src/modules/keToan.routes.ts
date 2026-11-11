@@ -222,3 +222,33 @@ keToanRouter.post(
     res.json({ ok: true });
   }),
 );
+
+// ── Gộp báo cáo theo ngày số liệu (anh Tâm 11/11/2026: "ưu tiên báo cáo sau ghi đè báo cáo cũ… k hiểu thì hỏi") ──
+
+/** Chỗ số liệu vênh mà AI không đủ căn cứ — chờ giám đốc chọn. Chưa "Cập nhật cấu trúc DB" thì trả rỗng. */
+keToanRouter.get(
+  '/hoi',
+  asyncHandler(async (_req, res) => {
+    const { dsHoi } = await import('./keToanGop.service.js');
+    res.json({ hoi: await dsHoi() });
+  }),
+);
+
+keToanRouter.post(
+  '/hoi/:id',
+  asyncHandler(async (req, res) => {
+    const b = z.object({ chon: z.enum(['moi', 'cu']) }).parse(req.body);
+    const { traLoiHoi } = await import('./keToanGop.service.js');
+    await traLoiHoi(String(req.params.id), b.chon);
+    res.json({ ok: true });
+  }),
+);
+
+/** Báo cáo khác AI đã đọc (cân đối kế toán, lưu chuyển tiền tệ…) — số mới nhất từng chỉ tiêu kèm ngày. */
+keToanRouter.get(
+  '/bao-cao-khac',
+  asyncHandler(async (_req, res) => {
+    const { dsBaoCaoKhac } = await import('./keToanGop.service.js');
+    res.json({ baoCao: await dsBaoCaoKhac() });
+  }),
+);

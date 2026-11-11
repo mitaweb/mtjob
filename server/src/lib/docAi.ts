@@ -6,7 +6,7 @@ import { soTien, ngayISO, quyCuaNgay, khoaHoaDon, chuanChu, type HoaDon, type Hu
 import { khoaGiaoDich, type GiaoDich } from './saoKe.js';
 import { createHash } from 'node:crypto';
 
-export type LoaiAi = 'hoa_don' | 'sao_ke' | 'cong_no' | 'kqkd' | 'bang_luong' | 'khac';
+export type LoaiAi = 'hoa_don' | 'sao_ke' | 'cong_no' | 'kqkd' | 'bang_luong' | 'bao_cao' | 'khac';
 
 /** Bản đồ AI trả về cho một sheet. Cột = chỉ số (0 = cột A); -1 / thiếu = không có. */
 export interface BanDoSheet {
@@ -35,6 +35,8 @@ export interface BanDoAi {
   // Báo cáo kết quả kinh doanh — vài con số AI đọc thẳng (ít, có đối chiếu)
   doanhThu?: number;
   loiNhuanTruocThue?: number;
+  /** Ngày lập / ký / chốt của file (YYYY-MM-DD) — để báo cáo sau ghi đè báo cáo trước */
+  ngayLap?: string;
 }
 
 /** Che dãy số dài (≥ 9 chữ số liền, kể cả có dấu cách / chấm xen giữa CCCD / STK) trước khi gửi AI. */

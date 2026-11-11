@@ -369,6 +369,14 @@ export default function KeToanThue() {
         }}
       />
 
+      <CanAnhQuyet
+        lan={lan}
+        onDoi={async () => {
+          await taiTongQuan();
+          setLan((x) => x + 1);
+        }}
+      />
+
       {!tq ? (
         <SkeletonRows rows={4} />
       ) : !tq.coDuLieu ? (
@@ -1674,6 +1682,159 @@ function CaiDat({ tq, onDoi }: { tq: TongQuan | null; onDoi: () => void }) {
               Lưu
             </button>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Gộp báo cáo theo ngày (anh Tâm 11/11/2026: "ưu tiên báo cáo sau ghi đè báo cáo cũ… đánh giá giữ lại hay k, k hiểu thì hỏi") ──
+
+interface CauHoiGop {
+  id: string;
+  bang: string;
+  tieuDe: string;
+  chiTiet: Array<{ khoa: string; ten: string; cu: number; moi: number; ngayCu: string; ngayMoi: string }>;
+  tenFile: string;
+  lyDo: string;
+  taoLuc: string;
+}
+interface BaoCaoKhac {
+  khoa: string;
+  tenBaoCao: string;
+  tuNgay: string;
+  denNgay: string;
+  chiTieu: Array<{ khoa: string; ten: string; giaTri: number; ngay: string }>;
+}
+
+const ngayVn = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : 'không rõ ngày');
+
+/** Chỗ số liệu vênh giữa hai báo cáo mà AI không đủ căn cứ chọn — anh chọn số nào đúng. Kèm danh sách báo cáo khác đã đọc. */
+function CanAnhQuyet({ lan, onDoi }: { lan: number; onDoi: () => Promise<void> }) {
+  const toast = useToast();
+  const [hoi, setHoi] = useState<CauHoiGop[]>([]);
+  const [bc, setBc] = useState<BaoCaoKhac[]>([]);
+  const [dang, setDang] = useState('');
+  const [mo, setMo] = useState('');
+
+  const tai = () =>
+    Promise.all([api<{ hoi: CauHoiGop[] }>('/ke-toan/hoi').catch(() => ({ hoi: [] })), api<{ baoCao: BaoCaoKhac[] }>('/ke-toan/bao-cao-khac').catch(() => ({ baoCao: [] }))]).then(
+      ([h, b]) => {
+        setHoi(h.hoi);
+        setBc(b.baoCao);
+      },
+    );
+  useEffect(() => {
+    tai();
+  }, [lan]);
+
+  const chon = async (id: string, c: 'moi' | 'cu') => {
+    setDang(id);
+    try {
+      await api(`/ke-toan/hoi/${id}`, { body: { chon: c } });
+      toast.success(c === 'moi' ? 'Đã dùng số của báo cáo mới' : 'Đã giữ số đang lưu');
+      await tai();
+      await onDoi();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDang('');
+    }
+  };
+
+  if (!hoi.length && !bc.length) return null;
+  return (
+    <div className="card space-y-3">
+      {hoi.length > 0 && (
+        <div>
+          <h3 className="font-semibold">❓ Cần anh quyết ({hoi.length})</h3>
+          <p className="text-xs text-ink-muted">
+            Hai báo cáo cho số khác nhau mà không phân định được bằng ngày lập (cùng ngày / file không ghi ngày), AI cũng không đủ
+            căn cứ. Hệ thống đang <b>giữ số cũ</b> — anh chọn số nào đúng.
+          </p>
+          <ul className="mt-2 space-y-2">
+            {hoi.map((h) => (
+              <li key={h.id} className="rounded-xl border border-ink/15 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <b>{h.tieuDe}</b>
+                    <div className="text-xs text-ink-muted">
+                      File mới: {h.tenFile} · {h.taoLuc.slice(0, 10)}
+                    </div>
+                    {h.lyDo && <div className="text-xs text-ink-soft">AI: {h.lyDo}</div>}
+                  </div>
+                  <div className="flex gap-2">
+                    <button className="btn-primary py-1 text-sm" disabled={!!dang} onClick={() => chon(h.id, 'moi')}>
+                      Dùng số mới
+                    </button>
+                    <button className="btn-ghost py-1 text-sm" disabled={!!dang} onClick={() => chon(h.id, 'cu')}>
+                      Giữ số cũ
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-2 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs text-ink-muted">
+                        <th className="py-1 pr-3">Chỉ số</th>
+                        <th className="py-1 pr-3 text-right">Đang lưu</th>
+                        <th className="py-1 text-right">File mới</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {h.chiTiet.slice(0, 20).map((k) => (
+                        <tr key={k.khoa} className="border-t border-ink/15">
+                          <td className="py-1 pr-3">{k.ten}</td>
+                          <td className="py-1 pr-3 text-right tabular-nums">
+                            {vnd(k.cu)} <span className="text-xs text-ink-muted">({ngayVn(k.ngayCu)})</span>
+                          </td>
+                          <td className="py-1 text-right tabular-nums">
+                            {vnd(k.moi)} <span className="text-xs text-ink-muted">({ngayVn(k.ngayMoi)})</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {h.chiTiet.length > 20 && <div className="text-xs text-ink-muted">… và {h.chiTiet.length - 20} chỉ số khác</div>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {bc.length > 0 && (
+        <div>
+          <h3 className="font-semibold">📑 Báo cáo khác đã đọc ({bc.length})</h3>
+          <p className="text-xs text-ink-muted">Mỗi chỉ tiêu giữ số của báo cáo lập sau cùng; ngày trong ngoặc là ngày lập của số đó.</p>
+          <ul className="mt-2 space-y-1">
+            {bc.map((b) => (
+              <li key={b.khoa} className="rounded-xl border border-ink/15">
+                <button className="flex w-full items-center justify-between px-3 py-2 text-left text-sm" onClick={() => setMo(mo === b.khoa ? '' : b.khoa)}>
+                  <span>
+                    <b>{b.tenBaoCao}</b> · {b.tuNgay === b.denNgay ? ngayVn(b.denNgay) : `${ngayVn(b.tuNgay)} → ${ngayVn(b.denNgay)}`}
+                  </span>
+                  <span className="text-xs text-ink-muted">
+                    {b.chiTieu.length} chỉ tiêu {mo === b.khoa ? '▴' : '▾'}
+                  </span>
+                </button>
+                {mo === b.khoa && (
+                  <div className="overflow-x-auto px-3 pb-2">
+                    <table className="w-full text-sm">
+                      <tbody>
+                        {b.chiTieu.map((c) => (
+                          <tr key={c.khoa} className="border-t border-ink/15">
+                            <td className="py-1 pr-3">{c.ten}</td>
+                            <td className="py-1 pr-3 text-right tabular-nums">{vnd(c.giaTri)}</td>
+                            <td className="py-1 text-right text-xs text-ink-muted">{c.ngay ? ngayVn(c.ngay) : ''}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>
