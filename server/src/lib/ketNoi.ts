@@ -1,5 +1,3 @@
-import { createHash, randomBytes } from 'node:crypto';
-
 // Kết nối nền tảng qua MCP (anh Tâm 9–10/11/2026: gom việc Agency vào MTJOB; "Phần MCP ads anh chưa thấy ở đâu").
 // Hàm THUẦN: link đăng nhập Facebook, nhận ra công cụ làm THAY ĐỔI tài khoản (bị chặn — thao tác phải qua anh duyệt),
 // đổi kết quả công cụ MCP thành chữ cho trợ lý đọc.
@@ -52,35 +50,74 @@ export function ketQuaThanhChu(
   return chu.length > toiDa ? `${chu.slice(0, toiDa)}… (đã cắt bớt)` : chu;
 }
 
-// ── Chuẩn MCP OAuth (tự đăng ký client + PKCE) — nối MCP chính thức của Meta KHÔNG cần tạo app (anh Tâm 11/11/2026) ──
+// ── Google (anh Tâm 11/11/2026: "làm nút kết nối google" — học cách Javis: OAuth client anh tự tạo, dán vào MTJOB) ──
 
-/** code_challenge S256 = base64url(sha256(verifier)) — RFC 7636. */
-export function thachThucPkce(verifier: string): string {
-  return createHash('sha256').update(verifier).digest('base64url');
-}
+export const QUYEN_GOOGLE = [
+  'openid',
+  'email',
+  'https://www.googleapis.com/auth/adwords',
+  'https://www.googleapis.com/auth/analytics.readonly',
+  'https://www.googleapis.com/auth/webmasters.readonly',
+];
 
-export function taoPkce(): { verifier: string; challenge: string } {
-  const verifier = randomBytes(48).toString('base64url');
-  return { verifier, challenge: thachThucPkce(verifier) };
-}
-
-export function urlDangNhapMcp(o: {
-  authorizationEndpoint: string;
-  clientId: string;
-  redirectUri: string;
-  state: string;
-  challenge: string;
-  scopes: string[];
-  resource: string;
-}): string {
-  const u = new URL(o.authorizationEndpoint);
-  u.searchParams.set('response_type', 'code');
+export function urlDangNhapGoogle(o: { clientId: string; redirectUri: string; state: string }): string {
+  const u = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   u.searchParams.set('client_id', o.clientId);
   u.searchParams.set('redirect_uri', o.redirectUri);
+  u.searchParams.set('response_type', 'code');
   u.searchParams.set('state', o.state);
-  u.searchParams.set('code_challenge', o.challenge);
-  u.searchParams.set('code_challenge_method', 'S256');
-  u.searchParams.set('scope', o.scopes.join(' '));
-  u.searchParams.set('resource', o.resource);
+  // offline + consent: Google mới trả refresh token (Javis cũng đặt như vậy).
+  u.searchParams.set('access_type', 'offline');
+  u.searchParams.set('prompt', 'consent');
+  u.searchParams.set('include_granted_scopes', 'true');
+  u.searchParams.set('scope', QUYEN_GOOGLE.join(' '));
   return u.toString();
+}
+
+const TOI_DA_DONG = 200;
+
+/** GA4 Data API runReport → bảng chữ. */
+export function tomTatGa4(r: {
+  dimensionHeaders?: Array<{ name: string }>;
+  metricHeaders?: Array<{ name: string }>;
+  rows?: Array<{ dimensionValues?: Array<{ value: string }>; metricValues?: Array<{ value: string }> }>;
+  rowCount?: number;
+}): string {
+  const rows = r.rows || [];
+  if (!rows.length) return 'Không có số liệu trong khoảng này.';
+  const dau = [...(r.dimensionHeaders || []), ...(r.metricHeaders || [])].map((h) => h.name).join(' | ');
+  const dong = rows.slice(0, TOI_DA_DONG).map((x) => [...(x.dimensionValues || []), ...(x.metricValues || [])].map((v) => v.value).join(' | '));
+  return [dau, ...dong, `(${r.rowCount ?? rows.length} dòng${rows.length > TOI_DA_DONG ? `, hiện ${TOI_DA_DONG}` : ''})`].join('\n');
+}
+
+/** Search Console searchAnalytics.query → bảng chữ. */
+export function tomTatGsc(r: { rows?: Array<{ keys?: string[]; clicks: number; impressions: number; ctr: number; position: number }> }, dims: string[]): string {
+  const rows = r.rows || [];
+  if (!rows.length) return 'Không có số liệu trong khoảng này.';
+  return [
+    [...dims, 'click', 'hiển thị', 'CTR', 'vị trí'].join(' | '),
+    ...rows
+      .slice(0, TOI_DA_DONG)
+      .map((x) => [...(x.keys || []), x.clicks, x.impressions, `${(x.ctr * 100).toFixed(1)}%`, x.position.toFixed(1)].join(' | ')),
+  ].join('\n');
+}
+
+function phang(o: unknown, tien = ''): Array<[string, unknown]> {
+  if (o === null || typeof o !== 'object' || Array.isArray(o)) return [[tien, o]];
+  return Object.entries(o as Record<string, unknown>).flatMap(([k, v]) => phang(v, tien ? `${tien}.${k}` : k));
+}
+
+/** Google Ads searchStream → mỗi dòng "khoá=giá trị"; *Micros đổi ra đồng (÷ 1.000.000). */
+export function tomTatGaql(lo: Array<{ results?: Array<Record<string, unknown>> }>): string {
+  const kq = lo.flatMap((x) => x.results || []);
+  if (!kq.length) return 'Không có dòng nào.';
+  const dong = kq.slice(0, TOI_DA_DONG).map((r) =>
+    phang(r)
+      .map(([k, v]) => {
+        if (/Micros$/.test(k)) return `${k.replace(/Micros$/, '')}=${Math.round(Number(v) / 1_000_000).toLocaleString('vi-VN')}`;
+        return `${k}=${typeof v === 'object' ? JSON.stringify(v) : String(v)}`;
+      })
+      .join(' · '),
+  );
+  return [...dong, `(${kq.length} dòng${kq.length > TOI_DA_DONG ? `, hiện ${TOI_DA_DONG}` : ''})`].join('\n');
 }

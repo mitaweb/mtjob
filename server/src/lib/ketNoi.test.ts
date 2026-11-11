@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { urlDangNhapMeta, laCongCuGhi, ketQuaThanhChu, tomTatCongCu, taoPkce, thachThucPkce, urlDangNhapMcp } from './ketNoi.js';
+import { urlDangNhapMeta, laCongCuGhi, ketQuaThanhChu, tomTatCongCu, urlDangNhapGoogle, tomTatGa4, tomTatGsc, tomTatGaql } from './ketNoi.js';
 
 // Anh Tâm 10/11/2026: "Phần MCP ads anh chưa thấy ở đâu" — kết nối Meta Ads (MCP chính thức) bằng đăng nhập Facebook,
 // trợ lý gọi công cụ MCP CHỈ ĐỌC (thao tác thay đổi quảng cáo phải qua duyệt — đợt sau).
@@ -52,36 +52,46 @@ describe('tomTatCongCu', () => {
   });
 });
 
-// Anh Tâm 10–11/11/2026: xác minh BM bị lỗi → nối MCP chính thức của Meta KHÔNG cần tạo app: chuẩn MCP OAuth (tự đăng
-// ký client + PKCE). Máy chủ Meta khai registration_endpoint, token_endpoint_auth_methods "none", PKCE S256.
-describe('PKCE + link đăng nhập MCP', () => {
-  it('code_challenge = base64url(sha256(verifier)) — ví dụ chuẩn RFC 7636', () => {
-    expect(thachThucPkce('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk')).toBe('E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
-    const p = taoPkce();
-    expect(p.verifier).toMatch(/^[A-Za-z0-9_-]{43,128}$/);
-    expect(p.challenge).toBe(thachThucPkce(p.verifier));
-  });
-  it('link đăng nhập: client tự đăng ký, PKCE S256, quyền cách nhau dấu cách, chỉ định tài nguyên MCP', () => {
-    const u = new URL(
-      urlDangNhapMcp({
-        authorizationEndpoint: 'https://www.facebook.com/v27.0/dialog/oauth',
-        clientId: 'C1',
-        redirectUri: 'https://job.mtdigital.vn/api/ket-noi/meta/callback',
-        state: 'S',
-        challenge: 'CH',
-        scopes: ['ads_mcp_management', 'ads_read'],
-        resource: 'https://mcp.facebook.com/ads',
-      }),
-    );
+// Anh Tâm 11/11/2026: "em làm nút kết nối google" — học cách Javis: anh dán Client ID / Secret của OAuth client (loại Web)
+// ngay trong MTJOB, bấm Kết nối Google, MTJOB gọi thẳng API Google (Ads, GA4, Search Console) — không cần máy Mac.
+describe('Google', () => {
+  it('link đăng nhập: offline + consent (lấy refresh token), đủ quyền Ads / GA4 / Search Console (chỉ đọc)', () => {
+    const u = new URL(urlDangNhapGoogle({ clientId: 'CID.apps.googleusercontent.com', redirectUri: 'https://job.mtdigital.vn/api/ket-noi/google/callback', state: 'S' }));
+    expect(u.origin + u.pathname).toBe('https://accounts.google.com/o/oauth2/v2/auth');
     expect(Object.fromEntries(u.searchParams)).toEqual({
+      client_id: 'CID.apps.googleusercontent.com',
+      redirect_uri: 'https://job.mtdigital.vn/api/ket-noi/google/callback',
       response_type: 'code',
-      client_id: 'C1',
-      redirect_uri: 'https://job.mtdigital.vn/api/ket-noi/meta/callback',
       state: 'S',
-      code_challenge: 'CH',
-      code_challenge_method: 'S256',
-      scope: 'ads_mcp_management ads_read',
-      resource: 'https://mcp.facebook.com/ads',
+      access_type: 'offline',
+      prompt: 'consent',
+      include_granted_scopes: 'true',
+      scope:
+        'openid email https://www.googleapis.com/auth/adwords https://www.googleapis.com/auth/analytics.readonly https://www.googleapis.com/auth/webmasters.readonly',
     });
+  });
+  it('GA4 runReport → bảng chữ (tiêu đề cột + dòng)', () => {
+    const t = tomTatGa4({
+      dimensionHeaders: [{ name: 'date' }],
+      metricHeaders: [{ name: 'sessions' }, { name: 'activeUsers' }],
+      rows: [
+        { dimensionValues: [{ value: '20261101' }], metricValues: [{ value: '120' }, { value: '95' }] },
+        { dimensionValues: [{ value: '20261102' }], metricValues: [{ value: '80' }, { value: '70' }] },
+      ],
+      rowCount: 2,
+    });
+    expect(t).toBe('date | sessions | activeUsers\n20261101 | 120 | 95\n20261102 | 80 | 70\n(2 dòng)');
+    expect(tomTatGa4({ rows: [] })).toBe('Không có số liệu trong khoảng này.');
+  });
+  it('Search Console → bảng chữ, CTR %, vị trí 1 số lẻ', () => {
+    const t = tomTatGsc({ rows: [{ keys: ['dịch vụ seo'], clicks: 12, impressions: 340, ctr: 0.0353, position: 7.264 }] }, ['query']);
+    expect(t).toBe('query | click | hiển thị | CTR | vị trí\ndịch vụ seo | 12 | 340 | 3.5% | 7.3');
+  });
+  it('Google Ads searchStream → dòng phẳng; tiền micros đổi ra đồng', () => {
+    const t = tomTatGaql([
+      { results: [{ campaign: { name: 'Search VN', status: 'ENABLED' }, metrics: { clicks: '15', costMicros: '2500000000000', conversions: 3 } }] },
+    ]);
+    expect(t).toBe('campaign.name=Search VN · campaign.status=ENABLED · metrics.clicks=15 · metrics.cost=2.500.000 · metrics.conversions=3\n(1 dòng)');
+    expect(tomTatGaql([])).toBe('Không có dòng nào.');
   });
 });

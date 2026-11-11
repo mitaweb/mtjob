@@ -323,7 +323,7 @@ export default function Admin() {
 
       {/* Kết nối nền tảng (MCP) — chỉ giám đốc (anh Tâm 10/11/2026). */}
       {user?.role === 'director' && (
-        <OGap khoa="ket_noi" tieuDe="🔌 Kết nối nền tảng (MCP)" moTa="Meta Ads, Google, MCP trên máy Mac" macDinhMo>
+        <OGap khoa="ket_noi" tieuDe="🔌 Kết nối nền tảng" moTa="Meta Ads, Google Ads · GA4 · Search Console, n8n" macDinhMo>
           <AdminKetNoi />
         </OGap>
       )}

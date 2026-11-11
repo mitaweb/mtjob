@@ -961,6 +961,8 @@ export async function answerDataQuestion(
     tools.push(...(await import('./assistant.tools.keToan.js')).keToanTools());
     // MCP đã kết nối (Meta Ads chính thức, MCP trên máy Mac…) — chỉ đọc (anh Tâm 10/11/2026).
     tools.push(...(await import('./assistant.tools.mcp.js').then((m) => m.mcpTools()).catch(() => [])));
+    // Google Ads / GA4 / Search Console qua kết nối Google của công ty (anh Tâm 11/11/2026).
+    tools.push(...(await import('./assistant.tools.google.js').then((m) => m.googleTools()).catch(() => [])));
     hieuAnh = await import('./hieuAnh.service.js').then((m) => m.loiNhacHieuAnh(question)).catch(() => '');
   } else {
     // Admin dùng chung trợ lý này nhưng KHÔNG được xem / ghi số liệu tài chính (chỉ giám đốc).

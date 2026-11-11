@@ -364,6 +364,13 @@ CREATE TABLE IF NOT EXISTS mcp_ket_noi (
   kiem_tra    text DEFAULT '',
   cap_nhat    text DEFAULT ''
 );
+-- Cấu hình app đăng nhập (Meta App ID/Secret, Google OAuth Client ID/Secret, MCC…) anh dán ngay trong MTJOB — học cách
+-- Javis, khỏi vào Vercel (11/11/2026). gia_tri_ma = BẢN MÃ.
+CREATE TABLE IF NOT EXISTS ket_noi_cau_hinh (
+  khoa        text PRIMARY KEY,
+  gia_tri_ma  text DEFAULT '',
+  cap_nhat    text DEFAULT ''
+);
 -- Câu anh nhắn trợ lý đã được học chưa (thêm cột — dữ liệu cũ giữ nguyên).
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS hoc_anh boolean DEFAULT false;
 
