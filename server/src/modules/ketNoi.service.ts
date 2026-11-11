@@ -289,6 +289,24 @@ export async function metaInsights(accountId: string, tu: string, den: string): 
   });
 }
 
+/**
+ * Số theo CHIẾN DỊCH của một tài khoản Meta (trợ lý đọc — anh Tâm 11/11/2026: MCP Meta có 100 công cụ, trợ lý dò tham
+ * số hết lượt mà chưa ra số).
+ */
+export async function metaChienDich(accountId: string, tu: string, den: string): Promise<unknown> {
+  const k = await timKetNoi('meta');
+  if (!k?.token) throw new ApiError(400, 'Chưa kết nối Facebook');
+  const id = String(accountId).replace(/^act_/, '').replace(/\D/g, '');
+  if (!id) throw new ApiError(400, 'Thiếu mã tài khoản quảng cáo');
+  return graph(`act_${id}/insights`, {
+    level: 'campaign',
+    time_range: JSON.stringify({ since: tu, until: den }),
+    fields: 'campaign_name,objective,spend,impressions,clicks,actions',
+    limit: '100',
+    access_token: k.token,
+  });
+}
+
 // ── Google: OAuth của chính công ty → gọi thẳng API ──
 
 export async function googleNhanCode(code: string, redirectUri: string): Promise<string> {

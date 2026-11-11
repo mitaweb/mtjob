@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ketQuaMeta, dongMeta, dongGads, dongGa4, dongGsc, tomTatChiSo, xemDuoc, gopTheoNgay } from './nenTang.js';
+import { ketQuaMeta, dongMeta, dongGads, dongGa4, dongGsc, tomTatChiSo, xemDuoc, gopTheoNgay, tomTatMetaChienDich } from './nenTang.js';
 
 // Trang "Nền tảng" (anh Tâm 11/11/2026: "đưa riêng phần MCP, kết nối nền tảng ra riêng để các phòng ban có thể sử
 // dụng, xem đc các chỉ số cơ bản"). Số liệu GIẢ.
@@ -99,5 +99,33 @@ describe('gopTheoNgay — cộng nhiều tài khoản thành một dòng mỗi n
       { ngay: '2026-11-09', chiTieu: 10, hienThi: 0, click: 0, ketQua: 0, phien: 0, nguoiDung: 0, viTri: 0 },
       { ngay: '2026-11-10', chiTieu: 150, hienThi: 400, click: 3, ketQua: 0, phien: 0, nguoiDung: 0, viTri: 4 },
     ]);
+  });
+});
+
+describe('tomTatMetaChienDich — số chiến dịch Meta cho trợ lý đọc', () => {
+  it('mỗi chiến dịch một dòng: chi, hiển thị, click, mọi loại hành động (bỏ trùng tên con)', () => {
+    const s = tomTatMetaChienDich({
+      data: [
+        {
+          campaign_name: 'Tin nhắn Salon',
+          objective: 'OUTCOME_ENGAGEMENT',
+          spend: '850000',
+          impressions: '20000',
+          clicks: '1500',
+          actions: [
+            { action_type: 'link_click', value: '1200' },
+            { action_type: 'onsite_conversion.messaging_conversation_started_7d', value: '35' },
+          ],
+        },
+      ],
+    });
+    expect(s).toContain('Tin nhắn Salon');
+    expect(s).toContain('OUTCOME_ENGAGEMENT');
+    expect(s).toContain('850.000đ');
+    expect(s).toContain('onsite_conversion.messaging_conversation_started_7d: 35');
+    expect(s).toContain('link_click: 1.200');
+  });
+  it('không có số thì nói rõ', () => {
+    expect(tomTatMetaChienDich({ data: [] })).toBe('Không có số liệu trong khoảng này.');
   });
 });

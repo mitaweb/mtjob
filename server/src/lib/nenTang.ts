@@ -168,3 +168,21 @@ export function gopTheoNgay(ds: DongSo[]): DongSo[] {
       return { ngay, chiTieu: t.chiTieu, hienThi: t.hienThi, click: t.click, ketQua: t.ketQua, phien: t.phien, nguoiDung: t.nguoiDung, viTri: t.viTri };
     });
 }
+
+/** Insights cấp chiến dịch (Graph API) → chữ cho trợ lý: mỗi chiến dịch một dòng, kèm mọi loại hành động. */
+export function tomTatMetaChienDich(j: Json): string {
+  const ds = Array.isArray(j?.data) ? j.data : [];
+  if (!ds.length) return 'Không có số liệu trong khoảng này.';
+  const vn = (x: unknown) => Math.round(so(x)).toLocaleString('vi-VN');
+  return ds
+    .map((c: Json) => {
+      const hanhDong = (Array.isArray(c?.actions) ? c.actions : [])
+        .map((a: Json) => `${String(a?.action_type || '')}: ${vn(a?.value)}`)
+        .join('; ');
+      return (
+        `- ${String(c?.campaign_name || '(không tên)')} [${String(c?.objective || '?')}] · chi ${vn(c?.spend)}đ · ${vn(c?.impressions)} hiển thị · ` +
+        `${vn(c?.clicks)} click${hanhDong ? `\n  Hành động: ${hanhDong}` : ''}`
+      );
+    })
+    .join('\n');
+}

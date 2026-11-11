@@ -47,7 +47,7 @@ export interface ChatTurn {
 const FRIENDLY_ERROR = 'Xin lỗi, trợ lý đang bận, thử lại sau ít phút nhé.';
 /** Mỗi lần trợ lý chat chờ AI tối đa ngần này — vercel.json cho máy chủ sống 300 giây. */
 const TRO_LY_CHO_AI_MS = 240_000;
-const MAX_ROUNDS = 5; // chặn vòng lặp functionCall vô hạn
+const MAX_ROUNDS = 8; // chặn vòng lặp functionCall vô hạn (5 → 8, 11/11/2026: tra MCP Meta / Google cần nhiều bước)
 const MAX_HISTORY_CHARS = 4000;
 
 // ── Khai báo tool + hàm chạy ──
@@ -1031,6 +1031,8 @@ export async function answerDataQuestion(
     tools.push(...(await import('./assistant.tools.mcp.js').then((m) => m.mcpTools()).catch(() => [])));
     // Google Ads / GA4 / Search Console qua kết nối Google của công ty (anh Tâm 11/11/2026).
     tools.push(...(await import('./assistant.tools.google.js').then((m) => m.googleTools()).catch(() => [])));
+    // Meta Ads đọc thẳng Graph API (11/11/2026) — nhanh hơn dò 100 công cụ MCP Meta.
+    tools.push(...(await import('./assistant.tools.meta.js').then((m) => m.metaTools()).catch(() => [])));
     // Việc tự động lặp theo lịch (học Javis, anh Tâm 11/11/2026).
     tools.push(...(await import('./viecTuDong.service.js')).viecTuDongTools(memberId));
     // Fanpage (11/11/2026): chỉ soạn nháp — đăng phải qua anh duyệt.
