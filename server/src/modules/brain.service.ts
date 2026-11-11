@@ -103,15 +103,14 @@ export interface IngestInput {
 export async function ingest(input: IngestInput): Promise<number> {
   if (!(await embeddingsAvailable())) return 0;
   const body = String(input.text || '').trim();
-  await deleteBySource(input.sourceType, input.sourceId);
-  if (!body) return 0;
-
   const now = nowTz().toISOString();
   const header = `[${input.title}${input.customer ? ` — KH: ${input.customer}` : ''} — ${now.slice(0, 10)}]`;
-  const pieces = chunkText(body).map((p) => `${header}\n${p}`);
+  const pieces = body ? chunkText(body).map((p) => `${header}\n${p}`) : [];
+  // Mã hoá TRƯỚC rồi mới xoá đoạn cũ (anh Tâm 11/11/2026: Gemini hết lượt 429 → trước đây đoạn cũ đã bị xoá rồi mới
+  // báo lỗi, mục mất khỏi tìm kiếm). Lỗi thì đoạn cũ vẫn còn, lượt bổ sung sau làm lại.
+  const vectors = pieces.length ? await embedTexts(pieces, 'RETRIEVAL_DOCUMENT') : [];
+  await deleteBySource(input.sourceType, input.sourceId);
   if (pieces.length === 0) return 0;
-
-  const vectors = await embedTexts(pieces, 'RETRIEVAL_DOCUMENT');
   const rows: NewChunk[] = pieces.map((content, i) => ({
     id: newId('K-'),
     sourceType: input.sourceType,

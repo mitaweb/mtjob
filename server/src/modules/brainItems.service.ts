@@ -146,16 +146,68 @@ export async function dongBoDoan(item: BrainItem): Promise<void> {
   }
   // Tóm tắt đặt đầu để đoạn đầu tiên luôn mang ý chính — tra ra đoạn nào cũng hiểu mục nói gì.
   const text = [item.summary ? `Tóm tắt: ${item.summary}` : '', item.body].filter(Boolean).join('\n\n');
-  await ingest({
-    sourceType: 'item',
-    sourceId: item.id,
-    title: `${NHOM[item.category as NhomKey] || 'Tri thức'}: ${item.title}`,
-    text,
-    visibility: item.scope,
-    customer: item.customer,
-    category: item.category,
-    customerId: item.customerId,
-  });
+  try {
+    await ingest({
+      sourceType: 'item',
+      sourceId: item.id,
+      title: `${NHOM[item.category as NhomKey] || 'Tri thức'}: ${item.title}`,
+      text,
+      visibility: item.scope,
+      customer: item.customer,
+      category: item.category,
+      customerId: item.customerId,
+    });
+  } catch (e) {
+    if (isMissingTable(e)) throw e;
+    // Gemini hết lượt / lỗi mạng (anh Tâm 11/11/2026: bấm Ban hành ra "Gemini embed 429") — mục VẪN lưu và ban hành;
+    // gỡ đoạn cũ (nội dung có thể đã đổi) để lượt bổ sung (boSungDoanThieu, chuỗi cron) mã hoá lại. Trong lúc chờ, tìm
+    // bằng chữ (search_text) vẫn ra mục này.
+    console.warn('[brain] chưa mã hoá được mục', item.id, '—', (e as Error).message.slice(0, 160));
+    await removeSource('item', item.id);
+  }
+}
+
+/** Mốc lượt bổ sung kế tiếp (ms) — lưu chung bảng mốc của bộ não hiểu anh. */
+const MOC_BO_SUNG = 'kho_bo_sung_doan';
+
+/**
+ * Mục đã ban hành mà CHƯA có đoạn tìm kiếm (mã hoá lỗi lúc lưu — thường do Gemini hết lượt) → mã hoá lại dần, vài
+ * mục mỗi lượt cron. Gặp lỗi thì dừng, nghỉ 30 phút (hết lượt ngày thì thử lại sau, khỏi đốt thêm).
+ */
+export async function boSungDoanThieu(gioiHan = 8): Promise<number> {
+  const { docMoc, ghiMoc } = await import('./hieuAnh.repo.js');
+  if (Date.now() < (await docMoc(MOC_BO_SUNG).catch(() => Number.MAX_SAFE_INTEGER))) return 0;
+  if (!(await embeddingsAvailable())) return 0;
+  const rows = await q(
+    `SELECT i.item_id FROM brain_items i
+     WHERE i.status = 'published' AND (i.body <> '' OR i.summary <> '')
+       AND NOT EXISTS (SELECT 1 FROM brain_chunks c WHERE c.source_type = 'item' AND c.source_id = i.item_id)
+     ORDER BY i.updated_at DESC LIMIT $1`,
+    [gioiHan],
+  );
+  let n = 0;
+  for (const it of await itemsByIds(rows.map((r) => String(r.item_id)))) {
+    const text = [it.summary ? `Tóm tắt: ${it.summary}` : '', it.body].filter(Boolean).join('\n\n');
+    try {
+      await ingest({
+        sourceType: 'item',
+        sourceId: it.id,
+        title: `${NHOM[it.category as NhomKey] || 'Tri thức'}: ${it.title}`,
+        text,
+        visibility: it.scope,
+        customer: it.customer,
+        category: it.category,
+        customerId: it.customerId,
+      });
+      n++;
+    } catch (e) {
+      console.warn('[brain] bổ sung đoạn — dừng, nghỉ 30 phút:', (e as Error).message.slice(0, 160));
+      await ghiMoc(MOC_BO_SUNG, Date.now() + 30 * 60_000);
+      return n;
+    }
+  }
+  await ghiMoc(MOC_BO_SUNG, Date.now() + (rows.length >= gioiHan ? 60_000 : 10 * 60_000));
+  return n;
 }
 
 // ── Một cửa đưa vào kho ──
@@ -415,7 +467,13 @@ export async function timTriThuc(query: string, opts: TimOpts): Promise<string> 
   let hits: BrainHit[] = [];
   let theoChu: Array<BrainItem & { hits: number }> = [];
   try {
-    const [vec] = await embedTexts([text], 'RETRIEVAL_QUERY');
+    // Gemini hết lượt (429) / lỗi mạng → vẫn tìm bằng chữ, không báo "không tìm được" (anh Tâm 11/11/2026).
+    const vec = await embedTexts([text], 'RETRIEVAL_QUERY')
+      .then((v) => v[0])
+      .catch((e) => {
+        console.warn('[brain] mã hoá câu tìm lỗi — chỉ tìm bằng chữ:', (e as Error).message.slice(0, 160));
+        return undefined;
+      });
     [hits, theoChu] = await Promise.all([
       vec
         ? searchChunks(vec, {
@@ -427,7 +485,7 @@ export async function timTriThuc(query: string, opts: TimOpts): Promise<string> 
             limit: 14,
           })
         : Promise.resolve([]),
-      keywordItems(tuKhoaTimKiem(text), { directorScope: opts.directorScope, teamId: opts.teamId, category, customerId: customerId || undefined }, 5).catch(() => []),
+      keywordItems(tuKhoaTimKiem(text), { directorScope: opts.directorScope, teamId: opts.teamId, category, customerId: customerId || undefined }, vec ? 5 : 8).catch(() => []),
     ]);
   } catch (e) {
     if (isMissingTable(e)) return 'Kho tri thức chưa được khởi tạo (Quản trị → Cập nhật cấu trúc DB).';

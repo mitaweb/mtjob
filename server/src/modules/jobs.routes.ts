@@ -61,7 +61,11 @@ jobsRouter.get(
         // Bộ não hiểu anh Tâm (9/11/2026): học từ tin anh gửi + câu anh nói với trợ lý — tự giãn ≥ 30 phút / lượt.
         .then(() => import('./hieuAnh.service.js'))
         .then((h) => h.hocVeAnh(batDau + 200_000))
-        .catch((e) => console.warn('[hieu-anh] lượt học:', (e as Error).message)),
+        .catch((e) => console.warn('[hieu-anh] lượt học:', (e as Error).message))
+        // Mục kho chưa có đoạn tìm kiếm (Gemini hết lượt lúc lưu — anh Tâm 11/11/2026) → mã hoá bù dần.
+        .then(() => import('./brainItems.service.js'))
+        .then((b) => b.boSungDoanThieu())
+        .catch((e) => console.warn('[brain] bổ sung đoạn:', (e as Error).message)),
     );
   }),
 );
