@@ -10,7 +10,9 @@ export function urlDangNhapMeta(o: { appId: string; redirectUri: string; state: 
   u.searchParams.set('response_type', 'code');
   // Facebook Login for Business: quyền khai trong "cấu hình" (config_id); app thường thì xin quyền bằng scope.
   if (o.configId) u.searchParams.set('config_id', o.configId);
-  else u.searchParams.set('scope', 'ads_mcp_management,ads_read,business_management');
+  // Fanpage (11/11/2026): đọc bài + bình luận, đăng bài, trả lời bình luận — app chế độ phát triển dùng được ngay cho
+  // Trang mà anh là quản trị, không cần Meta duyệt app.
+  else u.searchParams.set('scope', 'ads_mcp_management,ads_read,business_management,pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_posts,pages_manage_engagement');
   return u.toString();
 }
 

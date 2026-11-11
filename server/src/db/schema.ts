@@ -415,6 +415,35 @@ CREATE TABLE IF NOT EXISTS viec_tu_dong (
   tao_luc      text DEFAULT ''
 );
 
+-- Fanpage (học Javis, anh Tâm 11/11/2026): Trang anh quản trị (lấy qua đăng nhập Facebook), token Trang = BẢN MÃ.
+CREATE TABLE IF NOT EXISTS fanpage (
+  page_id    text PRIMARY KEY,
+  ten        text DEFAULT '',
+  token_ma   text DEFAULT '',
+  cap_nhat   text DEFAULT ''
+);
+-- Bài / trả lời bình luận AI (hoặc anh) soạn — CHỈ đăng khi anh bấm duyệt. loai: bai | tra_loi.
+-- trang_thai: cho | da_dang | tu_choi | bo_qua (AI thấy không cần trả lời) | loi (đăng hỏng — duyệt lại được).
+CREATE TABLE IF NOT EXISTS fanpage_de_xuat (
+  id            text PRIMARY KEY,
+  page_id       text NOT NULL,
+  loai          text NOT NULL,
+  noi_dung      text DEFAULT '',
+  binh_luan_id  text DEFAULT '',
+  binh_luan     text DEFAULT '',
+  nguoi_bl      text DEFAULT '',
+  bai_id        text DEFAULT '',
+  bai           text DEFAULT '',
+  ly_do         text DEFAULT '',
+  trang_thai    text DEFAULT 'cho',
+  ket_qua       text DEFAULT '',
+  nguoi_tao     text DEFAULT 'ai',
+  tao_luc       text DEFAULT '',
+  duyet_luc     text DEFAULT ''
+);
+CREATE UNIQUE INDEX IF NOT EXISTS fanpage_de_xuat_bl_idx ON fanpage_de_xuat (binh_luan_id) WHERE binh_luan_id <> '';
+CREATE INDEX IF NOT EXISTS fanpage_de_xuat_tt_idx ON fanpage_de_xuat (trang_thai, tao_luc DESC);
+
 -- Dự án: theo dõi KẾT QUẢ cam kết với khách (bao nhiêu tin nhắn, bao nhiêu khách mới),
 -- khác với bảng tasks vốn đo công sức bỏ ra. Khách hàng là tuỳ chọn — có dự án nội bộ.
 CREATE TABLE IF NOT EXISTS projects (

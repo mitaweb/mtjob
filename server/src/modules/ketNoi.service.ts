@@ -16,7 +16,7 @@ import { laCongCuGhi, ketQuaThanhChu, type CongCuMcp } from '../lib/ketNoi.js';
 export const META_MCP_URL = 'https://mcp.facebook.com/ads';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
-function khoa(): string {
+export function khoa(): string {
   const k = process.env.KET_NOI_KEY || process.env.ZALO_SESSION_KEY || '';
   if (k.length < 32) throw new ApiError(400, 'Máy chủ chưa có khoá mã hoá (KET_NOI_KEY ≥ 32 ký tự trên Vercel)');
   return k;
@@ -146,6 +146,11 @@ interface GoiToken {
 }
 
 /** Kết nối + mã Bearer dùng được ngay (Google sắp hết hạn thì tự làm mới bằng refresh token). */
+/** Mã truy cập Facebook (người dùng) của kết nối Meta — Fanpage dùng để lấy lại danh sách Trang. */
+export async function tokenMeta(): Promise<string> {
+  return (await timKetNoi('meta'))?.token || '';
+}
+
 async function timKetNoi(id: string): Promise<(KetNoi & { token: string }) | null> {
   const r = (await q('SELECT * FROM mcp_ket_noi WHERE id = $1', [id]))[0];
   if (!r) return null;
@@ -239,6 +244,8 @@ export async function metaNhanCode(code: string, redirectUri: string): Promise<s
   const giay = Number(dai.expires_in) || 0;
   const me = await graph('me', { fields: 'name', access_token: token }).catch(() => ({ name: '' }));
   await ghi({ id: 'meta', nenTang: 'meta', ten: 'Meta Ads (MCP chính thức)', url: META_MCP_URL, token, taiKhoan: String(me.name || ''), hetHan: giay ? Date.now() + giay * 1000 : 0 });
+  // Fanpage (11/11/2026): lấy luôn các Trang anh quản trị + token Trang (bản mã). Thiếu quyền Trang thì thôi.
+  await import('./fanpage.service.js').then((m) => m.luuTrang(token)).catch((e) => console.warn('[fanpage] lấy Trang:', (e as Error).message));
   return String(me.name || '');
 }
 

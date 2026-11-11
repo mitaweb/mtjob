@@ -21,6 +21,7 @@ import { zaloRouter } from '../modules/zalo.routes.js';
 import { keToanRouter } from '../modules/keToan.routes.js';
 import { ketNoiRouter } from '../modules/ketNoi.routes.js';
 import { viecTuDongRouter } from '../modules/viecTuDong.routes.js';
+import { fanpageRouter } from '../modules/fanpage.routes.js';
 import { remindersRouter } from '../modules/reminders.routes.js';
 import { calendarRouter } from '../modules/calendar.routes.js';
 import { projectsRouter } from '../modules/projects.routes.js';
@@ -100,6 +101,7 @@ export function createApp() {
   app.use('/api/ke-toan', keToanRouter);
   app.use('/api/ket-noi', ketNoiRouter);
   app.use('/api/viec-tu-dong', viecTuDongRouter);
+  app.use('/api/fanpage', fanpageRouter);
   app.use('/api/reminders', remindersRouter);
   app.use('/api/calendar', calendarRouter);
   app.use('/api/projects', projectsRouter);

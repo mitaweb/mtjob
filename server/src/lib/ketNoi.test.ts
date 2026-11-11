@@ -11,7 +11,7 @@ describe('urlDangNhapMeta', () => {
     expect(u.searchParams.get('client_id')).toBe('123');
     expect(u.searchParams.get('redirect_uri')).toBe('https://job.mtdigital.vn/api/ket-noi/meta/callback');
     expect(u.searchParams.get('state')).toBe('S1');
-    expect(u.searchParams.get('scope')).toBe('ads_mcp_management,ads_read,business_management');
+    expect(u.searchParams.get('scope')).toBe('ads_mcp_management,ads_read,business_management,pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_posts,pages_manage_engagement');
     expect(u.searchParams.get('response_type')).toBe('code');
   });
   it('có cấu hình Facebook Login for Business (config_id) thì dùng config_id thay scope', () => {

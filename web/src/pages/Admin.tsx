@@ -12,6 +12,7 @@ import OGap from '../components/OGap';
 import AdminKetNoi from '../components/AdminKetNoi';
 import AdminMucDoThongBao from '../components/AdminMucDoThongBao';
 import AdminViecTuDong from '../components/AdminViecTuDong';
+import AdminFanpage from '../components/AdminFanpage';
 import { useAuth } from '../lib/auth';
 
 export default function Admin() {
@@ -337,6 +338,11 @@ export default function Admin() {
       {user?.role === 'director' && (
         <OGap khoa="viec_tu_dong" tieuDe="🔁 Việc tự động" moTa="báo cáo định kỳ, tự kiểm lại, sai 3 lần tự dừng">
           <AdminViecTuDong />
+        </OGap>
+      )}
+      {user?.role === 'director' && (
+        <OGap khoa="fanpage" tieuDe="📣 Fanpage" moTa="AI soạn bài / trả lời bình luận — anh duyệt mới đăng">
+          <AdminFanpage />
         </OGap>
       )}
 

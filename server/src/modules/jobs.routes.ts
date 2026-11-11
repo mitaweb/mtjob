@@ -71,7 +71,11 @@ jobsRouter.get(
         // Mục kho chưa có đoạn tìm kiếm (Gemini hết lượt lúc lưu — anh Tâm 11/11/2026) → mã hoá bù dần.
         .then(() => import('./brainItems.service.js'))
         .then((b) => b.boSungDoanThieu())
-        .catch((e) => console.warn('[brain] bổ sung đoạn:', (e as Error).message)),
+        .catch((e) => console.warn('[brain] bổ sung đoạn:', (e as Error).message))
+        // Fanpage (11/11/2026): bình luận mới → AI soạn trả lời chờ anh duyệt (tự giãn 15 phút / lượt).
+        .then(() => import('./fanpage.service.js'))
+        .then((f) => f.quetBinhLuan())
+        .catch((e) => console.warn('[fanpage] quét bình luận:', (e as Error).message)),
     );
   }),
 );

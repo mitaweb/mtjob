@@ -1033,6 +1033,8 @@ export async function answerDataQuestion(
     tools.push(...(await import('./assistant.tools.google.js').then((m) => m.googleTools()).catch(() => [])));
     // Việc tự động lặp theo lịch (học Javis, anh Tâm 11/11/2026).
     tools.push(...(await import('./viecTuDong.service.js')).viecTuDongTools(memberId));
+    // Fanpage (11/11/2026): chỉ soạn nháp — đăng phải qua anh duyệt.
+    tools.push(...(await import('./fanpage.service.js').then((m) => m.fanpageTools()).catch(() => [])));
     hieuAnh = await import('./hieuAnh.service.js').then((m) => m.loiNhacHieuAnh(question)).catch(() => '');
     // Anh đang SỬA trợ lý (học Javis 11/11/2026) → nhắc trợ lý ghi nhớ điều dùng lại được; lượt học kế tiếp chạy ngay.
     if (laLoiSua(question)) {
