@@ -360,6 +360,23 @@ function TabTaiKhoan() {
     await api(`/nen-tang/tai-san/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch });
     setD((x) => (x ? { ...x, ds: x.ds.map((t) => (t.id === id ? { ...t, ...patch } : t)) } : x));
   }
+  const [dangTichHet, setDangTichHet] = useState(false);
+  /** Tích / bỏ tích mọi tài khoản của tab đang mở — lưu từng tài khoản, mỗi lượt 6 cái. */
+  async function tichHet(ds: TaiSan[], bat: boolean) {
+    const can = ds.filter((t) => t.theoDoi !== bat);
+    setDangTichHet(true);
+    let loi = 0;
+    try {
+      for (let i = 0; i < can.length; i += 6) {
+        const r = await Promise.allSettled(can.slice(i, i + 6).map((t) => sua(t.id, { theoDoi: bat })));
+        loi += r.filter((x) => x.status === 'rejected').length;
+      }
+    } finally {
+      setDangTichHet(false);
+    }
+    if (loi) toast.error(`${loi} tài khoản chưa lưu được — anh bấm lại`);
+    else toast.success(`${bat ? 'Đã bật theo dõi' : 'Đã tắt theo dõi'} ${can.length} tài khoản`);
+  }
 
   if (!d) return <div className="card text-sm text-ink-muted">Đang tải…</div>;
   const coLoai = (['meta', 'gads', 'ga4', 'gsc'] as Loai[]).filter((l) => d.ds.some((t) => t.loai === l));
@@ -401,9 +418,25 @@ function TabTaiKhoan() {
       )}
       {coLoai.filter((l) => l === loaiChon).map((loai) => {
         const ds = d.ds.filter((t) => t.loai === loai);
+        const soTich = ds.filter((t) => t.theoDoi).length;
         return (
           <div key={loai}>
-            <p className="mb-1 text-xs text-ink-muted">Đang theo dõi / tổng số tài khoản</p>
+            <label className="flex items-center gap-2 border-b border-brand-100 pb-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                className="h-5 w-5"
+                checked={soTich === ds.length}
+                ref={(el) => {
+                  if (el) el.indeterminate = soTich > 0 && soTich < ds.length;
+                }}
+                disabled={dangTichHet}
+                onChange={() => tichHet(ds, soTich < ds.length)}
+              />
+              {dangTichHet ? 'Đang lưu…' : soTich < ds.length ? `Tích tất cả ${TEN_LOAI[loai]}` : 'Bỏ tích tất cả'}
+              <span className="font-normal text-ink-muted">
+                ({soTich}/{ds.length} đang theo dõi)
+              </span>
+            </label>
             <ul className="divide-y divide-brand-100">
               {ds.map((t) => (
                 <li key={t.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
