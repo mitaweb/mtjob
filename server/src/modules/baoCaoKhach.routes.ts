@@ -22,6 +22,8 @@ baoCaoKhachRouter.get(
     const n = await nguoiCua(req);
     const s = await sv();
     try {
+      // Khách lấy từ tài khoản đang chạy — mở trang là thấy đủ (tối đa 10 phút quét lại một lần).
+      await s.capNhatKhachDangChay().catch(() => 0);
       const [cauHinh, baoCao] = await Promise.all([s.dsCauHinh(n), s.dsBaoCao(n)]);
       res.json({ cauHinh, baoCao, canCapNhatDb: false });
     } catch {

@@ -25,6 +25,7 @@ interface CauHinh {
   zaloNhom: boolean;
   zaloTen: string;
   bat: boolean;
+  dangChay?: boolean;
 }
 interface BaoCao extends DuLieuAnh {
   id: string;
@@ -111,7 +112,15 @@ export default function BaoCaoKhach() {
 
       <div className="card">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="font-semibold">👥 Khách nhận báo cáo ({d.cauHinh.length})</h3>
+          <div>
+            <h3 className="font-semibold">
+              👥 Khách nhận báo cáo ({d.cauHinh.filter((c) => c.dangChay).length} đang chạy{d.cauHinh.some((c) => !c.dangChay) ? `, ${d.cauHinh.filter((c) => !c.dangChay).length} đã ngừng` : ''})
+            </h3>
+            <p className="text-xs text-ink-muted">
+              Tự lấy từ tài khoản Google / Facebook có chi tiêu 30 ngày qua; các tài khoản cùng khách (cùng ô "Khách" hoặc tên giống nhau) gộp
+              một báo cáo. Bấm Sửa để gộp / tách, đặt logo, chu kỳ tháng, Zalo nhận.
+            </p>
+          </div>
           <button
             className="btn-primary py-1.5 text-sm"
             onClick={() => setSua({ id: '', ten: '', logo: '', mau: '#5f6f52', taiKhoan: [], ngayChuKy: 0, tuan: true, thang: true, zaloThread: '', zaloNhom: false, zaloTen: '', bat: true })}
@@ -130,7 +139,7 @@ export default function BaoCaoKhach() {
           />
         )}
         {d.cauHinh.length === 0 && !sua ? (
-          <p className="mt-2 text-sm text-ink-muted">Chưa có khách nào — bấm "Thêm khách", chọn các tài khoản Google / Facebook của khách.</p>
+          <p className="mt-2 text-sm text-ink-muted">Chưa có tài khoản Google / Facebook nào chi tiêu 30 ngày qua.</p>
         ) : (
           <ul className="mt-3 divide-y divide-ink/10">
             {d.cauHinh.map((c) => (
@@ -139,7 +148,7 @@ export default function BaoCaoKhach() {
                   {c.logo ? <img src={c.logo} alt="" className="h-9 w-14 object-contain" /> : <span className="grid h-9 w-14 place-items-center rounded-lg text-white" style={{ background: c.mau || '#5f6f52' }}>{c.ten.slice(0, 2)}</span>}
                   <div>
                     <p className="font-medium">
-                      {c.ten} {!c.bat && <Badge>Tắt</Badge>}
+                      {c.ten} {!c.bat && <Badge>Tắt</Badge>} {c.bat && c.dangChay === false && <Badge>Ngừng chạy</Badge>}
                     </p>
                     <p className="text-xs text-ink-muted">
                       {c.taiKhoan.length} tài khoản · {[c.tuan && 'tuần', c.thang && `tháng${c.ngayChuKy ? ` (chu kỳ ngày ${c.ngayChuKy})` : ''}`].filter(Boolean).join(' + ') || 'không tự gửi'} ·{' '}

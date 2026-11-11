@@ -156,3 +156,43 @@ export function tongHop(ds: SoTaiKhoan[]): TongHop {
       .map(([nhan, v]) => ({ nhan, so: v, tyLe: tongCc ? v / tongCc : 0 })),
   };
 }
+
+// ── Khách nhận báo cáo lấy từ tài khoản ĐANG CHẠY (anh Tâm 11/11/2026: "căn cứ vào các khách đang có chạy") ──
+
+/** Bỏ đuôi đại lý ("- MT Digital") khỏi tên tài khoản để hiện cho khách. */
+export const tenGon = (ten: string) =>
+  String(ten || '')
+    .replace(/\s*[-–|·]?\s*mt\s*digital\s*$/i, '')
+    .trim() || String(ten || '').trim();
+
+/** Khoá gom: không dấu, chữ thường, bỏ "MT Digital" và số thứ tự cuối ("X Salon 2" = "X Salon"). */
+const khoaGom = (ten: string) =>
+  tenGon(ten)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/gi, 'd')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/(\s+\d{1,2})+$/, '')
+    .trim();
+
+/**
+ * Tài khoản đang chạy chưa thuộc khách nào → nhóm khách mới. Ô "Khách" đã gán (Kết nối MCP > Tài khoản) thắng; không có
+ * thì gom theo tên tài khoản. Sắp theo tên.
+ */
+export function nhomKhachDangChay(
+  taiSan: ReadonlyArray<{ id: string; loai: string; ten: string; khach: string }>,
+  daCo: ReadonlySet<string>,
+): Array<{ ten: string; taiKhoan: Array<{ id: string; ten: string }> }> {
+  const nhom = new Map<string, { ten: string; taiKhoan: Array<{ id: string; ten: string }> }>();
+  for (const t of taiSan) {
+    if (daCo.has(t.id) || !['gads', 'meta'].includes(t.loai)) continue;
+    const khach = t.khach.trim();
+    const k = khach ? `k:${khoaGom(khach)}` : `t:${khoaGom(t.ten) || t.id}`;
+    const g = nhom.get(k) || { ten: khach || tenGon(t.ten), taiKhoan: [] };
+    g.taiKhoan.push({ id: t.id, ten: tenGon(t.ten) });
+    nhom.set(k, g);
+  }
+  return [...nhom.values()].sort((a, b) => a.ten.localeCompare(b.ten, 'vi'));
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { kyBaoCao, nenTao, coCauGads, coCauMeta, tongHop } from './baoCaoKhach.js';
+import { kyBaoCao, nenTao, coCauGads, coCauMeta, tongHop, nhomKhachDangChay } from './baoCaoKhach.js';
 
 // Anh Tâm 11/11/2026: "agent để báo cáo hàng tuần cho khách hàng… chi phí sẽ tổng cả thuế vào… báo cáo hàng tuần, tháng cho
 // các bên chạy ads, GG và FB". Kỳ tháng theo chu kỳ từng khách (mẫu anh gửi 11/10 → 09/11). Số GIẢ.
@@ -89,5 +89,24 @@ describe('tongHop — chi phí CỘNG THUẾ, tổng = cộng các dòng (khớp
   });
   it('0 chuyển đổi → cpa 0, không chia cho 0', () => {
     expect(tongHop([{ ten: 'A', thue: 10, hienThi: 0, click: 0, chuyenDoi: 0, chi: 0, coCau: {} }]).tong.cpa).toBe(0);
+  });
+});
+
+describe('nhomKhachDangChay — khách nhận báo cáo lấy từ tài khoản đang chạy (anh Tâm: "căn cứ vào các khách đang có chạy")', () => {
+  const ts = [
+    { id: 'gads:1', loai: 'gads', ten: 'X SALON - MT DIGITAL', khach: '' },
+    { id: 'gads:2', loai: 'gads', ten: 'X Salon 2 - MT Digital', khach: '' },
+    { id: 'meta:3', loai: 'meta', ten: 'TKD 02', khach: 'Nha khoa Minh Châu' },
+    { id: 'gads:4', loai: 'gads', ten: 'NHA KHOA MINH CHÂU - MT DIGITAL', khach: 'Nha khoa Minh Châu' },
+    { id: 'gads:5', loai: 'gads', ten: 'Mịn SkinLab 2', khach: '' },
+  ];
+  it('gom theo ô Khách trước, không có thì theo tên (bỏ "- MT Digital", số thứ tự); bỏ tài khoản đã thuộc khách khác', () => {
+    expect(nhomKhachDangChay(ts, new Set(['gads:5']))).toEqual([
+      { ten: 'Nha khoa Minh Châu', taiKhoan: [{ id: 'meta:3', ten: 'TKD 02' }, { id: 'gads:4', ten: 'NHA KHOA MINH CHÂU' }] },
+      { ten: 'X SALON', taiKhoan: [{ id: 'gads:1', ten: 'X SALON' }, { id: 'gads:2', ten: 'X Salon 2' }] },
+    ]);
+  });
+  it('không còn tài khoản mới → rỗng', () => {
+    expect(nhomKhachDangChay(ts, new Set(ts.map((t) => t.id)))).toEqual([]);
   });
 });

@@ -6,7 +6,7 @@ import { newId } from '../util/id.js';
 import { nowTz, todayIso } from '../lib/datetime.js';
 import { ApiError } from '../util/errors.js';
 import { duocThaoTac } from '../lib/adsDieuChinh.js';
-import { kyBaoCao, nenTao, coCauGads, coCauMeta, tongHop, THUE_MAC_DINH, type Ky, type LoaiKy, type SoTaiKhoan, type TongHop } from '../lib/baoCaoKhach.js';
+import { kyBaoCao, nenTao, coCauGads, coCauMeta, tongHop, nhomKhachDangChay, THUE_MAC_DINH, type Ky, type LoaiKy, type SoTaiKhoan, type TongHop } from '../lib/baoCaoKhach.js';
 import { dsTaiSan, type TaiSanNt } from './nenTang.service.js';
 import type { Nguoi } from './adsDieuChinh.service.js';
 
@@ -27,6 +27,8 @@ export interface CauHinh {
   zaloNhom: boolean;
   zaloTen: string;
   bat: boolean;
+  /** Có tài khoản chi tiêu trong 30 ngày gần nhất */
+  dangChay?: boolean;
 }
 
 export interface BaoCao {
@@ -86,12 +88,42 @@ async function quyenCauHinh(nguoi: Nguoi, ch: CauHinh, taiSan?: TaiSanNt[]): Pro
   return cua.length > 0 && cua.every((t) => t && duocThaoTac(nguoi, t.teamId));
 }
 
+/** Tài khoản có chi tiêu trong `soNgay` ngày gần nhất (số đồng bộ sẵn của Kết nối MCP). */
+async function taiKhoanDangChay(soNgay = 30): Promise<Set<string>> {
+  const { congNgay } = await import('../lib/khoangNgay.js');
+  const rows = await q(`SELECT tai_san_id FROM nen_tang_so_lieu WHERE ngay >= $1 GROUP BY tai_san_id HAVING SUM(chi_tieu) > 0`, [congNgay(todayIso(), -soNgay)]).catch(() => []);
+  return new Set(rows.map((r) => String(r.tai_san_id)));
+}
+
+/**
+ * Khách nhận báo cáo lấy từ tài khoản ĐANG CHẠY (anh Tâm 11/11/2026: "căn cứ vào các khách đang có chạy"): tài khoản Google /
+ * FB có chi tiêu 30 ngày qua mà chưa thuộc khách nào → tạo khách (gom theo ô Khách / tên tài khoản). Tối đa 10 phút một lần.
+ */
+export async function capNhatKhachDangChay(epBuoc = false): Promise<number> {
+  const { docMoc, ghiMoc } = await import('./hieuAnh.repo.js');
+  if (!epBuoc && Date.now() - (await docMoc('bao_cao_kh_khach').catch(() => 0)) < 10 * 60_000) return 0;
+  await ghiMoc('bao_cao_kh_khach', Date.now()).catch(() => undefined);
+  const [ts, chay, chs] = await Promise.all([dsTaiSan(), taiKhoanDangChay(), q(`SELECT tai_khoan FROM bao_cao_kh_cau_hinh`)]);
+  const daCo = new Set(chs.flatMap((r) => json<Array<{ id: string }>>(r.tai_khoan, []).map((t) => String(t.id))));
+  const moi = nhomKhachDangChay(
+    ts.filter((t) => chay.has(t.id)),
+    daCo,
+  );
+  const luc = nowTz().toISOString();
+  for (const g of moi)
+    await q(
+      `INSERT INTO bao_cao_kh_cau_hinh (id, ten, tai_khoan, ngay_chu_ky, tuan, thang, bat, nguoi_tao, cap_nhat) VALUES ($1,$2,$3,0,true,true,true,'tu_dong',$4)`,
+      [newId('BCK'), g.ten.slice(0, 120), JSON.stringify(g.taiKhoan.map((t) => ({ id: t.id, thue: THUE_MAC_DINH, ten: t.ten.slice(0, 80) }))), luc],
+    );
+  return moi.length;
+}
+
 export async function dsCauHinh(nguoi: Nguoi): Promise<CauHinh[]> {
-  const ts = await dsTaiSan();
+  const [ts, chay] = await Promise.all([dsTaiSan(), taiKhoanDangChay()]);
   const ds = (await q(`SELECT * FROM bao_cao_kh_cau_hinh ORDER BY ten`)).map(cauHinhTuDong);
   const ra: CauHinh[] = [];
-  for (const c of ds) if (await quyenCauHinh(nguoi, c, ts)) ra.push(c);
-  return ra;
+  for (const c of ds) if (await quyenCauHinh(nguoi, c, ts)) ra.push({ ...c, dangChay: c.taiKhoan.some((t) => chay.has(t.id)) });
+  return ra.sort((a, b) => Number(!!b.dangChay) - Number(!!a.dangChay) || a.ten.localeCompare(b.ten, 'vi'));
 }
 
 async function docCauHinh(id: string): Promise<CauHinh> {
@@ -227,13 +259,15 @@ async function aiNhanXet(ch: CauHinh, nenTang: NenTang, ky: Ky, loai: string, th
 // ── Tạo báo cáo ──
 
 /** Tạo (hoặc làm lại) báo cáo một kỳ × nền tảng. Đã gửi rồi thì không làm lại. */
-export async function taoBaoCao(ch: CauHinh, nenTang: NenTang, loai: LoaiKy | 'tuy_chon', ky: Ky): Promise<string> {
+export async function taoBaoCao(ch: CauHinh, nenTang: NenTang, loai: LoaiKy | 'tuy_chon', ky: Ky, o: { boQuaRong?: boolean } = {}): Promise<string> {
   const cu = (await q(`SELECT id, trang_thai FROM bao_cao_kh WHERE cau_hinh_id = $1 AND ky = $2 AND nen_tang = $3 AND tu = $4 AND den = $5`, [ch.id, loai, nenTang, ky.tu, ky.den]))[0];
   if (cu?.trang_thai === 'da_gui') throw new ApiError(400, 'Báo cáo kỳ này đã gửi khách rồi');
   const id = String(cu?.id || newId('BC'));
   const luc = nowTz().toISOString();
   try {
     const th = await soLieu(ch, nenTang, ky);
+    // Cron: kỳ không chạy đồng nào (khách ngừng) thì không làm báo cáo rỗng.
+    if (o.boQuaRong && !th.tong.hienThi && !th.tong.chiSauThue) return '';
     // Kỳ trước cùng độ dài để so sánh.
     const soNgay = Math.round((Date.parse(ky.den) - Date.parse(ky.tu)) / 86_400_000) + 1;
     const { congNgay } = await import('../lib/khoangNgay.js');
@@ -307,7 +341,11 @@ export async function chayBaoCaoKhach(han: number): Promise<number> {
   await ghiMoc('bao_cao_kh_luot', Date.now());
   const homNay = todayIso();
   let tao = 0;
-  const ds = (await q(`SELECT * FROM bao_cao_kh_cau_hinh WHERE bat`).catch(() => [])).map(cauHinhTuDong);
+  await capNhatKhachDangChay().catch((e) => console.warn('[bao-cao-khach] khách đang chạy:', (e as Error).message));
+  const chay = await taiKhoanDangChay(40);
+  const ds = (await q(`SELECT * FROM bao_cao_kh_cau_hinh WHERE bat`).catch(() => []))
+    .map(cauHinhTuDong)
+    .filter((c) => c.taiKhoan.some((t) => chay.has(t.id)));
   for (const ch of ds) {
     for (const loai of ['tuan', 'thang'] as const) {
       if (!ch[loai]) continue;
@@ -317,7 +355,7 @@ export async function chayBaoCaoKhach(han: number): Promise<number> {
         if (Date.now() > han) return tao;
         const co = await q(`SELECT 1 FROM bao_cao_kh WHERE cau_hinh_id = $1 AND ky = $2 AND nen_tang = $3 AND tu = $4 AND den = $5`, [ch.id, loai, n, ky.tu, ky.den]);
         if (co.length) continue;
-        await taoBaoCao(ch, n, loai, ky).catch((e) => console.warn('[bao-cao-khach]', ch.ten, n, (e as Error).message.slice(0, 160)));
+        await taoBaoCao(ch, n, loai, ky, { boQuaRong: true }).catch((e) => console.warn('[bao-cao-khach]', ch.ten, n, (e as Error).message.slice(0, 160)));
         tao++;
       }
     }
