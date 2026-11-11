@@ -189,3 +189,11 @@ export function ngayLapTrongFile(sheets: ReadonlyArray<{ rows: ReadonlyArray<Rea
       }
   return max;
 }
+
+/**
+ * Ngày lập chỉ hợp lệ khi không sớm hơn mốc của số liệu (đầu kỳ báo cáo / đầu tháng lương / ngày chốt công nợ). Mẫu kế toán
+ * đôi khi ghi nhầm năm ở dòng ký (KQKD 6 tháng 2026 ký "27/10/2025") — tin ngày đó thì báo cáo bị coi là cũ sai.
+ */
+export function ngayHopLe(ngay: string, mocSomNhat: string): string {
+  return ngay && (!mocSomNhat || ngay >= mocSomNhat) ? ngay : '';
+}

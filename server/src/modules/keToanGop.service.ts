@@ -7,7 +7,7 @@ import { q } from '../db/client.js';
 import { newId } from '../util/id.js';
 import { nowTz } from '../lib/datetime.js';
 import { ApiError } from '../util/errors.js';
-import { gopChiSo, apQuyetDinh, quyetDinhCaKhoi, phangCongNo, tomTatGop, type BanGhiChiSo, type KhacBiet } from '../lib/keToanGop.js';
+import { gopChiSo, apQuyetDinh, quyetDinhCaKhoi, phangCongNo, tomTatGop, ngayHopLe, type BanGhiChiSo, type KhacBiet } from '../lib/keToanGop.js';
 import type { BaoCaoKqkd, SoCongNo } from '../lib/keToan.js';
 import type { LuongThang, LuongNv } from '../lib/docAi.js';
 
@@ -218,8 +218,8 @@ export async function luuBaoCao(b: BaoCaoGhi, ctx: NguCanh): Promise<string> {
         bang: 'bao_cao',
         khoa,
         tieuDe: `${tenBaoCao} ${b.tuNgay} → ${b.denNgay}`,
-        cu: r ? { giaTri: json(r.chi_tieu, {}), ngay: json(r.ngay_chi_tieu, {}) } : null,
-        moi: { giaTri: b.chiTieu, ngay: ctx.ngay },
+        cu: r ? { giaTri: json(r.chi_tieu, {}), ngay: Object.fromEntries(Object.entries(json<Record<string, string>>(r.ngay_chi_tieu, {})).map(([k, v]) => [k, ngayHopLe(v, b.tuNgay)])) } : null,
+        moi: { giaTri: b.chiTieu, ngay: ngayHopLe(ctx.ngay, b.tuNgay) },
         tenChiTieu,
         ghiGop: async (bg) => {
           await q(
@@ -262,6 +262,7 @@ export async function luuLuong(luong: LuongThang[], nv: LuongNv[], ctx: NguCanh)
     luong.map((l) => {
       const r = cu.get(l.thang);
       const nvThang = nv.filter((x) => x.thang === l.thang);
+      const ngayThang = ngayHopLe(ctx.ngay, `${l.thang}-01`);
       const giaTri = Object.fromEntries(LUONG_KHOA.map((k) => [k, Number(l[k]) || 0]));
       return {
         bang: 'luong' as const,
@@ -279,13 +280,13 @@ export async function luuLuong(luong: LuongThang[], nv: LuongNv[], ctx: NguCanh)
                 tienMat: Number(r.tien_mat) || 0,
                 chuyenKhoan: Number(r.chuyen_khoan) || 0,
               },
-              ngay: Object.fromEntries(LUONG_KHOA.map((k) => [k, String(r.ngay_so_lieu || '')])),
+              ngay: Object.fromEntries(LUONG_KHOA.map((k) => [k, ngayHopLe(String(r.ngay_so_lieu || ''), `${l.thang}-01`)])),
             }
           : null,
-        moi: { giaTri, ngay: ctx.ngay },
+        moi: { giaTri, ngay: ngayThang },
         tenChiTieu: TEN_LUONG,
-        ghiMoi: () => ghiLuongThang(l, nvThang, ctx.ngay, ctx.taiLenId, ctx.luc),
-        duLieuHoi: { luong: l, nv: nvThang, ngay: ctx.ngay, taiLenId: ctx.taiLenId },
+        ghiMoi: () => ghiLuongThang(l, nvThang, ngayThang, ctx.taiLenId, ctx.luc),
+        duLieuHoi: { luong: l, nv: nvThang, ngay: ngayThang, taiLenId: ctx.taiLenId },
       };
     }),
     ctx,
@@ -302,6 +303,7 @@ async function ghiCongNoNgay(so: SoCongNo, ngay: string, taiLenId: string): Prom
 
 export async function luuCongNo(so: SoCongNo, ctx: NguCanh): Promise<string> {
   const rows = await q('SELECT * FROM kt_cong_no WHERE loai = $1 AND ngay_chot = $2', [so.loai, so.ngayChot]);
+  const ngayCn = ngayHopLe(ctx.ngay, so.ngayChot);
   const ten: Record<string, string> = {};
   for (const d of so.dong) {
     ten[`${d.ma}|duNo`] = `${d.ten || d.ma} — dư nợ`;
@@ -310,7 +312,7 @@ export async function luuCongNo(so: SoCongNo, ctx: NguCanh): Promise<string> {
   const cu = rows.length
     ? {
         giaTri: phangCongNo({ dong: rows.map((r) => ({ ma: String(r.ma), duNo: Number(r.du_no) || 0, duCo: Number(r.du_co) || 0 })) }),
-        ngay: Object.fromEntries(rows.flatMap((r) => [[`${r.ma}|duNo`, String(r.ngay_so_lieu || '')], [`${r.ma}|duCo`, String(r.ngay_so_lieu || '')]])),
+        ngay: Object.fromEntries(rows.flatMap((r) => [[`${r.ma}|duNo`, ngayHopLe(String(r.ngay_so_lieu || ''), so.ngayChot)], [`${r.ma}|duCo`, ngayHopLe(String(r.ngay_so_lieu || ''), so.ngayChot)]])),
       }
     : null;
   return ghiCoXet(
@@ -320,10 +322,10 @@ export async function luuCongNo(so: SoCongNo, ctx: NguCanh): Promise<string> {
         khoa: `${so.loai}|${so.ngayChot}`,
         tieuDe: `Công nợ ${so.loai === 'thu' ? 'phải thu' : 'phải trả'} chốt ${so.ngayChot}`,
         cu,
-        moi: { giaTri: phangCongNo({ dong: so.dong.map((d) => ({ ma: d.ma, duNo: d.duNo, duCo: d.duCo })) }), ngay: ctx.ngay },
+        moi: { giaTri: phangCongNo({ dong: so.dong.map((d) => ({ ma: d.ma, duNo: d.duNo, duCo: d.duCo })) }), ngay: ngayCn },
         tenChiTieu: ten,
-        ghiMoi: () => ghiCongNoNgay(so, ctx.ngay, ctx.taiLenId),
-        duLieuHoi: { so, ngay: ctx.ngay, taiLenId: ctx.taiLenId },
+        ghiMoi: () => ghiCongNoNgay(so, ngayCn, ctx.taiLenId),
+        duLieuHoi: { so, ngay: ngayCn, taiLenId: ctx.taiLenId },
       },
     ],
     ctx,

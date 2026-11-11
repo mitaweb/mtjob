@@ -621,6 +621,8 @@ function loiNhacBanDo(ten: string, xem: string, mst: string): string {
     '  Ghi nganHang và soTk nếu thấy (số TK bị che thì để trống).',
     '- "cong_no": tổng hợp công nợ. loaiCongNo = "thu" (phải thu khách, TK 131) / "tra" (phải trả nhà cung cấp, TK 331);',
     '  ngayChot = ngày cuối kỳ (YYYY-MM-DD), tuNgay. Cột: ma, ten, duNo, duCo (số dư CUỐI kỳ).',
+    '  Mỗi dòng là MỘT ĐỐI TÁC (khách / nhà cung cấp). Bảng liệt kê nhiều SỐ HIỆU TÀI KHOẢN (111, 112, 131, 331, 511…) là bảng',
+    '  cân đối tài khoản → "bao_cao", KHÔNG phải cong_no.',
     '- "kqkd": báo cáo kết quả kinh doanh — ghi tuNgay, denNgay, doanhThu (mã 01), loiNhuanTruocThue (mã 50) đọc từ cột kỳ này.',
     '- "bang_luong": bảng lương / BHXH. Cột: thang (cột tháng, vd "T01"), ten (họ tên), tongThuNhap (TỔNG thu nhập trước',
     '  khấu trừ: lương + phụ cấp + thưởng), bhxhCty (MỌI cột BHXH/BHYT/BHTN/KPCĐ phần DOANH NGHIỆP đóng — thường 17%, 3%,',

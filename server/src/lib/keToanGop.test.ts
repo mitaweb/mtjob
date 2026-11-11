@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { gopChiSo, tinhThangDaLay, quyetDinhCaKhoi, phangCongNo, khoaChiTieu, tomTatGop, ngayLapTrongFile } from './keToanGop.js';
+import { gopChiSo, tinhThangDaLay, quyetDinhCaKhoi, phangCongNo, khoaChiTieu, tomTatGop, ngayLapTrongFile, ngayHopLe } from './keToanGop.js';
 
 // Anh Tâm 11/11/2026: "Phần kế toán thuế anh cần thông minh hơn, đọc và hiểu các báo cáo, ưu tiên báo cáo sau ghi đè báo cáo
 // cũ, các chỉ số có ngày cập nhật mới hơn phải được giữ lại, đánh giá giữ lại hay k, k hiểu thì hỏi". Số GIẢ.
@@ -126,5 +126,18 @@ describe('ngayLapTrongFile — ngày lập báo cáo ghi ở dòng ký', () => {
   });
   it('không có / ngày vô lý → rỗng', () => {
     expect(ngayLapTrongFile(sh([['Ngày ... tháng ... năm ...'], ['ngày 40 tháng 13 năm 2026']]))).toBe('');
+  });
+});
+
+describe('ngayHopLe — ngày lập trước kỳ số liệu là vô lý (mẫu kế toán ghi nhầm năm)', () => {
+  it('KQKD 6 tháng 2026 ký "27/10/2025" → coi như không rõ ngày', () => {
+    expect(ngayHopLe('2025-10-27', '2026-01-01')).toBe('');
+  });
+  it('ngày lập từ đầu kỳ trở đi → giữ', () => {
+    expect(ngayHopLe('2026-07-15', '2026-01-01')).toBe('2026-07-15');
+    expect(ngayHopLe('2026-01-01', '2026-01-01')).toBe('2026-01-01');
+  });
+  it('không có ngày → rỗng', () => {
+    expect(ngayHopLe('', '2026-01-01')).toBe('');
   });
 });
