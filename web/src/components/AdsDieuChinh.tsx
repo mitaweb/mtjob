@@ -650,6 +650,44 @@ function NghienCuuTuKhoa({ taiSanId }: { taiSanId: string }) {
   );
 }
 
+/** CPA mục tiêu — AI chỉ đề xuất tắt khi THUA, tăng ngân sách khi THẮNG so với số này (luật học từ meta-ads-agent, 12/11/2026). */
+function MucTieuCpa({ taiSanId }: { taiSanId: string }) {
+  const toast = useToast();
+  const id = encodeURIComponent(taiSanId);
+  const [m, setM] = useState<{ caiDat: number; tuDong: number; dung: number } | null>(null);
+  const [o, setO] = useState('');
+  useEffect(() => {
+    api<{ caiDat: number; tuDong: number; dung: number }>(`/ads/${id}/muc-tieu`)
+      .then((r) => {
+        setM(r);
+        setO(r.caiDat ? String(r.caiDat) : '');
+      })
+      .catch(() => setM({ caiDat: 0, tuDong: 0, dung: 0 }));
+  }, [id]);
+  async function luu() {
+    const r = await api<{ caiDat: number; tuDong: number; dung: number }>(`/ads/${id}/muc-tieu`, { body: { cpa: Number(o.replace(/\D/g, '')) || 0 } });
+    setM(r);
+    toast.success(r.caiDat ? 'Đã lưu CPA mục tiêu' : 'Đã bỏ — AI dùng CPA trung bình 30 ngày');
+  }
+  if (!m) return null;
+  return (
+    <div className="space-y-1 rounded-xl bg-brand-50 p-3">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <b>🎯 CPA mục tiêu</b>
+        <input className="input w-36 py-1" inputMode="numeric" value={o} onChange={(e) => setO(e.target.value)} placeholder={m.tuDong ? m.tuDong.toLocaleString('vi-VN') : 'vd 80000'} aria-label="CPA mục tiêu" />
+        <AsyncButton className="btn-primary py-1 text-sm" onClick={luu} busyLabel="Đang lưu…">
+          Lưu
+        </AsyncButton>
+      </div>
+      <p className="text-xs text-ink-muted">
+        {m.caiDat ? 'Phòng đặt' : m.tuDong ? `Để trống = tự lấy CPA trung bình 30 ngày (${m.tuDong.toLocaleString('vi-VN')}đ)` : 'Tài khoản 30 ngày chưa có kết quả — nên đặt để AI xét được'}. AI chỉ đề xuất{' '}
+        <b>tắt</b> khi chi ≥ 2× số này mà 0 kết quả hoặc CPA &gt; 1,5×; chỉ <b>tăng ngân sách</b> khi CPA ≤ số này với ≥ 3 kết quả (mỗi lần ≤ 20–30%); vừa
+        sửa dưới 3 ngày thì để yên.
+      </p>
+    </div>
+  );
+}
+
 function GhiChu({ taiSanId, ten }: { taiSanId: string; ten: string }) {
   const toast = useToast();
   const id = encodeURIComponent(taiSanId);
@@ -666,6 +704,7 @@ function GhiChu({ taiSanId, ten }: { taiSanId: string; ten: string }) {
   if (nd === null) return <p className="text-sm text-ink-muted">Đang tải…</p>;
   return (
     <div className="space-y-2">
+      <MucTieuCpa taiSanId={taiSanId} />
       <p className="text-sm text-ink-muted">
         Điều cần biết khi chạy quảng cáo cho <b>{ten}</b>: sản phẩm / dịch vụ chính, khu vực, khách mục tiêu, từ khoá nên chạy, từ / nhu cầu KHÔNG
         nhận (vd "giá rẻ", "học nghề", "tuyển dụng"). Lưu vào <b>kho tri thức</b> của khách — AI đọc để lọc từ khoá và đề xuất phủ định.

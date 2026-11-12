@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { asyncHandler } from '../util/errors.js';
 import { requireAuth } from '../auth/middleware.js';
 import { findById } from './members.repo.js';
-import { dsDoiTuong, thaoTac, nhatKy, duyetDeXuat, boDeXuat, tuKhoa, goiYTuKhoa, docGhiChu, luuGhiChu, aiDeXuat, type Nguoi } from './adsDieuChinh.service.js';
+import { dsDoiTuong, thaoTac, nhatKy, duyetDeXuat, boDeXuat, tuKhoa, goiYTuKhoa, docGhiChu, luuGhiChu, docMucTieu, luuMucTieu, aiDeXuat, type Nguoi } from './adsDieuChinh.service.js';
 
 export const adsRouter = Router();
 adsRouter.use(requireAuth);
@@ -101,6 +101,22 @@ adsRouter.post(
   asyncHandler(async (req, res) => {
     const b = z.object({ noiDung: z.string().max(6000) }).parse(req.body);
     res.json({ noiDung: await luuGhiChu(await nguoiCua(req), ts(req), b.noiDung) });
+  }),
+);
+
+/** CPA mục tiêu của tài khoản (luật thắng / thua cho AI đề xuất). 0 = tự lấy CPA trung bình 30 ngày. */
+adsRouter.get(
+  '/:ts/muc-tieu',
+  asyncHandler(async (req, res) => {
+    res.json(await docMucTieu(await nguoiCua(req), ts(req)));
+  }),
+);
+
+adsRouter.post(
+  '/:ts/muc-tieu',
+  asyncHandler(async (req, res) => {
+    const b = z.object({ cpa: z.number().min(0).max(1e12) }).parse(req.body);
+    res.json(await luuMucTieu(await nguoiCua(req), ts(req), b.cpa));
   }),
 );
 

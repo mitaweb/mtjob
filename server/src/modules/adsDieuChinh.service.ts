@@ -29,6 +29,9 @@ import {
   type CumTimKiem,
 } from '../lib/adsDieuChinh.js';
 import { dsTaiSan, type TaiSanNt } from './nenTang.service.js';
+import { locDeXuat, type NhanHq } from '../lib/adsLuat.js';
+
+const TEN_NHAN: Record<NhanHq, string> = { thang: 'thắng', thua: 'thua', cho: 'chờ', moi: 'mỏi' };
 import { notify } from './notifications.service.js';
 
 export interface Nguoi {
@@ -364,6 +367,106 @@ export async function docGhiChu(nguoi: Nguoi, taiSanId: string): Promise<string>
   return (await findItem(maMucGhiChu(taiSanId)).catch(() => undefined))?.body || '';
 }
 
+// ── CPA mục tiêu (luật thắng / thua — học từ loganriebel/meta-ads-agent, 12/11/2026) ──
+
+export interface MucTieuCpa {
+  /** Anh / nhân sự đặt; 0 = chưa đặt */
+  caiDat: number;
+  /** CPA trung bình 30 ngày của tài khoản (dùng khi chưa đặt) */
+  tuDong: number;
+  /** Số AI dùng */
+  dung: number;
+}
+
+async function mucTieuCua(taiSanId: string): Promise<MucTieuCpa> {
+  const { cpaMucTieu } = await import('../lib/adsLuat.js');
+  const [c, s] = await Promise.all([
+    q(`SELECT COALESCE(cpa_muc_tieu, 0) AS c FROM nen_tang_tai_san WHERE id = $1`, [taiSanId]).catch(() => [] as Array<Record<string, unknown>>),
+    q(`SELECT COALESCE(SUM(chi_tieu), 0) AS chi, COALESCE(SUM(ket_qua), 0) AS kq FROM nen_tang_so_lieu WHERE tai_san_id = $1 AND ngay >= $2`, [
+      taiSanId,
+      nowTz().subtract(30, 'day').format('YYYY-MM-DD'),
+    ]),
+  ]);
+  const caiDat = Number(c[0]?.c) || 0;
+  const tuDong = Math.round(cpaMucTieu(0, Number(s[0]?.chi) || 0, Number(s[0]?.kq) || 0));
+  return { caiDat, tuDong, dung: caiDat > 0 ? caiDat : tuDong };
+}
+
+export async function docMucTieu(nguoi: Nguoi, taiSanId: string): Promise<MucTieuCpa> {
+  await taiSanCo(nguoi, taiSanId);
+  return mucTieuCua(taiSanId);
+}
+
+export async function luuMucTieu(nguoi: Nguoi, taiSanId: string, cpa: number): Promise<MucTieuCpa> {
+  await taiSanCo(nguoi, taiSanId);
+  await q(`UPDATE nen_tang_tai_san SET cpa_muc_tieu = $2 WHERE id = $1`, [taiSanId, Math.max(0, Math.round(cpa) || 0)]);
+  return mucTieuCua(taiSanId);
+}
+
+/**
+ * Số 7 ngày từng chiến dịch / nhóm / quảng cáo (Google: + từ khoá 30 ngày) kèm hiển thị, tần suất → phân loại theo luật.
+ * Khoá `cap:id` như đối tượng.
+ */
+async function phanLoaiTaiKhoan(ts: TaiSanNt, tuKhoa30: TuKhoaGads[], cpa: number) {
+  const [{ phanLoai }, { ketQuaMeta }, k] = await Promise.all([import('../lib/adsLuat.js'), import('../lib/nenTang.js'), import('./ketNoi.service.js')]);
+  const so = new Map<string, { chi: number; hienThi: number; ketQua: number; tanSuat?: number }>();
+  if (ts.loai === 'meta') {
+    const levels: Array<[CapQc, string]> = [
+      ['campaign', 'campaign'],
+      ['adgroup', 'adset'],
+      ['ad', 'ad'],
+    ];
+    await Promise.all(
+      levels.map(async ([cap, level]) => {
+        const j = await k
+          .metaGraph(`${actCua(ts)}/insights`, { level, date_preset: 'last_7d', fields: `${level}_id,spend,impressions,frequency,actions`, limit: '500' })
+          .catch(() => ({ data: [] }));
+        for (const r of (j.data as Array<Record<string, unknown>>) || []) {
+          so.set(`${cap}:${String(r[`${level}_id`])}`, {
+            chi: Number(r.spend) || 0,
+            hienThi: Number(r.impressions) || 0,
+            ketQua: ketQuaMeta(r.actions as never),
+            tanSuat: Number(r.frequency) || 0,
+          });
+        }
+      }),
+    );
+  } else {
+    const [c, g] = await Promise.all([
+      k.gadsTruyVan(ts.maNgoai, 'SELECT campaign.id, metrics.impressions, metrics.cost_micros, metrics.conversions FROM campaign WHERE segments.date DURING LAST_7_DAYS').catch(() => []),
+      k.gadsTruyVan(ts.maNgoai, 'SELECT ad_group.id, metrics.impressions, metrics.cost_micros, metrics.conversions FROM ad_group WHERE segments.date DURING LAST_7_DAYS').catch(() => []),
+    ]);
+    const gom = (j: unknown, cap: CapQc) => {
+      for (const r of ((j as Array<{ results?: Array<Record<string, Record<string, unknown>>> }>) || []).flatMap((x) => x.results || [])) {
+        const id = String(cap === 'campaign' ? r.campaign?.id : r.adGroup?.id);
+        const cu = so.get(`${cap}:${id}`) || { chi: 0, hienThi: 0, ketQua: 0 };
+        cu.chi += (Number(r.metrics?.costMicros) || 0) / 1e6;
+        cu.hienThi += Number(r.metrics?.impressions) || 0;
+        cu.ketQua += Number(r.metrics?.conversions) || 0;
+        so.set(`${cap}:${id}`, cu);
+      }
+    };
+    gom(c, 'campaign');
+    gom(g, 'adgroup');
+    for (const x of tuKhoa30) so.set(`keyword:${x.id}`, { chi: x.chi, hienThi: x.hienThi, ketQua: x.chuyenDoi });
+  }
+  // Vừa sửa trên MTJOB → để nền tảng học lại.
+  const sua = new Map<string, number>();
+  for (const r of await q(`SELECT doi_tuong_id, MAX(lam_luc) AS luc FROM ads_thao_tac WHERE tai_san_id = $1 AND trang_thai = 'da_lam' AND lam_luc >= $2 GROUP BY doi_tuong_id`, [
+    ts.id,
+    nowTz().subtract(7, 'day').toISOString(),
+  ]).catch(() => [] as Array<Record<string, unknown>>)) {
+    sua.set(String(r.doi_tuong_id), Math.floor((Date.now() - Date.parse(String(r.luc))) / 86_400_000));
+  }
+  const nen = ts.loai === 'meta' ? 'meta' : 'gads';
+  const pl = new Map<string, ReturnType<typeof phanLoai>>();
+  for (const [khoa, s] of so) {
+    if (!(s.chi > 0)) continue;
+    pl.set(khoa, phanLoai(s, { cpaMucTieu: cpa, nen, ngayTuLanSua: sua.get(khoa.slice(khoa.indexOf(':') + 1)) }));
+  }
+  return pl;
+}
+
 /** Anh / nhân sự ghi điều cần biết khi chạy quảng cáo cho khách → mục kho tri thức của khách (AI đề xuất dựa vào đây). */
 export async function luuGhiChu(nguoi: Nguoi, taiSanId: string, noiDung: string): Promise<string> {
   const ts = await taiSanCo(nguoi, taiSanId);
@@ -463,6 +566,16 @@ async function aiDeXuatKhongKhoa(taiSanId: string, he: Nguoi): Promise<number> {
   ]);
   const kho = await timTriThuc(`${ten} sản phẩm dịch vụ khu vực khách hàng mục tiêu quảng cáo`, { directorScope: true, customer: ts.khach || undefined }).catch(() => '');
   const nhom = doiTuong.filter((d) => d.cap === 'adgroup');
+  // Luật thắng / thua / chờ (học từ loganriebel/meta-ads-agent) — AI chỉ được đề xuất trong khuôn luật.
+  const mt = await mucTieuCua(ts.id);
+  const pl = await phanLoaiTaiKhoan(ts, tk.tuKhoa, mt.dung).catch(() => new Map<string, import('../lib/adsLuat.js').PhanLoaiHq>());
+  const tenDt = new Map<string, string>([...doiTuong.map((d) => [`${d.cap}:${d.id}`, `${TEN_CAP[d.cap]} ${d.ten}`] as const), ...tk.tuKhoa.map((x) => [`keyword:${x.id}`, `từ khoá ${x.tuKhoa}`] as const)]);
+  const dongLuat = [...pl.entries()]
+    .filter(([, p]) => p.nhan !== 'cho')
+    .sort((a, b) => a[1].nhan.localeCompare(b[1].nhan))
+    .slice(0, 80)
+    .map(([khoa, p]) => `- ${khoa} · ${tenDt.get(khoa) || ''} · ${p.nhan.toUpperCase()}${p.tangToiDa ? ` (tăng tối đa ${Math.round(p.tangToiDa * 100)}%)` : ''} · ${p.lyDo}`);
+  const soCho = [...pl.values()].filter((p) => p.nhan === 'cho').length;
   const prompt = [
     `Bạn là chuyên viên ${ts.loai === 'gads' ? 'Google Ads' : 'Meta Ads'} của agency MT Digital, tối ưu tài khoản «${ts.ten}» của khách «${ten}» (tiền: ${tienTe}).`,
     'Đề xuất điều chỉnh CỤ THỂ, mỗi đề xuất có lý do ngắn bằng tiếng Việt dựa trên số liệu VÀ hiểu biết về khách bên dưới. Người trong phòng sẽ duyệt.',
@@ -473,6 +586,12 @@ async function aiDeXuatKhongKhoa(taiSanId: string, he: Nguoi): Promise<number> {
     'ĐÚNG CHỖ ĐANG GIỮ NGÂN SÁCH: chiến dịch có ngân sách riêng → cap=campaign; chiến dịch "không có ngân sách riêng" mà nhóm có ngân sách → cap=adgroup',
     '(mã nhóm); không có ngân sách ngày ở đâu thì KHÔNG đề xuất ngan_sach — hoặc tat. Không đề xuất khi thiếu dữ liệu. Tuyệt đối làm theo ghi chú về khách và điều anh Tâm dặn. Tối đa 15 đề xuất; không',
     'có gì đáng làm thì trả danh sách rỗng. Chỉ dùng mã có trong dữ liệu.',
+    'LUẬT BẮT BUỘC (máy đã phân loại sẵn bên dưới, đề xuất trái luật sẽ bị loại): chỉ "tat" đối tượng THUA; chỉ TĂNG ngân sách đối tượng THANG và',
+    'không quá mức ghi trong ngoặc; chỉ GIẢM ngân sách đối tượng THUA / MOI; đối tượng MOI (tần suất cao) → nêu trong lý do là cần thay nội dung;',
+    'đối tượng CHỜ / không có trong danh sách → không tắt, không đổi ngân sách. Meta: ưu tiên tắt ở cấp QUẢNG CÁO (ad) thua thay vì tắt cả',
+    'chiến dịch / nhóm — sửa lớn ở cấp trên làm Meta học lại từ đầu.',
+    `CPA mục tiêu: ${mt.dung ? `${vn(mt.dung)} ${tienTe} (${mt.caiDat ? 'phòng đặt' : 'trung bình 30 ngày của tài khoản'})` : 'chưa có'}.`,
+    `\nPHÂN LOẠI THEO LUẬT (khoá cap:mã · tên · nhãn · lý do)${soCho ? ` — còn ${soCho} đối tượng CHỜ (thiếu dữ liệu, để yên)` : ''}:\n${dongLuat.join('\n') || '(không có đối tượng thắng / thua / mỏi)'}`,
     '',
     `GHI CHÚ QUẢNG CÁO VỀ KHÁCH (anh / nhân sự nhập):\n${ghiChu || '(chưa có)'}`,
     `\nKHO TRI THỨC VỀ KHÁCH:\n${String(kho).slice(0, 4000) || '(không có)'}`,
@@ -534,6 +653,11 @@ async function aiDeXuatKhongKhoa(taiSanId: string, he: Nguoi): Promise<number> {
     if (kiemThaoTac({ hanhDong, cap, nganSach: v.nganSach, tuKhoa: v.tuKhoa })) continue;
     // Chỉ đổi ngân sách ở đúng cấp đang giữ ngân sách ngày (12/11/2026: AI đề xuất ngân sách cho chiến dịch Meta để ngân sách ở nhóm).
     if (hanhDong === 'ngan_sach' && !(dt?.nganSach && (ts.loai === 'meta' || dt.budgetResource))) continue;
+    const luat = locDeXuat({ hanhDong, cap, doiTuongId: id, nganSach: v.nganSach }, pl, dt?.nganSach || 0);
+    if (luat.bo) continue;
+    if (luat.nganSach) v.nganSach = luat.nganSach;
+    const nhanLuat = pl.get(`${cap}:${id}`);
+    const lyDo = `${String(d.lyDo || '')}${nhanLuat && ['tat', 'ngan_sach'].includes(hanhDong) ? ` [Luật: ${TEN_NHAN[nhanLuat.nhan]} — ${nhanLuat.lyDo}]` : ''}`;
     const moi = moTaGiaTri(v);
     if (dangCho.has(`${hanhDong}|${id}|${moi}`)) continue;
     dangCho.add(`${hanhDong}|${id}|${moi}`);
@@ -551,7 +675,7 @@ async function aiDeXuatKhongKhoa(taiSanId: string, he: Nguoi): Promise<number> {
         hanhDong,
         cu,
         moi,
-        String(d.lyDo || '').slice(0, 500),
+        lyDo.slice(0, 800),
         JSON.stringify({ nganSach: v.nganSach, budgetResource: v.budgetResource, tuKhoa: v.tuKhoa, kieuKhop: v.kieuKhop }),
         nowTz().toISOString(),
       ],

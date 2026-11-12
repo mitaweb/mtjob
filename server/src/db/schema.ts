@@ -504,6 +504,8 @@ UPDATE ads_thao_tac SET trang_thai = 'bo', nguoi_lam = 'trùng' WHERE id IN (
   ) x WHERE rn > 1
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ads_thao_tac_de_xuat_uq ON ads_thao_tac (tai_san_id, hanh_dong, doi_tuong_id, gia_tri_moi) WHERE trang_thai = 'de_xuat';
+-- CPA mục tiêu từng tài khoản quảng cáo (12/11/2026, luật thắng / thua của Ads Agent); 0 = dùng CPA trung bình 30 ngày.
+ALTER TABLE nen_tang_tai_san ADD COLUMN IF NOT EXISTS cpa_muc_tieu double precision DEFAULT 0;
 
 -- Dự án: theo dõi KẾT QUẢ cam kết với khách (bao nhiêu tin nhắn, bao nhiêu khách mới),
 -- khác với bảng tasks vốn đo công sức bỏ ra. Khách hàng là tuỳ chọn — có dự án nội bộ.
