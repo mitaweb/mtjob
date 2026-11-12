@@ -552,6 +552,20 @@ export async function aiDeXuat(taiSanId: string, nguoi?: Nguoi): Promise<number>
   }
 }
 
+/** Lượt AI gần nhất: AI đưa bao nhiêu, luật loại bao nhiêu (và vì sao), còn lại bao nhiêu — để người bấm "AI đề xuất" thấy. */
+export interface ThongKeAi {
+  aiDua: number;
+  luatLoai: number;
+  lyDoLoai: string[];
+  khacLoai: number;
+  soThang: number;
+  soThua: number;
+  soMoi: number;
+  soCho: number;
+  cpaMucTieu: number;
+}
+export const thongKeAi = new Map<string, ThongKeAi>();
+
 async function aiDeXuatKhongKhoa(taiSanId: string, he: Nguoi): Promise<number> {
   const ts = await taiSanCo(he, taiSanId);
   const { doiTuong, so7, tienTe } = await dsDoiTuong(he, taiSanId);
@@ -631,6 +645,9 @@ async function aiDeXuatKhongKhoa(taiSanId: string, he: Nguoi): Promise<number> {
     ),
   );
   let n = 0;
+  const tke: ThongKeAi = { aiDua: (r?.deXuat || []).length, luatLoai: 0, lyDoLoai: [], khacLoai: 0, soThang: 0, soThua: 0, soMoi: 0, soCho: 0, cpaMucTieu: Math.round(mt.dung) };
+  for (const p of pl.values()) tke[p.nhan === 'thang' ? 'soThang' : p.nhan === 'thua' ? 'soThua' : p.nhan === 'moi' ? 'soMoi' : 'soCho']++;
+  thongKeAi.set(ts.id, tke);
   for (const d of (r?.deXuat || []).slice(0, 15)) {
     const hanhDong = String(d.hanhDong) as HanhDong;
     const cap = String(d.cap) as CapQc;
@@ -658,7 +675,11 @@ async function aiDeXuatKhongKhoa(taiSanId: string, he: Nguoi): Promise<number> {
     // Chỉ đổi ngân sách ở đúng cấp đang giữ ngân sách ngày (12/11/2026: AI đề xuất ngân sách cho chiến dịch Meta để ngân sách ở nhóm).
     if (hanhDong === 'ngan_sach' && !(dt?.nganSach && (ts.loai === 'meta' || dt.budgetResource))) continue;
     const luat = locDeXuat({ hanhDong, cap, doiTuongId: id, nganSach: v.nganSach }, pl, dt?.nganSach || 0);
-    if (luat.bo) continue;
+    if (luat.bo) {
+      tke.luatLoai++;
+      if (tke.lyDoLoai.length < 5) tke.lyDoLoai.push(`${hanhDong} ${cap}:${id} — ${luat.bo}`.slice(0, 200));
+      continue;
+    }
     if (luat.nganSach) v.nganSach = luat.nganSach;
     const nhanLuat = pl.get(`${cap}:${id}`);
     const lyDo = `${String(d.lyDo || '')}${nhanLuat && ['tat', 'ngan_sach'].includes(hanhDong) ? ` [Luật: ${TEN_NHAN[nhanLuat.nhan]} — ${nhanLuat.lyDo}]` : ''}`;

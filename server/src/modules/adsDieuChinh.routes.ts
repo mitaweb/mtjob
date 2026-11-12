@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { asyncHandler } from '../util/errors.js';
 import { requireAuth } from '../auth/middleware.js';
 import { findById } from './members.repo.js';
-import { dsDoiTuong, thaoTac, nhatKy, duyetDeXuat, boDeXuat, tuKhoa, goiYTuKhoa, docGhiChu, luuGhiChu, docMucTieu, luuMucTieu, aiDeXuat, type Nguoi } from './adsDieuChinh.service.js';
+import { dsDoiTuong, thaoTac, nhatKy, duyetDeXuat, boDeXuat, tuKhoa, goiYTuKhoa, docGhiChu, luuGhiChu, docMucTieu, luuMucTieu, aiDeXuat, thongKeAi, type Nguoi } from './adsDieuChinh.service.js';
 
 export const adsRouter = Router();
 adsRouter.use(requireAuth);
@@ -124,7 +124,8 @@ adsRouter.post(
 adsRouter.post(
   '/:ts/ai-de-xuat',
   asyncHandler(async (req, res) => {
-    res.json({ so: await aiDeXuat(ts(req), await nguoiCua(req)) });
+    const so = await aiDeXuat(ts(req), await nguoiCua(req));
+    res.json({ so, thongKe: thongKeAi.get(ts(req)) || null });
   }),
 );
 
