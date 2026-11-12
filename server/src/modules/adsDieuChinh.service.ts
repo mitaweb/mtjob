@@ -120,6 +120,20 @@ async function chay(ts: TaiSanNt, v: ThaoTacVao): Promise<string> {
   const k = await import('./ketNoi.service.js');
   if (ts.loai === 'meta') {
     if (!['campaign', 'adgroup', 'ad'].includes(v.cap) || !['bat', 'tat', 'ngan_sach'].includes(v.hanhDong)) throw new ApiError(400, 'Meta: chỉ bật / tạm dừng / đổi ngân sách');
+    if (v.hanhDong === 'ngan_sach') {
+      // Chiến dịch ngân sách ở nhóm (ABO) / nhóm dùng ngân sách chiến dịch (CBO) / ngân sách trọn đời: KHÔNG đặt ngân sách ngày ở cấp này.
+      const hien = (await k.metaGraph(v.doiTuongId.replace(/\D/g, ''), { fields: 'daily_budget,lifetime_budget' })) as { daily_budget?: string; lifetime_budget?: string };
+      if (!Number(hien.daily_budget)) {
+        throw new ApiError(
+          400,
+          Number(hien.lifetime_budget) > 0
+            ? 'Đối tượng này dùng ngân sách trọn đời — không đổi ngân sách ngày được'
+            : v.cap === 'campaign'
+              ? 'Chiến dịch này để ngân sách ở từng nhóm quảng cáo — đổi ngân sách ở nhóm'
+              : 'Nhóm này dùng ngân sách của chiến dịch — đổi ngân sách ở chiến dịch',
+        );
+      }
+    }
     const tham: Record<string, string> =
       v.hanhDong === 'ngan_sach' ? { daily_budget: metaVaoDonVi(Number(v.nganSach), ts.tienTe) } : { status: v.hanhDong === 'bat' ? 'ACTIVE' : 'PAUSED' };
     const r = await k.metaGraph(v.doiTuongId.replace(/\D/g, ''), tham, 'POST');
@@ -455,8 +469,9 @@ async function aiDeXuatKhongKhoa(taiSanId: string, he: Nguoi): Promise<number> {
     'Ưu tiên: (1) cụm từ khách gõ KHÔNG đúng sản phẩm / khu vực / đối tượng của khách hoặc tốn tiền mà 0 chuyển đổi → tu_khoa_am (gắn vào',
     'chiến dịch: cap=campaign, doiTuongId = mã chiến dịch, tuKhoa = cụm cần loại, kieuKhop PHRASE hoặc EXACT); (2) từ khoá đang chạy tốn tiền',
     'mà không hiệu quả → tat (cap=keyword, doiTuongId = mã từ khoá); (3) cụm khách gõ có chuyển đổi tốt chưa thành từ khoá → them_tu_khoa',
-    '(cap=adgroup, doiTuongId = mã nhóm QC phù hợp); (4) chiến dịch hiệu quả tốt / kém rõ rệt → ngan_sach (cap=campaign, nganSach = ngân sách',
-    'ngày MỚI) hoặc tat. Không đề xuất khi thiếu dữ liệu. Tuyệt đối làm theo ghi chú về khách và điều anh Tâm dặn. Tối đa 15 đề xuất; không',
+    '(cap=adgroup, doiTuongId = mã nhóm QC phù hợp); (4) chiến dịch hiệu quả tốt / kém rõ rệt → ngan_sach (nganSach = ngân sách ngày MỚI) ĐẶT',
+    'ĐÚNG CHỖ ĐANG GIỮ NGÂN SÁCH: chiến dịch có ngân sách riêng → cap=campaign; chiến dịch "không có ngân sách riêng" mà nhóm có ngân sách → cap=adgroup',
+    '(mã nhóm); không có ngân sách ngày ở đâu thì KHÔNG đề xuất ngan_sach — hoặc tat. Không đề xuất khi thiếu dữ liệu. Tuyệt đối làm theo ghi chú về khách và điều anh Tâm dặn. Tối đa 15 đề xuất; không',
     'có gì đáng làm thì trả danh sách rỗng. Chỉ dùng mã có trong dữ liệu.',
     '',
     `GHI CHÚ QUẢNG CÁO VỀ KHÁCH (anh / nhân sự nhập):\n${ghiChu || '(chưa có)'}`,
@@ -465,7 +480,12 @@ async function aiDeXuatKhongKhoa(taiSanId: string, he: Nguoi): Promise<number> {
     `\nCHIẾN DỊCH (mã · tên · trạng thái · ngân sách ngày · 7 ngày: chi / click / kết quả):\n${camp
       .map((c) => `- ${c.id} · ${c.ten} · ${c.bat ? 'BẬT' : 'DỪNG'} · ${c.nganSach ? vn(c.nganSach) : 'không có ngân sách riêng'}${c.nganSachChung ? ' (ngân sách DÙNG CHUNG)' : ''} · ${vn(so7[c.id]?.chi || 0)} / ${so7[c.id]?.click || 0} / ${(so7[c.id]?.ketQua || 0).toFixed(1)}`)
       .join('\n')}`,
-    nhom.length ? `\nNHÓM QUẢNG CÁO (mã · tên · chiến dịch):\n${nhom.slice(0, 120).map((g) => `- ${g.id} · ${g.ten} · ${g.cha}`).join('\n')}` : '',
+    nhom.length
+      ? `\nNHÓM QUẢNG CÁO (mã · tên · chiến dịch · ngân sách ngày):\n${nhom
+          .slice(0, 120)
+          .map((g) => `- ${g.id} · ${g.ten} · ${g.cha} · ${g.nganSach ? vn(g.nganSach) : 'không'}`)
+          .join('\n')}`
+      : '',
     tk.tuKhoa.length
       ? `\nTỪ KHOÁ 30 NGÀY (mã · từ khoá · trạng thái · điểm CL · click · chi · chuyển đổi):\n${tk.tuKhoa
           .slice(0, 120)
@@ -512,6 +532,8 @@ async function aiDeXuatKhongKhoa(taiSanId: string, he: Nguoi): Promise<number> {
       kieuKhop,
     };
     if (kiemThaoTac({ hanhDong, cap, nganSach: v.nganSach, tuKhoa: v.tuKhoa })) continue;
+    // Chỉ đổi ngân sách ở đúng cấp đang giữ ngân sách ngày (12/11/2026: AI đề xuất ngân sách cho chiến dịch Meta để ngân sách ở nhóm).
+    if (hanhDong === 'ngan_sach' && !(dt?.nganSach && (ts.loai === 'meta' || dt.budgetResource))) continue;
     const moi = moTaGiaTri(v);
     if (dangCho.has(`${hanhDong}|${id}|${moi}`)) continue;
     dangCho.add(`${hanhDong}|${id}|${moi}`);
