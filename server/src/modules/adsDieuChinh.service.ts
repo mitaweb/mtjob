@@ -643,7 +643,11 @@ async function aiDeXuatKhongKhoa(taiSanId: string, he: Nguoi): Promise<number> {
       taiSanId: ts.id,
       cap,
       doiTuongId: id,
-      ten: cap === 'keyword' ? tkCua.get(id)?.tuKhoa || id : dt?.ten || id,
+      // Nhóm / quảng cáo trùng tên ở nhiều chiến dịch ("Nhóm cha mẹ" — kiểm thật 12/11/2026) → kèm tên cấp trên cho người duyệt.
+      ten:
+        cap === 'keyword'
+          ? tkCua.get(id)?.tuKhoa || id
+          : `${dt?.ten || id}${dt?.cha ? ` · ${tenCua.get(`${cap === 'ad' ? 'adgroup' : 'campaign'}:${dt.cha}`)?.ten || ''}` : ''}`.replace(/ · $/, ''),
       hanhDong,
       nganSach: Number(d.nganSach) || undefined,
       budgetResource: dt?.budgetResource,
