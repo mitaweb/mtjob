@@ -66,8 +66,12 @@ export default function AdsDieuChinh({ taiSanId, ten, loai, dong }: { taiSanId: 
   const id = encodeURIComponent(taiSanId);
 
   async function aiDeXuat() {
-    const r = await api<{ so: number }>(`/ads/${id}/ai-de-xuat`, { method: 'POST' });
-    toast.success(r.so ? `AI đề xuất ${r.so} điều chỉnh — xem ở tab 📝 Nhật ký & đề xuất` : 'AI chưa thấy gì cần chỉnh');
+    const r = await api<{ so: number; thongKe?: { luatLoai: number; soThang: number; soThua: number; soMoi: number; soCho: number } | null }>(`/ads/${id}/ai-de-xuat`, {
+      method: 'POST',
+    });
+    const t = r.thongKe;
+    const luat = t ? ` · Luật: ${t.soThang} thắng, ${t.soThua} thua, ${t.soMoi} mỏi, ${t.soCho} chờ${t.luatLoai ? ` — loại ${t.luatLoai} đề xuất trái luật` : ''}` : '';
+    toast.success(`${r.so ? `AI đề xuất ${r.so} điều chỉnh mới — xem ở tab 📝 Nhật ký & đề xuất` : 'AI chưa thấy gì mới cần chỉnh'}${luat}`);
   }
 
   return (
