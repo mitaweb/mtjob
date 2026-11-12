@@ -27,6 +27,13 @@ const CAP: Record<Dong['cap'], string> = { campaign: 'chiến dịch', adgroup: 
 const gio = (iso: string) => (iso ? new Date(iso).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : '');
 const vn = (s: string) => (/^\d+(\.\d+)?$/.test(s) ? `${Math.round(Number(s)).toLocaleString('vi-VN')}đ` : s);
 
+/** "bút lamy [PHRASE]" → "“bút lamy” (khớp cụm từ)" — kiểu khớp từ khoá Google Ads nói bằng tiếng Việt (anh Tâm 12/11/2026 hỏi "[PHRASE] là gì"). */
+const KHOP: Record<string, string> = { PHRASE: 'khớp cụm từ', EXACT: 'khớp chính xác', BROAD: 'khớp rộng' };
+const tuKhoaVn = (s: string) => {
+  const m = /^(.*)\s\[(PHRASE|EXACT|BROAD)\]$/.exec(s.trim());
+  return m ? `“${m[1]}” (${KHOP[m[2]!]})` : `“${s}”`;
+};
+
 function moTa(x: Dong): string {
   switch (x.hanhDong) {
     case 'bat':
@@ -36,9 +43,9 @@ function moTa(x: Dong): string {
     case 'ngan_sach':
       return `Ngân sách ngày ${CAP[x.cap]} «${x.ten}»: ${x.giaTriCu ? `${vn(x.giaTriCu)} → ` : ''}${vn(x.giaTriMoi)}`;
     case 'tu_khoa_am':
-      return `Thêm từ khoá phủ định ${x.giaTriMoi} vào chiến dịch «${x.ten}»`;
+      return `Thêm từ khoá phủ định ${tuKhoaVn(x.giaTriMoi)} vào chiến dịch «${x.ten}»`;
     case 'them_tu_khoa':
-      return `Thêm từ khoá ${x.giaTriMoi} vào nhóm «${x.ten}»`;
+      return `Thêm từ khoá ${tuKhoaVn(x.giaTriMoi)} vào nhóm «${x.ten}»`;
   }
 }
 
