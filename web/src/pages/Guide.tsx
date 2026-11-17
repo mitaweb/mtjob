@@ -29,6 +29,48 @@ const NHAN_SU: Role[] = ['member', 'leader'];
 const QUAN_LY: Role[] = ['leader', 'director', 'admin'];
 
 const PHANS: Phan[] = [
+  // Anh Tâm 17/11/2026: cổng AI riêng của công ty — mọi vai đều dùng được.
+  {
+    icon: '🤖',
+    ten: 'Dùng Claude cho công việc — MT Digital AI Gateway',
+    tom: 'Nhân sự dùng được Claude (trợ lý AI của Anthropic) ngay trên máy tính, qua cổng AI riêng của công ty. Không cần tài khoản Claude cá nhân, không mất phí.',
+    mucs: [
+      {
+        hoi: 'Dùng để làm gì?',
+        dap: [
+          'Viết và sửa nội dung: bài đăng, kịch bản video, email, báo giá.',
+          'Tóm tắt, phân tích tài liệu, file PDF, Excel.',
+          'Lên ý tưởng, brief, checklist công việc.',
+          'Hỏi đáp chuyên môn khi cần.',
+        ],
+      },
+      {
+        hoi: 'Bắt đầu trong 5 phút',
+        dap: [
+          'Bước 1 — Tải Claude Desktop: https://claude.com/download',
+          'Bước 2 — Nhận API key từ quản trị.',
+          'Bước 3 — Làm theo hướng dẫn: https://claude.ai/artifact/4x4BDNqfiTA3Rwq4hESYgg',
+          'Gateway base URL: https://api.mtdigital.vn',
+          'Gateway auth schema: x-api-key',
+          'Gateway API key: key quản trị gửi cho bạn.',
+          'Bước 4 — Chọn model: claude-sonnet-5-5 cho việc hằng ngày, claude-opus-5-5 cho việc khó.',
+        ],
+      },
+      {
+        hoi: 'Lưu ý khi dùng',
+        dap: [
+          'Chỉ dùng cho công việc của MT Digital.',
+          'Không gửi API key ra ngoài công ty.',
+          'Không dán mật khẩu, mã OTP, số tài khoản vào khung chat.',
+          'Câu hỏi gửi qua gateway được ghi lại để công ty theo dõi chi phí và chất lượng.',
+        ],
+      },
+      {
+        hoi: 'Gặp lỗi hoặc cần hỗ trợ?',
+        dap: ['Nhắn quản trị để được hỗ trợ.'],
+      },
+    ],
+  },
   {
     icon: '📍',
     ten: 'Chấm công',
@@ -288,6 +330,21 @@ const ROLE_LABEL: Record<string, string> = {
   sale: 'Account',
 };
 
+/** Địa chỉ https trong câu trả lời → link bấm được (mở tab mới); dòng cấu hình "Gateway …" hiện dạng mã để chép. */
+function coLink(s: string) {
+  // Ô cấu hình (base URL…) là chữ để chép, không phải trang để mở.
+  if (s.startsWith('Gateway')) return <code className="rounded bg-brand-50 px-1 font-mono text-[13px]">{s}</code>;
+  return s.split(/(https:\/\/[^\s]+)/g).map((p, i) =>
+    /^https:\/\//.test(p) ? (
+      <a key={i} href={p} target="_blank" rel="noopener noreferrer" className="font-medium text-ocean-700 underline">
+        {p}
+      </a>
+    ) : (
+      p
+    ),
+  );
+}
+
 export default function Guide() {
   const { user } = useAuth();
   const role = (user?.role || 'member') as Role;
@@ -333,7 +390,7 @@ export default function Guide() {
                       {m.dap.map((d, i) => (
                         <li key={i} className="flex gap-2 text-sm text-ink-soft">
                           <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-brand-400" />
-                          <span>{d}</span>
+                          <span className="min-w-0 break-words">{coLink(d)}</span>
                         </li>
                       ))}
                     </ul>
