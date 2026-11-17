@@ -29,11 +29,12 @@ const NHAN_SU: Role[] = ['member', 'leader'];
 const QUAN_LY: Role[] = ['leader', 'director', 'admin'];
 
 const PHANS: Phan[] = [
-  // Anh Tâm 17/11/2026: cổng AI riêng của công ty — mọi vai đều dùng được.
+  // Anh Tâm 17/11/2026: cổng AI riêng của công ty — mọi vai đều dùng được. Nội dung hướng dẫn đặt thẳng ở đây (anh Tâm: "đưa
+  // thẳng nội dung hướng dẫn vào trong MTJOB luôn thay vì qua link claude"). Dòng bắt đầu "§ " hiện dạng mã để chép.
   {
     icon: '🤖',
     ten: 'Dùng Claude cho công việc — MT Digital AI Gateway',
-    tom: 'Nhân sự dùng được Claude (trợ lý AI của Anthropic) ngay trên máy tính, qua cổng AI riêng của công ty. Không cần tài khoản Claude cá nhân, không mất phí.',
+    tom: 'Nhân sự dùng Claude Desktop (Cowork) — app chính thức của Anthropic — qua cổng AI riêng của công ty. Không cần tài khoản Claude cá nhân, không mất phí.',
     mucs: [
       {
         hoi: 'Dùng để làm gì?',
@@ -42,18 +43,66 @@ const PHANS: Phan[] = [
           'Tóm tắt, phân tích tài liệu, file PDF, Excel.',
           'Lên ý tưởng, brief, checklist công việc.',
           'Hỏi đáp chuyên môn khi cần.',
+          'Cách hoạt động: Claude Desktop có tính năng Third-Party Inference — mọi yêu cầu đi qua cổng MT Digital AI Gateway (https://api.mtdigital.vn) của công ty thay vì tài khoản Claude cá nhân. Toàn bộ nhân sự dùng chung một API key do quản trị cấp.',
         ],
       },
       {
-        hoi: 'Bắt đầu trong 5 phút',
+        hoi: 'Bước 0 — Nhận API key',
         dap: [
-          'Bước 1 — Tải Claude Desktop: https://claude.com/download',
-          'Bước 2 — Nhận API key từ quản trị.',
-          'Bước 3 — Làm theo hướng dẫn: https://claude.ai/artifact/4x4BDNqfiTA3Rwq4hESYgg',
-          'Gateway base URL: https://api.mtdigital.vn',
-          'Gateway auth schema: x-api-key',
-          'Gateway API key: key quản trị gửi cho bạn.',
-          'Bước 4 — Chọn model: claude-sonnet-5-5 cho việc hằng ngày, claude-opus-5-5 cho việc khó.',
+          'Quản trị gửi API key (dạng sk-…) qua kênh nội bộ. Chưa nhận được thì báo quản trị trước khi làm các bước sau.',
+          'Lưu key ở nơi riêng tư (trình quản lý mật khẩu), không để trong ghi chú hay tài liệu dùng chung.',
+          'Key chỉ dùng trong nội bộ MT Digital: không gửi ra ngoài công ty, không đăng lên nhóm chat có người ngoài.',
+        ],
+      },
+      {
+        hoi: 'Tải Claude Desktop',
+        dap: [
+          'Tải bản cho macOS hoặc Windows tại https://claude.com/download rồi cài như một ứng dụng bình thường.',
+          'Không cần đăng nhập tài khoản Claude cá nhân.',
+          'Các bước dưới mô tả trên macOS; Windows thao tác tương tự. Lỗi riêng của Windows xem câu "Windows: Claude Desktop không mở được" ở cuối.',
+        ],
+      },
+      {
+        hoi: 'Bước 1 — Bật Developer Mode',
+        dap: [
+          'Developer Mode mở ra menu cấu hình gateway; bật một lần là đủ.',
+          'Mở Claude Desktop, trên thanh menu chọn Help → Troubleshooting → Enable Developer Mode.',
+          'App tự tải lại; chờ khởi động xong rồi sang bước 2.',
+        ],
+      },
+      {
+        hoi: 'Bước 2 — Mở cấu hình Third-Party Inference',
+        dap: ['Sau khi app tải lại, thanh menu có thêm mục Developer.', 'Chọn Developer → Configure Third-Party Inference…'],
+      },
+      {
+        hoi: 'Bước 3 — Điền cấu hình Gateway',
+        dap: [
+          'Tại mục Connection chọn Gateway, điền đúng 3 trường dưới đây rồi bấm Apply locally:',
+          '§ Gateway base URL: https://api.mtdigital.vn',
+          '§ Gateway API key: API key của bạn (Bước 0)',
+          '§ Gateway auth schema: x-api-key',
+          'Base URL KHÔNG có /v1 ở cuối — app tự thêm. App sẽ tải lại để áp dụng cấu hình mới.',
+        ],
+      },
+      {
+        hoi: 'Bước 4 — Chọn Continue with Gateway',
+        dap: ['Sau khi app tải lại, màn hình đăng nhập có nút Continue with Gateway — bấm vào để Claude Desktop dùng MT Digital AI Gateway.'],
+      },
+      {
+        hoi: 'Bước 5 — Chọn model và bắt đầu dùng',
+        dap: [
+          'Chọn model ở ô chọn model trong khung chat rồi dùng như bình thường. Gateway hiện mở các model:',
+          'claude-sonnet-5-5 — việc hằng ngày: viết nội dung, phân tích, làm việc với file.',
+          'claude-opus-5-5, claude-opus-5 — việc khó, cần suy luận sâu, tài liệu dài.',
+          'claude-haiku-4-5 — câu hỏi nhanh, việc đơn giản.',
+          'claude-sonnet-5, claude-fable-5-1, claude-fable-5 — phiên bản trước, khi cần so sánh.',
+          'Key có thể được giới hạn chỉ dùng một số model. Chọn model ngoài danh sách được cấp sẽ báo lỗi 403.',
+        ],
+      },
+      {
+        hoi: 'Tóm tắt nhanh',
+        dap: [
+          'Help → Troubleshooting → Enable Developer Mode → Developer → Configure Third-Party Inference → Connection: Gateway → điền base URL https://api.mtdigital.vn, auth schema x-api-key, API key quản trị cấp → Apply locally → Continue with Gateway → chọn model.',
         ],
       },
       {
@@ -61,12 +110,30 @@ const PHANS: Phan[] = [
         dap: [
           'Chỉ dùng cho công việc của MT Digital.',
           'Không gửi API key ra ngoài công ty.',
-          'Không dán mật khẩu, mã OTP, số tài khoản vào khung chat.',
-          'Câu hỏi gửi qua gateway được ghi lại để công ty theo dõi chi phí và chất lượng.',
+          'Gateway ghi lại các lượt sử dụng để công ty theo dõi chi phí và chất lượng: quản trị xem được số lượt, token, chi phí và nội dung chat gửi qua gateway.',
         ],
       },
       {
-        hoi: 'Gặp lỗi hoặc cần hỗ trợ?',
+        hoi: 'Xử lý lỗi thường gặp',
+        dap: [
+          'Phần lớn lỗi là do key hoặc model — xem mã lỗi Claude Desktop báo rồi đối chiếu:',
+          '401 (API key required / invalid): key sai, bị khoá hoặc đã thu hồi → kiểm tra lại key đã nhập; vẫn lỗi thì báo quản trị.',
+          '403 (not allowed to use model): model nằm ngoài phạm vi key → chọn model được cấp, hoặc xin quản trị mở thêm.',
+          '404 (model not found / No active credentials): model không có trên gateway → chọn model trong danh sách ở Bước 5.',
+          '502 / 503: tài khoản AI phía gateway tạm lỗi hoặc hết hạn mức → thử lại sau vài phút; kéo dài thì báo quản trị.',
+        ],
+      },
+      {
+        hoi: 'Windows: Claude Desktop không mở được hoặc báo lỗi máy ảo',
+        dap: [
+          'Nguyên nhân: máy chưa bật tính năng Virtual Machine Platform.',
+          'Bấm phím Win, gõ cmd, chọn Run as administrator, rồi chạy lệnh:',
+          '§ dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart',
+          'Báo thành công thì khởi động lại máy, rồi mở Claude Desktop dùng bình thường.',
+        ],
+      },
+      {
+        hoi: 'Gặp lỗi khác hoặc cần hỗ trợ?',
         dap: ['Nhắn quản trị để được hỗ trợ.'],
       },
     ],
@@ -330,12 +397,27 @@ const ROLE_LABEL: Record<string, string> = {
   sale: 'Account',
 };
 
-/** Địa chỉ https trong câu trả lời → link bấm được (mở tab mới); dòng cấu hình "Gateway …" hiện dạng mã để chép. */
+/** Địa chỉ https trong câu trả lời → link bấm được (mở tab mới); dòng bắt đầu "§ " (cấu hình, lệnh) hiện dạng mã để chép. */
 function coLink(s: string) {
-  // Ô cấu hình (base URL…) là chữ để chép, không phải trang để mở.
-  if (s.startsWith('Gateway')) return <code className="rounded bg-brand-50 px-1 font-mono text-[13px]">{s}</code>;
-  return s.split(/(https:\/\/[^\s]+)/g).map((p, i) =>
-    /^https:\/\//.test(p) ? (
+  if (s.startsWith('§ ')) {
+    // "§ Nhãn: giá trị" → nhãn thường + giá trị dạng mã (bấm một lần chọn hết để chép); "§ lệnh" → cả dòng dạng mã.
+    const m = /^§ ([^:]{2,40}): (.+)$/.exec(s);
+    const ma = (x: string) => <code className="select-all break-all rounded-lg bg-brand-50 px-2 py-0.5 font-mono text-[13px] text-ink">{x}</code>;
+    return m ? (
+      <>
+        <b className="font-medium text-ink">{m[1]}:</b> {/^API key/.test(m[2]!) ? m[2] : ma(m[2]!)}
+      </>
+    ) : (
+      <span className="block">{ma(s.slice(2))}</span>
+    );
+  }
+  return s.split(/(https:\/\/[^\s,)]+)/g).map((p, i) =>
+    // Địa chỉ API (base URL) không phải trang web để mở — hiện dạng mã.
+    /^https:\/\/api\./.test(p) ? (
+      <code key={i} className="rounded bg-brand-50 px-1 font-mono text-[13px]">
+        {p}
+      </code>
+    ) : /^https:\/\//.test(p) ? (
       <a key={i} href={p} target="_blank" rel="noopener noreferrer" className="font-medium text-ocean-700 underline">
         {p}
       </a>
