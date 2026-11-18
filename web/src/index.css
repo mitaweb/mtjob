@@ -56,6 +56,16 @@ h3 {
 }
 
 /*
+ * Ô chọn tháng: trình duyệt tiếng Việt ghi chữ dài ("Tháng Mười Hai 2026") nên bị khuất khi khung chỉ 10rem
+ * (anh Tâm 18/11/2026: "chỗ này khuất"). Rộng theo chữ, không tràn khung trên điện thoại. Thắng max-w-[10rem] nhờ độ ưu tiên.
+ */
+input[type='month'].input {
+  width: auto;
+  min-width: 14rem;
+  max-width: 100%;
+}
+
+/*
  * Hàng chẵn tô nhạt để mắt dò ngang không trượt hàng — bảng nhiều cột phải cuộn ngang
  * (nhân sự, bảng lương) là chỗ cần nhất. Anh Tâm hỏi từ 3/8/2026.
  *
