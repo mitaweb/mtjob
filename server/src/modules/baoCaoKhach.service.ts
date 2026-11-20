@@ -6,7 +6,7 @@ import { newId } from '../util/id.js';
 import { nowTz, todayIso } from '../lib/datetime.js';
 import { ApiError } from '../util/errors.js';
 import { duocThaoTac } from '../lib/adsDieuChinh.js';
-import { kyBaoCao, nenTao, coCauGads, coCauMeta, tongHop, nhomKhachDangChay, THUE_MAC_DINH, type Ky, type LoaiKy, type SoTaiKhoan, type TongHop } from '../lib/baoCaoKhach.js';
+import { kyBaoCao, ngayBaoCaoToi, nenTao, coCauGads, coCauMeta, tongHop, nhomKhachDangChay, THUE_MAC_DINH, type Ky, type LoaiKy, type SoTaiKhoan, type TongHop } from '../lib/baoCaoKhach.js';
 import { dsTaiSan, type TaiSanNt } from './nenTang.service.js';
 import type { Nguoi } from './adsDieuChinh.service.js';
 
@@ -20,7 +20,10 @@ export interface CauHinh {
   mau: string;
   /** ten: tên hiện trong bảng gửi khách (trống = tên tài khoản) */
   taiKhoan: Array<{ id: string; thue: number; ten?: string }>;
+  /** Ngày báo cáo tháng (1–28): kỳ = ngày đó tháng trước → hôm trước; 0 = tháng dương lịch (báo cáo ngày 1) */
   ngayChuKy: number;
+  /** Thứ báo cáo tuần: 1 = thứ Hai … 7 = Chủ nhật */
+  thuBaoCao: number;
   tuan: boolean;
   thang: boolean;
   zaloThread: string;
@@ -29,6 +32,8 @@ export interface CauHinh {
   bat: boolean;
   /** Có tài khoản chi tiêu trong 30 ngày gần nhất */
   dangChay?: boolean;
+  /** Ngày báo cáo kế tiếp (tính từ hôm nay) + kỳ */
+  toi?: { tuan: Ky & { ngay: string }; thang: Ky & { ngay: string } };
 }
 
 export interface BaoCao {
@@ -72,6 +77,7 @@ const cauHinhTuDong = (r: Record<string, unknown>): CauHinh => ({
     ten: String(t.ten || '').slice(0, 80),
   })),
   ngayChuKy: Number(r.ngay_chu_ky) || 0,
+  thuBaoCao: Math.min(7, Math.max(1, Number(r.thu_bao_cao) || 1)),
   tuan: r.tuan !== false,
   thang: r.thang !== false,
   zaloThread: String(r.zalo_thread || ''),
@@ -122,7 +128,12 @@ export async function dsCauHinh(nguoi: Nguoi): Promise<CauHinh[]> {
   const [ts, chay] = await Promise.all([dsTaiSan(), taiKhoanDangChay()]);
   const ds = (await q(`SELECT * FROM bao_cao_kh_cau_hinh ORDER BY ten`)).map(cauHinhTuDong);
   const ra: CauHinh[] = [];
-  for (const c of ds) if (await quyenCauHinh(nguoi, c, ts)) ra.push({ ...c, dangChay: c.taiKhoan.some((t) => chay.has(t.id)) });
+  const homNay = todayIso();
+  for (const c of ds) {
+    if (!(await quyenCauHinh(nguoi, c, ts))) continue;
+    const toi = { tuan: ngayBaoCaoToi('tuan', homNay, c.ngayChuKy, c.thuBaoCao), thang: ngayBaoCaoToi('thang', homNay, c.ngayChuKy, c.thuBaoCao) };
+    ra.push({ ...c, dangChay: c.taiKhoan.some((t) => chay.has(t.id)), toi });
+  }
   return ra.sort((a, b) => Number(!!b.dangChay) - Number(!!a.dangChay) || a.ten.localeCompare(b.ten, 'vi'));
 }
 
@@ -145,12 +156,12 @@ export async function luuCauHinh(nguoi: Nguoi, c: Omit<CauHinh, 'id'> & { id?: s
   }
   const id = c.id || newId('BCK');
   await q(
-    `INSERT INTO bao_cao_kh_cau_hinh (id, ten, logo, mau, tai_khoan, ngay_chu_ky, tuan, thang, zalo_thread, zalo_nhom, zalo_ten, bat, nguoi_tao, cap_nhat)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+    `INSERT INTO bao_cao_kh_cau_hinh (id, ten, logo, mau, tai_khoan, ngay_chu_ky, tuan, thang, zalo_thread, zalo_nhom, zalo_ten, bat, nguoi_tao, cap_nhat, thu_bao_cao)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      ON CONFLICT (id) DO UPDATE SET ten = EXCLUDED.ten, logo = EXCLUDED.logo, mau = EXCLUDED.mau, tai_khoan = EXCLUDED.tai_khoan,
-       ngay_chu_ky = EXCLUDED.ngay_chu_ky, tuan = EXCLUDED.tuan, thang = EXCLUDED.thang, zalo_thread = EXCLUDED.zalo_thread,
+       ngay_chu_ky = EXCLUDED.ngay_chu_ky, thu_bao_cao = EXCLUDED.thu_bao_cao, tuan = EXCLUDED.tuan, thang = EXCLUDED.thang, zalo_thread = EXCLUDED.zalo_thread,
        zalo_nhom = EXCLUDED.zalo_nhom, zalo_ten = EXCLUDED.zalo_ten, bat = EXCLUDED.bat, cap_nhat = EXCLUDED.cap_nhat`,
-    [id, c.ten, c.logo, c.mau, JSON.stringify(c.taiKhoan), c.ngayChuKy, c.tuan, c.thang, c.zaloThread, c.zaloNhom, c.zaloTen, c.bat, nguoi.sub, nowTz().toISOString()],
+    [id, c.ten, c.logo, c.mau, JSON.stringify(c.taiKhoan), c.ngayChuKy, c.tuan, c.thang, c.zaloThread, c.zaloNhom, c.zaloTen, c.bat, nguoi.sub, nowTz().toISOString(), c.thuBaoCao],
   );
   return docCauHinh(id);
 }
@@ -271,7 +282,7 @@ export async function taoBaoCao(ch: CauHinh, nenTang: NenTang, loai: LoaiKy | 't
     // Kỳ trước cùng độ dài để so sánh.
     const soNgay = Math.round((Date.parse(ky.den) - Date.parse(ky.tu)) / 86_400_000) + 1;
     const { congNgay } = await import('../lib/khoangNgay.js');
-    const kyTruoc = loai === 'tuy_chon' ? { tu: congNgay(ky.tu, -soNgay), den: congNgay(ky.tu, -1) } : kyBaoCao(loai, ky.tu, ch.ngayChuKy);
+    const kyTruoc = loai === 'tuy_chon' ? { tu: congNgay(ky.tu, -soNgay), den: congNgay(ky.tu, -1) } : kyBaoCao(loai, ky.tu, ch.ngayChuKy, ch.thuBaoCao);
     const truoc = await soLieu(ch, nenTang, kyTruoc)
       .then((t) => t.tong)
       .catch(() => null);
@@ -326,7 +337,7 @@ async function baoNguoiPhuTrach(ch: CauHinh, nenTang: NenTang, ky: Ky): Promise<
 export async function taoNgay(nguoi: Nguoi, cauHinhId: string, loai: LoaiKy | 'tuy_chon', tu?: string, den?: string): Promise<string[]> {
   const ch = await docCauHinh(cauHinhId);
   if (!(await quyenCauHinh(nguoi, ch))) throw new ApiError(403, 'Bạn không quản lý báo cáo này');
-  const ky = loai === 'tuy_chon' ? { tu: String(tu || ''), den: String(den || '') } : kyBaoCao(loai, todayIso(), ch.ngayChuKy);
+  const ky = loai === 'tuy_chon' ? { tu: String(tu || ''), den: String(den || '') } : kyBaoCao(loai, todayIso(), ch.ngayChuKy, ch.thuBaoCao);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(ky.tu) || !/^\d{4}-\d{2}-\d{2}$/.test(ky.den) || ky.tu > ky.den) throw new ApiError(400, 'Khoảng ngày không hợp lệ');
   const ra: string[] = [];
   for (const n of await nenTangCua(ch)) ra.push(await taoBaoCao(ch, n, loai, ky));
@@ -349,7 +360,7 @@ export async function chayBaoCaoKhach(han: number): Promise<number> {
   for (const ch of ds) {
     for (const loai of ['tuan', 'thang'] as const) {
       if (!ch[loai]) continue;
-      const ky = kyBaoCao(loai, homNay, ch.ngayChuKy);
+      const ky = kyBaoCao(loai, homNay, ch.ngayChuKy, ch.thuBaoCao);
       if (!nenTao(ky, homNay)) continue;
       for (const n of await nenTangCua(ch)) {
         if (Date.now() > han) return tao;

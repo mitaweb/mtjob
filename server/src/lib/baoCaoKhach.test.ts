@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { kyBaoCao, nenTao, coCauGads, coCauMeta, tongHop, nhomKhachDangChay, tenGon } from './baoCaoKhach.js';
+import { kyBaoCao, ngayBaoCaoToi, nenTao, coCauGads, coCauMeta, tongHop, nhomKhachDangChay, tenGon } from './baoCaoKhach.js';
 
 // Anh Tâm 11/11/2026: "agent để báo cáo hàng tuần cho khách hàng… chi phí sẽ tổng cả thuế vào… báo cáo hàng tuần, tháng cho
 // các bên chạy ads, GG và FB". Kỳ tháng theo chu kỳ từng khách (mẫu anh gửi 11/10 → 09/11). Số GIẢ.
@@ -16,6 +16,34 @@ describe('kyBaoCao — kỳ vừa kết thúc', () => {
   it('chưa đặt chu kỳ → tháng dương lịch trước', () => {
     expect(kyBaoCao('thang', '2026-11-11', 0)).toEqual({ tu: '2026-10-01', den: '2026-10-31' });
     expect(kyBaoCao('thang', '2026-01-03', 0)).toEqual({ tu: '2025-12-01', den: '2025-12-31' });
+  });
+});
+
+// Anh Tâm 20/11/2026: "ngày báo cáo có thể tùy chỉnh cho mỗi bên, cài đặt được ngày báo cáo".
+describe('kyBaoCao — tuần theo thứ báo cáo của từng khách', () => {
+  it('báo cáo thứ Năm (4): 7 ngày từ thứ Năm tuần trước → thứ Tư vừa rồi', () => {
+    // 2026-11-20 là thứ Sáu → thứ Năm gần nhất 19/11 → kỳ 12/11–18/11
+    expect(kyBaoCao('tuan', '2026-11-20', 0, 4)).toEqual({ tu: '2026-11-12', den: '2026-11-18' });
+    // đúng thứ Năm 19/11 → vẫn kỳ 12–18
+    expect(kyBaoCao('tuan', '2026-11-19', 0, 4)).toEqual({ tu: '2026-11-12', den: '2026-11-18' });
+  });
+  it('báo cáo Chủ nhật (7)', () => {
+    expect(kyBaoCao('tuan', '2026-11-20', 0, 7)).toEqual({ tu: '2026-11-08', den: '2026-11-14' });
+  });
+  it('không đặt / thứ Hai (1) như cũ', () => {
+    expect(kyBaoCao('tuan', '2026-11-20', 0, 1)).toEqual({ tu: '2026-11-09', den: '2026-11-15' });
+  });
+});
+
+describe('ngayBaoCaoToi — ngày báo cáo kế tiếp (từ hôm nay)', () => {
+  it('tuần: thứ báo cáo gần nhất từ hôm nay', () => {
+    expect(ngayBaoCaoToi('tuan', '2026-11-20', 0, 4)).toEqual({ ngay: '2026-11-26', tu: '2026-11-19', den: '2026-11-25' });
+    expect(ngayBaoCaoToi('tuan', '2026-11-20', 0, 5)).toEqual({ ngay: '2026-11-20', tu: '2026-11-13', den: '2026-11-19' });
+  });
+  it('tháng: ngày D tháng này nếu chưa qua, không thì tháng sau', () => {
+    expect(ngayBaoCaoToi('thang', '2026-11-20', 25, 1)).toEqual({ ngay: '2026-11-25', tu: '2026-10-25', den: '2026-11-24' });
+    expect(ngayBaoCaoToi('thang', '2026-11-20', 11, 1)).toEqual({ ngay: '2026-12-11', tu: '2026-11-11', den: '2026-12-10' });
+    expect(ngayBaoCaoToi('thang', '2026-12-20', 0, 1)).toEqual({ ngay: '2027-01-01', tu: '2026-12-01', den: '2026-12-31' });
   });
 });
 

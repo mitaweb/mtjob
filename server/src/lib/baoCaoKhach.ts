@@ -1,6 +1,6 @@
 // Báo cáo quảng cáo gửi khách (anh Tâm 11/11/2026: "agent để báo cáo hàng tuần cho khách hàng… chi phí sẽ tổng cả thuế
 // vào… báo cáo hàng tuần, tháng cho các bên chạy ads, GG và FB"). Hàm thuần: kỳ báo cáo, chuyển đổi theo loại, tổng có thuế.
-import { congNgay, dauTuan } from './khoangNgay.js';
+import { congNgay } from './khoangNgay.js';
 
 export type LoaiKy = 'tuan' | 'thang';
 export interface Ky {
@@ -15,10 +15,11 @@ export const THUE_MAC_DINH = 10;
  * Kỳ vừa kết thúc tính tới hôm nay. Tuần: thứ Hai → Chủ nhật tuần trước. Tháng: theo chu kỳ từng khách (ngày D tháng trước →
  * D − 1 tháng này; mẫu anh gửi 11/10 → 09/11); chưa đặt chu kỳ (0) = tháng dương lịch trước.
  */
-export function kyBaoCao(loai: LoaiKy, homNay: string, ngayChuKy: number): Ky {
+export function kyBaoCao(loai: LoaiKy, homNay: string, ngayChuKy: number, thuBaoCao = 1): Ky {
   if (loai === 'tuan') {
-    const tu = congNgay(dauTuan(homNay), -7);
-    return { tu, den: congNgay(tu, 6) };
+    // Ngày báo cáo = thứ báo cáo gần nhất (≤ hôm nay); kỳ = 7 ngày trước ngày đó. Thứ Hai (mặc định) = thứ Hai → CN tuần trước.
+    const r = congNgay(homNay, -((thuIso(homNay) - thuHopLe(thuBaoCao) + 7) % 7));
+    return { tu: congNgay(r, -7), den: congNgay(r, -1) };
   }
   const d = Math.min(28, Math.max(1, Math.round(ngayChuKy) || 1));
   const [n, t, ng] = homNay.split('-').map(Number) as [number, number, number];
@@ -37,6 +38,27 @@ export function kyBaoCao(loai: LoaiKy, homNay: string, ngayChuKy: number): Ky {
     namTruoc--;
   }
   return { tu: `${namTruoc}-${String(thangTruoc).padStart(2, '0')}-${String(d).padStart(2, '0')}`, den: congNgay(moc, -1) };
+}
+
+/** Thứ theo ISO: 1 = thứ Hai … 7 = Chủ nhật. */
+const thuIso = (ngay: string) => ((new Date(`${ngay}T00:00:00Z`).getUTCDay() + 6) % 7) + 1;
+const thuHopLe = (t: number) => (Number.isInteger(t) && t >= 1 && t <= 7 ? t : 1);
+
+/**
+ * Ngày báo cáo KẾ TIẾP tính từ hôm nay (kể cả hôm nay) + kỳ của báo cáo đó — để người cài đặt thấy "báo cáo tới: thứ Năm
+ * 26/11, kỳ 19/11–25/11" (anh Tâm 20/11/2026: "cài đặt được ngày báo cáo" cho từng khách).
+ */
+export function ngayBaoCaoToi(loai: LoaiKy, homNay: string, ngayChuKy: number, thuBaoCao = 1): Ky & { ngay: string } {
+  let ngay: string;
+  if (loai === 'tuan') {
+    ngay = congNgay(homNay, (thuHopLe(thuBaoCao) - thuIso(homNay) + 7) % 7);
+  } else {
+    const d = Math.min(28, Math.max(1, Math.round(ngayChuKy) || 1));
+    const [n, t, ng] = homNay.split('-').map(Number) as [number, number, number];
+    const [nam, thang] = ng <= d ? [n, t] : t === 12 ? [n + 1, 1] : [n, t + 1];
+    ngay = `${nam}-${String(thang).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+  return { ngay, ...kyBaoCao(loai, ngay, ngayChuKy, thuBaoCao) };
 }
 
 /** Chỉ tạo báo cáo cho kỳ VỪA kết thúc (≤ 3 ngày) — cấu hình mới bật giữa kỳ không sinh báo cáo kỳ cũ. */

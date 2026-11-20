@@ -673,6 +673,8 @@ CREATE TABLE IF NOT EXISTS bao_cao_kh_cau_hinh (
   nguoi_tao    text DEFAULT '',
   cap_nhat     text DEFAULT ''
 );
+-- Thứ làm báo cáo tuần của từng khách (anh Tâm 20/11/2026): 1 = thứ Hai … 7 = Chủ nhật; kỳ = 7 ngày trước ngày đó.
+ALTER TABLE bao_cao_kh_cau_hinh ADD COLUMN IF NOT EXISTS thu_bao_cao integer DEFAULT 1;
 CREATE TABLE IF NOT EXISTS bao_cao_kh (
   id           text PRIMARY KEY,
   cau_hinh_id  text NOT NULL,

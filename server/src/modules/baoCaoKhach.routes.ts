@@ -39,6 +39,7 @@ const cauHinhSchema = z.object({
   mau: z.string().regex(/^(#[0-9a-fA-F]{6})?$/).default(''),
   taiKhoan: z.array(z.object({ id: z.string().min(3).max(80), thue: z.number().min(0).max(100), ten: z.string().max(80).optional() })).min(1).max(20),
   ngayChuKy: z.number().int().min(0).max(28).default(0),
+  thuBaoCao: z.number().int().min(1).max(7).default(1),
   tuan: z.boolean().default(true),
   thang: z.boolean().default(true),
   zaloThread: z.string().max(80).default(''),

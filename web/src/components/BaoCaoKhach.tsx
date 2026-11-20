@@ -19,6 +19,7 @@ interface CauHinh {
   mau: string;
   taiKhoan: TkCh[];
   ngayChuKy: number;
+  thuBaoCao: number;
   tuan: boolean;
   thang: boolean;
   zaloThread: string;
@@ -26,7 +27,12 @@ interface CauHinh {
   zaloTen: string;
   bat: boolean;
   dangChay?: boolean;
+  toi?: { tuan: { ngay: string; tu: string; den: string }; thang: { ngay: string; tu: string; den: string } };
 }
+
+// Lịch báo cáo từng khách (anh Tâm 20/11/2026: "ngày báo cáo có thể tùy chỉnh cho mỗi bên, cài đặt được ngày báo cáo").
+const THU = ['', 'thứ Hai', 'thứ Ba', 'thứ Tư', 'thứ Năm', 'thứ Sáu', 'thứ Bảy', 'Chủ nhật'];
+const dm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 interface BaoCao extends DuLieuAnh {
   id: string;
   cauHinhId: string;
@@ -123,7 +129,7 @@ export default function BaoCaoKhach() {
           </div>
           <button
             className="btn-primary py-1.5 text-sm"
-            onClick={() => setSua({ id: '', ten: '', logo: '', mau: '#5f6f52', taiKhoan: [], ngayChuKy: 0, tuan: true, thang: true, zaloThread: '', zaloNhom: false, zaloTen: '', bat: true })}
+            onClick={() => setSua({ id: '', ten: '', logo: '', mau: '#5f6f52', taiKhoan: [], ngayChuKy: 0, thuBaoCao: 1, tuan: true, thang: true, zaloThread: '', zaloNhom: false, zaloTen: '', bat: true })}
           >
             ＋ Thêm khách
           </button>
@@ -151,8 +157,16 @@ export default function BaoCaoKhach() {
                       {c.ten} {!c.bat && <Badge>Tắt</Badge>} {c.bat && c.dangChay === false && <Badge>Ngừng chạy</Badge>}
                     </p>
                     <p className="text-xs text-ink-muted">
-                      {c.taiKhoan.length} tài khoản · {[c.tuan && 'tuần', c.thang && `tháng${c.ngayChuKy ? ` (chu kỳ ngày ${c.ngayChuKy})` : ''}`].filter(Boolean).join(' + ') || 'không tự gửi'} ·{' '}
-                      {c.zaloTen ? `Zalo: ${c.zaloTen}` : 'chưa chọn Zalo (chỉ tải ảnh)'}
+                      {c.taiKhoan.length} tài khoản · {c.zaloTen ? `Zalo: ${c.zaloTen}` : 'chưa chọn Zalo (chỉ tải ảnh)'}
+                    </p>
+                    <p className="text-xs text-ink-muted">
+                      📅{' '}
+                      {[
+                        c.tuan && `Tuần: ${THU[c.thuBaoCao || 1]}${c.toi ? ` — tới ${dm(c.toi.tuan.ngay)} (kỳ ${dm(c.toi.tuan.tu)}–${dm(c.toi.tuan.den)})` : ''}`,
+                        c.thang && `Tháng: ngày ${c.ngayChuKy > 1 ? c.ngayChuKy : 1}${c.toi ? ` — tới ${dm(c.toi.thang.ngay)} (kỳ ${dm(c.toi.thang.tu)}–${dm(c.toi.thang.den)})` : ''}`,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ') || 'không tự làm báo cáo'}
                     </p>
                   </div>
                 </div>
@@ -501,24 +515,49 @@ function SuaCauHinh({ c, dong, luu }: { c: CauHinh; dong: () => void; luu: () =>
             )}
           </div>
         </div>
-        <label className="text-sm">
-          Chu kỳ tháng bắt đầu ngày
-          <input className="input mt-1" type="number" min={0} max={28} value={f.ngayChuKy} onChange={(e) => setF({ ...f, ngayChuKy: Math.max(0, Math.min(28, Number(e.target.value) || 0)) })} />
-          <span className="text-xs text-ink-muted">0 = tháng dương lịch; 11 = 11 tháng trước → 10 tháng này</span>
-        </label>
-        <div className="text-sm">
-          Tự làm báo cáo
-          <div className="mt-2 flex gap-4">
-            <label className="flex items-center gap-1.5">
-              <input type="checkbox" checked={f.tuan} onChange={(e) => setF({ ...f, tuan: e.target.checked })} /> Tuần (thứ Hai)
+        <div className="space-y-2 text-sm md:col-span-3">
+          <p className="font-medium">📅 Lịch báo cáo</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex w-36 items-center gap-1.5">
+              <input type="checkbox" checked={f.tuan} onChange={(e) => setF({ ...f, tuan: e.target.checked })} /> Báo cáo tuần vào
             </label>
-            <label className="flex items-center gap-1.5">
-              <input type="checkbox" checked={f.thang} onChange={(e) => setF({ ...f, thang: e.target.checked })} /> Tháng
-            </label>
-            <label className="flex items-center gap-1.5">
-              <input type="checkbox" checked={f.bat} onChange={(e) => setF({ ...f, bat: e.target.checked })} /> Bật
-            </label>
+            <select className="input w-auto py-1" disabled={!f.tuan} value={f.thuBaoCao || 1} onChange={(e) => setF({ ...f, thuBaoCao: Number(e.target.value) })} aria-label="Thứ báo cáo tuần">
+              {[1, 2, 3, 4, 5, 6, 7].map((t) => (
+                <option key={t} value={t}>
+                  {THU[t]![0]!.toUpperCase() + THU[t]!.slice(1)}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-ink-muted">
+              số 7 ngày: {THU[f.thuBaoCao || 1]} tuần trước → {THU[((f.thuBaoCao || 1) + 5) % 7 + 1]} vừa rồi
+            </span>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex w-36 items-center gap-1.5">
+              <input type="checkbox" checked={f.thang} onChange={(e) => setF({ ...f, thang: e.target.checked })} /> Báo cáo tháng vào
+            </label>
+            <select
+              className="input w-auto py-1"
+              disabled={!f.thang}
+              value={f.ngayChuKy > 1 ? f.ngayChuKy : 0}
+              onChange={(e) => setF({ ...f, ngayChuKy: Number(e.target.value) })}
+              aria-label="Ngày báo cáo tháng"
+            >
+              <option value={0}>Ngày 1 (theo tháng dương lịch)</option>
+              {Array.from({ length: 27 }, (_, i) => i + 2).map((n) => (
+                <option key={n} value={n}>
+                  Ngày {n} hằng tháng
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-ink-muted">
+              {f.ngayChuKy > 1 ? `số từ ngày ${f.ngayChuKy} tháng trước → ngày ${f.ngayChuKy - 1} tháng này` : 'số cả tháng trước (1 → cuối tháng)'}
+            </span>
+          </div>
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={f.bat} onChange={(e) => setF({ ...f, bat: e.target.checked })} /> Bật tự làm báo cáo cho khách này
+          </label>
+          <p className="text-xs text-ink-muted">Đến ngày báo cáo, hệ thống tự làm báo cáo (từ 8h sáng) và báo người phụ trách duyệt trước khi gửi khách.</p>
         </div>
       </div>
 
