@@ -100,7 +100,7 @@ export default function BaoCaoKhach() {
           <div>
             <h3 className="font-semibold">⏳ Chờ duyệt ({cho.length})</h3>
             <p className="text-xs text-ink-muted">
-              Thứ Hai hệ thống tự làm báo cáo tuần trước; đến ngày chu kỳ thì làm báo cáo tháng. Số lấy thẳng từ Google / Facebook, chi
+              Đến ngày báo cáo của từng khách (đặt ở 📅 Lịch báo cáo khi bấm Sửa), hệ thống tự làm báo cáo tuần / tháng. Số lấy thẳng từ Google / Facebook, chi
               phí đã cộng thuế, AI viết nhận xét — anh / chị xem lại rồi bấm Gửi.
             </p>
           </div>
@@ -124,7 +124,7 @@ export default function BaoCaoKhach() {
             </h3>
             <p className="text-xs text-ink-muted">
               Tự lấy từ tài khoản Google / Facebook có chi tiêu 30 ngày qua; các tài khoản cùng khách (cùng ô "Khách" hoặc tên giống nhau) gộp
-              một báo cáo. Bấm Sửa để gộp / tách, đặt logo, chu kỳ tháng, Zalo nhận.
+              một báo cáo. Bấm Sửa để gộp / tách, đặt logo, lịch báo cáo, Zalo nhận.
             </p>
           </div>
           <button
@@ -518,7 +518,7 @@ function SuaCauHinh({ c, dong, luu }: { c: CauHinh; dong: () => void; luu: () =>
         <div className="space-y-2 text-sm md:col-span-3">
           <p className="font-medium">📅 Lịch báo cáo</p>
           <div className="flex flex-wrap items-center gap-2">
-            <label className="flex w-36 items-center gap-1.5">
+            <label className="flex items-center gap-1.5 whitespace-nowrap sm:w-40">
               <input type="checkbox" checked={f.tuan} onChange={(e) => setF({ ...f, tuan: e.target.checked })} /> Báo cáo tuần vào
             </label>
             <select className="input w-auto py-1" disabled={!f.tuan} value={f.thuBaoCao || 1} onChange={(e) => setF({ ...f, thuBaoCao: Number(e.target.value) })} aria-label="Thứ báo cáo tuần">
@@ -533,7 +533,7 @@ function SuaCauHinh({ c, dong, luu }: { c: CauHinh; dong: () => void; luu: () =>
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <label className="flex w-36 items-center gap-1.5">
+            <label className="flex items-center gap-1.5 whitespace-nowrap sm:w-40">
               <input type="checkbox" checked={f.thang} onChange={(e) => setF({ ...f, thang: e.target.checked })} /> Báo cáo tháng vào
             </label>
             <select
