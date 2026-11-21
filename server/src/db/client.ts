@@ -36,6 +36,21 @@ export function stripSslMode(url: string): string {
 }
 
 /**
+ * Có dùng SSL không. Không: localhost, `sslmode=disable` trong URL, DB_SSL=off, hoặc tên máy không có dấu chấm — Postgres
+ * nội bộ của Coolify (máy chủ MT DIGITAL, 21/11/2026) nghe trong mạng Docker theo tên container và không bật SSL.
+ */
+export function canSsl(url: string): boolean {
+  if (process.env.DB_SSL === 'off' || /[?&]sslmode=disable(&|$)/.test(url)) return false;
+  let host = '';
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return true;
+  }
+  return !(host === 'localhost' || host === '127.0.0.1' || !host.includes('.'));
+}
+
+/**
  * pg.Pool — dùng cho mọi Postgres không phải Neon (Supabase, máy chủ riêng, local) và cho
  * scripts chạy tay (setup-db, migrate…): driver HTTP của Neon không chạy được DDL nhiều
  * câu lệnh trong một query.
@@ -52,7 +67,7 @@ export function pool(): pg.Pool {
       idleTimeoutMillis: 60_000,
       connectionTimeoutMillis: 5_000,
       keepAlive: true,
-      ssl: /localhost|127\.0\.0\.1/.test(url) ? undefined : { rejectUnauthorized: false },
+      ssl: canSsl(dbUrl()) ? { rejectUnauthorized: false } : undefined,
     });
   }
   return _pool;
