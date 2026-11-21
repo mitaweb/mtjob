@@ -1,4 +1,3 @@
-import { chuyenMayChuRouter } from '../modules/chuyenMayChu.routes.js';
 import express, { type ErrorRequestHandler } from 'express';
 import cors from 'cors';
 import { ZodError } from 'zod';
@@ -116,8 +115,6 @@ export function createApp() {
   app.use('/api/team', teamMembersRouter);
   app.use('/api/oauth2', oauthRouter);
   app.use('/api/jobs', jobsRouter);
-  // TẠM THỜI (21/11/2026): chuyển sang Coolify — gỡ khi chuyển xong.
-  app.use('/api/chuyen-may-chu', chuyenMayChuRouter);
 
   const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     if (err instanceof ZodError) {
